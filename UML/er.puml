@@ -1,0 +1,49 @@
+@startuml
+!theme plain
+
+hide stereotype
+
+entity users {
+  * id : int <<PK>>
+  --
+  * username : string
+  * email : string
+  password_hash : string
+  oauth_provider : string
+  oauth_id : string
+  avatar_url : string
+  role : string
+  created_at : timestamp
+}
+
+entity stories {
+  * id : int <<PK>>
+  --
+  * user_id : int <<FK>>
+  content : text
+  images : json
+  location : geography
+  emotion_tag : string
+  is_time_capsule : boolean
+  unlock_at : timestamp
+  visibility : string
+  view_count : int
+  created_at : timestamp
+  updated_at : timestamp
+}
+
+entity admin_actions {
+  * id : int <<PK>>
+  --
+  * story_id : int <<FK>>
+  * admin_id : int <<FK>>
+  action_type : string
+  reason : text
+  created_at : timestamp
+}
+
+users ||--o{ stories : creates
+users ||--o{ admin_actions : performs
+stories ||--o{ admin_actions : receives
+
+@enduml
