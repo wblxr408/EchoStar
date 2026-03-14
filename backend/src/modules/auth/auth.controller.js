@@ -5,8 +5,8 @@ import { AuthService } from './auth.service.js';
  */
 export const register = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const result = await AuthService.register(email, password);
+    const { email, password, username } = req.body;  // ✅ 添加 username 参数
+    const result = await AuthService.register(email, password, username);  // ✅ 传递 username
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);

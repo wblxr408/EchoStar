@@ -11,33 +11,38 @@ export const AuthService = {
   /**
    * 用户注册
    */
-  async register(email, password) {
-    // 检查用户是否已存在
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
+  async register(email, password, username) {
+    // 1. 检查邮箱是否已存在
+    const existingUserByEmail = await User.findOne({ where: { email } });
+    if (existingUserByEmail) {
       throw new Error('邮箱已被注册');
     }
 
-    // 密码加密
+    // 2. 检查用户名是否已存在
+    const existingUserByUsername = await User.findOne({ where: { username } });
+    if (existingUserByUsername) {
+      throw new Error('用户名已被使用');
+    }
+
+    // 3. 密码加密
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 创建用户
+    // 4. 创建用户
     const user = await User.create({
+      username,
       email,
-      password: hashedPassword,
-      provider: 'email'
+      passwordHash: hashedPassword,
+      oauthProvider: 'email'
     });
 
-    // 生成 Token
+    // 5. 生成 Token
     const token = this.generateToken(user.id);
 
     return {
-      token,
+      accessToken: token,  // ✅ 修改为 accessToken
       user: {
         id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        avatar: user.avatar
+        username: user.username  // ✅ 普通注册只返回 id 和 username
       }
     };
   },
@@ -53,7 +58,7 @@ export const AuthService = {
     }
 
     // 验证密码
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     if (!isValidPassword) {
       throw new Error('邮箱或密码错误');
     }
@@ -62,12 +67,12 @@ export const AuthService = {
     const token = this.generateToken(user.id);
 
     return {
-      token,
+      accessToken: token,  // ✅ 修改为 accessToken
       user: {
         id: user.id,
         email: user.email,
-        nickname: user.nickname,
-        avatar: user.avatar
+        username: user.username,
+        avatar: user.avatarUrl  // ✅ 映射为 avatar
       }
     };
   },
@@ -95,14 +100,31 @@ export const AuthService = {
     const githubUser = userResponse.data;
 
     // 3. 查找或创建用户
-    let user = await User.findOne({ where: { githubId: githubUser.id } });
+    let user = await User.findOne({
+      where: {
+        oauthProvider: 'github',
+        oauthId: String(githubUser.id)
+      }
+    });
+
     if (!user) {
+      // 新用户：确保用户名唯一
+      let username = githubUser.login;
+      let usernameSuffix = 1;
+
+      // 检查用户名是否已被占用
+      while (await User.findOne({ where: { username } })) {
+        username = `${githubUser.login}${usernameSuffix}`;
+        usernameSuffix++;
+      }
+
+      // 创建用户
       user = await User.create({
+        username,  // ✅ 使用确保唯一的用户名
         email: githubUser.email,
-        githubId: githubUser.id,
-        nickname: githubUser.login,
-        avatar: githubUser.avatar_url,
-        provider: 'github'
+        oauthProvider: 'github',
+        oauthId: String(githubUser.id),
+        avatarUrl: githubUser.avatar_url
       });
     }
 
@@ -110,12 +132,12 @@ export const AuthService = {
     const token = this.generateToken(user.id);
 
     return {
-      token,
+      accessToken: token,  // ✅ 修改为 accessToken
       user: {
         id: user.id,
         email: user.email,
-        nickname: user.nickname,
-        avatar: user.avatar
+        username: user.username,
+        avatar: user.avatarUrl  // ✅ 映射为 avatar
       }
     };
   },
@@ -137,14 +159,20 @@ export const AuthService = {
    */
   async getCurrentUser(userId) {
     const user = await User.findByPk(userId, {
-      attributes: ['id', 'email', 'nickname', 'avatar', 'role', 'createdAt']
+      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'createdAt']
     });
 
     if (!user) {
       throw new Error('用户不存在');
     }
 
-    return user;
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      avatar: user.avatarUrl,  // ✅ 映射为 avatar
+      role: user.role
+    };
   },
 
   /**

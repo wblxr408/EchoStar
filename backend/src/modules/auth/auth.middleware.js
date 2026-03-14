@@ -11,7 +11,7 @@ export const authenticateJWT = async (req, res, next) => {
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
-        code: 401,
+        code: 4001,
         message: '未提供认证令牌'
       });
     }
@@ -23,12 +23,12 @@ export const authenticateJWT = async (req, res, next) => {
 
     // 查询用户信息
     const user = await User.findByPk(decoded.userId, {
-      attributes: ['id', 'email', 'role']
+      attributes: ['id', 'email', 'username', 'avatarUrl', 'role']
     });
 
     if (!user) {
       return res.status(401).json({
-        code: 401,
+        code: 4001,
         message: '用户不存在'
       });
     }
@@ -38,7 +38,7 @@ export const authenticateJWT = async (req, res, next) => {
     next();
   } catch (error) {
     return res.status(401).json({
-      code: 401,
+      code: 4001,
       message: 'Token 无效或已过期'
     });
   }
@@ -67,7 +67,9 @@ export const optionalAuth = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const decoded = jwt.verify(token, config.jwt.secret);
-      const user = await User.findByPk(decoded.userId);
+      const user = await User.findByPk(decoded.userId, {
+        attributes: ['id', 'email', 'username', 'avatarUrl', 'role']
+      });
 
       if (user) {
         req.user = user;
