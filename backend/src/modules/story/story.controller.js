@@ -5,14 +5,14 @@ import { StoryService } from './story.service.js';
  */
 export const createStory = async (req, res, next) => {
   try {
-    const { content, images, location, emotion, isTimeCapsule, unlockAt } = req.body;
+    const { content, images, location, emotionTag, isTimeCapsule, unlockAt } = req.body;
     const userId = req.user.id;
 
     const story = await StoryService.createStory(userId, {
       content,
       images,
       location,
-      emotion,
+      emotionTag,
       isTimeCapsule,
       unlockAt
     });
@@ -86,8 +86,8 @@ export const getUploadToken = async (req, res, next) => {
 export const unlockTimeCapsule = async (req, res, next) => {
   try {
     const { id } = req.params;
-    await StoryService.unlockTimeCapsule(id);
-    res.json({ code: 0, message: '解锁成功' });
+    const result = await StoryService.unlockTimeCapsule(id);
+    res.json({ code: 0, message: result.message });
   } catch (error) {
     next(error);
   }

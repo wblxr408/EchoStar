@@ -1,4 +1,5 @@
-import { Story, TimeCapsule } from './story.model.js';
+import { Story } from './story.model.js';
+import { User } from '../auth/auth.model.js';
 import { generateOSSToken } from '../../common/utils/oss.js';
 
 /**
@@ -9,40 +10,26 @@ export const StoryService = {
    * 发布故事
    */
   async createStory(userId, data) {
-    const { content, images, location, emotion, isTimeCapsule, unlockAt } = data;
+    const { content, images, location, emotionTag, isTimeCapsule, unlockAt } = data;
 
     // 创建故事
     const story = await Story.create({
       userId,
       content,
-      images: JSON.stringify(images),
-      latitude: location.latitude,
-      longitude: location.longitude,
-      locationName: location.name,
-      emotion,
-      visibility: isTimeCapsule ? 'time_capsule' : 'public'
+      images,  // JSONB 类型，Sequelize 自动处理
+      location: {
+        type: 'Point',
+        coordinates: [location.longitude, location.latitude]  // PostGIS: 经度在前
+      },
+      emotionTag,
+      isTimeCapsule: isTimeCapsule || false,
+      unlockAt: isTimeCapsule ? new Date(unlockAt) : null,
+      visibility: 'public'  // 时光胶囊通过 isTimeCapsule 字段判断
     });
-
-    // 如果是时光胶囊，创建关联记录
-    if (isTimeCapsule) {
-      await TimeCapsule.create({
-        storyId: story.id,
-        unlockAt: new Date(unlockAt),
-        isUnlocked: false
-      });
-    }
 
     return {
       id: story.id,
       content: story.content,
-      images: JSON.parse(story.images),
-      location: {
-        latitude: story.latitude,
-        longitude: story.longitude,
-        name: story.locationName
-      },
-      emotion: story.emotion,
-      isTimeCapsule,
       createdAt: story.createdAt
     };
   },
@@ -53,8 +40,9 @@ export const StoryService = {
   async getStoryById(storyId, userId) {
     const story = await Story.findByPk(storyId, {
       include: [{
-        model: TimeCapsule,
-        as: 'timeCapsule'
+        model: User,
+        as: 'author',
+        attributes: ['id', 'username', 'avatarUrl']
       }]
     });
 
@@ -67,39 +55,53 @@ export const StoryService = {
       throw new Error('故事不存在');
     }
 
-    if (story.visibility === 'private' && story.userId !== userId) {
-      throw new Error('无权访问此故事');
+    if (story.visibility === 'deleted') {
+      throw new Error('故事不存在');
     }
 
-    if (story.visibility === 'time_capsule') {
-      if (!story.timeCapsule || !story.timeCapsule.isUnlocked) {
-        if (story.userId !== userId) {
-          throw new Error('时光胶囊尚未解锁');
-        }
+    // 时光胶囊检查：如果是时光胶囊且未到解锁时间，仅作者可见
+    let content = story.content;
+    if (story.isTimeCapsule && story.unlockAt && new Date() < story.unlockAt) {
+      if (story.userId !== userId) {
+        content = null;  // 未解锁时光胶囊，内容为空
+      }
+    }
+
+    // 增加浏览量
+    await Story.increment('viewCount', { where: { id: storyId } });
+
+    // 从 PostGIS GEOGRAPHY 提取坐标
+    let location = null;
+    if (story.location) {
+      // 如果 location 是 PostGIS 对象，提取坐标
+      // Sequelize 返回的格式可能是字符串或对象
+      const locationStr = typeof story.location === 'string'
+        ? story.location
+        : story.location.toString();
+      // GeoJSON 格式: POINT(lng lat)
+      const match = locationStr.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+      if (match) {
+        location = {
+          lng: parseFloat(match[1]),
+          lat: parseFloat(match[2])
+        };
       }
     }
 
     return {
       id: story.id,
-      content: story.content,
-      images: JSON.parse(story.images),
-      location: {
-        latitude: story.latitude,
-        longitude: story.longitude,
-        name: story.locationName
-      },
-      emotion: story.emotion,
-      visibility: story.visibility,
-      isRecommended: story.isRecommended,
+      content,
+      images: story.images,
+      location,
+      emotionTag: story.emotionTag,
+      isTimeCapsule: story.isTimeCapsule,
+      viewCount: story.viewCount + 1,
       createdAt: story.createdAt,
       author: {
         id: story.userId,
-        nickname: story.user?.nickname
-      },
-      timeCapsule: story.timeCapsule ? {
-        unlockAt: story.timeCapsule.unlockAt,
-        isUnlocked: story.timeCapsule.isUnlocked
-      } : null
+        username: story.author?.username || '匿名用户',
+        avatar: story.author?.avatarUrl || null
+      }
     };
   },
 
@@ -118,6 +120,8 @@ export const StoryService = {
     }
 
     await story.destroy();
+
+    return { success: true, message: '删除成功' };
   },
 
   /**
@@ -130,25 +134,17 @@ export const StoryService = {
       where: { userId },
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
-      offset: parseInt(offset),
-      include: [{
-        model: TimeCapsule,
-        as: 'timeCapsule'
-      }]
+      offset: parseInt(offset)
     });
 
     return {
       stories: rows.map(story => ({
         id: story.id,
         content: story.content,
-        images: JSON.parse(story.images),
-        emotion: story.emotion,
-        visibility: story.visibility,
+        images: story.images,
         createdAt: story.createdAt,
-        timeCapsule: story.timeCapsule ? {
-          unlockAt: story.timeCapsule.unlockAt,
-          isUnlocked: story.timeCapsule.isUnlocked
-        } : null
+        viewCount: story.viewCount,
+        visibility: story.visibility
       })),
       pagination: {
         total: count,
@@ -170,29 +166,32 @@ export const StoryService = {
    * 解锁时光胶囊（定时任务调用）
    */
   async unlockTimeCapsule(storyId) {
-    const timeCapsule = await TimeCapsule.findOne({
-      where: { storyId }
-    });
+    const story = await Story.findByPk(storyId);
 
-    if (!timeCapsule) {
-      throw new Error('时光胶囊不存在');
+    if (!story) {
+      throw new Error('故事不存在');
     }
 
-    if (timeCapsule.isUnlocked) {
-      throw new Error('时光胶囊已解锁');
+    if (!story.isTimeCapsule) {
+      throw new Error('此故事不是时光胶囊');
     }
 
-    if (new Date() < timeCapsule.unlockAt) {
+    if (story.unlockAt && new Date() < story.unlockAt) {
       throw new Error('尚未到解锁时间');
     }
 
-    // 解锁时光胶囊
-    await timeCapsule.update({ isUnlocked: true });
+    // 如果已经是 public 可见性，无需重复解锁
+    if (story.visibility === 'public') {
+      return { success: true, message: '时光胶囊已解锁' };
+    }
 
-    // 更新故事可见性
-    await Story.update(
-      { visibility: 'public' },
-      { where: { id: storyId } }
-    );
+    // 解锁时光胶囊：将可见性改为 public
+    await story.update({ visibility: 'public' });
+
+    return {
+      success: true,
+      message: '时光胶囊解锁成功',
+      storyId: story.id
+    };
   }
 };

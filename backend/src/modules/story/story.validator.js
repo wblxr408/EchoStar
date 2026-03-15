@@ -6,37 +6,37 @@ import Joi from 'joi';
 export const createStorySchema = Joi.object({
   content: Joi.string()
     .min(1)
-    .max(500)
+    .max(1000)
     .required()
     .messages({
       'string.empty': '故事内容不能为空',
-      'string.max': '故事内容不能超过 500 字'
+      'string.max': '故事内容不能超过 1000 字'
     }),
 
   images: Joi.array()
     .items(Joi.string().uri())
+    .min(1)
     .max(9)
-    .optional()
+    .required()
     .messages({
+      'array.min': '至少上传 1 张图片',
       'array.max': '最多上传 9 张图片'
     }),
 
   location: Joi.object({
-    latitude: Joi.number()
+    lat: Joi.number()
       .min(-90)
       .max(90)
       .required(),
-    longitude: Joi.number()
+    lng: Joi.number()
       .min(-180)
       .max(180)
-      .required(),
-    name: Joi.string()
-      .optional()
+      .required()
   }).required(),
 
-  emotion: Joi.string()
-    .valid('happy', 'sad', 'neutral', 'excited', 'peaceful')
-    .optional(),
+  emotionTag: Joi.string()
+    .valid('治愈', '难过', '开心', '打卡')
+    .required(),
 
   isTimeCapsule: Joi.boolean()
     .optional(),
@@ -47,7 +47,7 @@ export const createStorySchema = Joi.object({
     .when('isTimeCapsule', {
       is: true,
       then: Joi.required(),
-      otherwise: Joi.forbidden()
+      otherwise: Joi.optional()
     })
     .messages({
       'date.min': '解锁时间必须在未来'
@@ -65,7 +65,7 @@ export const validateCreateStory = (req, res, next) => {
   if (error) {
     const errors = error.details.map(detail => detail.message);
     return res.status(400).json({
-      code: 400,
+      code: 4000,
       message: '输入验证失败',
       errors
     });

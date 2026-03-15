@@ -1,79 +1,93 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
+import { User } from '../auth/auth.model.js';
 
 /**
  * Story 模型
  */
 export const Story = sequelize.define('Story', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
   },
   userId: {
-    type: DataTypes.UUID,
+    type: DataTypes.INTEGER,
     allowNull: false,
+    field: 'user_id',
     references: {
       model: 'users',
       key: 'id'
-    }
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'CASCADE'
   },
   content: {
     type: DataTypes.TEXT,
     allowNull: false
   },
   images: {
-    type: DataTypes.JSON, // 存储图片 URL 数组
-    allowNull: true
+    type: DataTypes.JSONB, // 存储图片 URL 数组
+    defaultValue: []
   },
-  latitude: {
-    type: DataTypes.DECIMAL(10, 8),
-    allowNull: false
+  location: {
+    type: DataTypes.GEOGRAPHY('POINT', 4326),
+    allowNull: false,
+    field: 'location'
   },
-  longitude: {
-    type: DataTypes.DECIMAL(11, 8),
-    allowNull: false
+  emotionTag: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    field: 'emotion_tag'
   },
-  locationName: {
-    type: DataTypes.STRING,
-    allowNull: true
+  isTimeCapsule: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    field: 'is_time_capsule'
   },
-  emotion: {
-    type: DataTypes.ENUM('happy', 'sad', 'neutral', 'excited', 'peaceful'),
-    allowNull: true
+  unlockAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'unlock_at'
   },
   visibility: {
-    type: DataTypes.ENUM('public', 'private', 'time_capsule', 'shadowban'),
+    type: DataTypes.ENUM('public', 'shadowban', 'deleted'),
     defaultValue: 'public'
   },
-  isRecommended: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
+  viewCount: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'view_count'
   }
 }, {
   tableName: 'stories',
+  underscored: true,
   timestamps: true,
   indexes: [
     {
-      // PostGIS 空间索引（需要在迁移时手动创建）
-      name: 'stories_location_idx',
-      fields: ['latitude', 'longitude']
+      // PostGIS 空间索引
+      name: 'idx_stories_location',
+      fields: ['location'],
+      using: 'GIST'
     },
     {
-      name: 'stories_user_id_idx',
-      fields: ['userId']
+      name: 'idx_stories_user_id',
+      fields: ['user_id']
     },
     {
-      name: 'stories_created_at_idx',
-      fields: ['createdAt']
+      name: 'idx_stories_created_at',
+      fields: ['created_at']
+    },
+    {
+      name: 'idx_stories_visibility',
+      fields: ['visibility']
+    },
+    {
+      name: 'idx_stories_unlock_at',
+      fields: ['unlock_at'],
+      where: {
+        is_time_capsule: true
+      }
     }
   ]
 });
@@ -120,6 +134,16 @@ export const TimeCapsule = sequelize.define('TimeCapsule', {
 });
 
 // 关联关系
+Story.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'author'
+});
+
+User.hasMany(Story, {
+  foreignKey: 'userId',
+  as: 'stories'
+});
+
 Story.hasOne(TimeCapsule, {
   foreignKey: 'storyId',
   as: 'timeCapsule'

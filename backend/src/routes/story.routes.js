@@ -18,6 +18,17 @@ router.post(
 );
 
 /**
+ * GET /api/stories/me/list - 我的故事列表
+ */
+router.get('/my', authenticateJWT, storyController.getMyStories);
+
+/**
+ * GET /api/stories/upload/token - 获取 OSS 上传凭证
+ */
+router.get('/upload-token', authenticateJWT, storyController.getUploadToken);
+
+
+/**
  * GET /api/stories/:id - 查看故事详情
  */
 router.get('/:id', optionalAuth, storyController.getStoryById);
@@ -27,15 +38,6 @@ router.get('/:id', optionalAuth, storyController.getStoryById);
  */
 router.delete('/:id', authenticateJWT, storyController.deleteStory);
 
-/**
- * GET /api/stories/me/list - 我的故事列表
- */
-router.get('/me/list', authenticateJWT, storyController.getMyStories);
-
-/**
- * GET /api/stories/upload/token - 获取 OSS 上传凭证
- */
-router.get('/upload/token', authenticateJWT, storyController.getUploadToken);
 
 /**
  * POST /api/stories/:id/unlock - 解锁时光胶囊（定时任务调用）
