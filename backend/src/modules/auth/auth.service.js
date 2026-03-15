@@ -3,11 +3,68 @@ import jwt from 'jsonwebtoken';
 import axios from 'axios';
 import { User } from './auth.model.js';
 import config from '../../config/index.js';
+import { redisClient } from '../../common/utils/redis.js';
+import nodemailer from 'nodemailer';
 
 /**
  * Auth Service - 认证业务逻辑
  */
 export const AuthService = {
+  /**
+   * 发送验证码到邮箱
+   */
+  async sendVerificationCode(email) {
+    // 1. 生成5位随机验证码
+    const code = Math.floor(10000 + Math.random() * 90000).toString();
+
+    try {
+      // 2. 发送邮件
+      const transporter = nodemailer.createTransport({
+        host: config.email.host,
+        port: config.email.port,
+        secure: config.email.secure,
+        auth: {
+          user: config.email.auth.user,
+          pass: config.email.auth.pass
+        }
+      });
+
+      const mailOptions = {
+        from: config.email.auth.user,
+        to: email,
+        subject: 'EchoStar 注册验证码',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              <h2 style="color: #333; text-align: center;">欢迎使用 EchoStar</h2>
+              <p style="color: #666; font-size: 16px;">您的注册验证码是：</p>
+              <div style="background-color: #007bff; color: white; font-size: 32px; font-weight: bold; padding: 20px; text-align: center; border-radius: 5px; margin: 20px 0;">
+                ${code}
+              </div>
+              <p style="color: #999; font-size: 14px; text-align: center;">验证码有效期为 5 分钟</p>
+              <p style="color: #666; font-size: 14px; text-align: center;">如果您没有请求此验证码，请忽略此邮件。</p>
+            </div>
+          </div>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      // 3. 将验证码存储到Redis中，有效期5分钟（300秒）
+      const redis = redisClient.getClient();
+      const key = `verification_code:${email}`;
+      await redis.setex(key, 300, code);
+
+      return {
+        success: true,
+        message: '验证码已发送到您的邮箱，有效期5分钟'
+      };
+    } catch (error) {
+      console.error('发送验证码失败:', error);
+      throw new Error('发送验证码失败，请稍后重试');
+    }
+  },
+
   /**
    * 用户注册
    */
@@ -172,6 +229,61 @@ export const AuthService = {
       username: user.username,
       avatar: user.avatarUrl,  // ✅ 映射为 avatar
       role: user.role
+    };
+  },
+
+  /**
+   * 用户注册 (带验证码验证) - register_2
+   */
+  async register_2(email, password, username, verificationCode) {
+    // 1. 验证验证码
+    const redis = redisClient.getClient();
+    const key = `verification_code:${email}`;
+    const storedCode = await redis.get(key);
+
+    if (!storedCode) {
+      throw new Error('验证码不存在或已过期，请重新获取验证码');
+    }
+
+    if (storedCode !== verificationCode) {
+      throw new Error('验证码错误');
+    }
+
+    // 2. 验证成功后删除验证码
+    await redis.del(key);
+
+    // 3. 检查邮箱是否已存在
+    const existingUserByEmail = await User.findOne({ where: { email } });
+    if (existingUserByEmail) {
+      throw new Error('邮箱已被注册');
+    }
+
+    // 4. 检查用户名是否已存在
+    const existingUserByUsername = await User.findOne({ where: { username } });
+    if (existingUserByUsername) {
+      throw new Error('用户名已被使用');
+    }
+
+    // 5. 密码加密
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 6. 创建用户
+    const user = await User.create({
+      username,
+      email,
+      passwordHash: hashedPassword,
+      oauthProvider: 'email'
+    });
+
+    // 7. 生成 Token
+    const token = this.generateToken(user.id);
+
+    return {
+      accessToken: token,  // ✅ 修改为 accessToken
+      user: {
+        id: user.id,
+        username: user.username  // ✅ 普通注册只返回 id 和 username
+      }
     };
   },
 
