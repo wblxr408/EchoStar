@@ -95,6 +95,7 @@ export const StoryService = {
       location,
       emotionTag: story.emotionTag,
       isTimeCapsule: story.isTimeCapsule,
+      isRecommended: story.isRecommended,
       viewCount: story.viewCount + 1,
       createdAt: story.createdAt,
       author: {

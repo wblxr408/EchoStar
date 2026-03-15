@@ -4,27 +4,43 @@ import { AdminAction, Report } from './admin.model.js';
 import { Op } from 'sequelize';
 
 /**
+ * 自定义错误类 - 统一错误处理
+ */
+class AdminError extends Error {
+  constructor(message, code = 4000) {
+    super(message);
+    this.code = code;
+    this.name = 'AdminError';
+  }
+}
+
+/**
  * Admin Service - 管理员业务逻辑
  */
 export const AdminService = {
   /**
    * 设为推荐
    */
-  async recommendStory(storyId, adminId) {
+  async recommendStory(storyId, adminId, reason) {
     const story = await Story.findByPk(storyId);
 
     if (!story) {
-      throw new Error('故事不存在');
+      throw new AdminError('故事不存在', 4004);
+    }
+
+    // 检查是否已经是推荐状态
+    if (story.isRecommended) {
+      throw new AdminError('故事已经是推荐状态', 4000);
     }
 
     await story.update({ isRecommended: true });
 
     // 记录管理员操作
     await AdminAction.create({
+      storyId,
       adminId,
-      action: 'recommend',
-      targetType: 'story',
-      targetId: storyId
+      actionType: 'recommend',
+      reason
     });
   },
 
@@ -35,17 +51,21 @@ export const AdminService = {
     const story = await Story.findByPk(storyId);
 
     if (!story) {
-      throw new Error('故事不存在');
+      throw new AdminError('故事不存在', 4004);
+    }
+
+    // 检查是否已经是 shadowban 状态
+    if (story.visibility === 'shadowban') {
+      throw new AdminError('故事已经是 shadowban 状态', 4000);
     }
 
     await story.update({ visibility: 'shadowban' });
 
     // 记录管理员操作
     await AdminAction.create({
+      storyId,
       adminId,
-      action: 'shadowban',
-      targetType: 'story',
-      targetId: storyId,
+      actionType: 'shadowban',
       reason
     });
   },
@@ -57,17 +77,26 @@ export const AdminService = {
     const story = await Story.findByPk(storyId);
 
     if (!story) {
-      throw new Error('故事不存在');
+      throw new AdminError('故事不存在', 4004);
+    }
+
+    // 检查当前状态
+    if (story.visibility === 'public') {
+      throw new AdminError('故事已经是公开状态', 4000);
+    }
+
+    // 检查是否为已删除状态
+    if (story.visibility === 'deleted') {
+      throw new AdminError('故事已删除，无法恢复', 4000);
     }
 
     await story.update({ visibility: 'public' });
 
     // 记录管理员操作
     await AdminAction.create({
+      storyId,
       adminId,
-      action: 'restore',
-      targetType: 'story',
-      targetId: storyId
+      actionType: 'restore'
     });
   },
 
@@ -91,7 +120,7 @@ export const AdminService = {
         {
           model: User,
           as: 'reporter',
-          attributes: ['id', 'nickname']
+          attributes: ['id', 'username']
         }
       ]
     });
@@ -104,12 +133,12 @@ export const AdminService = {
         createdAt: report.createdAt,
         story: report.story ? {
           id: report.story.id,
-          content: report.story.content.substring(0, 100),
+          content: report.story.content ? report.story.content.substring(0, 100) : '',
           images: JSON.parse(report.story.images)
         } : null,
         reporter: report.reporter ? {
           id: report.reporter.id,
-          nickname: report.reporter.nickname
+          username: report.reporter.username
         } : null
       })),
       pagination: {
@@ -128,22 +157,22 @@ export const AdminService = {
     const report = await Report.findByPk(reportId);
 
     if (!report) {
-      throw new Error('举报不存在');
+      throw new AdminError('举报不存在', 4004);
     }
 
     if (report.status !== 'pending') {
-      throw new Error('举报已处理');
+      throw new AdminError('举报已处理', 4000);
     }
 
     if (action === 'approve') {
       // 批准举报，Shadowban 该故事
       await this.shadowbanStory(report.storyId, `举报通过: ${report.reason}`, adminId);
-      await report.update({ status: 'approved', handledBy: adminId });
+      await report.update({ status: 'approved', handledBy: adminId, handledAt: new Date() });
     } else if (action === 'reject') {
       // 拒绝举报
-      await report.update({ status: 'rejected', handledBy: adminId });
+      await report.update({ status: 'rejected', handledBy: adminId, handledAt: new Date() });
     } else {
-      throw new Error('无效的操作类型');
+      throw new AdminError('无效的操作类型', 4000);
     }
   },
 
@@ -164,7 +193,7 @@ export const AdminService = {
 
     // 时光胶囊数
     const timeCapsules = await Story.count({
-      where: { visibility: 'time_capsule' }
+      where: { isTimeCapsule: true }
     });
 
     // Shadowban 故事数

@@ -6,9 +6,10 @@ import { AdminService } from './admin.service.js';
 export const recommendStory = async (req, res, next) => {
   try {
     const { storyId } = req.params;
+    const { reason } = req.body;
     const adminId = req.user.id;
 
-    await AdminService.recommendStory(storyId, adminId);
+    await AdminService.recommendStory(storyId, adminId, reason);
     res.json({ code: 0, message: '设置成功' });
   } catch (error) {
     next(error);
@@ -67,6 +68,15 @@ export const handleReport = async (req, res, next) => {
   try {
     const { reportId } = req.params;
     const { action } = req.body; // 'approve' | 'reject'
+
+    // 验证 action 参数
+    if (action !== 'approve' && action !== 'reject') {
+      return res.status(400).json({
+        code: 4000,
+        message: '无效的操作类型，必须是 approve 或 reject'
+      });
+    }
+
     const adminId = req.user.id;
 
     await AdminService.handleReport(reportId, action, adminId);

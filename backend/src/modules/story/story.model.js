@@ -58,6 +58,12 @@ export const Story = sequelize.define('Story', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
     field: 'view_count'
+  },
+  isRecommended: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    field: 'is_recommended',
+    comment: '是否为管理员推荐'
   }
 }, {
   tableName: 'stories',
