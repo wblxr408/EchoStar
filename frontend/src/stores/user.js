@@ -77,6 +77,7 @@ export const useUserStore = defineStore('user', () => {
     register,
     loginWithGitHub,
     fetchUser,
-    logout
+    logout,
+    setAuth
   };
 });

@@ -43,7 +43,7 @@ export const useStoryStore = defineStore('story', () => {
     // 添加到列表头部
     myStories.value.unshift(data);
     return data;
-  },
+  }
 
   /**
    * 删除故事

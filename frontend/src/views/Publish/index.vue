@@ -71,13 +71,31 @@ const isValid = computed(() => {
 // 提交发布
 async function handleSubmit() {
   try {
-    // TODO: 上传图片到 OSS
-    // TODO: 获取当前位置
+    // 获取当前位置
+    if (!mapStore.userLocation) {
+      // 如果没有获取到位置,使用地图中心
+      mapStore.setUserLocation(
+        mapStore.center.latitude,
+        mapStore.center.longitude
+      );
+    }
+
+    // 上传图片 (模拟)
+    const imageUrls = [];
+    for (const file of form.value.images) {
+      // TODO: 实现真实的 OSS 上传
+      const imageUrl = URL.createObjectURL(file);
+      imageUrls.push(imageUrl);
+    }
 
     await storyStore.createStory({
       content: form.value.content,
-      images: [], // 图片 URL
-      location: mapStore.userLocation, // 当前位置
+      images: imageUrls,
+      location: {
+        lat: mapStore.userLocation.latitude,
+        lng: mapStore.userLocation.longitude,
+        address: '当前位置'
+      },
       emotion: form.value.emotion,
       isTimeCapsule: form.value.isTimeCapsule,
       unlockAt: form.value.unlockAt
@@ -86,6 +104,7 @@ async function handleSubmit() {
     alert('发布成功！');
     router.back();
   } catch (error) {
+    console.error('发布失败:', error);
     alert('发布失败，请重试');
   }
 }
