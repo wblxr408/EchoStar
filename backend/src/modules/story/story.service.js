@@ -1,5 +1,32 @@
+import xss from 'xss';
 import { Story, TimeCapsule } from './story.model.js';
 import { generateOSSToken } from '../../common/utils/oss.js';
+
+// ===================== 定义查询方法 =====================
+// 直接定义这两个方法，去掉有问题的 try-catch 和 require
+const getStoryByIdSafe = async (storyId) => {
+  return await Story.findByPk(storyId, {
+    include: [{
+      model: TimeCapsule,
+      as: 'timeCapsule'
+    }]
+  });
+};
+
+const getStoriesByUserIdSafe = async (userId, page = 1, limit = 10) => {
+  const offset = (page - 1) * limit;
+  return await Story.findAndCountAll({
+    where: { userId },
+    order: [['createdAt', 'DESC']],
+    limit: parseInt(limit),
+    offset: parseInt(offset),
+    include: [{
+      model: TimeCapsule,
+      as: 'timeCapsule'
+    }]
+  });
+};
+// ===================== 定义结束 =====================
 
 /**
  * Story Service - 故事业务逻辑
@@ -9,7 +36,14 @@ export const StoryService = {
    * 发布故事
    */
   async createStory(userId, data) {
-    const { content, images, location, emotion, isTimeCapsule, unlockAt } = data;
+    // 注意：这里改成了 let，以便修改
+    let { content, images, location, emotion, isTimeCapsule, unlockAt } = data;
+
+    // 【安全加固】XSS 过滤
+    content = xss(content);
+    if (location && location.name) {
+      location.name = xss(location.name);
+    }
 
     // 创建故事
     const story = await Story.create({
@@ -51,12 +85,7 @@ export const StoryService = {
    * 查看故事详情（需判断可见性）
    */
   async getStoryById(storyId, userId) {
-    const story = await Story.findByPk(storyId, {
-      include: [{
-        model: TimeCapsule,
-        as: 'timeCapsule'
-      }]
-    });
+    const story = await getStoryByIdSafe(storyId);
 
     if (!story) {
       throw new Error('故事不存在');
@@ -124,18 +153,7 @@ export const StoryService = {
    * 我的故事列表
    */
   async getMyStories(userId, { page = 1, limit = 10 }) {
-    const offset = (page - 1) * limit;
-
-    const { rows, count } = await Story.findAndCountAll({
-      where: { userId },
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      include: [{
-        model: TimeCapsule,
-        as: 'timeCapsule'
-      }]
-    });
+    const { rows, count } = await getStoriesByUserIdSafe(userId, page, limit);
 
     return {
       stories: rows.map(story => ({
