@@ -22,7 +22,8 @@ export const authenticateJWT = async (req, res, next) => {
     const decoded = jwt.verify(token, config.jwt.secret);
 
     // 查询用户信息
-    const user = await User.findByPk(decoded.userId, {
+    const userId = decoded.userId ?? decoded.id;
+    const user = await User.findByPk(userId, {
       attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'status']
     });
 
@@ -75,7 +76,8 @@ export const optionalAuth = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const decoded = jwt.verify(token, config.jwt.secret);
-      const user = await User.findByPk(decoded.userId, {
+      const userId = decoded.userId ?? decoded.id;
+      const user = await User.findByPk(userId, {
         attributes: ['id', 'email', 'username', 'avatarUrl', 'role']
       });
 

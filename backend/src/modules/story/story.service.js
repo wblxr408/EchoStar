@@ -7,6 +7,33 @@ import { wrapWithCache, wrapWithClearCache, redisClient } from '../../common/uti
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
 import { Op } from 'sequelize';
 
+function parseStoryLocationValue(locationValue) {
+  if (!locationValue) {
+    return null;
+  }
+
+  if (locationValue.type === 'Point' && Array.isArray(locationValue.coordinates)) {
+    return {
+      lng: locationValue.coordinates[0],
+      lat: locationValue.coordinates[1]
+    };
+  }
+
+  const locationStr = typeof locationValue === 'string'
+    ? locationValue
+    : locationValue.toString();
+  const match = locationStr.match(/POINT\(([^ ]+) ([^ ]+)\)/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    lng: parseFloat(match[1]),
+    lat: parseFloat(match[2])
+  };
+}
+
 /**
  * Story Service - 故事业务逻辑
  */
@@ -133,8 +160,8 @@ class StoryServiceClass {
 //    }
 // ✅ 这是你要粘贴进去的新代码
     // PostGIS 坐标转换（可缓存）
-    let location = null;
-    if (story.location) {
+    let location = parseStoryLocationValue(story.location);
+    if (false && story.location) {
       // 1. 如果 Sequelize 已经把它解析成了 GeoJSON 对象 (绝大多数情况)
       if (story.location.type === 'Point' && Array.isArray(story.location.coordinates)) {
         location = {
@@ -291,6 +318,7 @@ class StoryServiceClass {
         createdAt: story.createdAt,
         viewCount: realViewCounts[index],
         visibility: story.visibility,
+        location: parseStoryLocationValue(story.location),
         locationName: story.locationName
       })),
       pagination: {

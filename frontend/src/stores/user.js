@@ -6,34 +6,64 @@ import { authApi } from '../api/auth';
  * 用户状态管理
  */
 export const useUserStore = defineStore('user', () => {
-  // 从 localStorage 恢复用户信息
   const savedUser = localStorage.getItem('user');
   const user = ref(savedUser ? JSON.parse(savedUser) : null);
   const token = ref(localStorage.getItem('token') || null);
   const isLoggedIn = ref(!!token.value);
   const isGuest = ref(localStorage.getItem('isGuest') === 'true');
 
+  function persistUser(currentUser) {
+    if (currentUser) {
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      return;
+    }
+
+    localStorage.removeItem('user');
+  }
+
+  function normalizeUserPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+      return null;
+    }
+
+    return {
+      ...payload,
+      id: payload.id ?? payload.userId ?? null,
+      username: payload.username ?? payload.name ?? '',
+      email: payload.email ?? '',
+      avatar: payload.avatar ?? payload.avatarUrl ?? ''
+    };
+  }
+
+  function setUser(nextUser) {
+    const normalizedUser = normalizeUserPayload(nextUser);
+    user.value = normalizedUser;
+    persistUser(normalizedUser);
+  }
+
+  function updateUser(patch) {
+    setUser({
+      ...(user.value || {}),
+      ...(patch || {})
+    });
+  }
+
   /**
    * 登录
    */
   async function login(email, password) {
     const response = await authApi.login(email, password);
-    console.log('登录响应:', response);
-    // 适配多种后端响应格式
-    // 格式1: { code, data: { accessToken, user } }
-    // 格式2: { accessToken, user }
-    // 格式3: { token, user }
-    // 格式4: { data: { token, user } }
-    const responseData = response.data || response;
-    const accessToken = responseData.accessToken || responseData.token;
-    const userData = responseData.user;
-    
+    const responseData = response?.data ?? response;
+    const accessToken = responseData?.accessToken || responseData?.token;
+    const userData = responseData?.user;
+
     if (accessToken && userData) {
       setAuth(accessToken, userData);
-    } else {
-      console.error('登录响应格式不正确:', response);
-      throw new Error('登录响应格式错误');
+      return;
     }
+
+    console.error('登录响应格式不正确:', response);
+    throw new Error('登录响应格式错误');
   }
 
   /**
@@ -41,18 +71,17 @@ export const useUserStore = defineStore('user', () => {
    */
   async function register(email, password, username, verificationCode) {
     const response = await authApi.register(email, password, username, verificationCode);
-    console.log('注册响应:', response);
-    // 适配多种后端响应格式
-    const responseData = response.data || response;
-    const accessToken = responseData.accessToken || responseData.token;
-    const userData = responseData.user;
-    
+    const responseData = response?.data ?? response;
+    const accessToken = responseData?.accessToken || responseData?.token;
+    const userData = responseData?.user;
+
     if (accessToken && userData) {
       setAuth(accessToken, userData);
-    } else {
-      console.error('注册响应格式不正确:', response);
-      throw new Error('注册响应格式错误');
+      return;
     }
+
+    console.error('注册响应格式不正确:', response);
+    throw new Error('注册响应格式错误');
   }
 
   /**
@@ -60,20 +89,17 @@ export const useUserStore = defineStore('user', () => {
    */
   async function adminLogin(email, password) {
     const response = await authApi.adminLogin(email, password);
-    console.log('管理员登录响应:', response);
-    // 适配后端响应格式 { code, data: { accessToken, user } }
-    const responseData = response.data || response;
-    const accessToken = responseData.accessToken || responseData.token;
-    const userData = responseData.user;
-    
+    const responseData = response?.data ?? response;
+    const accessToken = responseData?.accessToken || responseData?.token;
+    const userData = responseData?.user;
+
     if (accessToken && userData) {
-      // 确保用户角色为admin
-      userData.role = 'admin';
-      setAuth(accessToken, userData);
-    } else {
-      console.error('管理员登录响应格式不正确:', response);
-      throw new Error('登录响应格式错误');
+      setAuth(accessToken, { ...userData, role: 'admin' });
+      return;
     }
+
+    console.error('管理员登录响应格式不正确:', response);
+    throw new Error('登录响应格式错误');
   }
 
   /**
@@ -81,23 +107,24 @@ export const useUserStore = defineStore('user', () => {
    */
   async function loginWithGitHub(code) {
     const response = await authApi.loginWithGitHub(code);
-    // 适配后端响应格式 { code, data: { accessToken, user } }
-    const { accessToken, user } = response.data || response;
-    setAuth(accessToken, user);
+    const responseData = response?.data ?? response;
+    setAuth(responseData?.accessToken, responseData?.user);
   }
 
   /**
-   * 获取用户信息
+   * 获取当前用户信息
    */
   async function fetchUser() {
-    if (!token.value) return;
+    if (!token.value) return null;
 
     try {
-      const data = await authApi.getCurrentUser();
-      user.value = data;
+      const response = await authApi.getCurrentUser();
+      const userData = response?.data ?? response;
+      setUser(userData);
+      return user.value;
     } catch (error) {
-      // Token 无效，清除登录状态
       logout();
+      throw error;
     }
   }
 
@@ -110,7 +137,7 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn.value = false;
     isGuest.value = false;
     localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    persistUser(null);
     localStorage.removeItem('isGuest');
   }
 
@@ -119,13 +146,11 @@ export const useUserStore = defineStore('user', () => {
    */
   function setAuth(newToken, newUser) {
     token.value = newToken;
-    user.value = newUser;
     isLoggedIn.value = true;
     isGuest.value = false;
     localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(newUser));
+    setUser(newUser);
     localStorage.removeItem('isGuest');
-    console.log('用户信息已保存:', newUser);
   }
 
   /**
@@ -134,7 +159,7 @@ export const useUserStore = defineStore('user', () => {
   function loginAsGuest() {
     isGuest.value = true;
     isLoggedIn.value = true;
-    user.value = { username: '游客用户', id: 'guest', email: '' };
+    setUser({ username: '游客用户', id: 'guest', email: '' });
     localStorage.setItem('isGuest', 'true');
   }
 
@@ -144,7 +169,7 @@ export const useUserStore = defineStore('user', () => {
   function exitGuestMode() {
     isGuest.value = false;
     isLoggedIn.value = false;
-    user.value = null;
+    setUser(null);
     localStorage.removeItem('isGuest');
   }
 
@@ -160,6 +185,8 @@ export const useUserStore = defineStore('user', () => {
     fetchUser,
     logout,
     setAuth,
+    setUser,
+    updateUser,
     loginAsGuest,
     exitGuestMode
   };

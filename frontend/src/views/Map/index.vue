@@ -431,12 +431,7 @@
             <div class="info-item editable">
               <span class="info-label">密码</span>
               <div v-if="!isEditingPassword" class="info-value-with-edit">
-                <div class="password-display">
-                  <span class="info-value">{{ showPassword ? passwordDisplay : '••••••••' }}</span>
-                  <button class="eye-btn" @click="toggleShowPassword" :title="showPassword ? '隐藏密码' : '显示密码'">
-                    <span>{{ showPassword ? '🙈' : '👁️' }}</span>
-                  </button>
-                </div>
+                <span class="info-value">点击右侧按钮修改密码</span>
                 <button class="edit-btn" @click="startEditPassword" title="修改密码">
                   <span>✏️</span>
                 </button>
@@ -549,7 +544,7 @@
               <img :src="story.images[0]" alt="配图" />
             </div>
             <div class="item-footer">
-              <span class="item-location">📍 {{ story.location?.address || '未知位置' }}</span>
+              <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
               <span class="item-likes">❤️ {{ story.likes }}</span>
             </div>
           </div>
@@ -604,7 +599,7 @@
               <img :src="story.images[0]" alt="配图" />
             </div>
             <div class="item-footer">
-              <span class="item-location">📍 {{ story.location?.address || '未知位置' }}</span>
+              <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
               <span class="item-likes">❤️ {{ story.likes }}</span>
             </div>
           </div>
@@ -705,6 +700,10 @@ const dockActionPending = ref(false);
 const isDarkMap = computed(() => effectiveMapTheme.value === 'dark');
 let dockHoverClearTimer = null;
 let dockSelectionTimer = null;
+let geocoderInstance = null;
+let geocoderPromise = null;
+const reverseGeocodeCache = new Map();
+const reverseGeocodePending = new Map();
 
 const DOCK_CARD_PREP_MS = 120;
 const DOCK_CARD_DRAW_MS = 250;
@@ -749,7 +748,6 @@ const avatarUploading = ref(false);
 const avatarError = ref('');
 
 // 密码相关
-const showPassword = ref(false);
 const isEditingPassword = ref(false);
 const showCurrentPassword = ref(false);
 const showNewPassword = ref(false);
@@ -769,13 +767,6 @@ const canSavePassword = computed(() => {
          passwordForm.value.confirmPassword.length >= 6 &&
          passwordForm.value.newPassword === passwordForm.value.confirmPassword &&
          !savingPassword.value;
-});
-
-// 密码显示文本（模拟，实际不应存储明文密码）
-const passwordDisplay = computed(() => {
-  // 实际项目中不应该在前端存储明文密码
-  // 这里只是一个占位显示
-  return 'password123';
 });
 
 // 我的点赞/发布面板相关
@@ -1510,6 +1501,261 @@ function toFiniteNumber(value) {
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
+function firstNonEmptyString(...values) {
+  for (const value of values.flat()) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+}
+
+function isCoordinateOnlyLocationLabel(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const normalized = value.trim();
+  return normalized.startsWith('经度 ') || /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(normalized);
+}
+
+function pickLocationText(candidates, allowCoordinateFallback = true) {
+  let coordinateFallback = '';
+
+  for (const value of candidates) {
+    if (typeof value !== 'string' || !value.trim()) {
+      continue;
+    }
+
+    const normalized = value.trim();
+    if (isCoordinateOnlyLocationLabel(normalized)) {
+      if (!coordinateFallback) {
+        coordinateFallback = normalized;
+      }
+      continue;
+    }
+
+    return normalized;
+  }
+
+  return allowCoordinateFallback ? coordinateFallback : '';
+}
+
+function getStoryLocationText(story, fallback = '未知位置') {
+  const label = pickLocationText([
+    story?.location?.address,
+    story?.location?.formattedAddress,
+    story?.location?.name,
+    story?.locationName
+  ]);
+
+  return label || fallback;
+}
+
+function hasResolvedStoryLocation(story) {
+  return Boolean(
+    pickLocationText([
+      story?.location?.address,
+      story?.location?.formattedAddress,
+      story?.location?.name,
+      story?.locationName
+    ], false)
+  );
+}
+
+function getCoordinateCacheKey(latitude, longitude) {
+  return `${Number(latitude).toFixed(6)},${Number(longitude).toFixed(6)}`;
+}
+
+function buildFallbackLocation(latitude, longitude, overrides = {}) {
+  const name = pickLocationText([
+    overrides.name,
+    overrides.address,
+    'Map Pick'
+  ]);
+  const address = pickLocationText([
+    overrides.address,
+    overrides.name,
+    formatMapPickAddress(latitude, longitude)
+  ]);
+
+  return {
+    id: overrides.id || `map-pick-${longitude}-${latitude}`,
+    name,
+    address,
+    latitude,
+    longitude,
+    district: firstNonEmptyString(overrides.district),
+    type: firstNonEmptyString(overrides.type, 'map-click'),
+    nearbyPois: Array.isArray(overrides.nearbyPois) ? overrides.nearbyPois : []
+  };
+}
+
+function buildNormalizedStoryLocation(story, coords = null, fallbackLocation = null) {
+  const sourceLocation = story?.location && typeof story.location === 'object'
+    ? story.location
+    : {};
+  const fallback = fallbackLocation && typeof fallbackLocation === 'object'
+    ? fallbackLocation
+    : {};
+  const normalizedCoords = coords || extractCoordinates(sourceLocation) || extractCoordinates(fallback);
+  const address = pickLocationText([
+    sourceLocation.address,
+    sourceLocation.formattedAddress,
+    story?.locationName,
+    sourceLocation.name,
+    fallback.name,
+    fallback.address,
+    normalizedCoords ? formatMapPickAddress(normalizedCoords.latitude, normalizedCoords.longitude) : ''
+  ]);
+  const name = pickLocationText([
+    sourceLocation.name,
+    story?.locationName,
+    fallback.name,
+    sourceLocation.address,
+    fallback.address
+  ]);
+  const district = firstNonEmptyString(sourceLocation.district, fallback.district);
+  const type = firstNonEmptyString(sourceLocation.type, fallback.type);
+
+  if (!normalizedCoords && !address && !name && !district && !type) {
+    return null;
+  }
+
+  const normalizedLocation = {
+    ...fallback,
+    ...sourceLocation
+  };
+
+  if (normalizedCoords) {
+    normalizedLocation.latitude = normalizedCoords.latitude;
+    normalizedLocation.longitude = normalizedCoords.longitude;
+    normalizedLocation.lat = normalizedCoords.latitude;
+    normalizedLocation.lng = normalizedCoords.longitude;
+  }
+
+  if (name) {
+    normalizedLocation.name = name;
+  }
+  if (address) {
+    normalizedLocation.address = address;
+  }
+  if (district) {
+    normalizedLocation.district = district;
+  }
+  if (type) {
+    normalizedLocation.type = type;
+  }
+
+  return normalizedLocation;
+}
+
+function getSuggestedLocationDistance(location, originLocation) {
+  const explicitDistance = toFiniteNumber(location?.distance);
+  if (explicitDistance !== null) {
+    return explicitDistance;
+  }
+
+  const coords = extractCoordinates(location);
+  const origin = extractCoordinates(originLocation);
+  if (!coords || !origin) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return Math.pow(coords.latitude - origin.latitude, 2) + Math.pow(coords.longitude - origin.longitude, 2);
+}
+
+function ensureGeocoder() {
+  if (geocoderInstance) {
+    return Promise.resolve(geocoderInstance);
+  }
+
+  if (geocoderPromise) {
+    return geocoderPromise;
+  }
+
+  geocoderPromise = new Promise((resolve, reject) => {
+    if (!window.AMap?.plugin) {
+      geocoderPromise = null;
+      reject(new Error('AMap is not ready.'));
+      return;
+    }
+
+    window.AMap.plugin(['AMap.Geocoder'], () => {
+      if (!window.AMap?.Geocoder) {
+        geocoderPromise = null;
+        reject(new Error('AMap Geocoder is unavailable.'));
+        return;
+      }
+
+      geocoderInstance = new window.AMap.Geocoder({ extensions: 'all' });
+      resolve(geocoderInstance);
+    });
+  });
+
+  return geocoderPromise;
+}
+
+async function reverseGeocodeLocationDetail(latitude, longitude) {
+  const cacheKey = getCoordinateCacheKey(latitude, longitude);
+  if (reverseGeocodeCache.has(cacheKey)) {
+    return reverseGeocodeCache.get(cacheKey);
+  }
+
+  if (reverseGeocodePending.has(cacheKey)) {
+    return reverseGeocodePending.get(cacheKey);
+  }
+
+  const pendingTask = (async () => {
+    try {
+      const geocoder = await ensureGeocoder();
+      const result = await new Promise((resolve) => {
+        geocoder.getAddress([longitude, latitude], (status, geocodeResult) => {
+          resolve(status === 'complete' ? geocodeResult : null);
+        });
+      });
+
+      const regeocode = result?.regeocode || {};
+      const firstPoi = Array.isArray(regeocode.pois)
+        ? normalizeNearbyPoiFromGeocode(regeocode.pois[0])
+        : null;
+      const district = [
+        regeocode.addressComponent?.city,
+        regeocode.addressComponent?.district,
+        regeocode.addressComponent?.township
+      ].filter(Boolean).join(' ');
+      const resolvedLocation = buildFallbackLocation(latitude, longitude, {
+        id: `map-pick-${longitude}-${latitude}`,
+        name: pickLocationText([
+          firstPoi?.name,
+          regeocode.formattedAddress,
+          'Map Pick'
+        ]),
+        address: pickLocationText([
+          firstPoi?.address,
+          regeocode.formattedAddress,
+          firstPoi?.name,
+          formatMapPickAddress(latitude, longitude)
+        ]),
+        district: firstNonEmptyString(firstPoi?.district, district),
+        type: firstNonEmptyString(firstPoi?.type, 'map-click'),
+        nearbyPois: Array.isArray(regeocode.pois) ? regeocode.pois : []
+      });
+
+      reverseGeocodeCache.set(cacheKey, resolvedLocation);
+      return resolvedLocation;
+    } catch (error) {
+      return buildFallbackLocation(latitude, longitude);
+    } finally {
+      reverseGeocodePending.delete(cacheKey);
+    }
+  })();
+
+  reverseGeocodePending.set(cacheKey, pendingTask);
+  return pendingTask;
+}
+
 function normalizeNearbyPoiFromGeocode(poi) {
   if (!poi) {
     return null;
@@ -1531,7 +1777,8 @@ function normalizeNearbyPoiFromGeocode(poi) {
     latitude,
     longitude,
     district,
-    type: poi.type || 'nearby-poi'
+    type: poi.type || 'nearby-poi',
+    distance: toFiniteNumber(poi.distance)
   };
 }
 
@@ -1540,23 +1787,19 @@ function buildSuggestedLocations(rawLocation, nearbyPois = []) {
     return [];
   }
 
-  const exactPoint = {
-    id: `${rawLocation.id || 'map-pick'}-exact`,
-    name: 'Selected Point',
-    address: rawLocation.address || formatMapPickAddress(rawLocation.latitude, rawLocation.longitude),
-    latitude: rawLocation.latitude,
-    longitude: rawLocation.longitude,
-    district: rawLocation.district || '',
-    type: rawLocation.type || 'map-click'
-  };
-
   const normalizedPois = nearbyPois
     .map(normalizeNearbyPoiFromGeocode)
     .filter(Boolean)
     .filter((poi, index, list) => list.findIndex((item) => item.id === poi.id) === index)
+    .sort((left, right) => getSuggestedLocationDistance(left, rawLocation) - getSuggestedLocationDistance(right, rawLocation))
     .slice(0, 8);
 
-  return [exactPoint, ...normalizedPois];
+  if (normalizedPois.length > 0) {
+    return normalizedPois;
+  }
+
+  const coords = extractCoordinates(rawLocation);
+  return coords ? [buildFallbackLocation(coords.latitude, coords.longitude, rawLocation)] : [];
 }
 
 function getPublishPickPromptStyle(prompt) {
@@ -1587,10 +1830,12 @@ function confirmPublishNearbySearch() {
     return;
   }
 
-  suggestedPublishLocations.value = buildSuggestedLocations(
+  const suggestedLocations = buildSuggestedLocations(
     prompt.location,
     prompt.location.nearbyPois || []
   );
+  suggestedPublishLocations.value = suggestedLocations;
+  pickedPublishLocation.value = suggestedLocations[0] || prompt.location;
   publishPickPrompt.value = null;
   isPickingPublishLocation.value = false;
 }
@@ -1603,73 +1848,7 @@ function rejectPublishNearbySearch() {
 }
 
 function reverseGeocodePickedLocation(latitude, longitude) {
-  return new Promise((resolve) => {
-    if (!window.AMap?.plugin) {
-      resolve({
-        id: `map-pick-${longitude}-${latitude}`,
-        name: '地图选点',
-        address: formatMapPickAddress(latitude, longitude),
-        latitude,
-        longitude,
-        district: '',
-        type: '',
-        nearbyPois: []
-      });
-      return;
-    }
-
-    window.AMap.plugin(['AMap.Geocoder'], () => {
-      if (!window.AMap?.Geocoder) {
-        resolve({
-          id: `map-pick-${longitude}-${latitude}`,
-          name: '地图选点',
-          address: formatMapPickAddress(latitude, longitude),
-          latitude,
-          longitude,
-          district: '',
-          type: '',
-          nearbyPois: []
-        });
-        return;
-      }
-
-      const geocoder = new window.AMap.Geocoder({ extensions: 'all' });
-      geocoder.getAddress([longitude, latitude], (status, result) => {
-        if (status !== 'complete') {
-          resolve({
-            id: `map-pick-${longitude}-${latitude}`,
-            name: '地图选点',
-            address: formatMapPickAddress(latitude, longitude),
-            latitude,
-            longitude,
-            district: '',
-            type: '',
-            nearbyPois: []
-          });
-          return;
-        }
-
-        const regeocode = result?.regeocode || {};
-        const firstPoi = Array.isArray(regeocode.pois) ? regeocode.pois[0] : null;
-        const district = [
-          regeocode.addressComponent?.city,
-          regeocode.addressComponent?.district,
-          regeocode.addressComponent?.township
-        ].filter(Boolean).join(' ');
-
-        resolve({
-          id: `map-pick-${longitude}-${latitude}`,
-          name: firstPoi?.name || regeocode.formattedAddress || '地图选点',
-          address: regeocode.formattedAddress || formatMapPickAddress(latitude, longitude),
-          latitude,
-          longitude,
-          district,
-          type: firstPoi?.type || 'map-click',
-          nearbyPois: Array.isArray(regeocode.pois) ? regeocode.pois : []
-        });
-      });
-    });
-  });
+  return reverseGeocodeLocationDetail(latitude, longitude);
 }
 
 async function handlePublishMapClick(point) {
@@ -1707,6 +1886,12 @@ function handleUserClick() {
     showUserSidebar.value = true;
   }, 100);
   isDockExpanded.value = false;
+
+  if (userStore.isLoggedIn && !userStore.isGuest) {
+    userStore.fetchUser().catch((error) => {
+      console.error('刷新用户信息失败:', error);
+    });
+  }
 }
 
 // 处理我的点赞按钮点击
@@ -1755,11 +1940,22 @@ async function loadLikesData(isLoadMore = false) {
     // 调用实际API
     const result = await likeApi.getMyLikes({
       page: isLoadMore ? likesPage.value + 1 : 1,
-      pageSize: likesPageSize
+      limit: likesPageSize
     });
 
     const data = result.data || result;
-    const stories = data.stories || data.items || data || [];
+    const rawStories = Array.isArray(data?.stories)
+      ? data.stories
+      : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data?.likes)
+          ? data.likes
+          : Array.isArray(data)
+            ? data
+            : [];
+    const stories = rawStories
+      .map((item) => normalizeUserPanelStory(item))
+      .filter(Boolean);
 
     if (isLoadMore) {
       likesList.value.push(...stories);
@@ -1767,6 +1963,8 @@ async function loadLikesData(isLoadMore = false) {
     } else {
       likesList.value = stories;
     }
+
+    void hydrateStoryLocations(stories);
 
     // 检查是否还有更多数据
     if (stories.length < likesPageSize) {
@@ -1796,11 +1994,24 @@ async function loadPostsData(isLoadMore = false) {
     // 调用实际API
     const result = await storyApi.getMyStories({
       page: isLoadMore ? postsPage.value + 1 : 1,
-      pageSize: postsPageSize
+      limit: postsPageSize
     });
 
     const data = result.data || result;
-    const stories = data.stories || data.items || data || [];
+    const rawStories = Array.isArray(data?.stories)
+      ? data.stories
+      : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data)
+          ? data
+          : [];
+    const fallbackAuthor = {
+      username: userStore.user?.username || userStore.user?.name || '我',
+      avatar: userStore.user?.avatar || ''
+    };
+    const stories = rawStories
+      .map((item) => normalizeUserPanelStory(item, fallbackAuthor))
+      .filter(Boolean);
 
     if (isLoadMore) {
       postsList.value.push(...stories);
@@ -1808,6 +2019,8 @@ async function loadPostsData(isLoadMore = false) {
     } else {
       postsList.value = stories;
     }
+
+    void hydrateStoryLocations(stories);
 
     // 检查是否还有更多数据
     if (stories.length < postsPageSize) {
@@ -1975,13 +2188,11 @@ async function saveUsername() {
       return;
     }
 
-    // TODO: 调用实际的API保存用户名
-    // await userApi.updateUsername(trimmedUsername);
-
-    // 更新本地状态
-    if (userStore.user) {
-      userStore.user.username = trimmedUsername;
-    }
+    const response = await authApi.updateProfile({
+      username: trimmedUsername
+    });
+    const updatedUser = response?.data ?? response;
+    userStore.updateUser(updatedUser);
 
     // 退出编辑模式
     isEditingUsername.value = false;
@@ -2048,10 +2259,11 @@ async function uploadAvatar() {
     // 暂时使用本地预览URL
     const uploadedUrl = avatarPreview.value;
 
-    // 更新用户头像
-    if (userStore.user) {
-      userStore.user.avatar = uploadedUrl;
-    }
+    const response = await authApi.updateProfile({
+      avatarUrl: uploadedUrl
+    });
+    const updatedUser = response?.data ?? response;
+    userStore.updateUser(updatedUser);
 
     // 清除预览
     avatarPreview.value = '';
@@ -2063,11 +2275,6 @@ async function uploadAvatar() {
   } finally {
     avatarUploading.value = false;
   }
-}
-
-// 切换密码显示/隐藏
-function toggleShowPassword() {
-  showPassword.value = !showPassword.value;
 }
 
 // 开始编辑密码
@@ -2224,6 +2431,7 @@ async function handlePublishSubmit(storyData) {
         lng: location.longitude,
         lat: location.latitude
       },
+      locationName: location.name,
       emotionTag: finalEmotionTag,
       isTimeCapsule: storyData.isTimeCapsule,
       unlockAt: storyData.unlockAt || null,
@@ -2246,6 +2454,7 @@ async function handlePublishSubmit(storyData) {
     // 添加到故事列表
     if (normalizedNewStory) {
       mapStore.updateStories([...mapStore.stories, normalizedNewStory]);
+      void hydrateStoryLocations([normalizedNewStory]);
     } else {
       console.warn('[Map] Created story is missing valid coordinates:', newStory);
       await loadStories();
@@ -2389,6 +2598,7 @@ async function loadStories() {
 
     console.log('[Map] normalized stories:', normalizedStories);
     mapStore.updateStories(normalizedStories);
+    void hydrateStoryLocations(normalizedStories);
   } catch (error) {
     console.error('加载故事失败:', error);
     mapStore.updateStories([]);
@@ -2424,6 +2634,7 @@ async function loadRecommendationFeed(reset = true) {
     } else {
       feedStories.value = [...feedStories.value, ...normalized];
     }
+    void hydrateStoryLocations(normalized);
   } catch (error) {
     console.error('加载推荐流失败:', error);
     if (reset) feedStories.value = [];
@@ -2449,6 +2660,7 @@ async function loadMoreFeed() {
     feedPagination.value = data?.pagination ?? {};
     const normalized = list.map((s) => normalizeStoryForMap(s)).filter(Boolean);
     feedStories.value = [...feedStories.value, ...normalized];
+    void hydrateStoryLocations(normalized);
   } catch (error) {
     console.error('加载更多失败:', error);
     feedPage.value -= 1;
@@ -2530,14 +2742,77 @@ function normalizeStoryForMap(story, fallbackLocation = null) {
 
   return {
     ...story,
-    location: {
-      ...(story.location || {}),
-      latitude: coords.latitude,
-      longitude: coords.longitude,
-      lat: coords.latitude,
-      lng: coords.longitude
-    }
+    location: buildNormalizedStoryLocation(story, coords, fallbackLocation)
   };
+}
+
+function normalizeUserPanelStory(item, fallbackAuthor = null) {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  const baseStory = item.story && typeof item.story === 'object'
+    ? item.story
+    : item;
+  if (!baseStory || typeof baseStory !== 'object') {
+    return null;
+  }
+
+  const authorObject = baseStory.author && typeof baseStory.author === 'object'
+    ? baseStory.author
+    : null;
+  const username = firstNonEmptyString(
+    authorObject?.username,
+    typeof baseStory.author === 'string' ? baseStory.author : '',
+    baseStory.username,
+    fallbackAuthor?.username,
+    '匿名用户'
+  );
+  const avatar = firstNonEmptyString(
+    authorObject?.avatar,
+    baseStory.avatar,
+    fallbackAuthor?.avatar
+  );
+  const coords = extractCoordinates(baseStory.location);
+
+  return {
+    ...baseStory,
+    id: baseStory.id ?? item.storyId ?? item.id,
+    createdAt: baseStory.createdAt || item.createdAt,
+    images: Array.isArray(baseStory.images) ? baseStory.images : [],
+    likes: Number(baseStory.likeCount ?? baseStory.likes ?? 0),
+    username,
+    avatar,
+    author: username,
+    locationName: firstNonEmptyString(baseStory.locationName),
+    location: buildNormalizedStoryLocation(baseStory, coords)
+  };
+}
+
+async function hydrateStoryLocations(stories = []) {
+  const targets = Array.isArray(stories)
+    ? stories.filter((story) => {
+        const coords = extractCoordinates(story?.location);
+        return coords && !hasResolvedStoryLocation(story);
+      })
+    : [];
+
+  await Promise.allSettled(targets.map(async (story) => {
+    const coords = extractCoordinates(story.location);
+    if (!coords) {
+      return;
+    }
+
+    const resolvedLocation = await reverseGeocodeLocationDetail(coords.latitude, coords.longitude);
+    story.location = buildNormalizedStoryLocation(story, coords, resolvedLocation);
+
+    if (!story.locationName) {
+      story.locationName = pickLocationText([
+        resolvedLocation?.name,
+        resolvedLocation?.address
+      ], false);
+    }
+  }));
 }
 
 function extractStoriesFromResponse(response) {
@@ -2561,17 +2836,13 @@ function normalizeRandomWalkResponse(response) {
       || extractCoordinates(story?.location);
 
     if (story && coords) {
+      const normalizedStory = normalizeStoryForMap(story, coords);
+      if (!normalizedStory) {
+        continue;
+      }
+
       return {
-        story: {
-          ...story,
-          location: {
-            ...(story.location || {}),
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            lat: coords.latitude,
-            lng: coords.longitude
-          }
-        },
+        story: normalizedStory,
         coords
       };
     }
@@ -2633,6 +2904,7 @@ async function handleRandomWalk() {
       const centerY = window.innerHeight / 2;
       storyClickPosition.value = { x: centerX, y: centerY };
       selectedStory.value = story;
+      void hydrateStoryLocations([story]);
     }, 800); // 等待地图移动和缩放动画完成
   } catch (error) {
     console.error('随机漫步失败:', error);

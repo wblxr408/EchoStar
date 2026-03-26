@@ -4,6 +4,33 @@ import { Story } from '../story/story.model.js';
 import { Op } from 'sequelize';
 import { NotificationService } from '../notification/notification.service.js';
 
+function parseStoryLocationValue(locationValue) {
+  if (!locationValue) {
+    return null;
+  }
+
+  if (locationValue.type === 'Point' && Array.isArray(locationValue.coordinates)) {
+    return {
+      lng: locationValue.coordinates[0],
+      lat: locationValue.coordinates[1]
+    };
+  }
+
+  const locationStr = typeof locationValue === 'string'
+    ? locationValue
+    : locationValue.toString();
+  const match = locationStr.match(/POINT\(([^ ]+) ([^ ]+)\)/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    lng: parseFloat(match[1]),
+    lat: parseFloat(match[2])
+  };
+}
+
 /**
  * Like Service - 点赞业务逻辑
  */
@@ -171,7 +198,12 @@ class LikeServiceClass {
       include: [{
         model: Story,
         as: 'story',
-        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt']
+        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName'],
+        include: [{
+          model: User,
+          as: 'author',
+          attributes: ['id', 'username', 'avatarUrl']
+        }]
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -187,7 +219,16 @@ class LikeServiceClass {
           content: like.story?.content,
           images: like.story?.images || [],
           emotionTag: like.story?.emotionTag,
-          createdAt: like.story?.createdAt
+          createdAt: like.story?.createdAt,
+          location: parseStoryLocationValue(like.story?.location),
+          locationName: like.story?.locationName,
+          author: like.story?.author
+            ? {
+                id: like.story.author.id,
+                username: like.story.author.username,
+                avatar: like.story.author.avatarUrl || null
+              }
+            : null
         }
       })),
       pagination: {

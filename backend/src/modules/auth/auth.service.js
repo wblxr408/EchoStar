@@ -287,7 +287,7 @@ export const AuthService = {
    * 生成 JWT Token
    */
   generateToken(userId) {
-    const payload = { id: userId };
+    const payload = { id: userId, userId };
     return jwt.sign(
       payload,
       config.jwt.secret,

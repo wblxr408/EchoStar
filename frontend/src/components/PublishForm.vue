@@ -46,9 +46,10 @@
           v-if="userPresetLocation"
           type="button"
           class="quick-location-btn"
-          @click="selectLocation(userPresetLocation)"
+          :disabled="resolvingCurrentLocation"
+          @click="handleUseCurrentLocation"
         >
-          使用当前位置
+          {{ resolvingCurrentLocation ? '解析附近地点...' : '使用当前位置' }}
         </button>
         <button
           type="button"
@@ -290,6 +291,7 @@ const DEFAULT_FORM = () => ({
 const form = ref(DEFAULT_FORM());
 const searchResults = ref([]);
 const searching = ref(false);
+const resolvingCurrentLocation = ref(false);
 const searchError = ref('');
 const hasSearched = ref(false);
 const timeWindowError = ref('');
@@ -348,6 +350,8 @@ function validateTimeWindow() {
 }
 
 let placeSearchInstance = null;
+let geocoderInstance = null;
+let geocoderPromise = null;
 let searchTimer = null;
 let activeSearchToken = 0;
 let suppressLocationQueryWatch = false;
@@ -415,11 +419,14 @@ watch(
       return;
     }
 
-    searchResults.value = locations.map((item) => ({ ...item }));
+    const normalizedLocations = locations.map((item) => ({ ...item }));
+    const nearestLocation = normalizedLocations[0] || null;
+
+    searchResults.value = normalizedLocations;
     searchError.value = '';
     hasSearched.value = true;
-    setLocationQuerySilently('');
-    form.value.selectedLocation = null;
+    setLocationQuerySilently(nearestLocation?.name || '');
+    form.value.selectedLocation = nearestLocation ? { ...nearestLocation } : null;
     activeSearchToken += 1;
   },
   { deep: true, immediate: true }
@@ -598,6 +605,69 @@ function ensurePlaceSearch() {
   });
 }
 
+function ensureGeocoder() {
+  if (geocoderInstance) {
+    return Promise.resolve(geocoderInstance);
+  }
+
+  if (geocoderPromise) {
+    return geocoderPromise;
+  }
+
+  if (!window.AMap?.plugin) {
+    return Promise.reject(new Error('AMap is not ready.'));
+  }
+
+  geocoderPromise = new Promise((resolve, reject) => {
+    window.AMap.plugin(['AMap.Geocoder'], () => {
+      if (!window.AMap?.Geocoder) {
+        geocoderPromise = null;
+        reject(new Error('AMap Geocoder is unavailable.'));
+        return;
+      }
+
+      geocoderInstance = new window.AMap.Geocoder({ extensions: 'all' });
+      resolve(geocoderInstance);
+    });
+  });
+
+  return geocoderPromise;
+}
+
+async function resolveNearestLocationFromCoords(sourceLocation) {
+  const fallbackLocation = sourceLocation ? { ...sourceLocation } : null;
+  if (!fallbackLocation) {
+    return null;
+  }
+
+  try {
+    const geocoder = await ensureGeocoder();
+    const result = await new Promise((resolve) => {
+      geocoder.getAddress(
+        [fallbackLocation.longitude, fallbackLocation.latitude],
+        (status, geocodeResult) => resolve(status === 'complete' ? geocodeResult : null)
+      );
+    });
+
+    const regeocode = result?.regeocode || {};
+    const nearestPoi = Array.isArray(regeocode.pois)
+      ? regeocode.pois.map(normalizePoi).filter(Boolean)[0]
+      : null;
+
+    if (nearestPoi) {
+      return nearestPoi;
+    }
+
+    return {
+      ...fallbackLocation,
+      name: regeocode.formattedAddress || fallbackLocation.name,
+      address: regeocode.formattedAddress || fallbackLocation.address
+    };
+  } catch (error) {
+    return fallbackLocation;
+  }
+}
+
 async function performPoiSearch() {
   const keyword = form.value.locationQuery.trim();
   if (keyword.length < 2) {
@@ -669,6 +739,29 @@ function selectLocation(location) {
   searchError.value = '';
   hasSearched.value = false;
   activeSearchToken += 1;
+}
+
+async function handleUseCurrentLocation() {
+  if (!userPresetLocation.value || resolvingCurrentLocation.value) {
+    return;
+  }
+
+  resolvingCurrentLocation.value = true;
+  searchError.value = '';
+
+  try {
+    const nearestLocation = await resolveNearestLocationFromCoords(userPresetLocation.value);
+    if (!nearestLocation) {
+      searchError.value = '当前位置暂时不可用，请稍后再试';
+      return;
+    }
+
+    selectLocation(nearestLocation);
+  } catch (error) {
+    searchError.value = '当前位置解析失败，请稍后再试';
+  } finally {
+    resolvingCurrentLocation.value = false;
+  }
 }
 
 function clearSelectedLocation() {
