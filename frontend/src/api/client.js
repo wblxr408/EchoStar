@@ -59,48 +59,22 @@ export const authApi = {
   },
 
   /**
-   * 修改用户名
+   * 修改个人信息
    * 连接数据: 用户表(users)
-   * @param {string} username - 新用户名 (2-20字符)
-   * @returns {Promise<{id: number, username: string}>}
+   * @param {object} data - { username?, avatarUrl?, bio? }
+   * @returns {Promise<{id, username, avatar, bio}>}
    */
-  // updateUsername(username) {
-  //   return api.put('/v1/auth/username', { username }).then(res => res.data);
-  // },
+  updateProfile(data) {
+    return api.put('/v1/auth/users/me', data).then(res => res.data);
+  },
 
   /**
-   * 修改密码
-   * 连接数据: 用户表(users)
-   * @param {string} oldPassword - 旧密码
-   * @param {string} newPassword - 新密码
-   * @returns {Promise<{message: string}>}
+   * 获取头像上传凭证
+   * @returns {Promise<{accessKeyId, accessKeySecret, bucket, region, host}>}
    */
-  // updatePassword(oldPassword, newPassword) {
-  //   return api.put('/v1/auth/password', { oldPassword, newPassword }).then(res => res.data);
-  // },
-
-  /**
-   * 上传头像
-   * 连接数据: 用户表(users), OSS存储
-   * @param {File} file - 图片文件
-   * @returns {Promise<{avatar: string}>}
-   */
-  // uploadAvatar(file) {
-  //   const formData = new FormData();
-  //   formData.append('file', file);
-  //   return api.post('/v1/auth/avatar', formData, {
-  //     headers: { 'Content-Type': 'multipart/form-data' }
-  //   }).then(res => res.data);
-  // },
-
-  /**
-   * 退出登录
-   * 连接数据: 使token失效
-   * @returns {Promise<{message: string}>}
-   */
-  // logout() {
-  //   return api.post('/v1/auth/logout').then(res => res.data);
-  // }
+  getAvatarUploadToken() {
+    return api.get('/v1/auth/avatar/upload-token').then(res => res.data);
+  }
 };
 
 // ==================== Story API ====================

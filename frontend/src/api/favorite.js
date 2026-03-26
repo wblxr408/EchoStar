@@ -12,7 +12,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.toggle(storyId);
     }
-    return api.post('/favorites', { storyId });
+    return api.post('/v1/favorites', { storyId });
   },
 
   /**
@@ -22,7 +22,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.create(storyId);
     }
-    return api.post('/favorites/create', { storyId });
+    return api.post('/v1/favorites/create', { storyId });
   },
 
   /**
@@ -32,7 +32,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.remove(storyId);
     }
-    return api.delete(`/favorites/${storyId}`);
+    return api.delete(`/v1/favorites/${storyId}`);
   },
 
   /**
@@ -42,7 +42,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.getStoryFavorites(storyId, params);
     }
-    return api.get(`/favorites/story/${storyId}`, { params });
+    return api.get(`/v1/favorites/story/${storyId}`, { params });
   },
 
   /**
@@ -52,7 +52,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.check(storyId);
     }
-    return api.get(`/favorites/${storyId}/check`);
+    return api.get(`/v1/favorites/${storyId}/check`);
   },
 
   /**
@@ -62,7 +62,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.getCount(storyId);
     }
-    return api.get(`/favorites/${storyId}/count`);
+    return api.get(`/v1/favorites/${storyId}/count`);
   },
 
   /**
@@ -72,7 +72,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.getMyFavorites(params);
     }
-    return api.get('/favorites/me', { params });
+    return api.get('/v1/favorites/me', { params });
   },
 
   /**
@@ -82,6 +82,6 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.checkMultiple(storyIds);
     }
-    return api.post('/favorites/check-multiple', { storyIds });
+    return api.post('/v1/favorites/check-multiple', { storyIds });
   }
 };

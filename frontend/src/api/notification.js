@@ -12,7 +12,7 @@ export const notificationApi = {
     if (notificationApiProxy) {
       return notificationApiProxy.getMyNotifications(params);
     }
-    return api.get('/notifications/me', { params });
+    return api.get('/v1/notifications/me', { params });
   },
 
   /**
@@ -22,7 +22,7 @@ export const notificationApi = {
     if (notificationApiProxy) {
       return notificationApiProxy.getUnreadCount();
     }
-    return api.get('/notifications/me/unread-count');
+    return api.get('/v1/notifications/me/unread-count');
   },
 
   /**
@@ -32,7 +32,7 @@ export const notificationApi = {
     if (notificationApiProxy) {
       return notificationApiProxy.markAllRead();
     }
-    return api.put('/notifications/me/mark-read');
+    return api.put('/v1/notifications/me/mark-read');
   },
 
   /**
@@ -42,7 +42,7 @@ export const notificationApi = {
     if (notificationApiProxy) {
       return notificationApiProxy.clearAll();
     }
-    return api.delete('/notifications/me');
+    return api.delete('/v1/notifications/me');
   },
 
   /**
@@ -52,6 +52,6 @@ export const notificationApi = {
     if (notificationApiProxy) {
       return notificationApiProxy.markRead(id);
     }
-    return api.put(`/notifications/${id}/mark-read`);
+    return api.put(`/v1/notifications/${id}/mark-read`);
   }
 };

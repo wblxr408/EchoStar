@@ -50,6 +50,7 @@ import { useStoryStore } from '../../stores/story';
 import { useMapStore } from '../../stores/map';
 import ImageUploader from '../../components/ImageUploader.vue';
 import EmotionSelector from '../../components/EmotionSelector.vue';
+import { uploadImages, validateImage } from '../../utils/upload';
 
 const router = useRouter();
 const storyStore = useStoryStore();
@@ -104,12 +105,20 @@ async function handleSubmit() {
       );
     }
 
-    // 上传图片 (模拟)
-    const imageUrls = [];
-    for (const file of form.value.images) {
-      // TODO: 实现真实的 OSS 上传
-      const imageUrl = URL.createObjectURL(file);
-      imageUrls.push(imageUrl);
+    // 上传图片到 OSS
+    let imageUrls = [];
+    if (form.value.images && form.value.images.length > 0) {
+      // 验证并上传图片
+      for (const file of form.value.images) {
+        const validation = validateImage(file);
+        if (!validation.valid) {
+          alert(validation.error);
+          return;
+        }
+      }
+      
+      // 上传所有图片
+      imageUrls = await uploadImages(form.value.images);
     }
 
     await storyStore.createStory({

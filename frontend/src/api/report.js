@@ -12,7 +12,7 @@ export const reportApi = {
     if (reportApiProxy) {
       return reportApiProxy.create(targetType, targetId, reason);
     }
-    return api.post('/reports', { targetType, targetId, reason });
+    return api.post('/v1/reports', { targetType, targetId, reason });
   },
 
   /**
@@ -22,7 +22,7 @@ export const reportApi = {
     if (reportApiProxy) {
       return reportApiProxy.getMyReports(params);
     }
-    return api.get('/reports/me', { params });
+    return api.get('/v1/reports/me', { params });
   },
 
   /**
@@ -33,7 +33,7 @@ export const reportApi = {
     if (reportApiProxy) {
       return reportApiProxy.getReports(params);
     }
-    return api.get('/reports', { params });
+    return api.get('/v1/reports', { params });
   },
 
   /**
@@ -43,7 +43,7 @@ export const reportApi = {
     if (reportApiProxy) {
       return reportApiProxy.getStoryReports(params);
     }
-    return api.get('/reports/stories', { params });
+    return api.get('/v1/reports/stories', { params });
   },
 
   /**
@@ -53,7 +53,7 @@ export const reportApi = {
     if (reportApiProxy) {
       return reportApiProxy.getCommentReports(params);
     }
-    return api.get('/reports/comments', { params });
+    return api.get('/v1/reports/comments', { params });
   },
 
   /**
@@ -63,7 +63,7 @@ export const reportApi = {
     if (reportApiProxy) {
       return reportApiProxy.handle(reportId, action);
     }
-    return api.post(`/reports/${reportId}/handle`, { action });
+    return api.post(`/v1/reports/${reportId}/handle`, { action });
   },
 
   /**
@@ -73,6 +73,6 @@ export const reportApi = {
     if (reportApiProxy) {
       return reportApiProxy.getStatistics();
     }
-    return api.get('/reports/statistics');
+    return api.get('/v1/reports/statistics');
   }
 };

@@ -59,7 +59,18 @@ export function createApp() {
     });
   });
 
-  // API 路由
+  // API 路由 (v1 版本)
+  app.use('/api/v1/auth', authRoutes);
+  app.use('/api/v1/stories', storyRoutes);
+  app.use('/api/v1/map', mapRoutes);
+  app.use('/api/v1/admin', adminRoutes);
+  app.use('/api/v1/comments', commentRoutes);
+  app.use('/api/v1/likes', likeRoutes);
+  app.use('/api/v1/favorites', favoriteRoutes);
+  app.use('/api/v1/notifications', notificationRoutes);
+  app.use('/api/v1/reports', reportRoutes);
+
+  // 兼容旧版 API 路由 (不带 v1 前缀)
   app.use('/api/auth', authRoutes);
   app.use('/api/stories', storyRoutes);
   app.use('/api/map', mapRoutes);

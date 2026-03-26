@@ -2,38 +2,41 @@
  * 图片上传工具 - 阿里云 OSS 直传
  *
  * 使用示例:
- * import { uploadImage } from '@/utils/upload'
+ * import { uploadImage, uploadAvatar } from '@/utils/upload'
  *
  * const imageUrl = await uploadImage(file)
+ * const avatarUrl = await uploadAvatar(file)
  */
 
 import OSS from 'ali-oss';
-import { storyApi } from '@/api/client';
+import api from '../api/index.js';
 
 /**
- * 上传图片到 OSS
+ * 上传图片到 OSS（通用方法）
  * @param {File} file - 图片文件
+ * @param {string} uploadDir - 上传目录
  * @param {Function} [onProgress] - 上传进度回调 (percent) => void
  * @returns {Promise<string>} 图片 URL
  */
-export async function uploadImage(file, onProgress) {
+export async function uploadFile(file, uploadDir = 'uploads/', onProgress) {
   // 1. 获取 OSS 上传凭证
-  const credentials = await storyApi.getUploadToken();
+  const tokenEndpoint = uploadDir === 'avatars/' ? '/v1/auth/avatar/upload-token' : '/v1/stories/upload-token';
+  const credentials = await api.get(tokenEndpoint).then(res => res.data || res);
 
   // 2. 初始化 OSS 客户端
   const client = new OSS({
     region: credentials.region,
     accessKeyId: credentials.accessKeyId,
     accessKeySecret: credentials.accessKeySecret,
-    stsToken: credentials.stsToken,
-    bucket: credentials.bucket
+    bucket: credentials.bucket,
+    secure: true // 使用 HTTPS
   });
 
   // 3. 生成文件名 (避免重复)
   const timestamp = Date.now();
   const randomStr = Math.random().toString(36).substring(2, 8);
   const ext = file.name.split('.').pop();
-  const fileName = `stories/${timestamp}-${randomStr}.${ext}`;
+  const fileName = `${uploadDir}${timestamp}-${randomStr}.${ext}`;
 
   // 4. 上传文件
   const result = await client.put(fileName, file, {
@@ -46,6 +49,26 @@ export async function uploadImage(file, onProgress) {
 
   // 5. 返回图片 URL
   return result.url;
+}
+
+/**
+ * 上传故事图片
+ * @param {File} file - 图片文件
+ * @param {Function} [onProgress] - 上传进度回调 (percent) => void
+ * @returns {Promise<string>} 图片 URL
+ */
+export async function uploadImage(file, onProgress) {
+  return uploadFile(file, 'stories/', onProgress);
+}
+
+/**
+ * 上传头像
+ * @param {File} file - 图片文件
+ * @param {Function} [onProgress] - 上传进度回调 (percent) => void
+ * @returns {Promise<string>} 图片 URL
+ */
+export async function uploadAvatar(file, onProgress) {
+  return uploadFile(file, 'avatars/', onProgress);
 }
 
 /**

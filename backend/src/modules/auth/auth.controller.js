@@ -1,5 +1,6 @@
 import { AuthService } from './auth.service.js';
 import { redisClient } from '../../common/utils/redis.js';
+import { generateAvatarUploadToken } from '../../common/utils/oss.js';
 
 /**
  * 发送验证码
@@ -197,6 +198,18 @@ export const getAllUsers = async (req, res, next) => {
     );
 
     res.json({ code: 0, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 获取头像上传凭证
+ */
+export const getAvatarUploadToken = async (req, res, next) => {
+  try {
+    const token = generateAvatarUploadToken();
+    res.json({ code: 0, data: token });
   } catch (error) {
     next(error);
   }

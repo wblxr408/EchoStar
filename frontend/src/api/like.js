@@ -12,7 +12,7 @@ export const likeApi = {
     if (likeApiProxy) {
       return likeApiProxy.toggle(storyId);
     }
-    return api.post('/likes', { storyId });
+    return api.post('/v1/likes', { storyId });
   },
 
   /**
@@ -22,7 +22,7 @@ export const likeApi = {
     if (likeApiProxy) {
       return likeApiProxy.create(storyId);
     }
-    return api.post('/likes/create', { storyId });
+    return api.post('/v1/likes/create', { storyId });
   },
 
   /**
@@ -32,7 +32,7 @@ export const likeApi = {
     if (likeApiProxy) {
       return likeApiProxy.remove(storyId);
     }
-    return api.delete(`/likes/${storyId}`);
+    return api.delete(`/v1/likes/${storyId}`);
   },
 
   /**
@@ -42,7 +42,7 @@ export const likeApi = {
     if (likeApiProxy) {
       return likeApiProxy.getStoryLikes(storyId, params);
     }
-    return api.get(`/likes/story/${storyId}`, { params });
+    return api.get(`/v1/likes/story/${storyId}`, { params });
   },
 
   /**
@@ -52,7 +52,7 @@ export const likeApi = {
     if (likeApiProxy) {
       return likeApiProxy.check(storyId);
     }
-    return api.get(`/likes/${storyId}/check`);
+    return api.get(`/v1/likes/${storyId}/check`);
   },
 
   /**
@@ -62,7 +62,7 @@ export const likeApi = {
     if (likeApiProxy) {
       return likeApiProxy.getCount(storyId);
     }
-    return api.get(`/likes/${storyId}/count`);
+    return api.get(`/v1/likes/${storyId}/count`);
   },
 
   /**
@@ -72,7 +72,7 @@ export const likeApi = {
     if (likeApiProxy) {
       return likeApiProxy.getMyLikes(params);
     }
-    return api.get('/likes/me', { params });
+    return api.get('/v1/likes/me', { params });
   },
 
   /**
@@ -82,6 +82,6 @@ export const likeApi = {
     if (likeApiProxy) {
       return likeApiProxy.checkMultiple(storyIds);
     }
-    return api.post('/likes/check-multiple', { storyIds });
+    return api.post('/v1/likes/check-multiple', { storyIds });
   }
 };

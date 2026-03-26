@@ -12,7 +12,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.createStory(data);
     }
-    return api.post('/stories', data);
+    return api.post('/v1/stories', data);
   },
 
   /**
@@ -22,7 +22,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.getStoryById(id);
     }
-    return api.get(`/stories/${id}`);
+    return api.get(`/v1/stories/${id}`);
   },
 
   /**
@@ -32,7 +32,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.deleteStory(id);
     }
-    return api.delete(`/stories/${id}`);
+    return api.delete(`/v1/stories/${id}`);
   },
 
   /**
@@ -42,7 +42,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.updateStory(id, data);
     }
-    return api.post(`/stories/${id}`, data);
+    return api.post(`/v1/stories/${id}`, data);
   },
 
   /**
@@ -52,7 +52,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.updateVisibility(id, visibility);
     }
-    return api.put(`/stories/${id}/visibility`, { visibility });
+    return api.put(`/v1/stories/${id}/visibility`, { visibility });
   },
 
   /**
@@ -62,7 +62,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.getMyStories(params);
     }
-    return api.get('/stories/me/list', { params });
+    return api.get('/v1/stories/me/list', { params });
   },
 
   /**
@@ -72,7 +72,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.searchStories(keyword, params);
     }
-    return api.get('/stories/search', { params: { keyword, ...params } });
+    return api.get('/v1/stories/search', { params: { keyword, ...params } });
   },
 
   /**
@@ -82,7 +82,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.unlockTimeCapsule(id);
     }
-    return api.post(`/stories/${id}/unlock`);
+    return api.post(`/v1/stories/${id}/unlock`);
   },
 
   /**
@@ -92,7 +92,7 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.getUploadToken();
     }
-    return api.get('/stories/upload-token');
+    return api.get('/v1/stories/upload-token');
   },
 
   /**
@@ -102,6 +102,6 @@ export const storyApi = {
     if (storyApiProxy) {
       return storyApiProxy.getAdminStories(params);
     }
-    return api.get('/stories/admin/all', { params });
+    return api.get('/v1/stories/admin/all', { params });
   }
 };

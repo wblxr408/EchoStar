@@ -41,8 +41,12 @@ export default {
     accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET || '',
     bucket: process.env.OSS_BUCKET || '',
     region: process.env.OSS_REGION || '',
-    host: process.env.OSS_HOST || ''
+    host: process.env.OSS_HOST || '',
+    domain: process.env.OSS_DOMAIN || process.env.OSS_HOST || ''
   },
+
+  // 默认头像配置
+  defaultAvatars: (process.env.DEFAULT_AVATARS || '').split(',').filter(Boolean),
 
   // Redis 配置
   redis: {

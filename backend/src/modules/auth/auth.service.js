@@ -5,7 +5,8 @@ import { Blacklist } from './blacklist.model.js';
 import config from '../../config/index.js';
 import { redisClient } from '../../common/utils/redis.js';
 import nodemailer from 'nodemailer';
-import { Op } from 'sequelize'; 
+import { Op } from 'sequelize';
+import { getRandomDefaultAvatar } from '../../common/utils/oss.js'; 
 
 /**
  * Auth Service - 认证业务逻辑
@@ -106,9 +107,16 @@ export const AuthService = {
     if (existingUserByUsername) throw new Error('用户名已被使用');
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ username, email: fixedEmail, passwordHash: hashedPassword, oauthProvider: 'email' });
+    const defaultAvatar = getRandomDefaultAvatar();
+    const user = await User.create({ 
+      username, 
+      email: fixedEmail, 
+      passwordHash: hashedPassword, 
+      oauthProvider: 'email',
+      avatarUrl: defaultAvatar 
+    });
 
-    return { accessToken: this.generateToken(user.id), user: { id: user.id, username: user.username } };
+    return { accessToken: this.generateToken(user.id), user: { id: user.id, username: user.username, avatar: user.avatarUrl } };
   },
 
   /**
@@ -138,22 +146,27 @@ export const AuthService = {
     // 3. 密码加密
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4. 创建用户
+    // 4. 获取随机默认头像
+    const defaultAvatar = getRandomDefaultAvatar();
+
+    // 5. 创建用户
     const user = await User.create({
       username,
       email: fixedEmail,
       passwordHash: hashedPassword,
-      oauthProvider: 'email'
+      oauthProvider: 'email',
+      avatarUrl: defaultAvatar
     });
 
-    // 5. 生成 Token
+    // 6. 生成 Token
     const token = this.generateToken(user.id);
 
     return {
       accessToken: token,  // ✅ 修改为 accessToken
       user: {
         id: user.id,
-        username: user.username  // ✅ 普通注册只返回 id 和 username
+        username: user.username,  // ✅ 普通注册只返回 id 和 username
+        avatar: user.avatarUrl  // ✅ 返回头像
       }
     };
   },

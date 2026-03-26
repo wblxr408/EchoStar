@@ -12,7 +12,7 @@ export const mapApi = {
     if (mapApiProxy) {
       return mapApiProxy.exploreStories(lat, lng, radius);
     }
-    return api.get('/map/explore', {
+    return api.get('/v1/map/explore', {
       params: { lat, lng, radius }
     });
   },
@@ -33,7 +33,7 @@ export const mapApi = {
       params.lng = lng;
     }
     if (mood) params.mood = mood;
-    return api.get('/map/random', { params });
+    return api.get('/v1/map/random', { params });
   },
 
   /**
@@ -54,7 +54,7 @@ export const mapApi = {
       params.lng = lng;
     }
     if (mood) params.mood = mood;
-    return api.get('/map/feed', { params });
+    return api.get('/v1/map/feed', { params });
   },
 
   /**
@@ -64,7 +64,7 @@ export const mapApi = {
     if (mapApiProxy) {
       return mapApiProxy.getLocationWall(lat, lng, radius);
     }
-    return api.get('/map/wall', {
+    return api.get('/v1/map/wall', {
       params: { lat, lng, radius }
     });
   },
@@ -76,7 +76,7 @@ export const mapApi = {
     if (mapApiProxy) {
       return mapApiProxy.getClusterData(northEast, southWest);
     }
-    return api.get('/map/clusters', {
+    return api.get('/v1/map/clusters', {
       params: {
         northEast: JSON.stringify(northEast),
         southWest: JSON.stringify(southWest)

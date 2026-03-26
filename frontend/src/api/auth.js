@@ -12,7 +12,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.sendVerificationCode(email);
     }
-    return api.post('/auth/send-code', { email });
+    return api.post('/v1/auth/send-code', { email });
   },
 
   /**
@@ -22,7 +22,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.register(email, password, username, verificationCode);
     }
-    return api.post('/auth/register', { email, password, username, verificationCode });
+    return api.post('/v1/auth/register', { email, password, username, verificationCode });
   },
 
   /**
@@ -32,7 +32,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.login(email, password);
     }
-    return api.post('/auth/login', { email, password });
+    return api.post('/v1/auth/login', { email, password });
   },
 
   /**
@@ -42,7 +42,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.loginWithGitHub(code);
     }
-    return api.post('/auth/github', { code });
+    return api.post('/v1/auth/github', { code });
   },
 
   /**
@@ -52,7 +52,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.getCurrentUser();
     }
-    return api.get('/auth/me');
+    return api.get('/v1/auth/me');
   },
 
   /**
@@ -62,7 +62,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.deleteAccount();
     }
-    return api.delete('/auth/me');
+    return api.delete('/v1/auth/me');
   },
 
   /**
@@ -72,7 +72,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.getUserById(userId);
     }
-    return api.get(`/auth/users/${userId}`);
+    return api.get(`/v1/auth/users/${userId}`);
   },
 
   /**
@@ -82,7 +82,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.updateProfile(data);
     }
-    return api.put('/auth/users/me', data);
+    return api.put('/v1/auth/users/me', data);
   },
 
   /**
@@ -92,7 +92,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.changePassword(oldPassword, newPassword);
     }
-    return api.put('/auth/users/me/password', { oldPassword, newPassword });
+    return api.put('/v1/auth/users/me/password', { oldPassword, newPassword });
   },
 
   /**
@@ -102,7 +102,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.adminLogin(email, password);
     }
-    return api.post('/auth/admin/login', { email, password });
+    return api.post('/v1/auth/admin/login', { email, password });
   },
 
   /**
@@ -112,7 +112,7 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.forgotPassword(email, password, verificationCode);
     }
-    return api.post('/auth/forgot-password', { email, password, verificationCode });
+    return api.post('/v1/auth/forgot-password', { email, password, verificationCode });
   },
 
   /**
@@ -122,6 +122,16 @@ export const authApi = {
     if (authApiProxy) {
       return authApiProxy.getAdminUsers(params);
     }
-    return api.get('/auth/admin/users', { params });
+    return api.get('/v1/auth/admin/users', { params });
+  },
+
+  /**
+   * 获取头像上传凭证
+   */
+  getAvatarUploadToken() {
+    if (authApiProxy) {
+      return authApiProxy.getAvatarUploadToken();
+    }
+    return api.get('/v1/auth/avatar/upload-token');
   }
 };

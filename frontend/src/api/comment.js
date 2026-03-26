@@ -12,7 +12,7 @@ export const commentApi = {
     if (commentApiProxy) {
       return commentApiProxy.create(storyId, content);
     }
-    return api.post('/comments', { storyId, content });
+    return api.post('/v1/comments', { storyId, content });
   },
 
   /**
@@ -22,7 +22,7 @@ export const commentApi = {
     if (commentApiProxy) {
       return commentApiProxy.search(keyword, params);
     }
-    return api.get('/comments/search', { params: { keyword, ...params } });
+    return api.get('/v1/comments/search', { params: { keyword, ...params } });
   },
 
   /**
@@ -32,7 +32,7 @@ export const commentApi = {
     if (commentApiProxy) {
       return commentApiProxy.getMyComments(params);
     }
-    return api.get('/comments/me', { params });
+    return api.get('/v1/comments/me', { params });
   },
 
   /**
@@ -42,7 +42,7 @@ export const commentApi = {
     if (commentApiProxy) {
       return commentApiProxy.getStoryComments(storyId, params);
     }
-    return api.get(`/comments/story/${storyId}`, { params });
+    return api.get(`/v1/comments/story/${storyId}`, { params });
   },
 
   /**
@@ -52,7 +52,7 @@ export const commentApi = {
     if (commentApiProxy) {
       return commentApiProxy.getCount(storyId);
     }
-    return api.get(`/comments/${storyId}/count`);
+    return api.get(`/v1/comments/${storyId}/count`);
   },
 
   /**
@@ -62,6 +62,6 @@ export const commentApi = {
     if (commentApiProxy) {
       return commentApiProxy.delete(id);
     }
-    return api.delete(`/comments/${id}`);
+    return api.delete(`/v1/comments/${id}`);
   }
 };

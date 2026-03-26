@@ -12,7 +12,7 @@ export const adminApi = {
     if (adminApiProxy) {
       return adminApiProxy.recommend(storyId, reason);
     }
-    return api.post(`/admin/stories/${storyId}/recommend`, { reason });
+    return api.post(`/v1/admin/stories/${storyId}/recommend`, { reason });
   },
 
   /**
@@ -22,7 +22,7 @@ export const adminApi = {
     if (adminApiProxy) {
       return adminApiProxy.unrecommend(storyId, reason);
     }
-    return api.post(`/admin/stories/${storyId}/unrecommend`, { reason });
+    return api.post(`/v1/admin/stories/${storyId}/unrecommend`, { reason });
   },
 
   /**
@@ -32,7 +32,7 @@ export const adminApi = {
     if (adminApiProxy) {
       return adminApiProxy.shadowban(storyId, reason);
     }
-    return api.post(`/admin/stories/${storyId}/shadowban`, { reason });
+    return api.post(`/v1/admin/stories/${storyId}/shadowban`, { reason });
   },
 
   /**
@@ -42,7 +42,7 @@ export const adminApi = {
     if (adminApiProxy) {
       return adminApiProxy.restore(storyId);
     }
-    return api.post(`/admin/stories/${storyId}/restore`);
+    return api.post(`/v1/admin/stories/${storyId}/restore`);
   },
 
   /**
@@ -52,7 +52,7 @@ export const adminApi = {
     if (adminApiProxy) {
       return adminApiProxy.banUser(userId, reason);
     }
-    return api.post(`/admin/users/${userId}/ban`, { reason });
+    return api.post(`/v1/admin/users/${userId}/ban`, { reason });
   },
 
   /**
@@ -62,7 +62,7 @@ export const adminApi = {
     if (adminApiProxy) {
       return adminApiProxy.unbanUser(userId);
     }
-    return api.post(`/admin/users/${userId}/unban`);
+    return api.post(`/v1/admin/users/${userId}/unban`);
   },
 
   /**
@@ -72,7 +72,7 @@ export const adminApi = {
     if (adminApiProxy) {
       return adminApiProxy.getStatistics();
     }
-    return api.get('/admin/statistics');
+    return api.get('/v1/admin/statistics');
   },
 
   /**
@@ -83,6 +83,6 @@ export const adminApi = {
     if (adminApiProxy) {
       return adminApiProxy.getUsers(params);
     }
-    return api.get('/auth/admin/users', { params });
+    return api.get('/v1/auth/admin/users', { params });
   }
 };

@@ -2,7 +2,7 @@ import { Story } from './story.model.js';
 import { User } from '../auth/auth.model.js';
 import { Like } from '../like/like.model.js';
 import { Comment } from '../comment/comment.model.js';
-import { generateOSSToken } from '../../common/utils/oss.js';
+import { generateStoryUploadToken } from '../../common/utils/oss.js';
 import { wrapWithCache, wrapWithClearCache, redisClient } from '../../common/utils/redis.js';
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
 import { Op } from 'sequelize';
@@ -334,7 +334,7 @@ class StoryServiceClass {
    * 获取 OSS 上传凭证
    */
   async getUploadToken() {
-    return generateOSSToken();
+    return generateStoryUploadToken();
   }
 
   /**

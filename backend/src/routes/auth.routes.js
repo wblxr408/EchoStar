@@ -56,6 +56,11 @@ router.get('/users/:userId', authController.getUserById);
 router.put('/users/me', authenticateJWT, authController.updateProfile);
 
 /**
+ * GET /api/auth/avatar/upload-token - 获取头像上传凭证
+ */
+router.get('/avatar/upload-token', authenticateJWT, authController.getAvatarUploadToken);
+
+/**
  * PUT /api/users/me/password - 修改密码
  */
 router.put('/users/me/password', authenticateJWT, authController.changePassword);
