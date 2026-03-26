@@ -1,0 +1,850 @@
+openapi: 3.0.3
+info:
+  title: EchoStar API
+  version: 1.0.0
+  description: |
+    EchoStar 匿名地图故事分享平台 API 文档
+
+    ## 认证方式
+    使用 JWT Bearer Token 认证,在请求头中添加:
+    ```
+    Authorization: Bearer {token}
+    ```
+  contact:
+    name: EchoStar Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: 开发环境
+  - url: https://api.echostar.com/v1
+    description: 生产环境
+
+tags:
+  - name: Auth
+    description: 用户认证相关接口
+  - name: Story
+    description: 故事管理相关接口
+  - name: Map
+    description: 地图探索相关接口
+  - name: Admin
+    description: 管理员接口
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Token 认证
+
+  schemas:
+    # 通用响应
+    SuccessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 4001
+        message:
+          type: string
+          example: 未登录
+        data:
+          type: object
+          nullable: true
+
+    # 用户相关
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: user123
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        avatar:
+          type: string
+          format: uri
+          nullable: true
+        role:
+          type: string
+          enum: [user, admin]
+          default: user
+        createdAt:
+          type: string
+          format: date-time
+
+    AuthResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+          properties:
+            accessToken:
+              type: string
+              example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            user:
+              $ref: '#/components/schemas/User'
+
+    # 故事相关
+    Location:
+      type: object
+      required:
+        - lng
+        - lat
+      properties:
+        lng:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+          example: 116.4074
+          description: 经度
+        lat:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+          example: 39.9042
+          description: 纬度
+
+    Story:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        content:
+          type: string
+          maxLength: 1000
+          nullable: true
+          description: 时光胶囊未解锁时为 null
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+          minItems: 1
+          maxItems: 9
+        location:
+          $ref: '#/components/schemas/Location'
+        emotionTag:
+          type: string
+          enum: [治愈, 难过, 开心, 打卡]
+        isTimeCapsule:
+          type: boolean
+          default: false
+        unlockAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 时光胶囊解锁时间
+        viewCount:
+          type: integer
+          example: 42
+        visibility:
+          type: string
+          enum: [public, shadowban]
+          default: public
+        createdAt:
+          type: string
+          format: date-time
+        author:
+          type: object
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+              description: 匿名显示
+            avatar:
+              type: string
+              format: uri
+
+    CreateStoryRequest:
+      type: object
+      required:
+        - images
+        - emotionTag
+      properties:
+        content:
+          type: string
+          maxLength: 1000
+          nullable: true
+        images:
+          type: array
+          items:
+            type: string
+            format: uri
+          minItems: 1
+          maxItems: 9
+        location:
+          $ref: '#/components/schemas/Location'
+        emotionTag:
+          type: string
+          enum: [治愈, 难过, 开心, 打卡]
+        isTimeCapsule:
+          type: boolean
+          default: false
+        unlockAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    UploadTokenResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        data:
+          type: object
+          properties:
+            accessKeyId:
+              type: string
+            accessKeySecret:
+              type: string
+            stsToken:
+              type: string
+            bucket:
+              type: string
+              example: echostar-images
+            region:
+              type: string
+              example: oss-cn-hangzhou
+            expiration:
+              type: string
+              format: date-time
+
+    # 分页响应
+    PaginatedStories:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        data:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 100
+            page:
+              type: integer
+              example: 1
+            limit:
+              type: integer
+              example: 20
+            list:
+              type: array
+              items:
+                $ref: '#/components/schemas/Story'
+
+    # 地图相关
+    MapStory:
+      type: object
+      properties:
+        id:
+          type: integer
+        location:
+          $ref: '#/components/schemas/Location'
+        emotionTag:
+          type: string
+        preview:
+          type: string
+          description: 前 30 字预览
+        distance:
+          type: number
+          description: 距离(米)
+        createdAt:
+          type: string
+          description: 相对时间,如"2小时前"
+        isTimeCapsule:
+          type: boolean
+
+    ClusterPoint:
+      type: object
+      properties:
+        location:
+          $ref: '#/components/schemas/Location'
+        count:
+          type: integer
+          description: 聚合点数量
+        stories:
+          type: array
+          items:
+            $ref: '#/components/schemas/MapStory'
+
+paths:
+  # ========== Auth 模块 ==========
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: 邮箱注册
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - username
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+                username:
+                  type: string
+                  minLength: 2
+                  maxLength: 20
+      responses:
+        '200':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 邮箱登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: 账号或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/oauth/github:
+    get:
+      tags: [Auth]
+      summary: GitHub OAuth 登录
+      description: 跳转到 GitHub 授权页
+      responses:
+        '302':
+          description: 重定向到 GitHub
+
+  /auth/oauth/github/callback:
+    get:
+      tags: [Auth]
+      summary: GitHub OAuth 回调
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: 重定向到前端,URL 带上 token
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: 获取当前用户信息
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: 未登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ========== Story 模块 ==========
+  /stories/upload-token:
+    get:
+      tags: [Story]
+      summary: 获取 OSS 上传凭证
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTokenResponse'
+
+  /stories:
+    post:
+      tags: [Story]
+      summary: 发布故事
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStoryRequest'
+      responses:
+        '200':
+          description: 发布成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      content:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+        '429':
+          description: 请求过于频繁
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /stories/{id}:
+    get:
+      tags: [Story]
+      summary: 查看故事详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    $ref: '#/components/schemas/Story'
+        '404':
+          description: 故事不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [Story]
+      summary: 删除故事
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: 删除成功
+        '403':
+          description: 无权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /stories/my:
+    get:
+      tags: [Story]
+      summary: 我的故事列表
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedStories'
+
+  # ========== Map 模块 ==========
+  /map/explore:
+    get:
+      tags: [Map]
+      summary: 范围查询
+      description: 查询指定经纬度附近的故事
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: float
+          description: 纬度
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: float
+          description: 经度
+        - name: radius
+          in: query
+          schema:
+            type: integer
+            default: 1000
+            maximum: 5000
+          description: 半径(米)
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: object
+                    properties:
+                      stories:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MapStory'
+
+  /map/random:
+    get:
+      tags: [Map]
+      summary: 随机漫步
+      description: 随机推荐一个有故事的地点
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: object
+                    properties:
+                      location:
+                        $ref: '#/components/schemas/Location'
+                      story:
+                        $ref: '#/components/schemas/Story'
+
+  /map/location-wall:
+    get:
+      tags: [Map]
+      summary: 同地点故事墙
+      description: 查询指定坐标附近的所有故事(故事墙)
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: radius
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: 半径(米)
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      stories:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Story'
+
+  /map/cluster:
+    get:
+      tags: [Map]
+      summary: 点聚合数据
+      description: 获取地图视野范围内的聚合点数据
+      parameters:
+        - name: bounds
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 地图视野范围 sw_lat,sw_lng,ne_lat,ne_lng
+          example: "39.9,116.3,40.0,116.5"
+        - name: zoom
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 3
+            maximum: 18
+          description: 地图缩放级别
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: object
+                    properties:
+                      clusters:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ClusterPoint'
+
+  # ========== Admin 模块 ==========
+  /admin/stories/{id}/recommend:
+    post:
+      tags: [Admin]
+      summary: 设为推荐
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '403':
+          description: 无权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/stories/{id}/shadowban:
+    post:
+      tags: [Admin]
+      summary: Shadowban 故事
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /admin/stories/{id}/restore:
+    post:
+      tags: [Admin]
+      summary: 恢复故事正常状态
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /admin/reports:
+    get:
+      tags: [Admin]
+      summary: 举报列表
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, resolved, rejected]
+            default: pending
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            storyId:
+                              type: integer
+                            reason:
+                              type: string
+                            status:
+                              type: string
+                            createdAt:
+                              type: string
+                              format: date-time

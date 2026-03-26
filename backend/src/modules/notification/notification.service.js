@@ -1,0 +1,312 @@
+import { redisClient } from '../../common/utils/redis.js';
+import { User } from '../auth/auth.model.js';
+import { Story } from '../story/story.model.js';
+import { v4 as uuidv4 } from 'uuid';
+
+// 用户通知列表最大容量
+const MAX_NOTIFICATIONS = 100;
+// 已读通知过期时间（7天）
+const READ_TTL = 7 * 24 * 60 * 60;
+
+/**
+ * Notification Service - 通知业务逻辑（Redis）
+ */
+class NotificationServiceClass {
+  /**
+   * 获取触发用户名（容错处理，数据库挂掉不崩溃）
+   */
+  async getFromUserName(fromUserId) {
+    try {
+      const user = await User.findByPk(fromUserId, {
+        attributes: ['username']
+      });
+      return user?.username || '匿名用户';
+    } catch (error) {
+      console.error('❌ 获取用户名失败:', error);
+      return '匿名用户';
+    }
+  }
+
+  /**
+   * 获取触发用户完整信息（包含头像）
+   */
+  async getFromUserInfo(fromUserId) {
+    try {
+      const user = await User.findByPk(fromUserId, {
+        attributes: ['id', 'username', 'avatarUrl']
+      });
+      if (!user) {
+        return {
+          id: fromUserId,
+          username: '匿名用户',
+          avatar: null
+        };
+      }
+      return {
+        id: user.id,
+        username: user.username || '匿名用户',
+        avatar: user.avatarUrl || null
+      };
+    } catch (error) {
+      console.error('❌ 获取用户信息失败:', error);
+      return {
+        id: fromUserId,
+        username: '匿名用户',
+        avatar: null
+      };
+    }
+  }
+
+  /**
+   * 创建通知
+   */
+  async createNotification(type, toUserId, fromUserId, storyId, content = '') {
+    const redis = redisClient.getClient();
+
+    // 点赞去重：24小时内同一用户对同一故事只发送一次点赞通知
+    if (type === 'like') {
+      const dedupeKey = `notice:like:${storyId}:${fromUserId}`;
+      const exists = await redis.get(dedupeKey);
+      if (exists) {
+        console.log(`🔄 点赞通知去重: 用户${fromUserId}已点赞故事${storyId}`);
+        return { success: false, reason: 'deduplicated' };
+      }
+      // 设置去重标记，24小时过期
+      await redis.setex(dedupeKey, 24 * 60 * 60, '1');
+    }
+
+    // 生成通知ID
+    const noticeId = uuidv4();
+    const timestamp = Date.now();
+
+    // 获取用户名（容错处理）
+    const fromUserName = await this.getFromUserName(fromUserId);
+
+    // 生成通知内容
+    let noticeContent;
+    if (type === 'like') {
+      noticeContent = `${fromUserName} 赞了你的故事`;
+    } else if (type === 'comment') {
+      noticeContent = `${fromUserName} 评论了你的故事: ${content}`;
+    } else {
+      noticeContent = `${fromUserName} 与你发生了互动`;
+    }
+
+    // 存储通知详情（未读，isRead: 0，无过期时间）
+    await redis.hmset(`notice:data:${noticeId}`, {
+      type,
+      fromUserId: String(fromUserId),
+      storyId: String(storyId),
+      fromUserName,
+      content: noticeContent,
+      createdAt: String(timestamp),
+      isRead: '0'
+    });
+
+    // 添加到用户通知列表（倒序排列，最新的在前）
+    await redis.zadd(`notice:list:${toUserId}`, timestamp, noticeId);
+
+    // 添加到未读列表
+    await redis.sadd(`notice:unread:${toUserId}`, noticeId);
+
+    // 检查列表长度，超过上限则删除最旧的通知
+    const count = await redis.zcard(`notice:list:${toUserId}`);
+    if (count > MAX_NOTIFICATIONS) {
+      const removeCount = count - MAX_NOTIFICATIONS;
+
+      // 获取最旧的通知ID（需要删除的）
+      const oldestIds = await redis.zrange(`notice:list:${toUserId}`, 0, removeCount - 1);
+
+      if (oldestIds.length > 0) {
+        const pipeline = redis.pipeline();
+
+        // ✅ 修复1：直接删除【精准ID】，不按排名删，彻底杜绝竞态问题
+        pipeline.zrem(`notice:list:${toUserId}`, ...oldestIds);
+
+        // 批量删除通知详情和未读标记（这部分没问题，保留）
+        oldestIds.forEach(oldId => {
+        pipeline.del(`notice:data:${oldId}`);
+        pipeline.srem(`notice:unread:${toUserId}`, oldId);
+        
+        });
+
+        await pipeline.exec();
+        console.log(`🗑️ 清理旧通知: userId=${toUserId}, count=${oldestIds.length}`);
+      }
+    }
+
+    console.log(`✅ 创建通知成功: type=${type}, toUserId=${toUserId}, noticeId=${noticeId}`);
+    return { success: true, noticeId };
+  }
+
+  /**
+   * 获取用户通知列表（分页）
+   */
+  async getNotifications(userId, { page = 1, limit = 10 } = {}) {
+    const redis = redisClient.getClient();
+    const offset = (page - 1) * limit;
+    const start = offset;
+    const end = offset + limit - 1;
+
+    // 获取所有未读ID（一次调用）
+    const unreadIds = await redis.smembers(`notice:unread:${userId}`);
+
+    // 转成 Set，O(1) 判断
+    const unreadSet = new Set(unreadIds);
+
+    // 获取通知ID列表（倒序）
+    const noticeIds = await redis.zrevrange(`notice:list:${userId}`, start, end);
+
+    if (noticeIds.length === 0) {
+      return {
+        notifications: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: 0
+        }
+      };
+    }
+
+    // 批量获取通知详情
+    const noticePromises = noticeIds.map(async (noticeId) => {
+      const data = await redis.hgetall(`notice:data:${noticeId}`);
+      if (data && Object.keys(data).length > 0) {
+        // 获取触发用户完整信息（包含头像）
+        const fromUser = await this.getFromUserInfo(parseInt(data.fromUserId));
+        return {
+          id: noticeId,
+          type: data.type,
+          fromUserId: parseInt(data.fromUserId),
+          storyId: parseInt(data.storyId),
+          fromUser,  // ✅ 新增：完整的用户信息
+          fromUserName: data.fromUserName,  // 保留向后兼容
+          content: data.content,
+          createdAt: parseInt(data.createdAt),
+          isRead: !unreadSet.has(noticeId)  // O(1) 判断
+        };
+      }
+      return null;
+    });
+
+    const notifications = (await Promise.all(noticePromises)).filter(n => n !== null);
+
+    // 获取总数
+    const total = await redis.zcard(`notice:list:${userId}`);
+
+    return {
+      notifications,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  /**
+   * 标记通知为已读
+   */
+  async markAsRead(userId, noticeId) {
+    const redis = redisClient.getClient();
+
+    // 权限校验：检查通知归属（必须前置，无法放入管道）
+    const score = await redis.zscore(`notice:list:${userId}`, noticeId);
+    if (score === null) {
+      throw new Error('通知不存在或无权访问');
+    }
+    
+    // ✅ 核心修改：创建管道，原子执行所有操作
+    const pipeline = redis.pipeline();
+    // 1. 从未读列表移除
+    pipeline.srem(`notice:unread:${userId}`, noticeId);
+    // 2. 更新已读状态
+    pipeline.hset(`notice:data:${noticeId}`, 'isRead', '1');
+    // 3. 设置7天过期时间
+    pipeline.expire(`notice:data:${noticeId}`, READ_TTL);
+
+  // 原子执行：要么全部成功，要么全部失败
+    await pipeline.exec();
+
+    return { success: true, message: '标记已读成功' };
+}
+
+  /**
+   * 标记所有通知为已读
+   */
+  async markAllAsRead(userId) {
+    const redis = redisClient.getClient();
+    const unreadIds = await redis.smembers(`notice:unread:${userId}`);
+
+    if (unreadIds.length === 0) {
+      return { success: true, message: '没有需要标记的通知' };
+    }
+
+    const pipeline = redis.pipeline();
+
+    // ✅ 修复：批量 SREM 精准删除【本次查询到的未读ID】，不删整个Key
+    // 不会误伤新产生的通知，完美解决你的顾虑
+    pipeline.srem(`notice:unread:${userId}`, ...unreadIds);
+
+  // 批量更新已读状态 + 过期时间（保留不变）
+    unreadIds.forEach(noticeId => {
+      pipeline.hset(`notice:data:${noticeId}`, 'isRead', '1');
+      pipeline.expire(`notice:data:${noticeId}`, READ_TTL);
+    });
+
+    await pipeline.exec();
+
+    console.log(`✅ 批量标记已读: userId=${userId}, count=${unreadIds.length}`);
+    return { success: true, message: `已标记 ${unreadIds.length} 条通知为已读` };
+  }
+  /**
+   * 获取未读通知数量（使用 SCARD，性能优化）
+   */
+  async getUnreadCount(userId) {
+    const redis = redisClient.getClient();
+
+    // 直接获取未读列表的大小
+    const unreadCount = await redis.scard(`notice:unread:${userId}`);
+
+    return { userId, unreadCount };
+  }
+
+  /**
+   * 清空所有通知
+   */
+  async clearAllNotifications(userId) {
+    const redis = redisClient.getClient();
+
+    // 获取所有通知ID
+    const noticeIds = await redis.zrange(`notice:list:${userId}`, 0, -1);
+
+    if (noticeIds.length === 0) {
+      return { success: true, message: '没有需要清空的通知' };
+    }
+
+    // 使用 pipeline 批量删除
+    const pipeline = redis.pipeline();
+
+    // 批量删除通知详情
+    noticeIds.forEach(noticeId => {
+      pipeline.del(`notice:data:${noticeId}`);
+    });
+
+    // 删除通知列表、未读列表
+    pipeline.del(`notice:list:${userId}`);
+    pipeline.del(`notice:unread:${userId}`);
+
+    await pipeline.exec();
+
+    console.log(`✅ 清空所有通知: userId=${userId}, count=${noticeIds.length}`);
+    return { success: true, message: `已清空 ${noticeIds.length} 条通知` };
+  }
+}
+
+// 创建单例实例
+export const notificationServiceInstance = new NotificationServiceClass();
+
+// 导出别名
+export { notificationServiceInstance as NotificationService };

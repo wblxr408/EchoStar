@@ -1,0 +1,5439 @@
+﻿<template>
+  <div class="map-page" @click="handlePageClick">
+    <transition name="welcome-fade">
+      <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
+        <div class="welcome-content">
+          <p class="welcome-text">{{ currentWelcomeQuote }}</p>
+        </div>
+      </div>
+    </transition>
+    <div class="map-container">
+      <AMap
+        ref="amapRef"
+        :stories="mapStore.stories"
+        :user-location="mapStore.userLocation"
+        :center="mapStore.center"
+        :zoom="mapStore.zoom"
+        :theme="effectiveMapTheme"
+        :point-pick-mode="isPickingPublishLocation"
+        :temp-picked-location="pickedPublishLocation"
+        @marker-click="handleMarkerClick"
+        @map-click="handlePublishMapClick"
+        @map-move="handleMapMove"
+        @theme-change="handleThemeChange"
+      />
+    </div>
+
+    <!-- 故事列表弹窗 -->
+    <transition name="publish-modal">
+      <div
+        v-if="showSidebar"
+        class="story-modal-shell"
+        @click.self="closeStoryPanel"
+      >
+        <div
+          class="story-sidebar"
+          :class="{ 'show-sidebar': showSidebar, dark: effectiveMapTheme === 'dark' }"
+          @click.stop
+        >
+      <div class="sidebar-header">
+        <div class="sidebar-tabs">
+          <button
+            class="tab-btn"
+            :class="{ 'active': sidebarTab === 'nearby' }"
+            @click="sidebarTab = 'nearby'"
+          >附近故事</button>
+          <button 
+            class="tab-btn" 
+            :class="{ 'active': sidebarTab === 'featured' }"
+            @click="sidebarTab = 'featured'"
+          >精选推荐</button>
+          <button
+            class="tab-btn"
+            :class="{ 'active': sidebarTab === 'recommend' }"
+            @click="sidebarTab = 'recommend'; loadRecommendationFeed()"
+          >为你推荐</button>
+          <button
+            class="tab-btn"
+            :class="{ 'active': sidebarTab === 'announcement' }"
+            @click="sidebarTab = 'announcement'"
+          >公告</button>
+        </div>
+        <button class="close-btn" @click.stop="closeStoryPanel"><span>×</span></button>
+      </div>
+
+      <div class="sidebar-content">
+        <!-- 附近故事 -->
+        <div v-if="sidebarTab === 'nearby'">
+          <div v-if="loading" class="loading">加载中...</div>
+          <div v-else-if="stories.length === 0" class="empty">
+            <p>附近还没有故事</p>
+            <p class="hint">点击发布按钮,留下你的第一个故事吧</p>
+          </div>
+          <div v-else class="story-list">
+            <StoryCard
+              v-for="story in stories"
+              :key="story.id"
+              :story="story"
+              @preview-image="handlePreviewImage"
+            />
+          </div>
+        </div>
+
+        <!-- 为你推荐（加权推荐流） -->
+        <div v-if="sidebarTab === 'recommend'">
+          <div v-if="feedLoading" class="loading">加载中...</div>
+          <div v-else-if="feedStories.length === 0" class="empty">
+            <p>暂无推荐内容</p>
+            <p class="hint">发布故事或点赞更多内容，会为你推荐更懂你的故事</p>
+          </div>
+          <div v-else class="story-list">
+            <StoryCard
+              v-for="story in feedStories"
+              :key="story.id"
+              :story="story"
+              @preview-image="handlePreviewImage"
+            />
+            <div v-if="feedHasMore" class="load-more-wrap">
+              <button class="load-more-btn" :disabled="feedLoadingMore" @click="loadMoreFeed">
+                {{ feedLoadingMore ? '加载中...' : '加载更多' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 精选推荐 -->
+        <div v-if="sidebarTab === 'featured'">
+          <div v-if="featuredStories.length === 0" class="empty">
+            <p>暂无精选内容</p>
+            <p class="hint">管理员会定期挑选优质内容展示在这里</p>
+          </div>
+          <div v-else class="story-list">
+            <div 
+              v-for="story in featuredStories" 
+              :key="story.id"
+              class="featured-story-card"
+              @click="openFeaturedStory(story)"
+            >
+              <div v-if="story.images?.length" class="featured-image">
+                <img :src="story.images[0]" alt="故事图片">
+                <div class="featured-badges">
+                  <span v-if="story.isPinned" class="badge pinned">📌</span>
+                  <span class="badge featured">★</span>
+                </div>
+              </div>
+              <div class="featured-content">
+                <p class="featured-text">{{ story.content }}</p>
+                <div class="featured-meta">
+                  <span class="emotion">{{ getEmotionEmoji(story.emotionTag || story.emotion) }}</span>
+                  <span class="stats">❤️ {{ story.likeCount || story.likes || 0 }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 公告 -->
+        <div v-if="sidebarTab === 'announcement'">
+          <div v-if="announcements.length === 0" class="empty">
+            <p>暂无公告</p>
+            <p class="hint">关注这里获取最新动态</p>
+          </div>
+          <div v-else class="announcement-list">
+            <div 
+              v-for="ann in announcements" 
+              :key="ann.id" 
+              class="announcement-card"
+              :class="ann.type"
+            >
+              <div class="ann-header">
+                <span class="ann-type-badge">{{ getAnnouncementTypeIcon(ann.type) }}</span>
+                <span class="ann-time">{{ formatRelativeTime(ann.createdAt) }}</span>
+              </div>
+              <h4 class="ann-title">{{ ann.title }}</h4>
+              <p class="ann-content">{{ ann.content }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Dock 栏 -->
+    <div
+      :class="[
+        'dock-container',
+        effectiveMapTheme === 'dark' ? 'dock-dark' : 'dock-light',
+        {
+          'show-sidebar': showSidebar,
+          'show-publish-sidebar': showPublishSidebar,
+          'show-user-sidebar': showUserSidebar,
+          'expanded': isDockExpanded,
+          'locked': isPickingPublishLocation
+        }
+      ]"
+      @click.stop
+    >
+      <button
+        class="dock-main"
+        :class="{ 'expanded': isDockExpanded }"
+        :disabled="isPickingPublishLocation"
+        type="button"
+        @click.stop="toggleDock"
+      >
+        <span class="dock-main-symbol">{{ isDockExpanded ? '✦' : '☰' }}</span>
+        <span class="dock-main-text">{{ isDockExpanded ? '收起卡组' : '功能卡组' }}</span>
+      </button>
+
+      <div class="dock-menu" :class="{ 'expanded': isDockExpanded }">
+        <div
+          class="dock-card-stack"
+          :class="{ 'selection-motion': Boolean(selectedDockCard || drawingDockCard || liftingDockCard || returningDockCard) }"
+          :style="getDockStackStyle(visibleDockActions.length)"
+          @mouseleave="scheduleClearDockHover"
+        >
+          <div
+            class="dock-card-info"
+            :class="{ 'visible': isDockExpanded }"
+            :style="getDockInfoStyle(visibleDockActions.length)"
+          >
+            <template v-if="activeDockAction">
+              <p class="dock-card-info-kicker">{{ activeDockAction.tag }}</p>
+              <h4>{{ activeDockAction.title }}</h4>
+              <p>{{ activeDockAction.description }}</p>
+            </template>
+            <template v-else>
+              <p class="dock-card-info-kicker">Card Select</p>
+              <h4>功能卡组</h4>
+              <p>把鼠标停在卡牌上，像卡牌游戏选牌一样查看功能，再点击执行原有操作。</p>
+            </template>
+          </div>
+
+          <template v-for="(action, index) in visibleDockActions" :key="action.key">
+            <span
+              v-if="shouldRenderDockAnchor(action.key)"
+              class="dock-card-anchor"
+              :style="getDockCardStyle(index, visibleDockActions.length, action)"
+              aria-hidden="true"
+              @mouseenter="setDockHover(action.key)"
+              @mouseleave="scheduleClearDockHover"
+            ></span>
+
+            <button
+              class="dock-card"
+              :class="{
+                'drawing': drawingDockCard === action.key,
+                'lifting': liftingDockCard === action.key,
+                'active': selectedDockCard === action.key,
+                'returning': returningDockCard === action.key,
+                'disabled': action.disabled,
+                'rippling': ripplingDockCard === action.key
+              }"
+              :style="getDockCardStyle(index, visibleDockActions.length, action)"
+              :disabled="action.disabled || isPickingPublishLocation"
+              :title="action.title"
+              type="button"
+              @mouseenter="setDockHover(action.key)"
+              @mouseleave="scheduleClearDockHover"
+              @click.stop="handleDockCardClick(action)"
+            >
+              <div class="dock-card-body">
+                <span class="dock-card-suit suit-top">{{ action.suit }}</span>
+                <span class="dock-card-order">{{ String(index + 1).padStart(2, '0') }}</span>
+                <span class="dock-card-corner corner-top-right"></span>
+                <span class="dock-card-corner corner-bottom-left"></span>
+
+                <div class="dock-card-face">
+                  <span class="dock-card-pattern"></span>
+                  <span class="dock-card-icon">{{ action.icon }}</span>
+                  <span class="dock-card-title">{{ action.title }}</span>
+                  <span class="dock-card-subtitle">{{ action.subtitle }}</span>
+                </div>
+
+                <span class="dock-card-suit suit-bottom">{{ action.suit }}</span>
+              </div>
+              <span class="dock-card-ripple"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 发布故事居中弹层 -->
+    <transition name="publish-modal">
+      <div
+        v-if="showPublishSidebar"
+        class="publish-modal-shell"
+        :class="{ 'pick-mode': isPickingPublishLocation }"
+        @click.self="closePublishPanel"
+      >
+        <div
+          class="publish-modal"
+          :class="{ dark: effectiveMapTheme === 'dark', collapsed: isPickingPublishLocation }"
+          @click.stop
+        >
+          <button
+            v-if="isPickingPublishLocation"
+            type="button"
+            class="publish-pick-dock"
+            @click="restorePublishPanelFromPick"
+          >
+            <span class="pick-dock-handle"></span>
+            <strong>地图选点中</strong>
+            <span>点击这里恢复发布卡，并默认取消选点</span>
+          </button>
+
+          <template v-else>
+            <button class="publish-modal-close" type="button" @click="closePublishPanel">
+              <span class="close-icon">×</span>
+              <span class="close-text">关闭</span>
+            </button>
+            <div class="publish-modal-scroll">
+            <PublishForm
+              :visible="showPublishSidebar"
+              :map-center="mapStore.center"
+              :user-location="mapStore.userLocation"
+              :suggested-locations="suggestedPublishLocations"
+              :picked-map-location="pickedPublishLocation"
+              :is-picking-location="isPickingPublishLocation"
+              :map-theme="effectiveMapTheme"
+                @submit="handlePublishSubmit"
+                @request-map-pick="startPublishMapPick"
+                @cancel-map-pick="cancelPublishMapPick"
+                @cancel="closePublishPanel"
+              />
+            </div>
+          </template>
+        </div>
+
+        <div
+          v-if="publishPickPrompt"
+          class="publish-pick-confirm"
+          :style="getPublishPickPromptStyle(publishPickPrompt)"
+          @click.stop
+        >
+          <p>是否在这附近搜索？</p>
+          <div class="publish-pick-confirm-actions">
+            <button type="button" class="confirm-btn" @click="confirmPublishNearbySearch">是</button>
+            <button type="button" class="cancel-btn" @click="rejectPublishNearbySearch">否</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 用户个人信息弹窗 -->
+    <transition name="publish-modal">
+      <div
+        v-if="showUserSidebar"
+        class="user-modal-shell"
+        @click.self="closeUserPanel"
+      >
+        <div
+          class="user-sidebar"
+          :class="{ 'show-sidebar': showUserSidebar, dark: effectiveMapTheme === 'dark' }"
+          @click.stop
+        >
+      <div class="user-sidebar-header">
+        <h3>个人信息</h3>
+        <button class="close-btn" @click.stop="closeUserPanel"><span>×</span></button>
+      </div>
+      
+      <!-- 未登录/游客状态 -->
+      <div v-if="!userStore.isLoggedIn || userStore.isGuest" class="user-sidebar-content">
+        <div class="guest-profile">
+          <div class="guest-avatar">
+            <span>👤</span>
+          </div>
+          <div class="guest-info">
+            <h4>{{ userStore.isGuest ? '游客用户' : '未登录' }}</h4>
+            <p>{{ userStore.isGuest ? '登录后可体验完整功能' : '请登录以使用完整功能' }}</p>
+          </div>
+        </div>
+        <div class="guest-actions">
+          <button class="guest-action-btn login-btn" @click="handleGuestLoginClick">
+            <span class="btn-icon">🔑</span>
+            <span class="btn-text">{{ userStore.isGuest ? '登录账号' : '登录' }}</span>
+          </button>
+          <button v-if="!userStore.isLoggedIn" class="guest-action-btn guest-btn" @click="handleEnterGuestMode">
+            <span class="btn-icon">🚶</span>
+            <span class="btn-text">游客体验</span>
+          </button>
+          <button v-if="userStore.isGuest" class="guest-action-btn logout-btn" @click="handleGuestLogout">
+            <span class="btn-icon">🚪</span>
+            <span class="btn-text">退出</span>
+          </button>
+        </div>
+      </div>
+      
+      <!-- 已登录状态 -->
+      <div v-else class="user-sidebar-content">
+        <div class="user-profile">
+          <div class="user-avatar-wrapper">
+            <div class="user-avatar-large" @click="triggerAvatarUpload">
+              <img :src="avatarPreview || userStore.user?.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
+              <div class="avatar-overlay">
+                <span class="avatar-edit-icon">📷</span>
+                <span class="avatar-edit-text">更换头像</span>
+              </div>
+            </div>
+            <input
+              ref="avatarInput"
+              type="file"
+              accept="image/*"
+              style="display: none"
+              @change="handleAvatarChange"
+            />
+            <div v-if="avatarUploading" class="avatar-upload-status">
+              <span class="upload-spinner">⌛</span>
+              <span>上传中...</span>
+            </div>
+            <div v-if="avatarError" class="avatar-error">{{ avatarError }}</div>
+          </div>
+          <div class="user-info-details">
+            <div class="info-item editable">
+              <span class="info-label">用户名</span>
+              <div v-if="!isEditingUsername" class="info-value-with-edit">
+                <span class="info-value">{{ userStore.user?.username || userStore.user?.name || '未设置' }}</span>
+                <button class="edit-btn" @click="startEditUsername" title="修改用户名">
+                  <span>✏️</span>
+                </button>
+              </div>
+              <div v-else class="username-edit-form">
+                <input
+                  v-model="editingUsername"
+                  type="text"
+                  placeholder="输入新用户名"
+                  maxlength="20"
+                  @keyup.enter="saveUsername"
+                  @keyup.esc="cancelEditUsername"
+                />
+                <div class="username-actions">
+                  <button class="save-btn" :disabled="!canSaveUsername" @click="saveUsername">
+                    <span v-if="checkingUsername">⌛</span>
+                    <span v-else>✓</span>
+                  </button>
+                  <button class="cancel-btn" @click="cancelEditUsername">
+                    <span>✕</span>
+                  </button>
+                </div>
+                <div v-if="usernameError" class="username-error">{{ usernameError }}</div>
+              </div>
+            </div>
+            <div class="info-item">
+              <span class="info-label">用户ID</span>
+              <span class="info-value">{{ userStore.user?.id ?? '' }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">邮箱</span>
+              <span class="info-value">{{ userStore.user?.email ?? '' }}</span>
+            </div>
+            <div class="info-item editable">
+              <span class="info-label">密码</span>
+              <div v-if="!isEditingPassword" class="info-value-with-edit">
+                <div class="password-display">
+                  <span class="info-value">{{ showPassword ? passwordDisplay : '••••••••' }}</span>
+                  <button class="eye-btn" @click="toggleShowPassword" :title="showPassword ? '隐藏密码' : '显示密码'">
+                    <span>{{ showPassword ? '🙈' : '👁️' }}</span>
+                  </button>
+                </div>
+                <button class="edit-btn" @click="startEditPassword" title="修改密码">
+                  <span>✏️</span>
+                </button>
+              </div>
+              <div v-else class="password-edit-form">
+                <div class="password-input-wrapper">
+                  <input
+                    v-model="passwordForm.currentPassword"
+                    :type="showCurrentPassword ? 'text' : 'password'"
+                    placeholder="当前密码"
+                  />
+                  <button class="eye-btn-small" @click="showCurrentPassword = !showCurrentPassword">
+                    <span>{{ showCurrentPassword ? '🙈' : '👁️' }}</span>
+                  </button>
+                </div>
+                <div class="password-input-wrapper">
+                  <input
+                    v-model="passwordForm.newPassword"
+                    :type="showNewPassword ? 'text' : 'password'"
+                    placeholder="新密码（至少6位）"
+                    minlength="6"
+                  />
+                  <button class="eye-btn-small" @click="showNewPassword = !showNewPassword">
+                    <span>{{ showNewPassword ? '🙈' : '👁️' }}</span>
+                  </button>
+                </div>
+                <div class="password-input-wrapper">
+                  <input
+                    v-model="passwordForm.confirmPassword"
+                    :type="showConfirmPassword ? 'text' : 'password'"
+                    placeholder="确认新密码"
+                    minlength="6"
+                    @keyup.enter="savePassword"
+                    @keyup.esc="cancelEditPassword"
+                  />
+                  <button class="eye-btn-small" @click="showConfirmPassword = !showConfirmPassword">
+                    <span>{{ showConfirmPassword ? '🙈' : '👁️' }}</span>
+                  </button>
+                </div>
+                <div class="password-actions">
+                  <button class="save-btn" :disabled="!canSavePassword || savingPassword" @click="savePassword">
+                    <span v-if="savingPassword">⌛</span>
+                    <span v-else>✓</span>
+                  </button>
+                  <button class="cancel-btn" @click="cancelEditPassword">
+                    <span>✕</span>
+                  </button>
+                </div>
+                <div v-if="passwordError" class="password-error">{{ passwordError }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="user-actions">
+          <button class="user-action-btn my-likes-btn" :class="{ active: showLikesPanel }" @click="handleMyLikes">
+            <span class="btn-icon">❤️</span>
+            <span class="btn-text">我的点赞</span>
+          </button>
+          <button class="user-action-btn my-posts-btn" :class="{ active: showPostsPanel }" @click="handleMyPosts">
+            <span class="btn-icon">📝</span>
+            <span class="btn-text">我的发布</span>
+          </button>
+          <button class="user-action-btn logout-action-btn" @click="handleLogout">
+            <span class="btn-icon">🚪</span>
+            <span class="btn-text">退出登录</span>
+          </button>
+        </div>
+      </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 我的点赞子侧边栏 -->
+    <div
+      class="user-sub-sidebar likes-panel"
+      :class="{ 'show-panel': showLikesPanel, dark: effectiveMapTheme === 'dark' }"
+      @click.stop
+    >
+      <div class="sub-sidebar-header">
+        <h4>我的点赞</h4>
+        <button class="close-btn" @click.stop="showLikesPanel = false"><span>×</span></button>
+      </div>
+      <div class="sub-sidebar-content" @scroll="handleLikesScroll">
+        <div v-if="likesLoading && likesList.length === 0" class="panel-loading">
+          <span class="loading-spinner">⌛</span>
+          <span>加载中...</span>
+        </div>
+        <div v-else-if="likesList.length === 0" class="panel-empty">
+          <span class="empty-icon">💝</span>
+          <span>还没有点赞任何故事</span>
+        </div>
+        <div v-else class="panel-list">
+          <div v-for="story in likesList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+            <div class="item-header">
+              <img :src="story.avatar" class="item-avatar" alt="头像" />
+              <div class="item-meta">
+                <span class="item-author">{{ story.author }}</span>
+                <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+              </div>
+              <button 
+                class="item-action-btn unlike-btn" 
+                title="取消点赞"
+                @click.stop="handleUnlike(story)"
+              >
+                <span>💔</span>
+              </button>
+            </div>
+            <p class="item-content">{{ story.content }}</p>
+            <div v-if="story.images?.length" class="item-images">
+              <img :src="story.images[0]" alt="配图" />
+            </div>
+            <div class="item-footer">
+              <span class="item-location">📍 {{ story.location?.address || '未知位置' }}</span>
+              <span class="item-likes">❤️ {{ story.likes }}</span>
+            </div>
+          </div>
+          <div v-if="likesLoadingMore" class="panel-loading-more">
+            <span class="loading-spinner">⌛</span>
+            <span>加载更多...</span>
+          </div>
+          <div v-if="!likesHasMore && likesList.length > 0" class="panel-no-more">
+            <span>没有更多了</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的发布子侧边栏 -->
+    <div
+      class="user-sub-sidebar posts-panel"
+      :class="{ 'show-panel': showPostsPanel, dark: effectiveMapTheme === 'dark' }"
+      @click.stop
+    >
+      <div class="sub-sidebar-header">
+        <h4>我的发布</h4>
+        <button class="close-btn" @click.stop="showPostsPanel = false"><span>×</span></button>
+      </div>
+      <div class="sub-sidebar-content" @scroll="handlePostsScroll">
+        <div v-if="postsLoading && postsList.length === 0" class="panel-loading">
+          <span class="loading-spinner">⌛</span>
+          <span>加载中...</span>
+        </div>
+        <div v-else-if="postsList.length === 0" class="panel-empty">
+          <span class="empty-icon">📝</span>
+          <span>还没有发布任何故事</span>
+        </div>
+        <div v-else class="panel-list">
+          <div v-for="story in postsList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+            <div class="item-header">
+              <img :src="story.avatar" class="item-avatar" alt="头像" />
+              <div class="item-meta">
+                <span class="item-author">{{ story.author }}</span>
+                <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+              </div>
+              <button 
+                class="item-action-btn delete-btn" 
+                title="删除故事"
+                @click.stop="handleDeleteStory(story)"
+              >
+                <span>🗑️</span>
+              </button>
+            </div>
+            <p class="item-content">{{ story.content }}</p>
+            <div v-if="story.images?.length" class="item-images">
+              <img :src="story.images[0]" alt="配图" />
+            </div>
+            <div class="item-footer">
+              <span class="item-location">📍 {{ story.location?.address || '未知位置' }}</span>
+              <span class="item-likes">❤️ {{ story.likes }}</span>
+            </div>
+          </div>
+          <div v-if="postsLoadingMore" class="panel-loading-more">
+            <span class="loading-spinner">⌛</span>
+            <span>加载更多...</span>
+          </div>
+          <div v-if="!postsHasMore && postsList.length > 0" class="panel-no-more">
+            <span>没有更多了</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 项目标题 -->
+    <div class="project-title"></div>
+
+    <!-- 纸飞机故事展示 -->
+    <PaperPlaneStory
+      v-if="selectedStory"
+      :story="selectedStory"
+      :start-position="storyClickPosition"
+      @close="closeStoryModal"
+      @preview-image="handlePreviewImage"
+      @like="handleStoryLike"
+      @comment="handleStoryComment"
+      @report="handleStoryReport"
+    />
+
+    <!-- 登录模态框 -->
+    <LoginModal v-if="showLoginModal" @close="showLoginModal = false" />
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { useMapStore } from '../../stores/map';
+import { useUserStore } from '../../stores/user';
+import PaperPlaneStory from '../../components/PaperPlaneStory.vue';
+import { mapApi } from '../../api/map';
+import { likeApi } from '../../api/like';
+import { storyApi } from '../../api/story';
+import { authApi } from '../../api/auth';
+import { reportApi } from '../../api/report';
+import AMap from '../../components/AMap.vue';
+import StoryCard from '../../components/StoryCard.vue';
+import PublishForm from '../../components/PublishForm.vue';
+import LoginModal from '../Home/components/LoginModal.vue';
+import { formatRelativeTime } from '../../utils/time';
+import { getEmotionEmoji } from '../../utils/emotion';
+import { getAnnouncementTypeIcon } from '../../utils/announcement';
+
+const mapStore = useMapStore();
+const userStore = useUserStore();
+
+const showSidebar = ref(false);
+const showPublishSidebar = ref(false);
+const showUserSidebar = ref(false);
+const isPickingPublishLocation = ref(false);
+const pickedPublishLocation = ref(null);
+const suggestedPublishLocations = ref([]);
+const publishPickPrompt = ref(null);
+const showLoginModal = ref(false);
+const loading = ref(false);
+const feedStories = ref([]);
+const feedLoading = ref(false);
+const feedLoadingMore = ref(false);
+const feedPage = ref(1);
+const feedPagination = ref({ total: 0, totalPages: 0 });
+const feedHasMore = computed(() => feedPage.value < feedPagination.value.totalPages);
+const randomWalking = ref(false);
+const selectedStory = ref(null);
+const storyClickPosition = ref({ x: 0, y: 0 });
+// 地图主题：'light' | 'dark' | 'auto'（跟随当地时间 06:00-18:00 白天/18:00-06:00 夜晚）
+const mapTheme = ref(localStorage.getItem('mapTheme') || 'auto');
+const amapRef = ref(null);
+const minuteTicker = ref(0); // 每分钟更新，用于自动主题在 06:00/18:00 切换
+const isDockExpanded = ref(false);
+
+function getTimeBasedTheme() {
+  const hour = new Date().getHours();
+  return (hour >= 6 && hour < 18) ? 'light' : 'dark';
+}
+const effectiveMapTheme = computed(() => {
+  void minuteTicker.value; // 依赖：每分钟刷新以在 06:00/18:00 自动切换
+  if (mapTheme.value === 'light' || mapTheme.value === 'dark') {
+    return mapTheme.value;
+  }
+  return getTimeBasedTheme();
+});
+const hoveredDockCard = ref('');
+const selectedDockCard = ref('');
+const drawingDockCard = ref('');
+const liftingDockCard = ref('');
+const returningDockCard = ref('');
+const ripplingDockCard = ref('');
+const dockActionPending = ref(false);
+const isDarkMap = computed(() => effectiveMapTheme.value === 'dark');
+let dockHoverClearTimer = null;
+let dockSelectionTimer = null;
+
+const DOCK_CARD_PREP_MS = 120;
+const DOCK_CARD_DRAW_MS = 250;
+const DOCK_CARD_RETURN_MS = 300;
+
+// --- 欢迎语相关状态 ---
+const showWelcomeOverlay = ref(true); 
+
+// 欢迎语语录库
+const welcomeQuotes = [
+  "欢迎来到心灵栖息之所！",
+  "今日もがんばったね、ほんとにお疲れ様。",
+  "Breathe. You are safe in this moment.",
+  "在这颗星球的某个角落，总有故事与你共鸣。",
+  "Quiet the mind, and the soul will speak.",
+  "前端怎么改都很丑",
+  "原神牛逼"
+];
+
+// 随机选择一句欢迎语
+const currentWelcomeQuote = ref(
+  welcomeQuotes[Math.floor(Math.random() * welcomeQuotes.length)]
+);
+// --- 欢迎语逻辑结束 ---
+
+// 用户名编辑相关
+const isEditingUsername = ref(false);
+const editingUsername = ref('');
+const usernameError = ref('');
+const checkingUsername = ref(false);
+
+// 计算属性：是否可以保存用户名
+const canSaveUsername = computed(() => {
+  const trimmed = editingUsername.value.trim();
+  return trimmed.length >= 2 && trimmed.length <= 20 && !checkingUsername.value && !usernameError.value;
+});
+
+// 头像上传相关
+const avatarInput = ref(null);
+const avatarPreview = ref('');
+const avatarUploading = ref(false);
+const avatarError = ref('');
+
+// 密码相关
+const showPassword = ref(false);
+const isEditingPassword = ref(false);
+const showCurrentPassword = ref(false);
+const showNewPassword = ref(false);
+const showConfirmPassword = ref(false);
+const savingPassword = ref(false);
+const passwordError = ref('');
+const passwordForm = ref({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+});
+
+// 计算属性：是否可以保存密码
+const canSavePassword = computed(() => {
+  return passwordForm.value.currentPassword.length > 0 &&
+         passwordForm.value.newPassword.length >= 6 &&
+         passwordForm.value.confirmPassword.length >= 6 &&
+         passwordForm.value.newPassword === passwordForm.value.confirmPassword &&
+         !savingPassword.value;
+});
+
+// 密码显示文本（模拟，实际不应存储明文密码）
+const passwordDisplay = computed(() => {
+  // 实际项目中不应该在前端存储明文密码
+  // 这里只是一个占位显示
+  return 'password123';
+});
+
+// 我的点赞/发布面板相关
+const showLikesPanel = ref(false);
+const showPostsPanel = ref(false);
+const likesList = ref([]);
+const postsList = ref([]);
+const likesLoading = ref(false);
+const postsLoading = ref(false);
+const likesLoadingMore = ref(false);
+const postsLoadingMore = ref(false);
+const likesPage = ref(1);
+const postsPage = ref(1);
+const likesHasMore = ref(true);
+const postsHasMore = ref(true);
+const likesPageSize = 10;
+const postsPageSize = 10;
+
+// 侧边栏标签
+const sidebarTab = ref('nearby');
+
+// 精选故事（从API获取）
+const featuredStories = ref([]);
+
+// 公告（从API获取）
+const announcements = ref([]);
+
+const dockActions = computed(() => [
+  {
+    key: 'publish',
+    tag: 'Create Story',
+    title: '发布故事',
+    subtitle: '落下一张新卡',
+    description: '打开发布面板，把此刻的情绪和位置写进地图里。',
+    icon: '✦',
+    suit: '♦',
+    accent: '#ff7a59',
+    accentSoft: 'rgba(255, 122, 89, 0.24)',
+    ink: isDarkMap.value ? '#eef3ff' : '#432013',
+    visible: !showPublishSidebar.value,
+    disabled: false,
+    handler: handlePublishClick
+  },
+  {
+    key: 'stories',
+    tag: 'Story Wall',
+    title: '附近故事',
+    subtitle: '打开故事与公告',
+    description: '展开右侧故事墙，继续浏览附近故事、精选内容和公告。',
+    icon: '✉',
+    suit: '♣',
+    accent: '#5f7cff',
+    accentSoft: 'rgba(95, 124, 255, 0.25)',
+    ink: isDarkMap.value ? '#eef3ff' : '#172042',
+    visible: true,
+    disabled: false,
+    handler: handleStoriesClick
+  },
+  {
+    key: 'random',
+    tag: 'Fate Draw',
+    title: randomWalking.value ? '随机漫游中' : '随机漫游',
+    subtitle: randomWalking.value ? '正在抽取新地点' : '抽一张未知地点',
+    description: randomWalking.value
+      ? '正在为你寻找新的落点，请稍等片刻。'
+      : '随机去往一处新的位置，看看陌生角落里正在发生什么。',
+    icon: '✧',
+    suit: '♠',
+    accent: '#f2a93b',
+    accentSoft: 'rgba(242, 169, 59, 0.24)',
+    ink: isDarkMap.value ? '#eef3ff' : '#3e2811',
+    visible: true,
+    disabled: randomWalking.value,
+    handler: handleRandomWalk
+  },
+  {
+    key: 'locate',
+    tag: 'Position Sync',
+    title: '回到我的位置',
+    subtitle: '重新对准坐标',
+    description: '使用当前位置重新定位地图，把视角迅速拉回你所在的地方。',
+    icon: '◎',
+    suit: '♣',
+    accent: '#2cb67d',
+    accentSoft: 'rgba(44, 182, 125, 0.24)',
+    ink: isDarkMap.value ? '#eef3ff' : '#123127',
+    visible: true,
+    disabled: false,
+    handler: handleLocate
+  },
+  {
+    key: 'theme',
+    tag: 'Theme Shift',
+    title: effectiveMapTheme.value === 'dark' ? '切到浅色地图' : '切到深色地图',
+    subtitle: '切换当前场景氛围',
+    description: effectiveMapTheme.value === 'dark'
+      ? '把地图切回更明亮的视觉主题。'
+      : '切到更沉浸的深色地图主题。',
+    icon: effectiveMapTheme.value === 'dark' ? '☀' : '☾',
+    suit: '♣',
+    accent: '#8e6cff',
+    accentSoft: 'rgba(142, 108, 255, 0.24)',
+    ink: isDarkMap.value ? '#eef3ff' : '#241a3f',
+    visible: true,
+    disabled: false,
+    handler: toggleTheme
+  },
+  {
+    key: 'user',
+    tag: 'Profile',
+    title: '我的信息',
+    subtitle: '查看个人卡册',
+    description: '打开个人信息面板，查看头像、点赞、发布记录和账号设置。',
+    icon: '◈',
+    suit: '♥',
+    accent: '#35b4d8',
+    accentSoft: 'rgba(53, 180, 216, 0.24)',
+    ink: isDarkMap.value ? '#eef3ff' : '#112b34',
+    visible: true,
+    disabled: false,
+    handler: handleUserClick
+  },
+  {
+    key: 'logout',
+    tag: 'System Exit',
+    title: '退出登录',
+    subtitle: userStore.isGuest ? '结束游客身份' : '返回首页',
+    description: userStore.isGuest
+      ? '结束当前游客体验并返回首页。'
+      : '安全退出当前账号并返回首页。',
+    icon: '↩',
+    suit: '♠',
+    accent: '#e0677f',
+    accentSoft: 'rgba(224, 103, 127, 0.26)',
+    ink: isDarkMap.value ? '#eef3ff' : '#341723',
+    visible: true,
+    disabled: false,
+    handler: handleLogout
+  }
+]);
+
+const visibleDockActions = computed(() => dockActions.value.filter((action) => action.visible));
+
+const activeDockAction = computed(() => {
+  if (!isDockExpanded.value) {
+    return null;
+  }
+
+  return visibleDockActions.value.find((action) => action.key === hoveredDockCard.value) || null;
+});
+
+const activeDockActionIndex = computed(() =>
+  visibleDockActions.value.findIndex((action) => action.key === hoveredDockCard.value)
+);
+
+const dockGapCardIndex = computed(() => {
+  const gapKey = drawingDockCard.value || liftingDockCard.value || selectedDockCard.value;
+  return visibleDockActions.value.findIndex((action) => action.key === gapKey);
+});
+
+function clearDockSelectionTimer() {
+  if (dockSelectionTimer) {
+    window.clearTimeout(dockSelectionTimer);
+    dockSelectionTimer = null;
+  }
+}
+
+function resetDockSelectionMotion() {
+  clearDockSelectionTimer();
+  selectedDockCard.value = '';
+  drawingDockCard.value = '';
+  liftingDockCard.value = '';
+  returningDockCard.value = '';
+}
+
+function startDockReturn(key) {
+  if (!key) {
+    syncDockHoverSelection();
+    return;
+  }
+
+  clearDockSelectionTimer();
+  drawingDockCard.value = '';
+  liftingDockCard.value = '';
+  selectedDockCard.value = '';
+  returningDockCard.value = key;
+
+  dockSelectionTimer = window.setTimeout(() => {
+    dockSelectionTimer = null;
+
+    if (returningDockCard.value === key) {
+      returningDockCard.value = '';
+    }
+
+    syncDockHoverSelection();
+  }, DOCK_CARD_RETURN_MS);
+}
+
+function startDockDraw(key) {
+  if (!key) {
+    return;
+  }
+
+  clearDockSelectionTimer();
+  drawingDockCard.value = key;
+  liftingDockCard.value = '';
+  selectedDockCard.value = '';
+  returningDockCard.value = '';
+
+  dockSelectionTimer = window.setTimeout(() => {
+    dockSelectionTimer = null;
+
+    if (hoveredDockCard.value !== key) {
+      if (drawingDockCard.value === key || liftingDockCard.value === key) {
+        startDockReturn(key);
+      }
+      return;
+    }
+
+    if (drawingDockCard.value === key) {
+      drawingDockCard.value = '';
+      liftingDockCard.value = key;
+
+      dockSelectionTimer = window.setTimeout(() => {
+        dockSelectionTimer = null;
+
+        if (hoveredDockCard.value !== key) {
+          if (liftingDockCard.value === key) {
+            startDockReturn(key);
+          }
+          return;
+        }
+
+        if (liftingDockCard.value === key) {
+          liftingDockCard.value = '';
+          selectedDockCard.value = key;
+        }
+      }, DOCK_CARD_DRAW_MS);
+    }
+  }, DOCK_CARD_PREP_MS);
+}
+
+function syncDockHoverSelection() {
+  if (!isDockExpanded.value || dockActionPending.value) {
+    resetDockSelectionMotion();
+    return;
+  }
+
+  const targetKey = hoveredDockCard.value;
+
+  if (returningDockCard.value) {
+    return;
+  }
+
+  if (drawingDockCard.value) {
+    if (drawingDockCard.value === targetKey) {
+      return;
+    }
+
+    startDockReturn(drawingDockCard.value);
+    return;
+  }
+
+  if (liftingDockCard.value) {
+    if (liftingDockCard.value === targetKey) {
+      return;
+    }
+
+    startDockReturn(liftingDockCard.value);
+    return;
+  }
+
+  if (selectedDockCard.value) {
+    if (selectedDockCard.value === targetKey) {
+      return;
+    }
+
+    startDockReturn(selectedDockCard.value);
+    return;
+  }
+
+  if (targetKey) {
+    startDockDraw(targetKey);
+  }
+}
+
+function shouldRenderDockAnchor(key) {
+  return (
+    key === drawingDockCard.value ||
+    key === liftingDockCard.value ||
+    key === selectedDockCard.value ||
+    key === returningDockCard.value
+  );
+}
+
+watch(isDockExpanded, (expanded) => {
+  if (dockHoverClearTimer) {
+    window.clearTimeout(dockHoverClearTimer);
+    dockHoverClearTimer = null;
+  }
+
+  hoveredDockCard.value = '';
+  resetDockSelectionMotion();
+});
+
+watch(visibleDockActions, (actions) => {
+  const keys = new Set(actions.map((action) => action.key));
+
+  if (!keys.has(hoveredDockCard.value)) {
+    hoveredDockCard.value = '';
+  }
+
+  if (!keys.has(selectedDockCard.value)) {
+    selectedDockCard.value = '';
+  }
+
+  if (!keys.has(drawingDockCard.value)) {
+    drawingDockCard.value = '';
+  }
+
+  if (!keys.has(liftingDockCard.value)) {
+    liftingDockCard.value = '';
+  }
+
+  if (!keys.has(returningDockCard.value)) {
+    returningDockCard.value = '';
+  }
+
+  syncDockHoverSelection();
+});
+
+function setDockHover(key) {
+  if (isPickingPublishLocation.value) {
+    return;
+  }
+
+  if (dockActionPending.value) {
+    return;
+  }
+
+  if (dockHoverClearTimer) {
+    window.clearTimeout(dockHoverClearTimer);
+    dockHoverClearTimer = null;
+  }
+
+  if (
+    hoveredDockCard.value === key &&
+    (selectedDockCard.value === key || drawingDockCard.value === key || liftingDockCard.value === key)
+  ) {
+    return;
+  }
+
+  hoveredDockCard.value = key;
+  syncDockHoverSelection();
+}
+
+function clearDockHover() {
+  if (isPickingPublishLocation.value) {
+    hoveredDockCard.value = '';
+    return;
+  }
+
+  if (dockActionPending.value) {
+    return;
+  }
+
+  if (dockHoverClearTimer) {
+    window.clearTimeout(dockHoverClearTimer);
+    dockHoverClearTimer = null;
+  }
+
+  hoveredDockCard.value = '';
+  syncDockHoverSelection();
+}
+
+function scheduleClearDockHover() {
+  if (isPickingPublishLocation.value) {
+    hoveredDockCard.value = '';
+    return;
+  }
+
+  if (dockActionPending.value) {
+    return;
+  }
+
+  if (dockHoverClearTimer) {
+    window.clearTimeout(dockHoverClearTimer);
+  }
+
+  dockHoverClearTimer = window.setTimeout(() => {
+    hoveredDockCard.value = '';
+    dockHoverClearTimer = null;
+    syncDockHoverSelection();
+  }, 70);
+}
+
+function handleDockCardClick(action) {
+  if (isPickingPublishLocation.value) {
+    return;
+  }
+
+  if (action.disabled) {
+    return;
+  }
+
+  if (dockActionPending.value) {
+    return;
+  }
+
+  if (
+    hoveredDockCard.value !== action.key ||
+    selectedDockCard.value !== action.key ||
+    drawingDockCard.value ||
+    liftingDockCard.value ||
+    returningDockCard.value
+  ) {
+    return;
+  }
+
+  dockActionPending.value = true;
+  ripplingDockCard.value = action.key;
+
+  window.setTimeout(() => {
+    ripplingDockCard.value = '';
+    dockActionPending.value = false;
+    isDockExpanded.value = false;
+    action.handler();
+  }, 500);
+}
+
+function getDockLayoutMetrics(index, total, actionKey = '') {
+  const visibleCount = Math.max(total, 1);
+  const cardWidth = 244;
+  const cardStep = 148;
+  const cardHeight = 344;
+  const compressedStep = 74;
+  const gapClearance = 28;
+  const stackWidth = cardWidth + (visibleCount - 1) * cardStep;
+  const middleIndex = (visibleCount - 1) / 2;
+  const distanceFromMiddle = index - middleIndex;
+  const maxDistance = Math.max(middleIndex, 1);
+  const normalizedDistance = maxDistance === 0 ? 0 : Math.abs(distanceFromMiddle) / maxDistance;
+  const arcLift = Math.round((1 - Math.pow(normalizedDistance, 1.55)) * 74);
+  const baseX = index * cardStep;
+  const collapsedX = (stackWidth - cardWidth) / 2 + index * 2;
+  const collapsedY = 28 - index * 2;
+  const spreadY = Math.round(-10 - arcLift);
+  const spreadRotate = distanceFromMiddle * 8.4;
+  const gapIndex = dockGapCardIndex.value;
+  const hasExtractionGap = gapIndex >= 0;
+  let spreadX = baseX;
+  let adjustedSpreadRotate = spreadRotate;
+  let extractionLaneX = baseX;
+
+  if (hasExtractionGap) {
+    const leftCount = gapIndex;
+    const rightCount = visibleCount - gapIndex - 1;
+    const maxLeftStart = baseX - cardWidth - gapClearance;
+    const minRightStart = baseX + cardWidth + gapClearance;
+    const leftCompressedStep = leftCount > 1
+      ? Math.min(compressedStep, Math.max(maxLeftStart / (leftCount - 1), 0))
+      : compressedStep;
+    const rightCompressedStep = rightCount > 1
+      ? Math.min(
+          compressedStep,
+          Math.max((stackWidth - cardWidth - minRightStart) / (rightCount - 1), 0)
+        )
+      : compressedStep;
+    const rightStartX = stackWidth - cardWidth - (rightCount - 1) * rightCompressedStep;
+
+    // Pull the selected card toward the opening between its neighbors before lifting
+    // so it exits the fan instead of visually cutting through the adjacent card.
+    if (index === gapIndex && leftCount > 0 && rightCount > 0) {
+      const leftBoundary = (gapIndex - 1) * leftCompressedStep + cardWidth;
+      const rightBoundary = rightStartX;
+      extractionLaneX = (leftBoundary + rightBoundary) / 2 - cardWidth / 2;
+    }
+
+    if (index < gapIndex) {
+      spreadX = index * leftCompressedStep;
+      adjustedSpreadRotate -= 1.6 + (gapIndex - index - 1) * 0.14;
+    } else if (index > gapIndex) {
+      spreadX = rightStartX + (index - gapIndex - 1) * rightCompressedStep;
+      adjustedSpreadRotate += 1.6 + (index - gapIndex - 1) * 0.14;
+    }
+  }
+
+  const prepX = baseX + (extractionLaneX - baseX) * 0.84;
+  const prepY = spreadY - 24;
+  const prepRotate = distanceFromMiddle * 4.1;
+  const drawX = extractionLaneX;
+  const drawY = spreadY - 116;
+  const drawRotate = distanceFromMiddle * 1.75;
+  const hoverX = drawX;
+  const hoverY = drawY;
+  const hoverRotate = drawRotate;
+  const motionState = actionKey === drawingDockCard.value
+    ? 'drawing'
+    : actionKey === liftingDockCard.value
+      ? 'lifting'
+    : actionKey === selectedDockCard.value
+      ? 'selected'
+      : actionKey === returningDockCard.value
+        ? 'returning'
+        : 'base';
+
+  let visualX = spreadX;
+  let visualY = spreadY;
+  let visualRotate = adjustedSpreadRotate;
+
+  if (motionState === 'drawing') {
+    visualX = prepX;
+    visualY = prepY;
+    visualRotate = prepRotate;
+  } else if (motionState === 'lifting') {
+    visualX = drawX;
+    visualY = drawY;
+    visualRotate = drawRotate;
+  } else if (motionState === 'selected') {
+    visualX = hoverX;
+    visualY = hoverY;
+    visualRotate = hoverRotate;
+  }
+
+  return {
+    cardWidth,
+    cardHeight,
+    cardStep,
+    stackWidth,
+    distanceFromMiddle,
+    collapsedX,
+    collapsedY,
+    spreadX,
+    spreadY,
+    spreadRotate: adjustedSpreadRotate,
+    prepX,
+    prepY,
+    prepRotate,
+    drawX,
+    drawY,
+    drawRotate,
+    hoverX,
+    hoverY,
+    hoverRotate,
+    visualX,
+    visualY,
+    visualRotate,
+    motionState
+  };
+}
+
+function getDockStackStyle(total) {
+  const { stackWidth } = getDockLayoutMetrics(0, total);
+  const visibleCount = Math.max(total, 1);
+
+  return {
+    width: `${stackWidth}px`,
+    height: `${492 + Math.max(0, visibleCount - 1) * 8}px`
+  };
+}
+
+function getDockCardStyle(index, total, action) {
+  const {
+    collapsedX,
+    collapsedY,
+    spreadX,
+    spreadY,
+    spreadRotate,
+    prepX,
+    prepY,
+    prepRotate,
+    drawX,
+    drawY,
+    drawRotate,
+    hoverX,
+    hoverY,
+    hoverRotate
+  } = getDockLayoutMetrics(index, total, action.key);
+
+  return {
+    '--index': index,
+    '--peek-x': `${collapsedX}px`,
+    '--peek-y': `${collapsedY}px`,
+    '--peek-rotate': '0deg',
+    '--spread-x': `${spreadX}px`,
+    '--spread-y': `${spreadY}px`,
+    '--spread-rotate': `${spreadRotate}deg`,
+    '--prep-x': `${prepX}px`,
+    '--prep-y': `${prepY}px`,
+    '--prep-rotate': `${prepRotate}deg`,
+    '--prep-scale': '1.008',
+    '--draw-x': `${drawX}px`,
+    '--draw-y': `${drawY}px`,
+    '--draw-rotate': `${drawRotate}deg`,
+    '--draw-scale': '1.02',
+    '--hover-x': `${hoverX}px`,
+    '--hover-y': `${hoverY}px`,
+    '--hover-rotate': `${hoverRotate}deg`,
+    '--hover-scale': '1.02',
+    '--card-z': `${total - index}`,
+    '--card-accent': action.accent,
+    '--card-accent-soft': action.accentSoft,
+    '--card-ink': action.ink
+  };
+}
+
+function getDockInfoStyle(total) {
+  const infoIndex = activeDockActionIndex.value;
+  const { cardWidth, stackWidth } = getDockLayoutMetrics(0, total);
+  const infoWidth = Math.min(420, Math.max(300, stackWidth * 0.34));
+
+  if (infoIndex < 0) {
+    return {
+      width: `${infoWidth}px`,
+      left: `${Math.max((stackWidth - infoWidth) / 2, 0)}px`,
+      top: '-118px'
+    };
+  }
+
+  const action = visibleDockActions.value[infoIndex];
+  const { distanceFromMiddle, visualX, visualY } = getDockLayoutMetrics(infoIndex, total, action?.key);
+  const cardCenterX = visualX + cardWidth / 2;
+  const safeLeft = Math.min(
+    Math.max(cardCenterX - infoWidth / 2, 0),
+    Math.max(stackWidth - infoWidth, 0)
+  );
+  const topOffset = Math.min(-146 + Math.abs(distanceFromMiddle) * 10, visualY - 104);
+
+  return {
+    width: `${infoWidth}px`,
+    left: `${safeLeft}px`,
+    top: `${topOffset}px`
+  };
+}
+
+// 监听侧边栏状态变化
+watch(showSidebar, (newValue) => {
+  window.dispatchEvent(new CustomEvent('sidebar-toggle', {
+    detail: { isOpen: newValue }
+  }));
+});
+
+watch(showPublishSidebar, (newValue) => {
+  window.dispatchEvent(new CustomEvent('publish-sidebar-toggle', {
+    detail: { isOpen: newValue }
+  }));
+});
+
+watch(showUserSidebar, (newValue) => {
+  if (!newValue) {
+    showLikesPanel.value = false;
+    showPostsPanel.value = false;
+  }
+});
+
+function closeStoryPanel() {
+  showSidebar.value = false;
+}
+
+function closeUserPanel() {
+  showUserSidebar.value = false;
+  showLikesPanel.value = false;
+  showPostsPanel.value = false;
+}
+
+function closePublishPanel() {
+  isPickingPublishLocation.value = false;
+  suggestedPublishLocations.value = [];
+  publishPickPrompt.value = null;
+  pickedPublishLocation.value = null;
+  showPublishSidebar.value = false;
+}
+
+function startPublishMapPick() {
+  suggestedPublishLocations.value = [];
+  publishPickPrompt.value = null;
+  pickedPublishLocation.value = null;
+  isDockExpanded.value = false;
+  isPickingPublishLocation.value = true;
+}
+
+function cancelPublishMapPick() {
+  publishPickPrompt.value = null;
+  suggestedPublishLocations.value = [];
+  pickedPublishLocation.value = null;
+  isDockExpanded.value = false;
+  isPickingPublishLocation.value = false;
+}
+
+function restorePublishPanelFromPick() {
+  publishPickPrompt.value = null;
+  suggestedPublishLocations.value = [];
+  pickedPublishLocation.value = null;
+  isDockExpanded.value = false;
+  isPickingPublishLocation.value = false;
+}
+
+// 处理发布按钮点击
+function handlePublishClick() {
+  // 检查是否登录（游客不能发布）
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再发布故事');
+    showLoginModal.value = true;
+    isDockExpanded.value = false;
+    return;
+  }
+  // 如果故事侧边栏是打开的，先关闭它
+  if (showSidebar.value) {
+    closeStoryPanel();
+  }
+  // 如果用户侧边栏是打开的，先关闭它
+  if (showUserSidebar.value) {
+    closeUserPanel();
+  }
+  suggestedPublishLocations.value = [];
+  publishPickPrompt.value = null;
+  pickedPublishLocation.value = null;
+  isPickingPublishLocation.value = false;
+  isDockExpanded.value = false;
+  // 延迟一点再打开发布弹层，确保关闭其他面板时过渡更顺
+  setTimeout(() => {
+    showPublishSidebar.value = true;
+  }, 100);
+}
+
+function formatMapPickAddress(latitude, longitude) {
+  return `经度 ${longitude.toFixed(6)}，纬度 ${latitude.toFixed(6)}`;
+}
+
+function toFiniteNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function normalizeNearbyPoiFromGeocode(poi) {
+  if (!poi) {
+    return null;
+  }
+
+  const latitude = toFiniteNumber(poi.location?.getLat?.() ?? poi.location?.lat);
+  const longitude = toFiniteNumber(poi.location?.getLng?.() ?? poi.location?.lng);
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  const district = [poi.cityname, poi.adname].filter(Boolean).join(' ');
+  const address = [district, poi.address].filter(Boolean).join(' ');
+
+  return {
+    id: poi.id || `nearby-${longitude}-${latitude}-${poi.name || 'poi'}`,
+    name: poi.name || 'Nearby Place',
+    address: address || poi.name || formatMapPickAddress(latitude, longitude),
+    latitude,
+    longitude,
+    district,
+    type: poi.type || 'nearby-poi'
+  };
+}
+
+function buildSuggestedLocations(rawLocation, nearbyPois = []) {
+  if (!rawLocation) {
+    return [];
+  }
+
+  const exactPoint = {
+    id: `${rawLocation.id || 'map-pick'}-exact`,
+    name: 'Selected Point',
+    address: rawLocation.address || formatMapPickAddress(rawLocation.latitude, rawLocation.longitude),
+    latitude: rawLocation.latitude,
+    longitude: rawLocation.longitude,
+    district: rawLocation.district || '',
+    type: rawLocation.type || 'map-click'
+  };
+
+  const normalizedPois = nearbyPois
+    .map(normalizeNearbyPoiFromGeocode)
+    .filter(Boolean)
+    .filter((poi, index, list) => list.findIndex((item) => item.id === poi.id) === index)
+    .slice(0, 8);
+
+  return [exactPoint, ...normalizedPois];
+}
+
+function getPublishPickPromptStyle(prompt) {
+  const promptWidth = 220;
+  const viewportWidth = window.innerWidth || 0;
+  const viewportHeight = window.innerHeight || 0;
+  const screenX = toFiniteNumber(prompt?.screenX) ?? viewportWidth / 2;
+  const screenY = toFiniteNumber(prompt?.screenY) ?? viewportHeight / 2;
+  const left = Math.min(
+    Math.max(screenX - promptWidth / 2, 16),
+    Math.max(viewportWidth - promptWidth - 16, 16)
+  );
+  const top = Math.min(
+    Math.max(screenY + 18, 16),
+    Math.max(viewportHeight - 132, 16)
+  );
+
+  return {
+    left: `${left}px`,
+    top: `${top}px`
+  };
+}
+
+function confirmPublishNearbySearch() {
+  const prompt = publishPickPrompt.value;
+  if (!prompt?.location) {
+    publishPickPrompt.value = null;
+    return;
+  }
+
+  suggestedPublishLocations.value = buildSuggestedLocations(
+    prompt.location,
+    prompt.location.nearbyPois || []
+  );
+  publishPickPrompt.value = null;
+  isPickingPublishLocation.value = false;
+}
+
+function rejectPublishNearbySearch() {
+  publishPickPrompt.value = null;
+  suggestedPublishLocations.value = [];
+  pickedPublishLocation.value = null;
+  isPickingPublishLocation.value = true;
+}
+
+function reverseGeocodePickedLocation(latitude, longitude) {
+  return new Promise((resolve) => {
+    if (!window.AMap?.plugin) {
+      resolve({
+        id: `map-pick-${longitude}-${latitude}`,
+        name: '地图选点',
+        address: formatMapPickAddress(latitude, longitude),
+        latitude,
+        longitude,
+        district: '',
+        type: '',
+        nearbyPois: []
+      });
+      return;
+    }
+
+    window.AMap.plugin(['AMap.Geocoder'], () => {
+      if (!window.AMap?.Geocoder) {
+        resolve({
+          id: `map-pick-${longitude}-${latitude}`,
+          name: '地图选点',
+          address: formatMapPickAddress(latitude, longitude),
+          latitude,
+          longitude,
+          district: '',
+          type: '',
+          nearbyPois: []
+        });
+        return;
+      }
+
+      const geocoder = new window.AMap.Geocoder({ extensions: 'all' });
+      geocoder.getAddress([longitude, latitude], (status, result) => {
+        if (status !== 'complete') {
+          resolve({
+            id: `map-pick-${longitude}-${latitude}`,
+            name: '地图选点',
+            address: formatMapPickAddress(latitude, longitude),
+            latitude,
+            longitude,
+            district: '',
+            type: '',
+            nearbyPois: []
+          });
+          return;
+        }
+
+        const regeocode = result?.regeocode || {};
+        const firstPoi = Array.isArray(regeocode.pois) ? regeocode.pois[0] : null;
+        const district = [
+          regeocode.addressComponent?.city,
+          regeocode.addressComponent?.district,
+          regeocode.addressComponent?.township
+        ].filter(Boolean).join(' ');
+
+        resolve({
+          id: `map-pick-${longitude}-${latitude}`,
+          name: firstPoi?.name || regeocode.formattedAddress || '地图选点',
+          address: regeocode.formattedAddress || formatMapPickAddress(latitude, longitude),
+          latitude,
+          longitude,
+          district,
+          type: firstPoi?.type || 'map-click',
+          nearbyPois: Array.isArray(regeocode.pois) ? regeocode.pois : []
+        });
+      });
+    });
+  });
+}
+
+async function handlePublishMapClick(point) {
+  if (!showPublishSidebar.value || !isPickingPublishLocation.value) {
+    return;
+  }
+
+  const coords = extractCoordinates(point);
+  if (!coords) {
+    return;
+  }
+
+  suggestedPublishLocations.value = [];
+  const pickedLocation = await reverseGeocodePickedLocation(coords.latitude, coords.longitude);
+  pickedPublishLocation.value = pickedLocation;
+  publishPickPrompt.value = {
+    location: pickedLocation,
+    screenX: point?.screenX,
+    screenY: point?.screenY
+  };
+}
+
+// 处理用户按钮点击
+function handleUserClick() {
+  // 如果发布侧边栏是打开的，先关闭它
+  if (showPublishSidebar.value) {
+    closePublishPanel();
+  }
+  // 如果故事侧边栏是打开的，先关闭它
+  if (showSidebar.value) {
+    closeStoryPanel();
+  }
+  // 延迟一点再打开用户侧边栏，确保动画流畅
+  setTimeout(() => {
+    showUserSidebar.value = true;
+  }, 100);
+  isDockExpanded.value = false;
+}
+
+// 处理我的点赞按钮点击
+function handleMyLikes() {
+  // 如果发布面板是打开的，先关闭它
+  if (showPostsPanel.value) {
+    showPostsPanel.value = false;
+  }
+  // 切换点赞面板
+  showLikesPanel.value = !showLikesPanel.value;
+
+  // 如果是打开状态且列表为空，加载数据
+  if (showLikesPanel.value && likesList.value.length === 0) {
+    loadLikesData();
+  }
+}
+
+// 处理我的发布按钮点击
+function handleMyPosts() {
+  // 如果点赞面板是打开的，先关闭它
+  if (showLikesPanel.value) {
+    showLikesPanel.value = false;
+  }
+  // 切换发布面板
+  showPostsPanel.value = !showPostsPanel.value;
+
+  // 如果是打开状态且列表为空，加载数据
+  if (showPostsPanel.value && postsList.value.length === 0) {
+    loadPostsData();
+  }
+}
+
+// 加载点赞数据
+async function loadLikesData(isLoadMore = false) {
+  if (isLoadMore) {
+    if (likesLoadingMore.value || !likesHasMore.value) return;
+    likesLoadingMore.value = true;
+  } else {
+    if (likesLoading.value) return;
+    likesLoading.value = true;
+    likesPage.value = 1;
+    likesHasMore.value = true;
+  }
+
+  try {
+    // 调用实际API
+    const result = await likeApi.getMyLikes({
+      page: isLoadMore ? likesPage.value + 1 : 1,
+      pageSize: likesPageSize
+    });
+
+    const data = result.data || result;
+    const stories = data.stories || data.items || data || [];
+
+    if (isLoadMore) {
+      likesList.value.push(...stories);
+      likesPage.value++;
+    } else {
+      likesList.value = stories;
+    }
+
+    // 检查是否还有更多数据
+    if (stories.length < likesPageSize) {
+      likesHasMore.value = false;
+    }
+  } catch (error) {
+    console.error('加载点赞数据失败:', error);
+  } finally {
+    likesLoading.value = false;
+    likesLoadingMore.value = false;
+  }
+}
+
+// 加载发布数据
+async function loadPostsData(isLoadMore = false) {
+  if (isLoadMore) {
+    if (postsLoadingMore.value || !postsHasMore.value) return;
+    postsLoadingMore.value = true;
+  } else {
+    if (postsLoading.value) return;
+    postsLoading.value = true;
+    postsPage.value = 1;
+    postsHasMore.value = true;
+  }
+
+  try {
+    // 调用实际API
+    const result = await storyApi.getMyStories({
+      page: isLoadMore ? postsPage.value + 1 : 1,
+      pageSize: postsPageSize
+    });
+
+    const data = result.data || result;
+    const stories = data.stories || data.items || data || [];
+
+    if (isLoadMore) {
+      postsList.value.push(...stories);
+      postsPage.value++;
+    } else {
+      postsList.value = stories;
+    }
+
+    // 检查是否还有更多数据
+    if (stories.length < postsPageSize) {
+      postsHasMore.value = false;
+    }
+  } catch (error) {
+    console.error('加载发布数据失败:', error);
+  } finally {
+    postsLoading.value = false;
+    postsLoadingMore.value = false;
+  }
+}
+
+// 处理点赞列表滚动
+function handleLikesScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  // 距离底部 50px 时加载更多
+  if (scrollHeight - scrollTop - clientHeight < 50) {
+    loadLikesData(true);
+  }
+}
+
+// 处理发布列表滚动
+function handlePostsScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  // 距离底部 50px 时加载更多
+  if (scrollHeight - scrollTop - clientHeight < 50) {
+    loadPostsData(true);
+  }
+}
+
+// 处理故事点击
+function handleStoryClick(story) {
+  // 关闭子面板但不关闭用户侧边栏
+  showLikesPanel.value = false;
+  showPostsPanel.value = false;
+
+  // 如果故事有位置信息，将地图中心移动到该位置
+  if (story.location?.latitude && story.location?.longitude) {
+    mapStore.updateCenter(story.location.latitude, story.location.longitude);
+    mapStore.updateZoom(16); // 缩放到合适的级别
+  } else if (story.location?.lng && story.location?.lat) {
+    // 兼容不同的位置字段命名
+    mapStore.updateCenter(story.location.lat, story.location.lng);
+    mapStore.updateZoom(16);
+  }
+
+  // 延迟显示纸飞机动画，等待地图移动和刷新完成（地图动画约500-800ms）
+  setTimeout(() => {
+    // 设置纸飞机动画起点（从屏幕中央开始）
+    storyClickPosition.value = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    selectedStory.value = story;
+  }, 800);
+}
+
+async function handleUnlike(story) {
+  if (!confirm('确定要取消点赞吗？')) {
+    return;
+  }
+
+  try {
+    // 调用取消点赞API
+    await likeApi.remove(story.id);
+
+    // 从列表中移除
+    const index = likesList.value.findIndex(item => item.id === story.id);
+    if (index > -1) {
+      likesList.value.splice(index, 1);
+    }
+
+    console.log('已取消点赞:', story.id);
+  } catch (error) {
+    console.error('取消点赞失败:', error);
+    alert('取消点赞失败，请重试');
+  }
+}
+
+async function handleDeleteStory(story) {
+  if (!confirm('确定要删除这个故事吗？此操作不可恢复。')) {
+    return;
+  }
+
+  try {
+    // 调用删除故事API
+    await storyApi.deleteStory(story.id);
+
+    // 从列表中移除
+    const index = postsList.value.findIndex(item => item.id === story.id);
+    if (index > -1) {
+      postsList.value.splice(index, 1);
+    }
+
+    console.log('已删除故事:', story.id);
+  } catch (error) {
+    console.error('删除故事失败:', error);
+    alert('删除失败，请重试');
+  }
+}
+
+// 开始编辑用户名
+function startEditUsername() {
+  editingUsername.value = userStore.user?.username || userStore.user?.name || '';
+  isEditingUsername.value = true;
+  usernameError.value = '';
+}
+
+// 取消编辑用户名
+function cancelEditUsername() {
+  isEditingUsername.value = false;
+  editingUsername.value = '';
+  usernameError.value = '';
+}
+
+// 检查用户名是否可用
+async function checkUsernameAvailability(username) {
+  // 模拟API调用检查用户名是否重复
+  // 实际项目中应该调用后端API
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      // 模拟：用户名为 'admin', 'test', 'user' 时认为已被占用
+      const reservedUsernames = ['admin', 'test', 'user', 'system', 'root'];
+      if (reservedUsernames.includes(username.toLowerCase())) {
+        resolve({ available: false, message: '该用户名已被使用' });
+      } else {
+        resolve({ available: true });
+      }
+    }, 300);
+  });
+}
+
+// 保存用户名
+async function saveUsername() {
+  const trimmedUsername = editingUsername.value.trim();
+
+  if (trimmedUsername.length < 2) {
+    usernameError.value = '用户名至少需要 2 个字符';
+    return;
+  }
+  if (trimmedUsername.length > 20) {
+    usernameError.value = '用户名最多 20 个字符';
+    return;
+  }
+  // 只允许字母、数字、中文、下划线和连字符
+  if (!/^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/.test(trimmedUsername)) {
+    usernameError.value = '用户名只能包含字母、数字、中文、下划线和连字符';
+    return;
+  }
+
+  checkingUsername.value = true;
+  usernameError.value = '';
+
+  try {
+    // 检查是否与当前用户名相同
+    const currentUsername = userStore.user?.username || userStore.user?.name;
+    if (trimmedUsername === currentUsername) {
+      cancelEditUsername();
+      return;
+    }
+
+    // 调用API检查用户名是否可用
+    const result = await checkUsernameAvailability(trimmedUsername);
+
+    if (!result.available) {
+      usernameError.value = result.message || '该用户名已被使用';
+      return;
+    }
+
+    // TODO: 调用实际的API保存用户名
+    // await userApi.updateUsername(trimmedUsername);
+
+    // 更新本地状态
+    if (userStore.user) {
+      userStore.user.username = trimmedUsername;
+    }
+
+    // 退出编辑模式
+    isEditingUsername.value = false;
+    editingUsername.value = '';
+    usernameError.value = '';
+
+    console.log('用户名已更新:', trimmedUsername);
+  } catch (error) {
+    usernameError.value = '保存失败，请重试';
+    console.error('保存用户名失败:', error);
+  } finally {
+    checkingUsername.value = false;
+  }
+}
+
+// 触发头像文件选择
+function triggerAvatarUpload() {
+  if (avatarUploading.value) return;
+  avatarInput.value?.click();
+}
+
+// 处理头像文件选择
+function handleAvatarChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  // 验证文件类型
+  if (!file.type.startsWith('image/')) {
+    avatarError.value = '请选择图片文件';
+    return;
+  }
+
+  // 验证文件大小（最大 5MB）
+  if (file.size > 5 * 1024 * 1024) {
+    avatarError.value = '图片大小不能超过 5MB';
+    return;
+  }
+
+  avatarError.value = '';
+
+  // 生成预览
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    avatarPreview.value = e.target?.result;
+    // 自动开始上传
+    uploadAvatar(file);
+  };
+  reader.readAsDataURL(file);
+
+  // 清空 input，允许重复选择同一文件
+  event.target.value = '';
+}
+
+// 上传头像
+async function uploadAvatar() {
+  avatarUploading.value = true;
+  avatarError.value = '';
+
+  try {
+    // TODO: 调用实际的头像上传API（需要后端支持）
+    // const result = await userApi.uploadAvatar(file);
+    // const uploadedUrl = result.url;
+
+    // 暂时使用本地预览URL
+    const uploadedUrl = avatarPreview.value;
+
+    // 更新用户头像
+    if (userStore.user) {
+      userStore.user.avatar = uploadedUrl;
+    }
+
+    // 清除预览
+    avatarPreview.value = '';
+    console.log('头像已更新');
+  } catch (error) {
+    avatarError.value = '上传失败，请重试';
+    avatarPreview.value = '';
+    console.error('上传头像失败:', error);
+  } finally {
+    avatarUploading.value = false;
+  }
+}
+
+// 切换密码显示/隐藏
+function toggleShowPassword() {
+  showPassword.value = !showPassword.value;
+}
+
+// 开始编辑密码
+function startEditPassword() {
+  isEditingPassword.value = true;
+  passwordError.value = '';
+  passwordForm.value = {
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  };
+  showCurrentPassword.value = false;
+  showNewPassword.value = false;
+  showConfirmPassword.value = false;
+}
+
+// 取消编辑密码
+function cancelEditPassword() {
+  isEditingPassword.value = false;
+  passwordError.value = '';
+  passwordForm.value = {
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  };
+  showCurrentPassword.value = false;
+  showNewPassword.value = false;
+  showConfirmPassword.value = false;
+}
+
+// 保存密码
+async function savePassword() {
+  const { currentPassword, newPassword, confirmPassword } = passwordForm.value;
+
+  if (!currentPassword) {
+    passwordError.value = '请输入当前密码';
+    return;
+  }
+  if (newPassword.length < 6) {
+    passwordError.value = '新密码至少需要 6 位';
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    passwordError.value = '两次输入的新密码不一致';
+    return;
+  }
+
+  savingPassword.value = true;
+  passwordError.value = '';
+
+  try {
+    await authApi.changePassword(currentPassword, newPassword);
+    cancelEditPassword();
+  } catch (error) {
+    const detailMessage = Array.isArray(error?.response?.data?.details)
+      ? error.response.data.details
+          .map((item) => item?.message || item)
+          .filter(Boolean)
+          .join('；')
+      : '';
+    passwordError.value =
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      detailMessage ||
+      '修改失败，请检查当前密码是否正确';
+    console.error('修改密码失败:', error);
+  } finally {
+    savingPassword.value = false;
+  }
+}
+
+// 处理附近故事按钮点击
+function handleStoriesClick() {
+  // 如果发布侧边栏是打开的，先关闭它
+  if (showPublishSidebar.value) {
+    closePublishPanel();
+  }
+  // 如果用户侧边栏是打开的，先关闭它
+  if (showUserSidebar.value) {
+    closeUserPanel();
+  }
+  // 切换故事侧边栏
+  showSidebar.value = !showSidebar.value;
+  isDockExpanded.value = false;
+}
+
+// 处理定位按钮点击
+function handleLocate() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        mapStore.setUserLocation(latitude, longitude);
+        mapStore.updateCenter(latitude, longitude);
+        mapStore.updateZoom(15); // 自动缩放到街区级别
+        isDockExpanded.value = false;
+      },
+      (error) => {
+        console.error('获取位置失败:', error);
+        alert('获取位置失败，请检查定位权限');
+        isDockExpanded.value = false;
+      }
+    );
+  } else {
+    alert('您的浏览器不支持地理定位');
+    isDockExpanded.value = false;
+  }
+}
+
+// 处理发布提交
+async function handlePublishSubmit(storyData) {
+  try {
+    const selectedLocation = extractCoordinates(storyData.location);
+    if (!selectedLocation) {
+      alert('请先选择一个地点后再发布故事');
+      return;
+    }
+
+    if (!storyData.emotion) {
+      alert('请先选择一个情绪标签');
+      return;
+    }
+
+    if (storyData.isTimeCapsule && !storyData.unlockAt) {
+      alert('请为时光胶囊选择解锁时间');
+      return;
+    }
+
+    const location = {
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      address: storyData.location?.address || storyData.location?.name || '已选地点',
+      name: storyData.location?.name || storyData.location?.address || '已选地点'
+    };
+
+    // 情绪标签直接使用（前端已与后端一致）
+    const finalEmotionTag = storyData.emotion;
+
+    // 调用后端API创建故事
+    const { storyApi } = await import('../../api/story');
+
+    // TODO: 图片上传到阿里云 OSS，获取 URL 后再提交
+    // 目前阿里云 OSS 未配置，暂时发送空数组
+    let imageUrls = [];
+    if (storyData.images && storyData.images.length > 0) {
+      // 图片上传功能待实现：上传到阿里云 OSS -> 获取 URL -> 添加到 imageUrls
+      console.log('图片上传功能待实现，暂时忽略图片');
+    }
+
+    const response = await storyApi.createStory({
+      content: storyData.content,
+      images: imageUrls,
+      location: {
+        lng: location.longitude,
+        lat: location.latitude
+      },
+      emotionTag: finalEmotionTag,
+      isTimeCapsule: storyData.isTimeCapsule,
+      unlockAt: storyData.unlockAt || null,
+      visibility: storyData.visibility || 'public',
+      visibilityStartTime: storyData.visibilityStartTime || null,
+      visibilityEndTime: storyData.visibilityEndTime || null
+    });
+
+    // 适配后端响应格式
+    const newStory = response.data || response;
+    const normalizedNewStory = normalizeStoryForMap(newStory, location);
+
+    console.log('发布故事成功:', newStory);
+
+    // 添加到地图标记
+    if (normalizedNewStory && amapRef.value) {
+      amapRef.value.addNewStoryMarker(normalizedNewStory);
+    }
+
+    // 添加到故事列表
+    if (normalizedNewStory) {
+      mapStore.updateStories([...mapStore.stories, normalizedNewStory]);
+    } else {
+      console.warn('[Map] Created story is missing valid coordinates:', newStory);
+      await loadStories();
+    }
+
+    mapStore.updateCenter(location.latitude, location.longitude);
+    mapStore.updateZoom(15);
+
+    alert('发布成功！');
+    closePublishPanel();
+  } catch (error) {
+    console.error('发布失败:', error);
+    alert('发布失败，请重试');
+  }
+}
+
+// 切换地图主题（用户手动选择后保存为显式偏好，覆盖自动）
+function toggleTheme() {
+  const next = effectiveMapTheme.value === 'dark' ? 'light' : 'dark';
+  mapTheme.value = next;
+  localStorage.setItem('mapTheme', next);
+  handleThemeChange(next);
+  isDockExpanded.value = false;
+}
+
+// 切换 Dock 菜单
+function toggleDock() {
+  if (isPickingPublishLocation.value) {
+    isDockExpanded.value = false;
+    return;
+  }
+
+  isDockExpanded.value = !isDockExpanded.value;
+}
+
+// 退出登录
+function handleLogout() {
+  if (confirm('确定要退出登录吗？')) {
+    showUserSidebar.value = false;
+    userStore.logout();
+    window.location.href = '/';
+  }
+  isDockExpanded.value = false;
+}
+
+// 游客模式：点击登录按钮
+function handleGuestLoginClick() {
+  showUserSidebar.value = false;
+  showLoginModal.value = true;
+}
+
+// 进入游客模式
+function handleEnterGuestMode() {
+  userStore.loginAsGuest();
+  showUserSidebar.value = false;
+}
+
+// 游客退出
+function handleGuestLogout() {
+  userStore.exitGuestMode();
+  showUserSidebar.value = false;
+}
+
+// 点击页面空白区域关闭侧边栏
+function handlePageClick(event) {
+  if (showPublishSidebar.value && isPickingPublishLocation.value) {
+    return;
+  }
+
+  const target = event?.target;
+  if (!(target instanceof Node)) {
+    return;
+  }
+
+  // 检查点击目标是否在侧边栏或dock容器内
+  const storySidebar = document.querySelector('.story-sidebar');
+  const publishModal = document.querySelector('.publish-modal');
+  const userSidebar = document.querySelector('.user-sidebar');
+  const likesPanel = document.querySelector('.likes-panel');
+  const postsPanel = document.querySelector('.posts-panel');
+  const dockContainer = document.querySelector('.dock-container');
+
+  // 如果点击的是子面板内部，不处理
+  if (likesPanel?.contains(target) ||
+      postsPanel?.contains(target)) {
+    return;
+  }
+
+  // 如果点击的是用户侧边栏内部（但不是子面板），只关闭子面板
+  if (userSidebar?.contains(target)) {
+    showLikesPanel.value = false;
+    showPostsPanel.value = false;
+    return;
+  }
+
+  // 如果点击的是其他侧边栏内部或dock区域，不处理
+  if (storySidebar?.contains(target) ||
+      publishModal?.contains(target) ||
+      dockContainer?.contains(target)) {
+    return;
+  }
+
+  // 关闭所有侧边栏
+  closeStoryPanel();
+  closePublishPanel();
+  closeUserPanel();
+}
+
+// 故事列表
+const stories = computed(() => mapStore.stories);
+
+// 加载附近故事
+async function loadStories() {
+  loading.value = true;
+  try {
+    const center = extractCoordinates(mapStore.center);
+    if (!center) {
+      console.warn('[Map] Skip loadStories because center is invalid:', mapStore.center);
+      mapStore.updateStories([]);
+      return;
+    }
+
+    const response = await mapApi.exploreStories(
+      center.latitude,
+      center.longitude,
+      5000 // 5km 范围
+    );
+    // 适配后端响应格式 { code, data: { stories } }
+    console.log('[Map] exploreStories response:', response);
+
+    const stories = extractStoriesFromResponse(response);
+    if (!stories) {
+      console.error('[Map] exploreStories returned an unexpected payload:', response);
+      mapStore.updateStories([]);
+      return;
+    }
+
+    const normalizedStories = stories
+      .map((story) => normalizeStoryForMap(story))
+      .filter(Boolean);
+
+    console.log('[Map] normalized stories:', normalizedStories);
+    mapStore.updateStories(normalizedStories);
+  } catch (error) {
+    console.error('加载故事失败:', error);
+    mapStore.updateStories([]);
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 加载推荐流
+async function loadRecommendationFeed(reset = true) {
+  if (reset) {
+    feedPage.value = 1;
+    feedStories.value = [];
+    feedLoading.value = true;
+  }
+  try {
+    const center = extractCoordinates(mapStore.center) || extractCoordinates(mapStore.userLocation);
+    const lat = center?.latitude;
+    const lng = center?.longitude;
+    const res = await mapApi.getRecommendationFeed({
+      lat,
+      lng,
+      page: feedPage.value,
+      limit: 20
+    });
+    const data = res?.data ?? res;
+    const list = data?.stories ?? [];
+    const pagination = data?.pagination ?? {};
+    feedPagination.value = pagination;
+    const normalized = list.map((s) => normalizeStoryForMap(s)).filter(Boolean);
+    if (reset) {
+      feedStories.value = normalized;
+    } else {
+      feedStories.value = [...feedStories.value, ...normalized];
+    }
+  } catch (error) {
+    console.error('加载推荐流失败:', error);
+    if (reset) feedStories.value = [];
+  } finally {
+    if (reset) feedLoading.value = false;
+  }
+}
+
+async function loadMoreFeed() {
+  if (feedLoadingMore.value || !feedHasMore.value) return;
+  feedLoadingMore.value = true;
+  feedPage.value += 1;
+  try {
+    const center = extractCoordinates(mapStore.center) || extractCoordinates(mapStore.userLocation);
+    const res = await mapApi.getRecommendationFeed({
+      lat: center?.latitude,
+      lng: center?.longitude,
+      page: feedPage.value,
+      limit: 20
+    });
+    const data = res?.data ?? res;
+    const list = data?.stories ?? [];
+    feedPagination.value = data?.pagination ?? {};
+    const normalized = list.map((s) => normalizeStoryForMap(s)).filter(Boolean);
+    feedStories.value = [...feedStories.value, ...normalized];
+  } catch (error) {
+    console.error('加载更多失败:', error);
+    feedPage.value -= 1;
+  } finally {
+    feedLoadingMore.value = false;
+  }
+}
+
+// 标记点击事件
+function handleMarkerClick(data) {
+  // 记录点击位置（用于纸飞机动画起点）
+  storyClickPosition.value = {
+    x: data.screenX,
+    y: data.screenY
+  };
+  selectedStory.value = data.story;
+}
+
+// 关闭故事弹窗
+function closeStoryModal() {
+  selectedStory.value = null;
+}
+
+// 地图移动事件
+function handleMapMove(event) {
+  const center = extractCoordinates(event);
+  if (!center) {
+    console.warn('[Map] Skip invalid map move event:', event);
+    return;
+  }
+
+  mapStore.updateCenter(center.latitude, center.longitude);
+
+  const zoom = Number(event?.zoom);
+  if (Number.isFinite(zoom)) {
+    mapStore.updateZoom(zoom);
+  }
+
+  // 防抖加载
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(loadStories, 500);
+}
+
+let loadTimer = null;
+
+function extractCoordinates(location) {
+  if (!location || typeof location !== 'object') {
+    return null;
+  }
+
+  const latitude = [location.latitude, location.lat, Array.isArray(location.coordinates) ? location.coordinates[1] : undefined]
+    .find((value) => Number.isFinite(Number(value)));
+  const longitude = [location.longitude, location.lng, Array.isArray(location.coordinates) ? location.coordinates[0] : undefined]
+    .find((value) => Number.isFinite(Number(value)));
+
+  if (latitude === undefined || longitude === undefined) {
+    return null;
+  }
+
+  return {
+    latitude: Number(latitude),
+    longitude: Number(longitude)
+  };
+}
+
+function normalizeStoryForMap(story, fallbackLocation = null) {
+  if (!story || typeof story !== 'object') {
+    return null;
+  }
+
+  const coords = extractCoordinates(story.location)
+    || extractCoordinates(story)
+    || extractCoordinates(fallbackLocation);
+
+  if (!coords) {
+    console.warn('[Map] Skip story with invalid coordinates:', story);
+    return null;
+  }
+
+  return {
+    ...story,
+    location: {
+      ...(story.location || {}),
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      lat: coords.latitude,
+      lng: coords.longitude
+    }
+  };
+}
+
+function extractStoriesFromResponse(response) {
+  const candidates = [
+    response?.data?.stories,
+    response?.stories,
+    Array.isArray(response?.data) ? response.data : null,
+    Array.isArray(response) ? response : null
+  ];
+
+  return candidates.find(Array.isArray) ?? null;
+}
+
+function normalizeRandomWalkResponse(response) {
+  const candidates = [response, response?.data, response?.data?.data].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const story = candidate.story || candidate.data?.story || null;
+    const coords = extractCoordinates(candidate.location)
+      || extractCoordinates(candidate.data?.location)
+      || extractCoordinates(story?.location);
+
+    if (story && coords) {
+      return {
+        story: {
+          ...story,
+          location: {
+            ...(story.location || {}),
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            lat: coords.latitude,
+            lng: coords.longitude
+          }
+        },
+        coords
+      };
+    }
+  }
+
+  return null;
+}
+
+// 随机漫步
+async function handleRandomWalk() {
+  randomWalking.value = true;
+  try {
+    const center = extractCoordinates(mapStore.center) || extractCoordinates(mapStore.userLocation);
+    const originLatitude = center?.latitude ?? 39.9;
+    const originLongitude = center?.longitude ?? 116.4;
+    const response = await mapApi.randomWalk(originLatitude, originLongitude);
+    console.log('随机漫步响应:', response);
+    
+    // 适配后端响应格式: { code, data: { location, story } }
+    const normalized = normalizeRandomWalkResponse(response);
+    const { story, coords } = normalized || {};
+    if (!normalized) {
+      console.error('random walk response format error:', response);
+      alert('随机漫步返回数据格式错误');
+      return;
+    }
+
+    // 后端可能返回 latitude/longitude 为 null，需要从 story 中提取位置
+    let nextLatitude = coords.latitude;
+    let nextLongitude = coords.longitude;
+    
+    if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
+      // 如果 location 为空，尝试从 story.location 获取
+      if (story.location) {
+        nextLatitude = Number(story.location.lat ?? story.location.latitude);
+        nextLongitude = Number(story.location.lng ?? story.location.longitude);
+      }
+    }
+
+    if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
+      console.error('随机漫步返回的位置为空:', coords, story);
+      alert('随机漫步返回的位置信息为空');
+      return;
+    }
+
+    const location = {
+      latitude: nextLatitude,
+      longitude: nextLongitude
+    };
+    
+    // 更新中心位置
+    mapStore.updateCenter(nextLatitude, nextLongitude);
+    // 自动缩放到合适的级别（15级适合查看街景）
+    mapStore.updateZoom(15);
+    // 等待地图动画完成后再显示纸飞机
+    setTimeout(() => {
+      // 计算故事在屏幕上的位置（地图中心）
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      storyClickPosition.value = { x: centerX, y: centerY };
+      selectedStory.value = story;
+    }, 800); // 等待地图移动和缩放动画完成
+  } catch (error) {
+    console.error('随机漫步失败:', error);
+    alert('随机漫步失败，请重试');
+  } finally {
+    randomWalking.value = false;
+  }
+  isDockExpanded.value = false;
+}
+
+// 预览图片
+function handlePreviewImage({ index, images }) {
+  // TODO: 实现图片预览器
+  console.log('预览图片:', index, images);
+}
+
+// 打开精选故事
+function openFeaturedStory(story) {
+  selectedStory.value = story;
+  storyClickPosition.value = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+}
+
+// 处理点赞
+function handleStoryLike({ storyId, liked }) {
+  // 检查是否登录（游客不能点赞）
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再点赞');
+    return;
+  }
+  console.log('点赞:', storyId, liked);
+  // TODO: 调用API更新点赞
+}
+
+// 处理评论
+function handleStoryComment({ storyId, comment }) {
+  // 检查是否登录（游客不能评论）
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再评论');
+    return;
+  }
+  console.log('评论:', storyId, comment);
+  // TODO: 调用API提交评论
+  // 更新本地数据
+  const story = featuredStories.value.find(s => s.id === storyId);
+  if (story) {
+    if (!story.comments) story.comments = [];
+    story.comments.unshift(comment);
+  }
+}
+
+// 处理举报
+async function handleStoryReport({ storyId, reason, description }) {
+  // 检查是否登录（游客不能举报）
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再举报');
+    return;
+  }
+
+  try {
+    await reportApi.create('story', storyId, `${reason}: ${description}`);
+    alert('举报已提交，我们会尽快处理');
+  } catch (error) {
+    console.error('举报失败:', error);
+    alert(error.message || '举报失败，请重试');
+  }
+}
+
+// 子组件或外部触发主题变更时同步
+function handleThemeChange(theme) {
+  mapTheme.value = theme;
+  localStorage.setItem('mapTheme', theme);
+}
+
+// 获取用户位置
+function getUserLocation() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        mapStore.setUserLocation(latitude, longitude);
+        mapStore.updateCenter(latitude, longitude);
+      },
+      (error) => {
+        console.error('获取位置失败:', error);
+      }
+    );
+  }
+}
+
+function handleDocumentClick(event) {
+  const dockContainer = document.querySelector('.dock-container');
+  const target = event?.target;
+
+  if (!dockContainer || !(target instanceof Node)) {
+    return;
+  }
+
+  if (!dockContainer.contains(target)) {
+    isDockExpanded.value = false;
+  }
+}
+
+let themeAutoCheckInterval = null;
+onMounted(() => {
+  getUserLocation();
+  loadStories();
+  themeAutoCheckInterval = setInterval(() => {
+    minuteTicker.value += 1;
+  }, 60000);
+
+  // 添加全局点击事件来关闭 Dock 菜单
+  document.addEventListener('click', handleDocumentClick);
+  // --- 新增：控制欢迎界面消失的定时器 ---
+  setTimeout(() => {
+    showWelcomeOverlay.value = false;
+  }, 1100);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick);
+  clearTimeout(loadTimer);
+  if (themeAutoCheckInterval) clearInterval(themeAutoCheckInterval);
+});
+</script>
+
+<style scoped>
+
+/* --- 欢迎语遮罩层样式（电影感落日版） --- */
+.welcome-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 模拟落日余晖：从暮霭紫过渡到落日橘，低饱和度更显宁静高级 */
+  background: linear-gradient(135deg, #4A4063 0%, #B85B56 50%, #E08E6D 100%);
+}
+
+.welcome-content {
+  text-align: center;
+  padding: 0 40px;
+}
+
+.welcome-text {
+  /* 字体栈：优先尝试 Matisse-EB，若无则优雅降级到加粗的华文中宋 */
+  font-family: 'Matisse-EB', 'FOT-MatissePro-EB', 'STZhongsong', '华文中宋', 'Songti SC', serif;
+  font-size: 48px; /* 字号再放大，配合衬线体体现张力 */
+  font-weight: 900; /* 极致加粗 */
+  letter-spacing: 4px;
+  line-height: 1.5;
+  margin: 0;
+  
+  /* 摒弃花哨渐变，使用纯净的米白色，带一点点极柔和的暗影增加层次 */
+  color: #FDFDFD;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  
+  /* 电影字幕般的缓慢浮现效果 */
+  opacity: 0;
+  transform: translateY(15px);
+  animation: textCinematicShow 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation-delay: 0.2s; /* 略微延迟，等背景出来后再出字幕 */
+}
+
+/* 纯净的浮现动画 */
+@keyframes textCinematicShow {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- 丝滑进退场动画 --- */
+/* 增加动画时长，让退场像坠入梦境一样缓慢散开 */
+.welcome-fade-enter-active,
+.welcome-fade-leave-active {
+  transition: all 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.welcome-fade-enter-from,
+.welcome-fade-leave-to {
+  opacity: 0;
+  transform: scale(1.04); /* 退场时微微放大 */
+}
+
+.map-page {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.map-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  background: #e8e8e8;
+}
+
+.map-container :deep(.amap-container) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.story-sidebar {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  right: auto;
+  width: min(980px, calc(100vw - 48px));
+  max-height: min(90vh, 960px);
+  border-radius: 36px;
+  border: 1px solid rgba(196, 142, 48, 0.36);
+  background: linear-gradient(160deg, rgba(18, 23, 37, 0.96) 0%, rgba(31, 42, 64, 0.97) 56%, rgba(17, 25, 42, 0.98) 100%);
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translate(-50%, -50%) scale(0.96);
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease,
+    visibility 0.26s ease;
+  z-index: 340;
+  display: flex;
+  flex-direction: column;
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.story-sidebar.show-sidebar {
+  transform: translate(-50%, -50%) scale(1);
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 1;
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 100vmax rgba(8, 11, 19, 0.46);
+}
+
+.story-sidebar::before,
+.story-sidebar::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.story-sidebar::before {
+  inset: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(199, 151, 60, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08) 0%, transparent 24%),
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.03) 48%, transparent 100%);
+  z-index: 0;
+}
+
+.story-sidebar::after {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.26s ease;
+  background:
+    radial-gradient(circle at top, rgba(255, 229, 176, 0.12) 0%, transparent 30%),
+    rgba(8, 11, 19, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.story-sidebar.show-sidebar::after {
+  opacity: 1;
+}
+
+.sidebar-header {
+  position: relative;
+  z-index: 1;
+  padding: 28px 28px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-right: 108px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.sidebar-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.tab-btn.active {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.story-sidebar .close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  min-width: 88px;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(13, 19, 34, 0.82);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.story-sidebar .close-btn span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 100%;
+  width: 100%;
+  transform: translate(-0.25px, -1.25px);
+}
+
+.story-sidebar .close-btn:hover {
+  background: rgba(26, 35, 58, 0.96);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  z-index: 1;
+  padding: 18px 28px 28px;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.empty .hint {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.6;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.story-list {
+  padding-bottom: 80px;
+}
+
+.load-more-wrap {
+  padding: 16px;
+  text-align: center;
+}
+
+.load-more-btn {
+  padding: 10px 24px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 精选故事卡片 */
+.featured-story-card {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: all 0.3s;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.featured-story-card:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.featured-image {
+  position: relative;
+  height: 120px;
+}
+
+.featured-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.featured-badges {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.featured-badges .badge {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.featured-badges .badge.featured {
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: white;
+}
+
+.featured-badges .badge.pinned {
+  background: #667eea;
+  color: white;
+}
+
+.featured-content {
+  padding: 12px;
+}
+
+.featured-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.6;
+  margin: 0 0 10px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.featured-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.featured-meta .emotion {
+  font-size: 14px;
+}
+
+/* 公告列表 */
+.announcement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.announcement-card {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  border-left: 3px solid #667eea;
+  transition: all 0.3s;
+}
+
+.announcement-card:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.announcement-card.emotion {
+  border-left-color: #e74c3c;
+}
+
+.announcement-card.feature {
+  border-left-color: #f39c12;
+}
+
+.announcement-card.warning {
+  border-left-color: #f39c12;
+}
+
+.ann-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.ann-type-badge {
+  font-size: 16px;
+}
+
+.ann-time {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ann-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 8px 0;
+}
+
+.ann-content {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.dock-container {
+  --dock-main-gradient: linear-gradient(135deg, rgba(19, 30, 61, 0.94) 0%, rgba(50, 26, 66, 0.96) 52%, rgba(108, 54, 61, 0.96) 100%);
+  --dock-main-shadow: rgba(8, 13, 29, 0.34);
+  --dock-main-border: rgba(255, 255, 255, 0.16);
+  --dock-info-bg: linear-gradient(145deg, rgba(8, 12, 25, 0.97) 0%, rgba(17, 24, 45, 0.95) 100%);
+  --dock-info-border: rgba(255, 230, 186, 0.12);
+  --dock-info-kicker: rgba(255, 214, 143, 0.9);
+  --dock-info-text: rgba(255, 255, 255, 0.76);
+  --dock-card-surface: linear-gradient(160deg, #f5ead5 0%, #eddcc0 58%, #e6cfad 100%);
+  --dock-card-border: rgba(181, 132, 42, 0.56);
+  --dock-card-frame: rgba(189, 146, 61, 0.44);
+  --dock-card-pattern: rgba(147, 111, 48, 0.18);
+  --dock-card-edge-ring: rgba(214, 166, 75, 0.18);
+  --dock-card-edge-glow: rgba(233, 193, 114, 0.18);
+  --dock-card-order: rgba(27, 33, 52, 0.44);
+  --dock-card-subtitle: rgba(27, 33, 52, 0.72);
+  --dock-card-icon-bg: linear-gradient(145deg, rgba(255, 248, 234, 0.9) 0%, rgba(232, 214, 186, 0.82) 100%);
+  position: fixed;
+  bottom: 32px;
+  right: 96px;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 18px;
+  z-index: 200;
+  transition: all 0.3s ease;
+}
+
+.dock-container.dock-light {
+  --dock-main-gradient: linear-gradient(135deg, rgba(183, 108, 58, 0.94) 0%, rgba(204, 137, 77, 0.97) 48%, rgba(118, 78, 45, 0.94) 100%);
+  --dock-main-shadow: rgba(72, 41, 15, 0.28);
+  --dock-main-border: rgba(255, 248, 231, 0.34);
+  --dock-info-bg: linear-gradient(145deg, rgba(63, 41, 22, 0.96) 0%, rgba(102, 69, 36, 0.94) 100%);
+  --dock-info-border: rgba(255, 231, 188, 0.24);
+  --dock-info-kicker: rgba(255, 216, 151, 0.96);
+  --dock-info-text: rgba(255, 246, 229, 0.82);
+  --dock-card-surface: linear-gradient(160deg, #faefd9 0%, #f0dfbf 54%, #e5c996 100%);
+  --dock-card-border: rgba(194, 139, 39, 0.64);
+  --dock-card-frame: rgba(203, 154, 53, 0.5);
+  --dock-card-pattern: rgba(155, 101, 34, 0.16);
+  --dock-card-edge-ring: rgba(221, 170, 72, 0.22);
+  --dock-card-edge-glow: rgba(241, 199, 114, 0.22);
+  --dock-card-order: rgba(64, 43, 21, 0.42);
+  --dock-card-subtitle: rgba(64, 43, 21, 0.72);
+  --dock-card-icon-bg: linear-gradient(145deg, rgba(255, 247, 228, 0.9) 0%, rgba(234, 214, 180, 0.82) 100%);
+}
+
+.dock-container.dock-dark {
+  --dock-main-gradient: linear-gradient(135deg, rgba(28, 34, 63, 0.96) 0%, rgba(40, 56, 96, 0.96) 48%, rgba(16, 22, 44, 0.98) 100%);
+  --dock-main-shadow: rgba(5, 8, 20, 0.42);
+  --dock-main-border: rgba(194, 214, 255, 0.18);
+  --dock-info-bg: linear-gradient(145deg, rgba(9, 14, 31, 0.98) 0%, rgba(18, 28, 57, 0.96) 100%);
+  --dock-info-border: rgba(158, 192, 255, 0.18);
+  --dock-info-kicker: rgba(168, 204, 255, 0.92);
+  --dock-info-text: rgba(219, 229, 255, 0.78);
+  --dock-card-surface: linear-gradient(160deg, #16213d 0%, #1d2d54 54%, #243865 100%);
+  --dock-card-border: rgba(139, 171, 235, 0.28);
+  --dock-card-frame: rgba(139, 171, 235, 0.2);
+  --dock-card-pattern: rgba(139, 171, 235, 0.16);
+  --dock-card-edge-ring: rgba(0, 0, 0, 0);
+  --dock-card-edge-glow: rgba(0, 0, 0, 0);
+  --dock-card-order: rgba(220, 231, 255, 0.38);
+  --dock-card-subtitle: rgba(220, 231, 255, 0.72);
+  --dock-card-icon-bg: linear-gradient(145deg, rgba(27, 42, 79, 0.92) 0%, rgba(39, 59, 108, 0.86) 100%);
+}
+
+
+
+.dock-container.show-sidebar {
+  right: calc(380px + 96px);
+}
+
+.dock-container.show-user-sidebar {
+  right: calc(320px + 96px);
+}
+
+.dock-container.locked {
+  opacity: 0.72;
+}
+
+.dock-container.locked .dock-main,
+.dock-container.locked .dock-card,
+.dock-container.locked .dock-card-anchor {
+  pointer-events: none;
+}
+
+.dock-container.locked .dock-main {
+  cursor: not-allowed;
+  box-shadow: 0 12px 28px rgba(8, 13, 29, 0.24);
+}
+
+.dock-menu {
+  position: fixed;
+  left: 50%;
+  bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, 20px) scale(0.92);
+  transform-origin: center bottom;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.32s ease, transform 0.46s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.32s ease;
+  z-index: 210;
+}
+
+.dock-menu.expanded {
+  transform: translate(-50%, 0) scale(1);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.dock-main {
+  min-width: 154px;
+  height: 76px;
+  border-radius: 24px;
+  padding: 0 20px 0 16px;
+  background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.22) 0%, transparent 44%), var(--dock-main-gradient);
+  color: white;
+  box-shadow: 0 18px 40px var(--dock-main-shadow);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid var(--dock-main-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.dock-main:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 44px rgba(8, 13, 29, 0.42);
+}
+
+.dock-main.expanded {
+  box-shadow: 0 24px 52px rgba(8, 13, 29, 0.48);
+}
+
+.dock-main-symbol {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.dock-main-text {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.dock-card-info {
+  position: absolute;
+  z-index: 180;
+  min-height: 144px;
+  padding: 20px 24px 22px;
+  border-radius: 24px;
+  background: var(--dock-info-bg);
+  border: 1px solid var(--dock-info-border);
+  box-shadow: 0 24px 42px rgba(5, 9, 20, 0.42);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  color: #f7f2eb;
+  transform: translateY(18px) scale(0.96);
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.28s ease,
+    transform 0.44s cubic-bezier(0.16, 1, 0.3, 1),
+    left 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+    top 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dock-card-info::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top right, rgba(255, 214, 143, 0.12) 0%, transparent 28%),
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.04) 48%, transparent 100%);
+  pointer-events: none;
+}
+
+.dock-card-info.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.dock-card-info-kicker {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dock-info-kicker);
+}
+
+.dock-card-info h4 {
+  margin: 0 0 10px 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.dock-card-info p:last-child {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--dock-info-text);
+}
+
+.dock-card-stack {
+  position: relative;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.dock-card-anchor {
+  display: block;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 244px;
+  height: 344px;
+  border-radius: 30px;
+  opacity: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translate3d(var(--spread-x), var(--spread-y), 0) rotate(var(--spread-rotate));
+  transform-origin: center bottom;
+  z-index: 12;
+}
+
+.dock-card {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 244px;
+  height: 344px;
+  padding: 20px 20px 22px;
+  border-radius: 30px;
+  border: 1px solid var(--dock-card-border);
+  background: var(--dock-card-surface);
+  box-shadow:
+    0 20px 38px rgba(8, 12, 24, 0.26),
+    0 0 0 1px var(--dock-card-edge-ring),
+    0 0 22px -6px var(--dock-card-edge-glow),
+    inset 0 0 0 2px rgba(255, 246, 223, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  color: var(--card-ink);
+  cursor: pointer;
+  overflow: visible;
+  transform: translate3d(var(--peek-x), var(--peek-y), 0) rotate(var(--peek-rotate));
+  transform-origin: center bottom;
+  opacity: 0;
+  pointer-events: auto;
+  will-change: transform, box-shadow, opacity, filter;
+  transition:
+    transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.52s ease,
+    filter 0.52s ease,
+    opacity 0.32s ease,
+    border-color 0.52s ease;
+}
+
+.dock-card-body {
+  position: relative;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.dock-card::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border-radius: 22px;
+  border: 1px solid var(--dock-card-frame);
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.2) 0 18%, transparent 18.5%),
+    radial-gradient(circle at center, transparent 0 39%, var(--dock-card-pattern) 39.5%, transparent 40.5%),
+    linear-gradient(0deg, transparent calc(50% - 1px), var(--dock-card-pattern) 50%, transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent calc(50% - 1px), var(--dock-card-pattern) 50%, transparent calc(50% + 1px));
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.dock-card::after {
+  content: '';
+  position: absolute;
+  inset: 24px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top center, rgba(255, 255, 255, 0.28) 0%, transparent 22%),
+    repeating-linear-gradient(135deg, rgba(147, 111, 48, 0.03) 0 6px, rgba(255, 255, 255, 0.03) 6px 12px);
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+.dock-menu.expanded .dock-card {
+  opacity: 1;
+  transform: translate3d(var(--spread-x), var(--spread-y), 0) rotate(var(--spread-rotate));
+  transition-delay: calc(var(--index) * 62ms);
+  z-index: var(--card-z);
+}
+
+.dock-card-stack.selection-motion .dock-card {
+  transition-delay: 0ms !important;
+}
+
+.dock-card-stack.selection-motion .dock-card.drawing {
+  transition-delay: 85ms, 0ms, 0ms, 0ms, 0ms !important;
+}
+
+.dock-menu.expanded .dock-card:nth-child(odd) {
+  transition-duration: 0.62s;
+}
+
+.dock-menu.expanded .dock-card.drawing {
+  transform: translate3d(var(--prep-x), var(--prep-y), 0) rotate(var(--prep-rotate)) scale(var(--prep-scale));
+  box-shadow:
+    0 22px 40px rgba(8, 12, 24, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.48),
+    inset 0 0 0 2px rgba(255, 248, 227, 0.8);
+  border-color: rgba(255, 255, 255, 0.68);
+  filter: saturate(1.04) brightness(1.01);
+  transition-duration: 0.24s, 0.28s, 0.28s, 0.18s, 0.28s;
+  transition-timing-function: cubic-bezier(0.32, 0.94, 0.48, 1), ease, ease, ease, ease;
+  z-index: var(--card-z) !important;
+}
+
+.dock-menu.expanded .dock-card.lifting {
+  transform: translate3d(var(--draw-x), var(--draw-y), 0) rotate(var(--draw-rotate)) scale(var(--draw-scale));
+  box-shadow:
+    0 26px 48px rgba(8, 12, 24, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.78),
+    0 0 22px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 2px rgba(255, 248, 227, 0.86);
+  border-color: rgba(255, 255, 255, 0.82);
+  filter: saturate(1.1) brightness(1.02);
+  transition-duration: 0.24s, 0.22s, 0.22s, 0.16s, 0.22s;
+  transition-timing-function: cubic-bezier(0.2, 0.88, 0.24, 1), ease, ease, ease, ease;
+  z-index: 116 !important;
+}
+
+.dock-menu.expanded .dock-card.active {
+  transform: translate3d(var(--hover-x), var(--hover-y), 0) rotate(var(--hover-rotate)) scale(var(--hover-scale));
+  box-shadow:
+    0 26px 48px rgba(8, 12, 24, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.78),
+    0 0 22px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 2px rgba(255, 248, 227, 0.86);
+  border-color: rgba(255, 255, 255, 0.82);
+  filter: saturate(1.1) brightness(1.02);
+  transition-duration: 0.16s, 0.22s, 0.22s, 0.16s, 0.22s;
+  z-index: 116 !important;
+}
+
+.dock-menu.expanded .dock-card.returning {
+  transition-duration: 0.28s, 0.28s, 0.28s, 0.2s, 0.28s;
+  transition-timing-function: cubic-bezier(0.42, 0, 0.58, 1), ease, ease, ease, ease;
+}
+
+.dock-card:focus {
+  outline: none;
+}
+
+.dock-card.disabled {
+  opacity: 0.72;
+  filter: grayscale(0.18);
+  cursor: not-allowed;
+}
+
+.dock-card.disabled:hover,
+.dock-card.disabled:focus {
+  transform: translate3d(var(--spread-x), var(--spread-y), 0) rotate(var(--spread-rotate));
+  box-shadow:
+    0 20px 38px rgba(8, 12, 24, 0.26),
+    inset 0 0 0 2px rgba(255, 246, 223, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  filter: grayscale(0.18);
+  animation: none;
+}
+
+.dock-card-ripple {
+  position: absolute;
+  inset: -10px;
+  border-radius: 36px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 0 18px rgba(255, 255, 255, 0.22);
+  opacity: 0;
+  transform: scale(0.96);
+  pointer-events: none;
+}
+
+.dock-card.rippling .dock-card-ripple {
+  animation: dockCardRipple 0.5s ease-out forwards;
+}
+
+@keyframes dockCardRipple {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
+  70% {
+    opacity: 0.28;
+    transform: scale(1.16);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.24);
+  }
+}
+
+@keyframes dockCardHoverWobble {
+  0%,
+  100% {
+    transform: translate3d(var(--hover-x), var(--hover-y), 0) rotate(calc(var(--hover-rotate) - 0.45deg)) scale(var(--hover-scale));
+  }
+  18% {
+    transform: translate3d(calc(var(--hover-x) - 1px), calc(var(--hover-y) - 2px), 0) rotate(calc(var(--hover-rotate) + 0.25deg)) scale(var(--hover-scale));
+  }
+  50% {
+    transform: translate3d(calc(var(--hover-x) + 2px), calc(var(--hover-y) - 3px), 0) rotate(calc(var(--hover-rotate) + 0.8deg)) scale(var(--hover-scale));
+  }
+  78% {
+    transform: translate3d(calc(var(--hover-x) - 1px), calc(var(--hover-y) - 1px), 0) rotate(calc(var(--hover-rotate) - 0.65deg)) scale(var(--hover-scale));
+  }
+}
+
+.dock-card-corner {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--dock-card-frame);
+  z-index: 2;
+}
+
+.dock-card .corner-top-right {
+  top: 14px;
+  right: 14px;
+  border-left: none;
+  border-bottom: none;
+  border-radius: 0 12px 0 0;
+}
+
+.dock-card .corner-bottom-left {
+  bottom: 14px;
+  left: 14px;
+  border-top: none;
+  border-right: none;
+  border-radius: 0 0 0 12px;
+}
+
+.dock-card-suit,
+.dock-card-order {
+  position: absolute;
+  z-index: 2;
+}
+
+.dock-card-suit {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--card-accent);
+}
+
+.dock-card-order {
+  top: 18px;
+  right: 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--dock-card-order);
+}
+
+.dock-card .suit-top {
+  top: 14px;
+  left: 16px;
+}
+
+.dock-card .suit-bottom {
+  right: 16px;
+  bottom: 14px;
+  transform: rotate(180deg);
+}
+
+.dock-card-face {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.dock-card-pattern {
+  position: absolute;
+  inset: 28px 26px;
+  border-radius: 22px;
+  border: 1px solid var(--dock-card-pattern);
+  background:
+    radial-gradient(circle at center, transparent 0 35px, var(--dock-card-pattern) 35.5px, transparent 36.5px),
+    radial-gradient(circle at center, var(--dock-card-pattern) 0 2px, transparent 2.5px),
+    linear-gradient(0deg, transparent calc(50% - 1px), var(--dock-card-pattern) 50%, transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent calc(50% - 1px), var(--dock-card-pattern) 50%, transparent calc(50% + 1px));
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.dock-card-icon {
+  width: 88px;
+  height: 88px;
+  border-radius: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  color: var(--card-accent);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.2) 34%, transparent 35%),
+    var(--dock-card-icon-bg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 8px 18px rgba(88, 61, 18, 0.12);
+}
+
+.dock-card-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.dock-card-subtitle {
+  max-width: 146px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--dock-card-subtitle);
+}
+
+@media (max-width: 960px) {
+  .dock-card-info {
+    display: none;
+  }
+
+  .dock-card {
+    width: 186px;
+    height: 262px;
+  }
+
+  .dock-card-icon {
+    width: 68px;
+    height: 68px;
+    font-size: 36px;
+  }
+}
+
+.publish-modal-enter-active,
+.publish-modal-leave-active {
+  transition: opacity 0.28s ease;
+}
+
+.publish-modal-enter-active .publish-modal,
+.publish-modal-leave-active .publish-modal {
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease;
+}
+
+.publish-modal-enter-from,
+.publish-modal-leave-to {
+  opacity: 0;
+}
+
+.publish-modal-enter-from .publish-modal,
+.publish-modal-leave-to .publish-modal {
+  opacity: 0;
+  transform: translateY(26px) scale(0.96);
+}
+
+.publish-modal-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 340;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 24px;
+  background:
+    radial-gradient(circle at top, rgba(255, 229, 176, 0.16) 0%, transparent 30%),
+    rgba(8, 11, 19, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.publish-modal-shell.pick-mode {
+  pointer-events: none;
+  align-items: flex-end;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.publish-modal {
+  position: relative;
+  width: min(980px, calc(100vw - 48px));
+  max-height: min(90vh, 960px);
+  border-radius: 36px;
+  overflow: hidden;
+  border: 1px solid rgba(196, 142, 48, 0.38);
+  background:
+    linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 52%, rgba(229, 206, 166, 0.98) 100%);
+  box-shadow:
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.publish-modal-shell.pick-mode .publish-modal {
+  width: min(420px, calc(100vw - 28px));
+  max-height: none;
+  pointer-events: none;
+  overflow: visible;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.publish-modal::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(199, 151, 60, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.14) 0%, transparent 24%),
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.05) 48%, transparent 100%);
+  pointer-events: none;
+}
+
+.publish-modal.collapsed::before {
+  display: none;
+}
+
+.publish-modal.dark {
+  border-color: rgba(141, 176, 235, 0.24);
+  background:
+    linear-gradient(160deg, rgba(15, 22, 40, 0.98) 0%, rgba(22, 34, 58, 0.98) 52%, rgba(29, 46, 78, 0.98) 100%);
+  box-shadow:
+    0 40px 80px -32px rgba(3, 6, 15, 0.64),
+    0 0 0 1px rgba(182, 208, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.publish-modal.dark::before {
+  border-color: rgba(141, 176, 235, 0.14);
+}
+
+.publish-modal-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  min-width: 88px;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.publish-modal-close:hover {
+  transform: translateY(-1px);
+  background: rgba(53, 34, 13, 0.92);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.publish-modal.dark .publish-modal-close {
+  background: rgba(10, 17, 33, 0.82);
+  border-color: rgba(198, 219, 255, 0.22);
+  color: #eef4ff;
+}
+
+.publish-modal.dark .publish-modal-close:hover {
+  background: rgba(18, 30, 58, 0.94);
+  border-color: rgba(198, 219, 255, 0.42);
+}
+
+.publish-modal-close .close-icon {
+  line-height: 1;
+  transform: translateY(-1px);
+  font-size: 22px;
+}
+
+.publish-modal-close .close-text {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.publish-modal-scroll {
+  position: relative;
+  z-index: 1;
+  max-height: min(90vh, 960px);
+  overflow-y: auto;
+  padding: 28px;
+}
+
+.publish-pick-dock {
+  pointer-events: auto;
+  width: 100%;
+  padding: 16px 18px 18px;
+  border: 1px solid rgba(255, 245, 228, 0.22);
+  border-radius: 24px 24px 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  background:
+    linear-gradient(160deg, rgba(36, 23, 9, 0.94) 0%, rgba(67, 42, 18, 0.96) 100%);
+  color: #fff8ef;
+  box-shadow:
+    0 -10px 36px -18px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: transform 0.22s ease, background 0.22s ease;
+}
+
+.publish-pick-dock:hover {
+  transform: translateY(-2px);
+}
+
+.publish-modal.dark .publish-pick-dock {
+  border-color: rgba(198, 219, 255, 0.18);
+  background:
+    linear-gradient(160deg, rgba(10, 17, 33, 0.94) 0%, rgba(17, 30, 58, 0.96) 100%);
+  color: #eef4ff;
+}
+
+.pick-dock-handle {
+  width: 62px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.46);
+  align-self: center;
+  margin-bottom: 4px;
+}
+
+.publish-pick-dock strong {
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.publish-pick-dock span:last-child {
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 248, 239, 0.76);
+}
+
+.publish-modal.dark .publish-pick-dock span:last-child {
+  color: rgba(238, 244, 255, 0.74);
+}
+
+.publish-pick-confirm {
+  position: fixed;
+  z-index: 181;
+  width: 220px;
+  padding: 14px 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(199, 151, 60, 0.3);
+  background:
+    linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 100%);
+  box-shadow:
+    0 18px 40px -24px rgba(6, 10, 20, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.32);
+  pointer-events: auto;
+}
+
+.publish-pick-confirm p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4a3520;
+}
+
+.publish-pick-confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.publish-pick-confirm-actions button {
+  flex: 1;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.publish-pick-confirm-actions button:hover {
+  transform: translateY(-1px);
+}
+
+.publish-pick-confirm .confirm-btn {
+  color: #fff8ef;
+  background: linear-gradient(135deg, #8c5c22 0%, #c68e30 100%);
+  box-shadow: 0 10px 20px -14px rgba(140, 92, 34, 0.76);
+}
+
+.publish-pick-confirm .cancel-btn {
+  color: #6b4d2d;
+  border-color: rgba(165, 122, 44, 0.28);
+  background: rgba(255, 249, 240, 0.96);
+}
+
+@media (max-width: 768px) {
+  .publish-modal-shell {
+    padding: 16px;
+    align-items: stretch;
+  }
+
+  .publish-modal-shell.pick-mode {
+    padding: 0 12px 0;
+    align-items: flex-end;
+  }
+
+  .publish-modal {
+    width: 100%;
+    max-height: 100%;
+    border-radius: 28px;
+  }
+
+  .publish-modal::before {
+    inset: 10px;
+    border-radius: 22px;
+  }
+
+  .publish-modal-scroll {
+    max-height: 100%;
+    padding: 18px 16px 20px;
+  }
+
+  .publish-modal-close {
+    top: 14px;
+    right: 14px;
+    min-width: 46px;
+    padding: 0;
+  }
+
+  .publish-modal-close .close-text {
+    display: none;
+  }
+
+  .publish-modal-shell.pick-mode .publish-modal {
+    width: calc(100vw - 24px);
+  }
+
+  .publish-pick-confirm {
+    width: min(220px, calc(100vw - 32px));
+  }
+}
+
+/* 用户个人信息侧边栏 */
+.user-sidebar {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(900px, calc(100vw - 48px));
+  max-height: min(90vh, 960px);
+  border-radius: 36px;
+  border: 1px solid rgba(196, 142, 48, 0.34);
+  background: linear-gradient(160deg, rgba(18, 23, 37, 0.97) 0%, rgba(31, 42, 64, 0.98) 56%, rgba(17, 25, 42, 0.98) 100%);
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translate(-50%, -50%) scale(0.96);
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease,
+    visibility 0.26s ease;
+  z-index: 341;
+  display: flex;
+  flex-direction: column;
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.user-sidebar.show-sidebar {
+  transform: translate(-50%, -50%) scale(1);
+  visibility: visible;
+  pointer-events: auto;
+  opacity: 1;
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 100vmax rgba(8, 11, 19, 0.46);
+}
+
+.user-sidebar::before,
+.user-sidebar::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.user-sidebar::before {
+  inset: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(199, 151, 60, 0.16);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08) 0%, transparent 24%),
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.03) 48%, transparent 100%);
+  z-index: 0;
+}
+
+.user-sidebar::after {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.26s ease;
+  background:
+    radial-gradient(circle at top, rgba(255, 229, 176, 0.12) 0%, transparent 30%),
+    rgba(8, 11, 19, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.user-sidebar.show-sidebar::after {
+  opacity: 1;
+}
+
+.user-sidebar-header {
+  position: relative;
+  z-index: 1;
+  padding: 28px 28px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-right: 108px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.user-sidebar-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.user-sidebar .close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  min-width: 88px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(13, 19, 34, 0.82);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.user-sidebar .close-btn:hover {
+  background: rgba(26, 35, 58, 0.96);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+.user-sidebar .close-btn span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 100%;
+  width: 100%;
+  transform: translate(-0.25px, -1.25px);
+}
+
+.user-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  z-index: 1;
+  padding: 20px 28px 28px;
+}
+
+/* 游客模式样式 */
+.guest-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 0;
+}
+
+.guest-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+}
+
+.guest-info {
+  text-align: center;
+}
+
+.guest-info h4 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.guest-info p {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.guest-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  margin-top: 16px;
+}
+
+.guest-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.guest-action-btn.login-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #ffffff;
+}
+
+.guest-action-btn.login-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.guest-action-btn.guest-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.guest-action-btn.guest-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.guest-action-btn.logout-btn {
+  background: rgba(244, 67, 54, 0.2);
+  color: #ffffff;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.guest-action-btn.logout-btn:hover {
+  background: rgba(244, 67, 54, 0.3);
+}
+
+.guest-action-btn .btn-icon {
+  font-size: 18px;
+}
+
+.user-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.user-avatar-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-avatar-large {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid rgba(102, 126, 234, 0.5);
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.user-avatar-large:hover {
+  border-color: rgba(102, 126, 234, 0.8);
+  box-shadow: 0 6px 24px rgba(102, 126, 234, 0.5);
+}
+
+.user-avatar-large img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.user-avatar-large:hover img {
+  transform: scale(1.05);
+}
+
+.avatar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.user-avatar-large:hover .avatar-overlay {
+  opacity: 1;
+}
+
+.avatar-edit-icon {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.avatar-edit-text {
+  font-size: 12px;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.avatar-upload-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.upload-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.avatar-error {
+  font-size: 12px;
+  color: #f44336;
+  padding: 4px 8px;
+  background: rgba(244, 67, 54, 0.1);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.user-info-details {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.info-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.info-value {
+  font-size: 14px;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.info-item.editable {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.info-item.editable .info-label {
+  margin-bottom: 4px;
+}
+
+.info-value-with-edit {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(102, 126, 234, 0.2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.edit-btn:hover {
+  background: rgba(102, 126, 234, 0.4);
+}
+
+.username-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.username-edit-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid rgba(102, 126, 234, 0.3);
+  border-radius: 8px;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.username-edit-form input:focus {
+  outline: none;
+  border-color: rgba(102, 126, 234, 0.6);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.username-edit-form input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.username-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.username-actions button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.username-actions .save-btn {
+  background: rgba(76, 175, 80, 0.3);
+  color: #4caf50;
+}
+
+.username-actions .save-btn:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.5);
+}
+
+.username-actions .save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.username-actions .cancel-btn {
+  background: rgba(244, 67, 54, 0.3);
+  color: #f44336;
+}
+
+.username-actions .cancel-btn:hover {
+  background: rgba(244, 67, 54, 0.5);
+}
+
+.username-error {
+  font-size: 12px;
+  color: #f44336;
+  padding: 4px 8px;
+  background: rgba(244, 67, 54, 0.1);
+  border-radius: 4px;
+}
+
+.password-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eye-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.eye-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.password-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.password-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.password-input-wrapper input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 2px solid rgba(102, 126, 234, 0.3);
+  border-radius: 8px;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.password-input-wrapper input:focus {
+  outline: none;
+  border-color: rgba(102, 126, 234, 0.6);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.password-input-wrapper input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.eye-btn-small {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.eye-btn-small:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.password-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.password-actions button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.password-actions .save-btn {
+  background: rgba(76, 175, 80, 0.3);
+  color: #4caf50;
+}
+
+.password-actions .save-btn:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.5);
+}
+
+.password-actions .save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.password-actions .cancel-btn {
+  background: rgba(244, 67, 54, 0.3);
+  color: #f44336;
+}
+
+.password-actions .cancel-btn:hover {
+  background: rgba(244, 67, 54, 0.5);
+}
+
+.password-error {
+  font-size: 12px;
+  color: #f44336;
+  padding: 4px 8px;
+  background: rgba(244, 67, 54, 0.1);
+  border-radius: 4px;
+}
+
+.user-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.user-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #ffffff;
+}
+
+.user-action-btn:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+  border-color: rgba(102, 126, 234, 0.5);
+  transform: translateX(4px);
+}
+
+.user-action-btn .btn-icon {
+  font-size: 20px;
+}
+
+.user-action-btn .btn-text {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.user-action-btn.active {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+  border-color: rgba(102, 126, 234, 0.8);
+  box-shadow: 0 0 15px rgba(102, 126, 234, 0.3);
+}
+
+.logout-action-btn {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.2) 0%, rgba(244, 67, 54, 0.1) 100%) !important;
+  border-color: rgba(244, 67, 54, 0.3) !important;
+}
+
+.logout-action-btn:hover {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.3) 0%, rgba(244, 67, 54, 0.2) 100%) !important;
+  border-color: rgba(244, 67, 54, 0.5) !important;
+}
+
+/* 用户子侧边栏（我的点赞/发布） */
+.user-sub-sidebar {
+  position: fixed;
+  right: 320px; /* 用户侧边栏宽度 */
+  top: 0;
+  bottom: 0;
+  width: 360px;
+  background: linear-gradient(135deg, rgba(40, 40, 45, 0.95) 0%, rgba(30, 30, 35, 0.98) 100%);
+  box-shadow: -2px 0 20px rgba(0, 0, 0, 0.4);
+  transform: translateX(100%);
+  transition: transform 0.3s ease, visibility 0.3s ease;
+  z-index: 149; /* 比用户侧边栏低一级 */
+  display: flex;
+  flex-direction: column;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.user-sub-sidebar.show-panel {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.sub-sidebar-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sub-sidebar-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.user-sub-sidebar .close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-sub-sidebar .close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.user-sub-sidebar .close-btn span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 100%;
+  width: 100%;
+  transform: translate(-0.25px, -1.25px);
+}
+
+.sub-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.user-sub-sidebar {
+  left: 50%;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(760px, calc(100vw - 64px));
+  max-height: min(78vh, 760px);
+  border-radius: 30px;
+  border: 1px solid rgba(196, 142, 48, 0.24);
+  background: linear-gradient(160deg, rgba(14, 19, 31, 0.98) 0%, rgba(24, 32, 51, 0.98) 100%);
+  box-shadow:
+    0 28px 64px -30px rgba(3, 6, 15, 0.74),
+    0 0 0 1px rgba(255, 248, 232, 0.06);
+  transform: translate(-50%, -50%) scale(0.96);
+  transition:
+    transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.24s ease,
+    visibility 0.24s ease;
+  z-index: 342;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.user-sub-sidebar.show-panel {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.sub-sidebar-header {
+  position: relative;
+  z-index: 1;
+  padding: 22px 24px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-right: 72px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.user-sub-sidebar .close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sub-sidebar-content {
+  position: relative;
+  z-index: 1;
+  padding: 18px 20px 20px;
+}
+
+.panel-loading,
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.panel-empty .empty-icon {
+  font-size: 48px;
+}
+
+.panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-item {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.panel-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: translateX(-2px);
+}
+
+.item-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item-author {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.item-time {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.item-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  margin-left: auto;
+  opacity: 0.7;
+}
+
+.item-action-btn:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.item-action-btn.unlike-btn:hover {
+  background: rgba(244, 67, 54, 0.2);
+}
+
+.item-action-btn.delete-btn:hover {
+  background: rgba(244, 67, 54, 0.2);
+}
+
+.item-content {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.5;
+  margin: 0 0 10px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.item-images {
+  margin-bottom: 10px;
+}
+
+.item-images img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.item-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.item-location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.item-likes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.panel-loading-more,
+.panel-no-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.story-modal-shell,
+.user-modal-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 24px;
+  background:
+    radial-gradient(circle at top, rgba(255, 229, 176, 0.16) 0%, transparent 30%),
+    rgba(8, 11, 19, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.story-modal-shell {
+  z-index: 338;
+}
+
+.user-modal-shell {
+  z-index: 339;
+}
+
+.publish-modal-enter-active .story-sidebar,
+.publish-modal-leave-active .story-sidebar,
+.publish-modal-enter-active .user-sidebar,
+.publish-modal-leave-active .user-sidebar {
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease;
+}
+
+.publish-modal-enter-from .story-sidebar,
+.publish-modal-leave-to .story-sidebar,
+.publish-modal-enter-from .user-sidebar,
+.publish-modal-leave-to .user-sidebar {
+  transform: translate(-50%, -47%) scale(0.94);
+  opacity: 0;
+}
+
+.story-sidebar::after,
+.user-sidebar::after {
+  display: none;
+}
+
+.story-sidebar.show-sidebar,
+.user-sidebar.show-sidebar {
+  box-shadow:
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.story-sidebar:not(.dark),
+.user-sidebar:not(.dark),
+.user-sub-sidebar:not(.dark) {
+  border-color: rgba(196, 142, 48, 0.38);
+  background:
+    linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 52%, rgba(229, 206, 166, 0.98) 100%);
+  box-shadow:
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+  color: #3c2910;
+}
+
+.story-sidebar.dark,
+.user-sidebar.dark,
+.user-sub-sidebar.dark {
+  border-color: rgba(141, 176, 235, 0.24);
+  background:
+    linear-gradient(160deg, rgba(15, 22, 40, 0.98) 0%, rgba(22, 34, 58, 0.98) 52%, rgba(29, 46, 78, 0.98) 100%);
+  box-shadow:
+    0 40px 80px -32px rgba(3, 6, 15, 0.64),
+    0 0 0 1px rgba(182, 208, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
+}
+
+.story-sidebar:not(.dark)::before,
+.user-sidebar:not(.dark)::before,
+.user-sub-sidebar:not(.dark)::before {
+  border-color: rgba(199, 151, 60, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.14) 0%, transparent 24%),
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.05) 48%, transparent 100%);
+}
+
+.story-sidebar.dark::before,
+.user-sidebar.dark::before,
+.user-sub-sidebar.dark::before {
+  border-color: rgba(141, 176, 235, 0.14);
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08) 0%, transparent 24%),
+    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.03) 48%, transparent 100%);
+}
+
+.story-sidebar:not(.dark) .sidebar-header,
+.user-sidebar:not(.dark) .user-sidebar-header,
+.user-sub-sidebar:not(.dark) .sub-sidebar-header {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+  background: linear-gradient(180deg, rgba(255, 252, 245, 0.42) 0%, rgba(255, 245, 227, 0.14) 100%);
+}
+
+.story-sidebar.dark .sidebar-header,
+.user-sidebar.dark .user-sidebar-header,
+.user-sub-sidebar.dark .sub-sidebar-header {
+  border-bottom-color: rgba(198, 219, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.story-sidebar:not(.dark) .sidebar-header h3,
+.user-sidebar:not(.dark) .user-sidebar-header h3,
+.user-sub-sidebar:not(.dark) .sub-sidebar-header h4,
+.story-sidebar:not(.dark) .loading,
+.story-sidebar:not(.dark) .empty,
+.story-sidebar:not(.dark) .empty .hint,
+.story-sidebar:not(.dark) .featured-text,
+.story-sidebar:not(.dark) .featured-meta,
+.story-sidebar:not(.dark) .ann-title,
+.story-sidebar:not(.dark) .ann-content,
+.story-sidebar:not(.dark) .ann-time,
+.story-sidebar:not(.dark) .ann-header,
+.user-sidebar:not(.dark) .guest-info h4,
+.user-sidebar:not(.dark) .guest-info p,
+.user-sidebar:not(.dark) .info-label,
+.user-sidebar:not(.dark) .info-value,
+.user-sidebar:not(.dark) .avatar-upload-status,
+.user-sidebar:not(.dark) .avatar-edit-text,
+.user-sub-sidebar:not(.dark) .panel-loading,
+.user-sub-sidebar:not(.dark) .panel-empty,
+.user-sub-sidebar:not(.dark) .panel-loading-more,
+.user-sub-sidebar:not(.dark) .panel-no-more,
+.user-sub-sidebar:not(.dark) .item-content,
+.user-sub-sidebar:not(.dark) .item-footer,
+.user-sub-sidebar:not(.dark) .item-author,
+.user-sub-sidebar:not(.dark) .item-time {
+  color: #3c2910;
+}
+
+.story-sidebar.dark .sidebar-header h3,
+.user-sidebar.dark .user-sidebar-header h3,
+.user-sub-sidebar.dark .sub-sidebar-header h4,
+.story-sidebar.dark .loading,
+.story-sidebar.dark .empty,
+.story-sidebar.dark .empty .hint,
+.story-sidebar.dark .featured-text,
+.story-sidebar.dark .featured-meta,
+.story-sidebar.dark .ann-title,
+.story-sidebar.dark .ann-content,
+.story-sidebar.dark .ann-time,
+.story-sidebar.dark .ann-header,
+.user-sidebar.dark .guest-info h4,
+.user-sidebar.dark .guest-info p,
+.user-sidebar.dark .info-label,
+.user-sidebar.dark .info-value,
+.user-sidebar.dark .avatar-upload-status,
+.user-sidebar.dark .avatar-edit-text,
+.user-sub-sidebar.dark .panel-loading,
+.user-sub-sidebar.dark .panel-empty,
+.user-sub-sidebar.dark .panel-loading-more,
+.user-sub-sidebar.dark .panel-no-more,
+.user-sub-sidebar.dark .item-content,
+.user-sub-sidebar.dark .item-footer,
+.user-sub-sidebar.dark .item-author,
+.user-sub-sidebar.dark .item-time {
+  color: #eef4ff;
+}
+
+.story-sidebar:not(.dark) .tab-btn {
+  border-color: rgba(196, 142, 48, 0.18);
+  background: rgba(255, 250, 241, 0.42);
+  color: rgba(73, 46, 12, 0.82);
+}
+
+.story-sidebar:not(.dark) .tab-btn:hover {
+  background: rgba(255, 246, 228, 0.88);
+  color: #4b3010;
+}
+
+.story-sidebar:not(.dark) .tab-btn.active {
+  border-color: rgba(120, 83, 29, 0.28);
+  background: rgba(63, 40, 11, 0.88);
+  color: #fffaf1;
+  box-shadow: 0 18px 26px -20px rgba(0, 0, 0, 0.32);
+}
+
+.story-sidebar.dark .tab-btn {
+  border-color: rgba(198, 219, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(238, 244, 255, 0.78);
+}
+
+.story-sidebar.dark .tab-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #eef4ff;
+}
+
+.story-sidebar.dark .tab-btn.active {
+  border-color: rgba(198, 219, 255, 0.22);
+  background: rgba(10, 17, 33, 0.82);
+  color: #eef4ff;
+  box-shadow: 0 18px 26px -20px rgba(0, 0, 0, 0.4);
+}
+
+.story-sidebar:not(.dark) .close-btn,
+.user-sidebar:not(.dark) .close-btn,
+.user-sub-sidebar:not(.dark) .close-btn {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.story-sidebar:not(.dark) .close-btn:hover,
+.user-sidebar:not(.dark) .close-btn:hover,
+.user-sub-sidebar:not(.dark) .close-btn:hover {
+  background: rgba(53, 34, 13, 0.92);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.story-sidebar.dark .close-btn,
+.user-sidebar.dark .close-btn,
+.user-sub-sidebar.dark .close-btn {
+  border-color: rgba(198, 219, 255, 0.22);
+  background: rgba(10, 17, 33, 0.82);
+  color: #eef4ff;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.story-sidebar.dark .close-btn:hover,
+.user-sidebar.dark .close-btn:hover,
+.user-sub-sidebar.dark .close-btn:hover {
+  background: rgba(18, 30, 58, 0.94);
+  border-color: rgba(198, 219, 255, 0.42);
+}
+
+.story-sidebar:not(.dark) .featured-story-card,
+.story-sidebar:not(.dark) .announcement-card,
+.user-sidebar:not(.dark) .info-item,
+.user-sidebar:not(.dark) .guest-action-btn.guest-btn,
+.user-sidebar:not(.dark) .guest-action-btn.logout-btn,
+.user-sub-sidebar:not(.dark) .panel-item {
+  border-color: rgba(164, 122, 48, 0.16);
+  background: rgba(255, 252, 246, 0.34);
+  box-shadow: 0 18px 26px -22px rgba(98, 75, 34, 0.18);
+}
+
+.story-sidebar:not(.dark) .featured-story-card:hover {
+  background: rgba(255, 250, 242, 0.52);
+}
+
+.story-sidebar.dark .featured-story-card,
+.story-sidebar.dark .announcement-card,
+.user-sidebar.dark .info-item,
+.user-sidebar.dark .guest-action-btn.guest-btn,
+.user-sidebar.dark .guest-action-btn.logout-btn,
+.user-sub-sidebar.dark .panel-item {
+  border-color: rgba(182, 208, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 18px 26px -22px rgba(3, 6, 15, 0.3);
+}
+
+.story-sidebar.dark .featured-story-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.user-sidebar:not(.dark) .username-edit-form input,
+.user-sidebar:not(.dark) .password-input-wrapper input {
+  background: rgba(255, 253, 248, 0.74);
+  border-color: rgba(164, 122, 48, 0.18);
+  color: #3c2910;
+}
+
+.user-sidebar:not(.dark) .edit-btn,
+.user-sidebar:not(.dark) .eye-btn,
+.user-sidebar:not(.dark) .eye-btn-small,
+.user-sidebar:not(.dark) .cancel-btn {
+  background: rgba(255, 252, 246, 0.56);
+  border-color: rgba(164, 122, 48, 0.16);
+  color: #5e3f14;
+}
+
+.user-sidebar.dark .username-edit-form input,
+.user-sidebar.dark .password-input-wrapper input {
+  background: rgba(8, 14, 28, 0.52);
+  border-color: rgba(182, 208, 255, 0.14);
+  color: #eef4ff;
+}
+
+.user-sidebar.dark .edit-btn,
+.user-sidebar.dark .eye-btn,
+.user-sidebar.dark .eye-btn-small,
+.user-sidebar.dark .cancel-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(182, 208, 255, 0.12);
+  color: #eef4ff;
+}
+
+.user-sidebar:not(.dark) .save-btn {
+  box-shadow: 0 18px 30px -22px rgba(111, 82, 28, 0.46);
+}
+
+@media (max-width: 768px) {
+  .story-modal-shell,
+  .user-modal-shell {
+    padding: 12px;
+  }
+
+  .story-sidebar,
+  .user-sidebar,
+  .user-sub-sidebar {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    border-radius: 28px;
+  }
+
+  .sidebar-header,
+  .user-sidebar-header,
+  .sub-sidebar-header {
+    padding-left: 18px;
+    padding-right: 72px;
+  }
+
+  .sidebar-content,
+  .user-sidebar-content,
+  .sub-sidebar-content {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 18px;
+  }
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.project-title {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 280px;
+  padding: 12px 20px;
+  background: linear-gradient(90deg, 
+    rgba(255, 107, 107, 0.2) 0%, 
+    rgba(255, 165, 0, 0.2) 14.28%, 
+    rgba(255, 215, 0, 0.2) 28.57%, 
+    rgba(168, 230, 207, 0.2) 42.85%, 
+    rgba(102, 126, 234, 0.2) 57.14%, 
+    rgba(255, 107, 157, 0.2) 71.43%, 
+    rgba(255, 107, 107, 0.2) 85.71%,
+    rgba(255, 107, 107, 0.2) 100%
+  );
+  background-size: 600% 100%;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 28px;
+  font-weight: 700;
+  background-clip: padding-box;
+  letter-spacing: 2px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: colorFlow 20s linear infinite;
+}
+
+.project-title::before {
+  content: 'EchoStar';
+  background: linear-gradient(90deg, 
+    rgba(0, 148, 148, 1) 0%, 
+    rgba(0, 90, 255, 1) 14.28%, 
+    rgba(0, 40, 255, 1) 28.57%, 
+    rgba(87, 25, 48, 1) 42.85%, 
+    rgba(153, 129, 21, 1) 57.14%, 
+    rgba(0, 148, 98, 1) 71.43%, 
+    rgba(0, 148, 148, 1) 85.71%,
+    rgba(0, 148, 148, 1) 100%
+  );
+  background-size: 600% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: colorFlow 20s linear infinite reverse;
+  text-shadow: none;
+}
+
+@keyframes colorFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 85.71% 50%;
+  }
+}
+</style>

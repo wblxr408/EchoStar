@@ -1,0 +1,34 @@
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/auth/register - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/stories - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T08:29:44.999Z] [FAIL] POST http://localhost:3000/api/comments - 状态码: 400
+[2026-03-19T08:29:44.999Z] [FAIL] POST http://localhost:3000/api/comments - 状态码: 400
+[2026-03-19T08:29:44.999Z] [ERROR] POST http://localhost:3000/api/comments - 状态码: 500
+[2026-03-19T08:29:44.999Z] [FAIL] POST http://localhost:3000/api/comments - 状态码: 401
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/story/1 - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/story/1?page=1&limit=3 - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/story/999999 - 状态码: 200
+[2026-03-19T08:29:44.999Z] [ERROR] GET http://localhost:3000/api/comments/story/invalid - 状态码: 500
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/me - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/me?page=1&limit=5 - 状态码: 200
+[2026-03-19T08:29:44.999Z] [FAIL] GET http://localhost:3000/api/comments/me - 状态码: 401
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/1/count - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/999999/count - 状态码: 200
+[2026-03-19T08:29:44.999Z] [ERROR] GET http://localhost:3000/api/comments/invalid/count - 状态码: 500
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/search?keyword=测试 - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] GET http://localhost:3000/api/comments/search?keyword=测试&page=1&limit=3 - 状态码: 200
+[2026-03-19T08:29:44.999Z] [FAIL] GET http://localhost:3000/api/comments/search - 状态码: 400
+[2026-03-19T08:29:44.999Z] [FAIL] GET http://localhost:3000/api/comments/search?keyword= - 状态码: 400
+[2026-03-19T08:29:44.999Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T08:29:44.999Z] [PASS] DELETE http://localhost:3000/api/comments/7 - 状态码: 200
+[2026-03-19T08:29:44.999Z] [ERROR] DELETE http://localhost:3000/api/comments/999999 - 状态码: 500
+[2026-03-19T08:29:44.999Z] [ERROR] DELETE http://localhost:3000/api/comments/invalid - 状态码: 500
+[2026-03-19T08:29:44.999Z] [FAIL] DELETE http://localhost:3000/api/comments/1 - 状态码: 401
+[2026-03-19T08:29:44.999Z] [PASS] DELETE http://localhost:3000/api/comments/7 - 状态码: 200
+
+[2026-03-19T08:29:44.999Z] 测试统计: 总计=31, 通过=30, 失败=1

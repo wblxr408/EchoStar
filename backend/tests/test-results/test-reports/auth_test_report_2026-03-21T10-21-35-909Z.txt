@@ -1,0 +1,32 @@
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/register_2 - 状态码: 200 - 创建测试用户1（无需验证码）
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/send-code - 状态码: 200 - 发送注册验证码
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/register - 状态码: 200 - 创建测试用户2（需要验证码）
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/login - 状态码: 200 - 正常测试：使用正确的邮箱和密码登录
+[2026-03-21T10:21:35.910Z] [ERROR] POST http://localhost:3000/api/auth/login - 状态码: 500 - 边界测试：使用错误密码登录
+[2026-03-21T10:21:35.910Z] [ERROR] POST http://localhost:3000/api/auth/login - 状态码: 500 - 边界测试：缺少密码参数登录
+[2026-03-21T10:21:35.910Z] [PASS] GET http://localhost:3000/api/auth/me - 状态码: 200 - 正常测试：使用有效Token获取当前用户信息
+[2026-03-21T10:21:35.910Z] [FAIL] GET http://localhost:3000/api/auth/me - 状态码: 401 - 边界测试：缺少Token访问用户信息接口
+[2026-03-21T10:21:35.910Z] [ERROR] PUT http://localhost:3000/api/auth/users/me - 状态码: 500 - 正常测试：修改用户名和简介
+[2026-03-21T10:21:35.910Z] [FAIL] PUT http://localhost:3000/api/auth/users/me - 状态码: 401 - 边界测试：缺少Token修改个人信息
+[2026-03-21T10:21:35.910Z] [PASS] GET http://localhost:3000/api/auth/users/1 - 状态码: 200 - 正常测试：查看用户信息
+[2026-03-21T10:21:35.910Z] [ERROR] GET http://localhost:3000/api/auth/users/999999 - 状态码: 500 - 边界测试：查看不存在的用户
+[2026-03-21T10:21:35.910Z] [PASS] PUT http://localhost:3000/api/auth/users/me/password - 状态码: 200 - 正常测试：使用正确的旧密码修改密码
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/login - 状态码: 200 - 验证修改后的新密码可以登录
+[2026-03-21T10:21:35.910Z] [ERROR] PUT http://localhost:3000/api/auth/users/me/password - 状态码: 500 - 边界测试：使用错误的旧密码修改密码
+[2026-03-21T10:21:35.910Z] [FAIL] PUT http://localhost:3000/api/auth/users/me/password - 状态码: 401 - 边界测试：缺少Token修改密码
+[2026-03-21T10:21:35.910Z] [PASS] PUT http://localhost:3000/api/auth/users/me/password - 状态码: 200 - 恢复原密码
+[2026-03-21T10:21:35.910Z] [ERROR] POST http://localhost:3000/api/auth/admin/login - 状态码: 500 - 边界测试：普通用户尝试管理员登录
+[2026-03-21T10:21:35.910Z] [ERROR] POST http://localhost:3000/api/auth/admin/login - 状态码: 500 - 边界测试：缺少密码管理员登录
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/send-code - 状态码: 200 - 正常测试：发送验证码到有效邮箱
+[2026-03-21T10:21:35.910Z] [ERROR] POST http://localhost:3000/api/auth/send-code - 状态码: 500 - 边界测试：缺少邮箱参数发送验证码
+[2026-03-21T10:21:35.910Z] [ERROR] POST http://localhost:3000/api/auth/send-code - 状态码: 500 - 边界测试：使用无效邮箱格式发送验证码
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/send-code - 状态码: 200 - 发送忘记密码验证码
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/forgot-password - 状态码: 200 - 正常测试：使用验证码重置密码
+[2026-03-21T10:21:35.910Z] [PASS] POST http://localhost:3000/api/auth/login - 状态码: 200 - 验证重置后的新密码可以登录
+[2026-03-21T10:21:35.910Z] [PASS] PUT http://localhost:3000/api/auth/users/me/password - 状态码: 200 - 恢复原密码
+[2026-03-21T10:21:35.910Z] [ERROR] POST http://localhost:3000/api/auth/forgot-password - 状态码: 500 - 边界测试：使用错误的验证码重置密码
+[2026-03-21T10:21:35.910Z] [ERROR] POST http://localhost:3000/api/auth/forgot-password - 状态码: 500 - 边界测试：缺少验证码参数重置密码
+[2026-03-21T10:21:35.910Z] [FAIL] DELETE http://localhost:3000/api/auth/me - 状态码: 401 - 边界测试：缺少Token注销账号
+[2026-03-21T10:21:35.910Z] [PASS] DELETE http://localhost:3000/api/auth/me - 状态码: 200 - 正常测试：注销测试用户1
+
+[2026-03-21T10:21:35.910Z] 测试统计: 总计=26, 通过=24, 失败=2

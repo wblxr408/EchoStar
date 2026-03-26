@@ -1,0 +1,96 @@
+import express from 'express';
+import helmet from 'helmet';
+import compression from 'compression';
+import { corsMiddleware } from './common/middleware/cors.js';
+import { errorHandler, notFoundHandler } from './common/middleware/error-handler.js';
+import { generalLimiter } from './common/middleware/rate-limit.js';
+import logger from './common/utils/logger.js';
+
+// 导入路由
+import authRoutes from './routes/auth.routes.js';
+import storyRoutes from './routes/story.routes.js';
+import mapRoutes from './routes/map.routes.js';
+import adminRoutes from './routes/admin.routes.js';
+import commentRoutes from './routes/comment.routes.js';
+import likeRoutes from './routes/like.routes.js';
+import favoriteRoutes from './routes/favorite.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
+import reportRoutes from './routes/report.routes.js';
+
+// 导入定时任务
+import { syncStoryViewCount } from './jobs/sync-story-view-count.js';
+
+/**
+ * 创建 Express 应用
+ */
+export function createApp() {
+  const app = express();
+
+  // 安全中间件
+  app.use(helmet());
+
+  // CORS
+  app.use(corsMiddleware);
+
+  // 请求体解析
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // Gzip 压缩
+  app.use(compression());
+
+  // 通用限流
+  app.use(generalLimiter);
+
+  // 请求日志
+  app.use((req, res, next) => {
+    logger.info(`${req.method} ${req.path}`, {
+      ip: req.ip,
+      userAgent: req.get('user-agent')
+    });
+    next();
+  });
+
+  // 健康检查
+  app.get('/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  // API 路由
+  app.use('/api/auth', authRoutes);
+  app.use('/api/stories', storyRoutes);
+  app.use('/api/map', mapRoutes);
+  app.use('/api/admin', adminRoutes);
+  app.use('/api/comments', commentRoutes);
+  app.use('/api/likes', likeRoutes);
+  app.use('/api/favorites', favoriteRoutes);
+  app.use('/api/notifications', notificationRoutes);
+  app.use('/api/reports', reportRoutes);
+
+  // 404 处理
+  app.use(notFoundHandler);
+
+  // 错误处理
+  app.use(errorHandler);
+
+  // ======================
+  // 定时任务
+  // ======================
+
+  // 定时任务：每小时同步浏览量到数据库
+  setInterval(() => {
+    syncStoryViewCount().catch(err => {
+      console.error('❌ 同步浏览量失败:', err);
+    });
+  }, 60 * 60 * 1000);  // 每小时执行一次
+
+  // 启动时执行一次（防止服务重启期间的数据丢失）
+  syncStoryViewCount().catch(err => {
+    console.error('❌ 启动时同步浏览量失败:', err);
+  });
+
+  return app;
+}

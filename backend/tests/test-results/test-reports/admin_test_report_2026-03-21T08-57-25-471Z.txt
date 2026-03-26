@@ -1,0 +1,61 @@
+EchoStar Admin模块测试报告
+测试时间: 2026-03-21T08:57:25.472Z
+服务器: http://localhost:3000
+==================================================
+
+[PASS] POST http://localhost:3000/api/auth/register_2 - 状态码: 200
+[PASS] POST http://localhost:3000/api/auth/admin/login - 状态码: 200
+[PASS] POST http://localhost:3000/api/auth/register_2 - 状态码: 200
+[PASS] POST http://localhost:3000/api/stories - 状态码: 200
+[PASS] POST http://localhost:3000/api/auth/register_2 - 状态码: 200
+[PASS] POST http://localhost:3000/api/stories - 状态码: 200
+[PASS] POST http://localhost:3000/api/auth/register_2 - 状态码: 200
+[FAIL] POST http://localhost:3000/api/admin/users/2/ban - 状态码: 401
+[FAIL] POST http://localhost:3000/api/admin/users/2/ban - 状态码: 403
+[ERROR] POST http://localhost:3000/api/admin/users/1/ban - 状态码: 500
+[ERROR] POST http://localhost:3000/api/admin/users/999999/ban - 状态码: 500
+[PASS] POST http://localhost:3000/api/admin/users/2/ban - 状态码: 200
+[ERROR] POST http://localhost:3000/api/admin/users/2/ban - 状态码: 500
+[ERROR] POST http://localhost:3000/api/auth/login - 状态码: 500
+[FAIL] POST http://localhost:3000/api/stories - 状态码: 403
+[FAIL] POST http://localhost:3000/api/comments - 状态码: 403
+[FAIL] POST http://localhost:3000/api/likes - 状态码: 403
+[FAIL] POST http://localhost:3000/api/favorites - 状态码: 403
+[FAIL] GET http://localhost:3000/api/auth/me - 状态码: 403
+[PASS] GET http://localhost:3000/api/stories/search?keyword=test&page=1&limit=10 - 状态码: 200
+[FAIL] GET http://localhost:3000/api/stories/me/list?page=1&limit=10 - 状态码: 403
+[FAIL] GET http://localhost:3000/api/notifications/me?page=1&limit=10 - 状态码: 403
+[FAIL] GET http://localhost:3000/api/favorites/me?page=1&limit=10 - 状态码: 403
+[FAIL] POST http://localhost:3000/api/admin/stories/2/shadowban - 状态码: 401
+[FAIL] POST http://localhost:3000/api/admin/stories/2/shadowban - 状态码: 403
+[ERROR] POST http://localhost:3000/api/admin/stories/999999/shadowban - 状态码: 500
+[PASS] POST http://localhost:3000/api/admin/stories/2/shadowban - 状态码: 200
+[ERROR] POST http://localhost:3000/api/admin/stories/2/shadowban - 状态码: 500
+[PASS] GET http://localhost:3000/api/stories/search?keyword=user02&page=1&limit=10 - 状态码: 200
+[ERROR] GET http://localhost:3000/api/stories/2 - 状态码: 500
+[PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[PASS] POST http://localhost:3000/api/likes - 状态码: 200
+[PASS] POST http://localhost:3000/api/favorites - 状态码: 200
+[PASS] GET http://localhost:3000/api/comments/story/2?page=1&limit=10 - 状态码: 200
+[PASS] POST http://localhost:3000/api/admin/users/2/unban - 状态码: 200
+[ERROR] POST http://localhost:3000/api/admin/users/2/unban - 状态码: 500
+[PASS] POST http://localhost:3000/api/admin/stories/2/restore - 状态码: 200
+[ERROR] POST http://localhost:3000/api/admin/stories/2/restore - 状态码: 500
+[PASS] POST http://localhost:3000/api/auth/login - 状态码: 200
+[PASS] POST http://localhost:3000/api/stories - 状态码: 200
+[PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[FAIL] GET http://localhost:3000/api/admin/statistics - 状态码: 401
+[FAIL] GET http://localhost:3000/api/admin/statistics - 状态码: 403
+[PASS] GET http://localhost:3000/api/admin/statistics - 状态码: 200
+
+==================================================
+测试统计: 总计=20, 通过=13, 失败=7
+
+错误详情:
+  1. 封禁管理员返回400/403
+  2. 不存在的用户返回404
+  3. 重复封禁返回400
+  4. 不存在的故事返回404
+  5. 重复封禁返回400
+  6. 重复解封用户返回400
+  7. 重复解封故事返回400

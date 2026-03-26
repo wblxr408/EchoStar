@@ -1,0 +1,21 @@
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/auth/register - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/auth/register - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/stories - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/likes - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/favorites - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] DELETE http://localhost:3000/api/likes/1 - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] DELETE http://localhost:3000/api/favorites/1 - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/likes - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/comments - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] POST http://localhost:3000/api/favorites - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] GET http://localhost:3000/api/notifications/me - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] GET http://localhost:3000/api/notifications/me/unread-count - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] PUT http://localhost:3000/api/notifications/ffb79272-39ab-41e7-bf9a-f16f7a58f388/mark-read - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] PUT http://localhost:3000/api/notifications/me/mark-read - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] GET http://localhost:3000/api/notifications/me/unread-count - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] DELETE http://localhost:3000/api/notifications/me - 状态码: 200
+[2026-03-19T12:13:55.558Z] [PASS] GET http://localhost:3000/api/notifications/me - 状态码: 200
+
+[2026-03-19T12:13:55.558Z] 测试统计: 总计=6, 通过=6, 失败=0
