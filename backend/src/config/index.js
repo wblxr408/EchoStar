@@ -39,10 +39,10 @@ export default {
   oss: {
     accessKeyId: process.env.OSS_ACCESS_KEY_ID || '',
     accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET || '',
-    bucket: process.env.OSS_BUCKET || '',
-    region: process.env.OSS_REGION || '',
-    host: process.env.OSS_HOST || '',
-    domain: process.env.OSS_DOMAIN || process.env.OSS_HOST || ''
+    bucket: process.env.OSS_BUCKET || 'echostar',
+    region: process.env.OSS_REGION || 'oss-cn-shanghai',
+    host: process.env.OSS_HOST || 'https://echostar.oss-cn-shanghai.aliyuncs.com',
+    domain: process.env.OSS_DOMAIN || process.env.OSS_HOST || 'https://echostar.oss-cn-shanghai.aliyuncs.com'
   },
 
   // 默认头像配置
