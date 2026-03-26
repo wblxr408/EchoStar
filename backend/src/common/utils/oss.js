@@ -25,10 +25,10 @@ export function generateOSSToken(dir = 'uploads/') {
     .update(policyBase64)
     .digest('base64');
 
-  // 处理 region 格式，ali-oss SDK 需要不带 oss- 前缀的 region
-  let region = config.oss.region || 'cn-shanghai';
-  if (region.startsWith('oss-')) {
-    region = region.replace('oss-', '');
+  // 处理 region 格式，ali-oss SDK 需要带 oss- 前缀的 region
+  let region = config.oss.region || 'oss-cn-shanghai';
+  if (!region.startsWith('oss-')) {
+    region = 'oss-' + region;
   }
 
   return {
