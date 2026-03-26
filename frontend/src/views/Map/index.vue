@@ -651,6 +651,7 @@ import LoginModal from '../Home/components/LoginModal.vue';
 import { formatRelativeTime } from '../../utils/time';
 import { getEmotionEmoji } from '../../utils/emotion';
 import { getAnnouncementTypeIcon } from '../../utils/announcement';
+import { uploadAvatar as uploadToOSS, validateImage } from '../../utils/upload';
 
 const mapStore = useMapStore();
 const userStore = useUserStore();
@@ -746,6 +747,7 @@ const avatarInput = ref(null);
 const avatarPreview = ref('');
 const avatarUploading = ref(false);
 const avatarError = ref('');
+const currentAvatarFile = ref(null);
 
 // 密码相关
 const isEditingPassword = ref(false);
@@ -2233,6 +2235,9 @@ function handleAvatarChange(event) {
 
   avatarError.value = '';
 
+  // 保存文件引用
+  currentAvatarFile.value = file;
+
   // 生成预览
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -2247,18 +2252,30 @@ function handleAvatarChange(event) {
 }
 
 // 上传头像
-async function uploadAvatar() {
+async function uploadAvatar(file) {
+  if (!file) {
+    file = currentAvatarFile.value;
+  }
+  if (!file) {
+    avatarError.value = '未选择文件';
+    return;
+  }
+
   avatarUploading.value = true;
   avatarError.value = '';
 
   try {
-    // TODO: 调用实际的头像上传API（需要后端支持）
-    // const result = await userApi.uploadAvatar(file);
-    // const uploadedUrl = result.url;
+    // 验证文件
+    const validation = validateImage(file);
+    if (!validation.valid) {
+      avatarError.value = validation.error;
+      return;
+    }
 
-    // 暂时使用本地预览URL
-    const uploadedUrl = avatarPreview.value;
+    // 上传到 OSS
+    const uploadedUrl = await uploadToOSS(file);
 
+    // 更新用户信息
     const response = await authApi.updateProfile({
       avatarUrl: uploadedUrl
     });
@@ -2267,9 +2284,10 @@ async function uploadAvatar() {
 
     // 清除预览
     avatarPreview.value = '';
-    console.log('头像已更新');
+    currentAvatarFile.value = null;
+    console.log('头像已更新:', uploadedUrl);
   } catch (error) {
-    avatarError.value = '上传失败，请重试';
+    avatarError.value = error.message || '上传失败，请重试';
     avatarPreview.value = '';
     console.error('上传头像失败:', error);
   } finally {

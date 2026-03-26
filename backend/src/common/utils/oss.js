@@ -25,12 +25,18 @@ export function generateOSSToken(dir = 'uploads/') {
     .update(policyBase64)
     .digest('base64');
 
+  // 处理 region 格式，ali-oss SDK 需要不带 oss- 前缀的 region
+  let region = config.oss.region || 'cn-shanghai';
+  if (region.startsWith('oss-')) {
+    region = region.replace('oss-', '');
+  }
+
   return {
     // 兼容前端 ali-oss SDK 格式
     accessKeyId: config.oss.accessKeyId,
     accessKeySecret: config.oss.accessKeySecret,
     bucket: config.oss.bucket,
-    region: config.oss.region.replace('oss-', ''), // ali-oss SDK 需要不带 oss- 前缀的 region
+    region: region,
     host: config.oss.host,
     policy: policyBase64,
     signature,
