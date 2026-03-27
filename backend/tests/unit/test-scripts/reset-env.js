@@ -13,7 +13,7 @@ import { spawn, exec } from 'child_process';
 import { promisify } from 'util';
 import http from 'http';
 import fs from 'fs';
-import path from 'path';
+
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -139,14 +139,8 @@ async function main() {
     }
 
     // 4. 启动开发服务器（在后台）
+    const noLimitMode = process.argv.includes('--no-limit');
     console.log('\n[STEP 4] 启动开发服务器...');
-
-    // 创建日志文件路径
-    const logFile = path.join(BACKEND_DIR, 'tests', 'test-results', 'server.log');
-    const logDir = path.dirname(logFile);
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
-    }
 
     // 设置测试环境变量（放宽速率限制）
     const testEnv = {
@@ -156,19 +150,36 @@ async function main() {
     // 确保 NODE_ENV 不被设为 test，否则 syncDatabase 会被跳过
     delete testEnv.NODE_ENV;
 
-    // 使用 spawn 在后台启动，将日志输出到文件
-    const serverProcess = spawn('npm', ['run', 'dev'], {
-      cwd: BACKEND_DIR,
-      shell: true,
-      detached: true,
-      stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
-      env: testEnv,
-    });
+    let serverProcess;
 
-    console.log(`[INFO] 服务器日志输出到: ${logFile}`);
-    console.log('[INFO] 已启用测试模式（放宽速率限制）');
+    if (noLimitMode) {
+      // 关限流模式：使用 server.no-limit.js 启动（禁用所有限流中间件）
+      const noLimitPath = join(BACKEND_DIR, 'src', 'server.no-limit.js');
+      if (!fs.existsSync(noLimitPath)) {
+        console.error('[ERROR] 未找到 src/server.no-limit.js');
+        console.error('[ERROR] 请确保该文件存在（它应该在 .gitignore 中，不会被提交到仓库）');
+        process.exit(1);
+      }
+      serverProcess = spawn('node', [noLimitPath], {
+        cwd: BACKEND_DIR,
+        shell: true,
+        detached: true,
+        stdio: ['ignore', 'inherit', 'inherit'],
+        env: testEnv,
+      });
+      console.log('[INFO] 已启用关限流测试模式（所有速率限制已禁用）');
+    } else {
+      // 限流测试模式：使用正常服务器启动（保留限流功能）
+      serverProcess = spawn('npm', ['run', 'dev'], {
+        cwd: BACKEND_DIR,
+        shell: true,
+        detached: true,
+        stdio: ['ignore', 'inherit', 'inherit'],
+        env: testEnv,
+      });
+      console.log('[INFO] 已启用限流测试模式（速率限制保留）');
+    }
 
-    // 不等待子进程，让它在后台运行
     serverProcess.unref();
     
     console.log('[INFO] 服务器已在后台启动');

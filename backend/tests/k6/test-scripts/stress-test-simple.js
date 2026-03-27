@@ -1,9 +1,13 @@
 /**
- * EchoStar 后端压力测试 - 简化版
- * 专注于接口性能测试，不依赖大量数据创建
+ * EchoStar 后端压力测试 - 简化版（性能测试）
+ * 专注于接口性能测试，要求服务器已关闭限流（使用 server.no-limit.js 启动）
  * 
- * 使用方法：
- *   k6 run --out json=tests/k6/test-reports/stress-test-result.json tests/k6/test-scripts/stress-test-simple.js
+ * 使用方法（通过 run-test.bat）：
+ *   run-test.bat --mode performance
+ *   run-test.bat --mode performance --reset
+ * 
+ * 直接使用 k6：
+ *   TEST_MODE=performance k6 run --out json=tests/k6/test-reports/performance-test/result.json tests/k6/test-scripts/stress-test-simple.js
  */
 
 import { sleep } from 'k6';
@@ -52,6 +56,12 @@ export const options = {
     'http_req_duration{group:::auth}': ['p(95)<800'],
     'http_req_duration{group:::story}': ['p(95)<1500'],
     'http_req_duration{group:::map}': ['p(95)<2000'],
+    'http_req_duration{group:::comment}': ['p(95)<500'],
+    'http_req_duration{group:::favorite}': ['p(95)<500'],
+    'http_req_duration{group:::like}': ['p(95)<500'],
+    'http_req_duration{group:::notification}': ['p(95)<500'],
+    'http_req_duration{group:::recommendation}': ['p(95)<2000'],
+    'http_req_duration{group:::misc}': ['p(95)<200'],
   },
 };
 
@@ -74,10 +84,11 @@ export function setup() {
     admins: [],
     stories: [],
     tokens: [],
+    notifiedUsers: [],
   };
   
-  // 创建测试用户（少量）
-  const userCount = Math.min(100, config.users.count);
+  // 创建测试用户
+  const userCount = Math.min(1000, config.users.count);
   console.log(`Creating ${userCount} test users...`);
   
   for (let i = 0; i < userCount; i++) {
@@ -122,7 +133,7 @@ export function setup() {
 
   // 创建测试故事
   if (setupData.users.length > 0) {
-    const storyCount = Math.min(500, config.stories.count);
+    const storyCount = Math.min(5000, config.stories.count);
     console.log(`Creating ${storyCount} test stories...`);
 
     for (let i = 0; i < storyCount; i++) {
@@ -148,11 +159,6 @@ export function setup() {
         }
       }
 
-      // Debug first 3 story creation attempts
-      if (i < 3) {
-        console.log(`[DEBUG] Story ${i}: user=${user.email}, hasToken=${!!token}`);
-      }
-
       if (token) {
         const location = generateBeijingLocation();
         const storyData = {
@@ -170,11 +176,6 @@ export function setup() {
             'Authorization': `Bearer ${token}`,
           },
         });
-
-        // Debug first 3 story responses
-        if (i < 3) {
-          console.log(`[DEBUG] Story ${i} response: status=${response.status}, body=${(response.body || 'empty').substring(0, 300)}`);
-        }
 
         if (response.status === 200 || response.status === 201) {
           try {
@@ -196,6 +197,41 @@ export function setup() {
   }
   
   console.log(`[Setup] Created ${setupData.stories.length} stories`);
+
+  // 创建通知数据：通过点赞操作触发通知（通知模块数据存储在 Redis，无法 SQL 插入）
+  if (setupData.stories.length > 0 && setupData.users.length > 1) {
+    const maxLikes = Math.min(200, setupData.stories.length);
+    console.log(`[Setup] Creating likes to generate notification data (max ${maxLikes})...`);
+    let likeCount = 0;
+
+    for (let i = 0; i < maxLikes; i++) {
+      const story = setupData.stories[i];
+      if (!story) continue;
+
+      const likerIndex = (i + 1) % setupData.users.length;
+      const liker = setupData.users[likerIndex];
+
+      if (liker && liker.token && String(story.userId) !== String(liker.id)) {
+        const likeRes = http.post(`${BASE_URL}/api/likes`, JSON.stringify({ storyId: story.id }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${liker.token}`,
+          },
+        });
+
+        if (likeRes.status === 200) {
+          likeCount++;
+          if (!setupData.notifiedUsers.find(u => String(u.id) === String(story.userId))) {
+            const author = setupData.users.find(u => String(u.id) === String(story.userId));
+            if (author) setupData.notifiedUsers.push(author);
+          }
+        }
+      }
+
+      if (i % 20 === 0) sleep(0.05);
+    }
+    console.log(`[Setup] Created ${likeCount} likes, ${setupData.notifiedUsers.length} users have notifications`);
+  }
   
   return setupData;
 }
@@ -222,39 +258,57 @@ export default function (data) {
   const action = Math.floor(Math.random() * 100);
   
   // 认证模块测试
-  if (action < 20) {
+  if (action < 18) {
     group('auth', () => {
       testAuth(data);
     });
   }
   // 故事模块测试
-  else if (action < 45) {
+  else if (action < 40) {
     group('story', () => {
       testStory(data);
     });
   }
   // 点赞模块测试
-  else if (action < 60) {
+  else if (action < 53) {
     group('like', () => {
       testLike(data);
     });
   }
   // 收藏模块测试
-  else if (action < 70) {
+  else if (action < 62) {
     group('favorite', () => {
       testFavorite(data);
     });
   }
   // 评论模块测试
-  else if (action < 80) {
+  else if (action < 71) {
     group('comment', () => {
       testComment(data);
     });
   }
-  // 地图模块测试
-  else if (action < 95) {
+  // 地图模块测试（仅 explore + wall，推荐接口移至 recommendation 组）
+  else if (action < 87) {
     group('map', () => {
       testMap(data);
+    });
+  }
+  // 通知模块测试 - 查询列表 + 标记单条已读
+  else if (action < 89) {
+    group('notification', () => {
+      testNotification(data);
+    });
+  }
+  // 通知模块测试 - 标记全部已读
+  else if (action < 90) {
+    group('notification', () => {
+      testNotificationMarkAll(data);
+    });
+  }
+  // 推荐模块测试
+  else if (action < 93) {
+    group('recommendation', () => {
+      testRecommendation(data);
     });
   }
   // 其他测试
@@ -556,22 +610,6 @@ function testMap(data) {
     'explore stories response time < 1000ms': (r) => r.timings.duration < 1000,
   });
   
-  // 随机漫步
-  const walkRes = http.get(`${BASE_URL}/api/map/random?lat=${lat}&lng=${lng}`);
-  
-  check(walkRes, {
-    'random walk status is 200': (r) => r.status === 200,
-    'random walk response time < 1000ms': (r) => r.timings.duration < 1000,
-  });
-  
-  // 推荐流
-  const feedRes = http.get(`${BASE_URL}/api/map/feed?lat=${lat}&lng=${lng}&page=1&limit=20`);
-  
-  check(feedRes, {
-    'feed status is 200': (r) => r.status === 200,
-    'feed response time < 1000ms': (r) => r.timings.duration < 1000,
-  });
-  
   // 故事墙
   const wallRes = http.get(`${BASE_URL}/api/map/wall?lat=${lat}&lng=${lng}&radius=50`);
   
@@ -594,10 +632,97 @@ function testMisc(data) {
 }
 
 /**
+ * 通知模块测试（简化版：仅查询接口，数据由 setup 中点赞操作自动产生）
+ */
+function testNotification(data) {
+  if (!data.notifiedUsers || data.notifiedUsers.length === 0) return;
+
+  const user = data.notifiedUsers[Math.floor(Math.random() * data.notifiedUsers.length)];
+  if (!user || !user.token) return;
+
+  // 获取通知列表
+  const page = Math.floor(Math.random() * 3) + 1;
+  const listRes = http.get(`${BASE_URL}/api/v1/notifications/me?page=${page}&limit=10`, {
+    headers: { 'Authorization': `Bearer ${user.token}` },
+  });
+
+  check(listRes, {
+    'get notifications status is 200': (r) => r.status === 200,
+    'get notifications response time < 500ms': (r) => r.timings.duration < 500,
+  });
+
+  // 从列表中取一条标记已读
+  if (listRes.status === 200) {
+    try {
+      const body = JSON.parse(listRes.body);
+      if (body.code === 0 && body.data && body.data.notifications && body.data.notifications.length > 0) {
+        const noticeId = body.data.notifications[0].id;
+        const markReadRes = http.put(`${BASE_URL}/api/v1/notifications/${noticeId}/mark-read`, null, {
+          headers: { 'Authorization': `Bearer ${user.token}` },
+        });
+
+        check(markReadRes, {
+          'mark notification read status is 200': (r) => r.status === 200,
+          'mark notification read response time < 500ms': (r) => r.timings.duration < 500,
+        });
+      }
+    } catch (e) {}
+  }
+}
+
+/**
+ * 通知模块测试 - 标记全部已读
+ */
+function testNotificationMarkAll(data) {
+  if (!data.notifiedUsers || data.notifiedUsers.length === 0) return;
+
+  const user = data.notifiedUsers[Math.floor(Math.random() * data.notifiedUsers.length)];
+  if (!user || !user.token) return;
+
+  const markAllRes = http.put(`${BASE_URL}/api/v1/notifications/me/mark-read`, null, {
+    headers: { 'Authorization': `Bearer ${user.token}` },
+  });
+
+  check(markAllRes, {
+    'mark all notifications read status is 200': (r) => r.status === 200,
+    'mark all notifications read response time < 500ms': (r) => r.timings.duration < 500,
+  });
+}
+
+/**
+ * 推荐模块测试（简化版：仅测接口响应性能，不验证推荐准确性）
+ * 使用可选认证（optionalAuth），有无 Token 均可
+ */
+function testRecommendation(data) {
+  const lat = 39.9 + Math.random() * 0.1;
+  const lng = 116.3 + Math.random() * 0.2;
+  const moods = ['开心', '难过', '治愈', '打卡'];
+  const mood = moods[Math.floor(Math.random() * moods.length)];
+
+  // 随机漫步推荐
+  const walkRes = http.get(`${BASE_URL}/api/v1/map/random?lat=${lat}&lng=${lng}&mood=${encodeURIComponent(mood)}`);
+
+  check(walkRes, {
+    'recommendation random status is 200': (r) => r.status === 200,
+    'recommendation random response time < 1500ms': (r) => r.timings.duration < 1500,
+  });
+
+  // 推荐信息流
+  const page = Math.floor(Math.random() * 5) + 1;
+  const feedRes = http.get(`${BASE_URL}/api/v1/map/feed?lat=${lat}&lng=${lng}&mood=${encodeURIComponent(mood)}&page=${page}&limit=20`);
+
+  check(feedRes, {
+    'recommendation feed status is 200': (r) => r.status === 200,
+    'recommendation feed response time < 2000ms': (r) => r.timings.duration < 2000,
+  });
+}
+
+/**
  * Teardown: 输出统计
  */
 export function teardown(data) {
   console.log('\n=== Test Completed ===');
   console.log(`Created users: ${data.users.length}`);
   console.log(`Created stories: ${data.stories.length}`);
+  console.log(`Users with notifications: ${data.notifiedUsers ? data.notifiedUsers.length : 0}`);
 }

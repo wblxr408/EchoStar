@@ -63,3 +63,6 @@ test-config.json
 DOCKER_DATABASE_SETUP.md
 docker-compose.yml
 test-config.local.json
+
+# 本地测试专用文件（限流绕过服务器，严禁提交）
+src/server.no-limit.js

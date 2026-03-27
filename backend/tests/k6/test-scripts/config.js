@@ -1,7 +1,13 @@
 /**
  * k6 压力测试配置
  * 可通过环境变量覆盖默认值
+ * 支持两种测试模式：
+ *   - rate-limit: 限流测试（服务器保留限流，验证限流功能正确性）
+ *   - performance: 性能测试（服务器关闭限流，验证后端大流量性能）
  */
+
+// 测试模式（由 run-test.bat/run-test.sh 通过环境变量传入）
+export const testMode = __ENV.TEST_MODE || 'performance';
 
 // 测试数据量配置（可通过命令行参数覆盖）
 export const config = {
@@ -69,9 +75,9 @@ export const config = {
     errorRate: parseFloat(__ENV.THRESHOLD_ERROR_RATE) || 0.01, // 错误率阈值
   },
 
-  // 报告输出路径
+  // 报告输出路径（根据测试模式自动选择子目录）
   report: {
-    outputDir: __ENV.REPORT_DIR || 'tests/k6/test-reports',
+    outputDir: __ENV.REPORT_DIR || `tests/k6/test-reports/${testMode === 'rate-limit' ? 'rate-limit-test' : 'performance-test'}`,
   },
 };
 

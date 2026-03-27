@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul 2>&1
 REM EchoStar k6 Stress Test Script (Windows)
-REM Usage: run-test.bat [options]
+REM Usage: run-test.bat --mode rate-limit|performance [options]
 REM Note: Run this script from the backend directory
 
 setlocal enabledelayedexpansion
@@ -20,9 +20,10 @@ for /f "tokens=1-3 delims=:." %%a in ('echo %time%') do (
 )
 set TIMESTAMP=%TIMESTAMP: =%
 
-set REPORT_DIR=tests\k6\test-reports
+set TEST_MODE=performance
 set TEST_TYPE=simple
 set DO_RESET=0
+set DO_MONITOR=0
 
 REM Default parameters
 if not defined USER_COUNT set USER_COUNT=100
@@ -49,12 +50,15 @@ for /f "tokens=*" %%i in ('k6 version') do set K6_VERSION=%%i
 echo k6 version: %K6_VERSION%
 echo.
 
-REM Create report directory
-if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
-
 REM Parse command line arguments
 :parse_args
-if "%~1"=="" goto :run_test
+if "%~1"=="" goto :validate_mode
+if "%~1"=="--mode" (
+    set TEST_MODE=%~2
+    shift
+    shift
+    goto :parse_args
+)
 if "%~1"=="--full" (
     set TEST_TYPE=full
     shift
@@ -89,21 +93,58 @@ if "%~1"=="--reset" (
     shift
     goto :parse_args
 )
-if "%~1"=="--help" (
-    echo Usage: %0 [options]
-    echo.
-    echo Options:
-    echo   --full        Run full stress test (with large data creation)
-    echo   --users N     Create N users (default: 100)
-    echo   --stories N   Create N stories (default: 500)
-    echo   --vus N       Concurrent virtual users (default: 50)
-    echo   --duration T  Test duration (default: 2m)
-    echo   --reset       Reset database before test (runs reset-env.js)
-    echo   --help        Show this help message
-    exit /b 0
+if "%~1"=="--monitor" (
+    set DO_MONITOR=1
+    shift
+    goto :parse_args
 )
+if "%~1"=="--help" goto :show_help
+goto :skip_help
+
+:show_help
+echo Usage: %0 [options]
+echo.
+echo Modes:
+echo   --mode performance  Performance test - disable rate limiting, test raw performance (default)
+echo   --mode rate-limit   Rate limit test - keep rate limiting, verify it works correctly
+echo.
+echo Options:
+echo   --full        Run full stress test with large data creation
+echo   --users N     Create N users (default: 100)
+echo   --stories N   Create N stories (default: 500)
+echo   --vus N       Concurrent virtual users (default: 50)
+echo   --duration T  Test duration (default: 2m)
+echo   --reset       Reset database before test (runs reset-env.js)
+echo   --monitor     Enable Redis/PG monitoring during test
+echo   --help        Show this help message
+echo.
+echo Examples:
+echo   %0 --mode performance --reset
+echo   %0 --mode rate-limit --vus 100
+exit /b 0
+
+:skip_help
 echo Unknown argument: %~1
 exit /b 1
+
+:validate_mode
+if not "%TEST_MODE%"=="performance" if not "%TEST_MODE%"=="rate-limit" (
+    echo ERROR: Invalid mode "%TEST_MODE%"
+    echo Valid modes: performance, rate-limit
+    exit /b 1
+)
+
+REM Set report directory based on mode
+if "%TEST_MODE%"=="rate-limit" (
+    set REPORT_DIR=tests\k6\test-reports\rate-limit-test
+    set TEST_SCRIPT=rate-limit-test.js
+) else (
+    set REPORT_DIR=tests\k6\test-reports\performance-test
+    set TEST_SCRIPT=stress-test-simple.js
+)
+
+REM Create report directory
+if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
 
 :run_test
 
@@ -111,28 +152,40 @@ REM Run database reset if requested
 if "%DO_RESET%"=="1" (
     echo.
     echo ========================================
-    echo    Resetting database...
+    echo    Resetting test environment...
     echo ========================================
     echo.
-    node tests\unit\test-scripts\reset-env.js
+
+    if "%TEST_MODE%"=="performance" (
+        echo [INFO] Starting server WITHOUT rate limiting...
+        node tests\unit\test-scripts\reset-env.js --no-limit
+    ) else (
+        echo [INFO] Starting server WITH rate limiting...
+        node tests\unit\test-scripts\reset-env.js
+    )
+
     if %ERRORLEVEL% neq 0 (
-        echo ERROR: Database reset failed
+        echo ERROR: Environment reset failed
         exit /b 1
     )
     echo.
-    echo Database reset completed.
+    echo Environment reset completed.
     echo.
 )
 
 REM Display test config
-echo Test configuration:
-echo   Test type: %TEST_TYPE%
-echo   Reset database: %DO_RESET%
-echo   User count: %USER_COUNT%
-echo   Story count: %STORY_COUNT%
-echo   Concurrent users: %LOAD_VUS%
-echo   Duration: %DURATION%
-echo   Report directory: %REPORT_DIR%
+echo ========================================
+echo   Test Configuration
+echo ========================================
+echo   Mode:            %TEST_MODE%
+echo   Reset database:  %DO_RESET%
+echo   User count:      %USER_COUNT%
+echo   Story count:     %STORY_COUNT%
+echo   Concurrent VUs:  %LOAD_VUS%
+echo   Duration:        %DURATION%
+echo   Report dir:      %REPORT_DIR%
+echo   Test script:     %TEST_SCRIPT%
+echo ========================================
 echo.
 
 REM Set environment variables for k6
@@ -140,31 +193,62 @@ set USER_COUNT=%USER_COUNT%
 set STORY_COUNT=%STORY_COUNT%
 set LOAD_VUS=%LOAD_VUS%
 set LOAD_DURATION=%DURATION%
+set TEST_MODE=%TEST_MODE%
+set REPORT_DIR=%REPORT_DIR%
 
 REM Report file names
 set SUMMARY_EXPORT=%REPORT_DIR%\stress-test-%TIMESTAMP%-summary.json
 
-echo Starting test...
+echo Starting %TEST_MODE% test...
 echo Report will be saved to: %SUMMARY_EXPORT%
+
+REM Start monitor if requested
+if "%DO_MONITOR%"=="1" (
+    set "MONITOR_PID_FILE=%TEMP%\echostar-monitor-%TIMESTAMP%.pid"
+    if exist "!MONITOR_PID_FILE!" del "!MONITOR_PID_FILE!"
+    echo.
+    echo [MONITOR] Starting Redis/PG monitoring (5s interval^)...
+    start "" /b node tests\k6\test-scripts\monitor.cjs 0 5 "!MONITOR_PID_FILE!"
+    timeout /t 2 /nobreak > nul
+    echo [MONITOR] Running. Will auto-stop after k6 test completes.
+    echo.
+)
 echo.
 if "%DO_RESET%"=="0" (
-    echo IMPORTANT: Make sure backend server is running on http://localhost:3000
+    if "%TEST_MODE%"=="performance" (
+        echo IMPORTANT: Make sure backend server is running WITHOUT rate limiting
+        echo   (Use: node src/server.no-limit.js)
+    ) else (
+        echo IMPORTANT: Make sure backend server is running WITH rate limiting
+        echo   (Use: npm run dev)
+    )
     echo.
 )
 
 REM Run test
-if "%TEST_TYPE%"=="full" (
-    echo Running full stress test...
-    k6 run --summary-export="%SUMMARY_EXPORT%" "%SCRIPT_DIR%stress-test.js"
-) else (
-    echo Running simple stress test...
-    k6 run --summary-export="%SUMMARY_EXPORT%" "%SCRIPT_DIR%stress-test-simple.js"
+echo Running %TEST_SCRIPT%...
+k6 run --summary-export="%SUMMARY_EXPORT%" "%SCRIPT_DIR%%TEST_SCRIPT%"
+
+REM Stop monitor if it was started
+if "%DO_MONITOR%"=="1" (
+    echo.
+    echo [MONITOR] Stopping monitor...
+    if defined MONITOR_PID_FILE (
+        if exist "!MONITOR_PID_FILE!" (
+            set /p MONITOR_PID=<"!MONITOR_PID_FILE!"
+            taskkill /f /pid !MONITOR_PID! >nul 2>nul
+            del "!MONITOR_PID_FILE!" >nul 2>nul
+        )
+    )
+    echo [MONITOR] Stopped.
 )
 
 echo.
 echo ========================================
 echo    Test completed!
 echo ========================================
-echo Report file: %SUMMARY_EXPORT%
+echo   Mode:   %TEST_MODE%
+echo   Report: %SUMMARY_EXPORT%
+echo ========================================
 
 endlocal
