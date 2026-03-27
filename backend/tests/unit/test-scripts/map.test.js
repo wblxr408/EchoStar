@@ -448,6 +448,108 @@ async function testClusterData() {
   }
 }
 
+/**
+ * 4. random 接口测试 - 随机漫步（加权推荐）
+ * GET /api/map/random?lat&lng&mood
+ */
+async function testRandomWalk() {
+  console.log('\n========== 4. random 接口测试（随机漫步） ==========\n');
+
+  // 4.1 正常查询 - 不带心情
+  console.log('\n--- 4.1 正常随机漫步（不带心情） ---');
+  const res1 = await sendRequest('GET',
+    `${BASE_URL}/api/map/random?lat=${BEIJING_LAT}&lng=${BEIJING_LNG}`,
+    null, {}, null, '正常测试：在北京随机漫步（不带心情参数）'
+  );
+  assert(res1.status === 200, '随机漫步成功');
+  if (res1.status === 200) {
+    console.log(`[INFO] 随机漫步返回数据: ${JSON.stringify(res1.data?.data).substring(0, 200)}`);
+  }
+
+  // 4.2 正常查询 - 带心情参数
+  console.log('\n--- 4.2 正常随机漫步（心情=开心） ---');
+  const res2 = await sendRequest('GET',
+    `${BASE_URL}/api/map/random?lat=${BEIJING_LAT}&lng=${BEIJING_LNG}&mood=开心`,
+    null, {}, null, '正常测试：在北京随机漫步（心情=开心）'
+  );
+  assert(res2.status === 200, '带心情参数随机漫步成功');
+
+  // 4.3 边界测试：缺少lat参数
+  console.log('\n--- 4.3 边界测试：缺少纬度参数 ---');
+  const res3 = await sendRequest('GET',
+    `${BASE_URL}/api/map/random?lng=${BEIJING_LNG}`,
+    null, {}, null, '边界测试：随机漫步缺少纬度参数'
+  );
+  assert(res3.status === 400, '缺少纬度返回400');
+
+  // 4.4 边界测试：缺少lng参数
+  console.log('\n--- 4.4 边界测试：缺少经度参数 ---');
+  const res4 = await sendRequest('GET',
+    `${BASE_URL}/api/map/random?lat=${BEIJING_LAT}`,
+    null, {}, null, '边界测试：随机漫步缺少经度参数'
+  );
+  assert(res4.status === 400, '缺少经度返回400');
+
+  // 4.5 边界测试：无效的心情参数
+  console.log('\n--- 4.5 边界测试：无效的心情参数 ---');
+  const res5 = await sendRequest('GET',
+    `${BASE_URL}/api/map/random?lat=${BEIJING_LAT}&lng=${BEIJING_LNG}&mood=无效心情`,
+    null, {}, null, '边界测试：随机漫步使用无效的心情参数'
+  );
+  assert(res5.status === 400, '无效心情参数返回400');
+}
+
+/**
+ * 5. feed 接口测试 - 消息推荐流
+ * GET /api/map/feed?lat&lng&mood&page&limit
+ */
+async function testRecommendationFeed() {
+  console.log('\n========== 5. feed 接口测试（消息推荐流） ==========\n');
+
+  // 5.1 正常查询
+  console.log('\n--- 5.1 正常查询推荐流 ---');
+  const res1 = await sendRequest('GET',
+    `${BASE_URL}/api/map/feed?lat=${BEIJING_LAT}&lng=${BEIJING_LNG}&page=1&limit=10`,
+    null, {}, null, '正常测试：在北京获取推荐流（page=1, limit=10）'
+  );
+  assert(res1.status === 200, '推荐流查询成功');
+  if (res1.status === 200) {
+    console.log(`[INFO] 推荐流返回故事数: ${res1.data?.data?.stories?.length || res1.data?.data?.length || 0}`);
+  }
+
+  // 5.2 带心情参数
+  console.log('\n--- 5.2 带心情参数查询推荐流 ---');
+  const res2 = await sendRequest('GET',
+    `${BASE_URL}/api/map/feed?lat=${BEIJING_LAT}&lng=${BEIJING_LNG}&mood=打卡&page=1&limit=5`,
+    null, {}, null, '正常测试：获取推荐流（心情=打卡, limit=5）'
+  );
+  assert(res2.status === 200, '带心情参数推荐流查询成功');
+
+  // 5.3 边界测试：缺少lat参数
+  console.log('\n--- 5.3 边界测试：缺少纬度参数 ---');
+  const res3 = await sendRequest('GET',
+    `${BASE_URL}/api/map/feed?lng=${BEIJING_LNG}&page=1&limit=10`,
+    null, {}, null, '边界测试：推荐流缺少纬度参数'
+  );
+  assert(res3.status === 400, '缺少纬度返回400');
+
+  // 5.4 边界测试：缺少lng参数
+  console.log('\n--- 5.4 边界测试：缺少经度参数 ---');
+  const res4 = await sendRequest('GET',
+    `${BASE_URL}/api/map/feed?lat=${BEIJING_LAT}&page=1&limit=10`,
+    null, {}, null, '边界测试：推荐流缺少经度参数'
+  );
+  assert(res4.status === 400, '缺少经度返回400');
+
+  // 5.5 边界测试：无效分页参数
+  console.log('\n--- 5.5 边界测试：无效分页参数 ---');
+  const res5 = await sendRequest('GET',
+    `${BASE_URL}/api/map/feed?lat=${BEIJING_LAT}&lng=${BEIJING_LNG}&page=-1&limit=10`,
+    null, {}, null, '边界测试：推荐流使用无效分页参数（page=-1）'
+  );
+  assert(res5.status === 400 || res5.status === 200, '无效分页参数处理正确');
+}
+
 // ==================== 保存报告 ====================
 
 async function saveRequestRecords() {
@@ -456,7 +558,7 @@ async function saveRequestRecords() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `map_request_${now}.md`);
+  const reportPath = path.join(reportDir, `map.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
   
@@ -470,7 +572,7 @@ async function saveTestReport() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
-  const reportPath = path.join(reportDir, `map_test_report_${now}.txt`);
+  const reportPath = path.join(reportDir, `map.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
   
@@ -602,6 +704,8 @@ async function main() {
     await testExploreStories();    // 1. explore 接口测试
     await testLocationWall();      // 2. wall 接口测试
     await testClusterData();       // 3. clusters 接口测试
+    await testRandomWalk();        // 4. random 接口测试
+    await testRecommendationFeed(); // 5. feed 接口测试
 
     // 报告
     printTestReport();

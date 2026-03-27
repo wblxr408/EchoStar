@@ -1,10 +1,10 @@
 /**
- * Favorite 模块测试脚本
- * 测试所有收藏相关接口
+ * Like 模块测试脚本
+ * 测试所有点赞相关接口
  * 
  * 使用方式：
- *   node favorite.test.js          # 正常运行（不重置环境）
- *   node favorite.test.js --reset  # 先重置环境再测试
+ *   node like.test.js          # 正常运行（不重置环境）
+ *   node like.test.js --reset  # 先重置环境再测试
  */
 
 import axios from 'axios';
@@ -17,13 +17,13 @@ const __dirname = dirname(__filename);
 
 // 测试配置
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
-const TEST_PREFIX = 'favorite_test_';
+const TEST_PREFIX = 'like_test_';
 const SHOULD_RESET = process.argv.includes('--reset');
 let accessToken = null;
 let testUserId = null;
 let testStoryId = null;
 let secondStoryId = null;
-let testFavoriteId = null;
+let testLikeId = null;
 
 // 请求记录
 const requestRecords = [];
@@ -42,7 +42,7 @@ const stats = {
 /**
  * 记录请求
  */
-function recordRequest(method, url, headers, body, status, response) {
+function recordRequest(method, url, headers, body, status, response, testDescription = '') {
   requestCounter++;
   const record = {
     序号: requestCounter,
@@ -51,7 +51,8 @@ function recordRequest(method, url, headers, body, status, response) {
     返回状态: status,
     请求头: headers,
     请求体: body || null,
-    返回内容: response
+    返回内容: response,
+    测试说明: testDescription
   };
   requestRecords.push(record);
   return record;
@@ -62,7 +63,7 @@ function recordRequest(method, url, headers, body, status, response) {
  */
 function generateReportContent() {
   const now = new Date().toISOString();
-  let content = `# EchoStar API 测试报告 - Favorite模块\n\n`;
+  let content = `# EchoStar API 测试报告 - Like模块\n\n`;
   content += `**测试时间**: ${now}\n\n`;
   content += `**服务器地址**: ${BASE_URL}\n\n`;
   content += `---\n\n`;
@@ -71,14 +72,14 @@ function generateReportContent() {
   requestRecords.forEach(record => {
     let groupKey = '其他';
     
-    if (record.接口地址.includes('/check-multiple')) groupKey = '批量检查收藏状态';
-    else if (record.接口地址.includes('/check')) groupKey = '检查收藏状态';
-    else if (record.接口地址.includes('/count')) groupKey = '收藏统计';
-    else if (record.接口地址.includes('/me')) groupKey = '我的收藏';
-    else if (record.接口地址.includes('/story/')) groupKey = '故事收藏列表';
-    else if (record.请求类型 === 'POST' && record.接口地址.includes('/create')) groupKey = '创建收藏';
-    else if (record.请求类型 === 'POST') groupKey = '收藏/取消收藏切换';
-    else if (record.请求类型 === 'DELETE') groupKey = '取消收藏';
+    if (record.接口地址.includes('/check-multiple')) groupKey = '批量检查点赞状态';
+    else if (record.接口地址.includes('/check')) groupKey = '检查点赞状态';
+    else if (record.接口地址.includes('/count')) groupKey = '点赞统计';
+    else if (record.接口地址.includes('/me')) groupKey = '我的点赞';
+    else if (record.接口地址.includes('/story/')) groupKey = '故事点赞列表';
+    else if (record.请求类型 === 'POST' && record.接口地址.includes('/create')) groupKey = '创建点赞';
+    else if (record.请求类型 === 'POST') groupKey = '点赞/取消点赞切换';
+    else if (record.请求类型 === 'DELETE') groupKey = '取消点赞';
     
     if (!groups[groupKey]) groups[groupKey] = [];
     groups[groupKey].push(record);
@@ -91,6 +92,7 @@ function generateReportContent() {
     
     records.forEach((record, idx) => {
       content += `### ${sectionCounter}.${idx + 1} ${getTestName(record)}\n\n`;
+      content += `**测试说明**: ${record.测试说明 || '无'}\n\n`;
       content += `**序号**: ${record.序号}\n\n`;
       content += `**请求类型**: ${record.请求类型}\n\n`;
       content += `**接口地址**: ${record.接口地址}\n\n`;
@@ -112,21 +114,21 @@ function getTestName(record) {
   if (url.includes('/check-multiple')) {
     if (!record.请求体?.storyIds) return '缺少故事ID数组测试';
     if (!Array.isArray(record.请求体?.storyIds)) return '无效的故事ID数组测试';
-    return '批量检查收藏状态测试';
+    return '批量检查点赞状态测试';
   }
-  if (url.includes('/check')) return '检查是否已收藏测试';
-  if (url.includes('/count')) return '统计收藏数量测试';
-  if (url.includes('/me')) return '获取用户收藏列表测试';
-  if (url.includes('/story/')) return '获取故事收藏列表测试';
+  if (url.includes('/check')) return '检查是否已点赞测试';
+  if (url.includes('/count')) return '统计点赞数量测试';
+  if (url.includes('/me')) return '获取用户点赞列表测试';
+  if (url.includes('/story/')) return '获取故事点赞列表测试';
   if (record.请求类型 === 'POST' && url.includes('/create')) {
-    if (record.请求体?.storyId === 999999) return '收藏不存在的故事测试';
+    if (record.请求体?.storyId === 999999) return '点赞不存在的故事测试';
     if (!record.请求体?.storyId) return '缺少故事ID测试';
-    return '明确创建收藏测试';
+    return '明确创建点赞测试';
   }
-  if (record.请求类型 === 'POST') return '收藏切换测试';
+  if (record.请求类型 === 'POST') return '点赞切换测试';
   if (record.请求类型 === 'DELETE') {
-    if (url.includes('999999')) return '取消不存在的收藏测试';
-    return '取消收藏测试';
+    if (url.includes('999999')) return '取消不存在的点赞测试';
+    return '取消点赞测试';
   }
   return '接口测试';
 }
@@ -137,7 +139,7 @@ function getTestName(record) {
 function generateTestReport() {
   const now = new Date().toISOString();
   console.log(`\n[${now}] ╔════════════════════════════════════════════════════╗`);
-  console.log(`[${now}] ║         EchoStar API 测试报告 - Favorite模块        ║`);
+  console.log(`[${now}] ║          EchoStar API 测试报告 - Like模块           ║`);
   console.log(`[${now}] ╚════════════════════════════════════════════════════╝`);
   console.log(`[${now}] 目标服务器: ${BASE_URL}`);
   console.log(`[${now}] 测试时间: ${now}`);
@@ -165,7 +167,7 @@ async function saveRequestRecords() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `favorite_request_${now}.md`);
+  const reportPath = path.join(reportDir, `like.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
@@ -189,7 +191,7 @@ async function saveTestReport() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
-  const reportPath = path.join(reportDir, `favorite_test_report_${now}.txt`);
+  const reportPath = path.join(reportDir, `like.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
@@ -213,7 +215,7 @@ async function saveTestReport() {
 /**
  * 发送请求并记录
  */
-async function sendRequest(method, url, data = null, customHeaders = {}) {
+async function sendRequest(method, url, data = null, customHeaders = {}, testDescription = '') {
   const headers = {
     'Content-Type': 'application/json',
     ...customHeaders
@@ -244,7 +246,8 @@ async function sendRequest(method, url, data = null, customHeaders = {}) {
       { ...headers },
       data,
       response.status,
-      response.data
+      response.data,
+      testDescription
     );
 
     return response;
@@ -255,7 +258,8 @@ async function sendRequest(method, url, data = null, customHeaders = {}) {
       { ...headers },
       data,
       error.response?.status || 500,
-      error.response?.data || { error: error.message }
+      error.response?.data || { error: error.message },
+      testDescription
     );
 
     return error.response || { status: 500, data: { error: error.message } };
@@ -288,45 +292,34 @@ async function setupTestUser() {
   const email = `${TEST_PREFIX}${timestamp}@test.com`;
   const password = 'Test123456';
 
-  const registerRes = await sendRequest('POST', `${BASE_URL}/api/auth/register`, {
+  const registerRes = await sendRequest('POST', `${BASE_URL}/api/auth/register_2`, {
     username,
     email,
     password
-  });
+  }, {}, '创建测试用户（为点赞模块测试创建数据基础）');
 
-  if (registerRes.status === 200 || registerRes.status === 201) {
+  if (registerRes.status === 200 || registerRes.data?.code === 0) {
     accessToken = registerRes.data?.data?.accessToken;
     testUserId = registerRes.data?.data?.user?.id;
     console.log(`[INFO] 测试用户创建成功: ${username}, ID=${testUserId}`);
     return true;
   }
   
-  const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/login`, {
-    email,
-    password
-  });
-  
-  if (loginRes.status === 200) {
-    accessToken = loginRes.data?.data?.accessToken;
-    testUserId = loginRes.data?.data?.user?.id;
-    console.log(`[INFO] 测试用户登录成功: ${username}, ID=${testUserId}`);
-    return true;
-  }
-  
+  console.error('[ERROR] register_2 注册失败');
   return false;
 }
 
 async function setupTestStories() {
   // 创建第一个测试故事
   const story1Res = await sendRequest('POST', `${BASE_URL}/api/stories`, {
-    content: `测试故事1用于收藏测试 ${Date.now()}`,
+    content: `测试故事1用于点赞测试 ${Date.now()}`,
     images: ['https://example.com/test-image1.jpg'],
     emotionTag: '开心',
     location: {
       lat: 39.90923,
       lng: 116.397428
     }
-  });
+  }, {}, '创建测试故事1（为点赞测试创建数据基础）');
 
   if (story1Res.status === 200 || story1Res.status === 201) {
     testStoryId = story1Res.data?.data?.id;
@@ -335,14 +328,14 @@ async function setupTestStories() {
 
   // 创建第二个测试故事
   const story2Res = await sendRequest('POST', `${BASE_URL}/api/stories`, {
-    content: `测试故事2用于收藏测试 ${Date.now()}`,
+    content: `测试故事2用于点赞测试 ${Date.now()}`,
     images: ['https://example.com/test-image2.jpg'],
     emotionTag: '治愈',
     location: {
       lat: 39.91923,
       lng: 116.407428
     }
-  });
+  }, {}, '创建测试故事2（为点赞测试创建数据基础）');
 
   if (story2Res.status === 200 || story2Res.status === 201) {
     secondStoryId = story2Res.data?.data?.id;
@@ -355,254 +348,254 @@ async function setupTestStories() {
 // ==================== 测试用例 ====================
 
 /**
- * 1. 收藏/取消收藏切换测试
+ * 1. 点赞/取消点赞切换测试
  */
-async function testToggleFavorite() {
-  console.log('\n========== 1. 收藏/取消收藏切换测试 ==========\n');
+async function testToggleLike() {
+  console.log('\n========== 1. 点赞/取消点赞切换测试 ==========\n');
 
-  // 1.1 第一次收藏（创建收藏）
-  const res1 = await sendRequest('POST', `${BASE_URL}/api/favorites`, {
+  // 1.1 第一次点赞（创建点赞）
+  const res1 = await sendRequest('POST', `${BASE_URL}/api/likes`, {
     storyId: testStoryId
-  });
-  assert(res1.status === 200 || res1.status === 201, '第一次收藏成功');
-  assert(res1.data?.data?.isFavorited === true, '返回已收藏状态');
+  }, {}, '正常测试：点赞故事（第一次，应创建点赞）');
+  assert(res1.status === 200 || res1.status === 201, '第一次点赞成功');
+  assert(res1.data?.data?.isLiked === true, '返回已点赞状态');
 
-  // 1.2 第二次收藏（取消收藏）
-  const res2 = await sendRequest('POST', `${BASE_URL}/api/favorites`, {
+  // 1.2 第二次点赞（取消点赞）
+  const res2 = await sendRequest('POST', `${BASE_URL}/api/likes`, {
     storyId: testStoryId
-  });
-  assert(res2.status === 200, '第二次收藏触发取消');
-  assert(res2.data?.data?.isFavorited === false, '返回未收藏状态');
+  }, {}, '正常测试：再次点赞同一故事（应取消点赞）');
+  assert(res2.status === 200, '第二次点赞触发取消');
+  assert(res2.data?.data?.isLiked === false, '返回未点赞状态');
 
-  // 1.3 第三次收藏（重新收藏）
-  const res3 = await sendRequest('POST', `${BASE_URL}/api/favorites`, {
+  // 1.3 第三次点赞（重新点赞）
+  const res3 = await sendRequest('POST', `${BASE_URL}/api/likes`, {
     storyId: testStoryId
-  });
-  assert(res3.status === 200 || res3.status === 201, '第三次重新收藏成功');
-  testFavoriteId = res3.data?.data?.id;
+  }, {}, '正常测试：第三次点赞（应重新创建点赞）');
+  assert(res3.status === 200 || res3.status === 201, '第三次重新点赞成功');
+  testLikeId = res3.data?.data?.id;
 
-  // 1.4 边界测试：收藏不存在的故事
-  const res4 = await sendRequest('POST', `${BASE_URL}/api/favorites`, {
+  // 1.4 边界测试：点赞不存在的故事
+  const res4 = await sendRequest('POST', `${BASE_URL}/api/likes`, {
     storyId: 999999
-  });
-  assert(res4.status === 404 || res4.status === 400 || res4.status === 500, '收藏不存在的故事应该失败');
+  }, {}, '边界测试：点赞不存在的故事（storyId=999999）');
+  assert(res4.status === 404 || res4.status === 400 || res4.status === 500, '点赞不存在的故事应该失败');
 
   // 1.5 边界测试：缺少故事ID
-  const res5 = await sendRequest('POST', `${BASE_URL}/api/favorites`, {});
+  const res5 = await sendRequest('POST', `${BASE_URL}/api/likes`, {}, {}, '边界测试：缺少故事ID（请求体为空对象）');
   assert(res5.status === 400 || res5.status === 500, '缺少故事ID应该失败');
 
   // 1.6 边界测试：无Token访问
   const tempToken = accessToken;
   accessToken = null;
-  const res6 = await sendRequest('POST', `${BASE_URL}/api/favorites`, {
+  const res6 = await sendRequest('POST', `${BASE_URL}/api/likes`, {
     storyId: testStoryId
-  });
-  assert(res6.status === 401, '无Token收藏应该返回401');
+  }, {}, '边界测试：无Token点赞');
+  assert(res6.status === 401, '无Token点赞应该返回401');
   accessToken = tempToken;
 }
 
 /**
- * 2. 明确创建收藏测试
+ * 2. 明确创建点赞测试
  */
-async function testCreateFavorite() {
-  console.log('\n========== 2. 明确创建收藏测试 ==========\n');
+async function testCreateLike() {
+  console.log('\n========== 2. 明确创建点赞测试 ==========\n');
 
-  // 2.1 正常创建收藏（使用第二个故事）
-  const res1 = await sendRequest('POST', `${BASE_URL}/api/favorites/create`, {
+  // 2.1 正常创建点赞（使用第二个故事）
+  const res1 = await sendRequest('POST', `${BASE_URL}/api/likes/create`, {
     storyId: secondStoryId
-  });
-  assert(res1.status === 200 || res1.status === 201, '创建收藏成功');
+  }, {}, '正常测试：明确创建点赞（/likes/create）');
+  assert(res1.status === 200 || res1.status === 201, '创建点赞成功');
 
-  // 2.2 重复创建收藏（应该失败）
-  const res2 = await sendRequest('POST', `${BASE_URL}/api/favorites/create`, {
+  // 2.2 重复创建点赞（应该失败）
+  const res2 = await sendRequest('POST', `${BASE_URL}/api/likes/create`, {
     storyId: secondStoryId
-  });
-  assert(res2.status === 400 || res2.status === 500, '重复创建收藏应该失败');
+  }, {}, '边界测试：重复创建点赞（已点赞的故事）');
+  assert(res2.status === 400 || res2.status === 500, '重复创建点赞应该失败');
 
-  // 2.3 边界测试：收藏不存在的故事
-  const res3 = await sendRequest('POST', `${BASE_URL}/api/favorites/create`, {
+  // 2.3 边界测试：点赞不存在的故事
+  const res3 = await sendRequest('POST', `${BASE_URL}/api/likes/create`, {
     storyId: 999999
-  });
-  assert(res3.status === 404 || res3.status === 400 || res3.status === 500, '收藏不存在的故事应该失败');
+  }, {}, '边界测试：创建点赞不存在的故事（storyId=999999）');
+  assert(res3.status === 404 || res3.status === 400 || res3.status === 500, '点赞不存在的故事应该失败');
 
   // 2.4 边界测试：缺少故事ID
-  const res4 = await sendRequest('POST', `${BASE_URL}/api/favorites/create`, {});
+  const res4 = await sendRequest('POST', `${BASE_URL}/api/likes/create`, {}, {}, '边界测试：缺少故事ID（请求体为空对象）');
   assert(res4.status === 400 || res4.status === 500, '缺少故事ID应该失败');
 
   // 2.5 边界测试：无Token访问
   const tempToken = accessToken;
   accessToken = null;
-  const res5 = await sendRequest('POST', `${BASE_URL}/api/favorites/create`, {
+  const res5 = await sendRequest('POST', `${BASE_URL}/api/likes/create`, {
     storyId: testStoryId
-  });
-  assert(res5.status === 401, '无Token创建收藏应该返回401');
+  }, {}, '边界测试：无Token创建点赞');
+  assert(res5.status === 401, '无Token创建点赞应该返回401');
   accessToken = tempToken;
 }
 
 /**
- * 3. 取消收藏测试
+ * 3. 取消点赞测试
  */
-async function testDeleteFavorite() {
-  console.log('\n========== 3. 取消收藏测试 ==========\n');
+async function testDeleteLike() {
+  console.log('\n========== 3. 取消点赞测试 ==========\n');
 
-  // 3.1 正常取消收藏
-  const res1 = await sendRequest('DELETE', `${BASE_URL}/api/favorites/${secondStoryId}`);
-  assert(res1.status === 200, '取消收藏成功');
+  // 3.1 正常取消点赞
+  const res1 = await sendRequest('DELETE', `${BASE_URL}/api/likes/${secondStoryId}`, {}, '正常测试：取消点赞');
+  assert(res1.status === 200, '取消点赞成功');
 
-  // 3.2 重复取消收藏
-  const res2 = await sendRequest('DELETE', `${BASE_URL}/api/favorites/${secondStoryId}`);
-  assert(res2.status === 400 || res2.status === 404 || res2.status === 500, '重复取消收藏应该失败');
+  // 3.2 重复取消点赞
+  const res2 = await sendRequest('DELETE', `${BASE_URL}/api/likes/${secondStoryId}`, {}, '边界测试：重复取消点赞');
+  assert(res2.status === 400 || res2.status === 404 || res2.status === 500, '重复取消点赞应该失败');
 
-  // 3.3 边界测试：取消不存在的故事收藏
-  const res3 = await sendRequest('DELETE', `${BASE_URL}/api/favorites/999999`);
-  assert(res3.status === 400 || res3.status === 404 || res3.status === 500, '取消不存在的收藏应该失败');
+  // 3.3 边界测试：取消不存在的故事点赞
+  const res3 = await sendRequest('DELETE', `${BASE_URL}/api/likes/999999`, {}, '边界测试：取消不存在的故事点赞（storyId=999999）');
+  assert(res3.status === 400 || res3.status === 404 || res3.status === 500, '取消不存在的点赞应该失败');
 
   // 3.4 边界测试：无效的故事ID
-  const res4 = await sendRequest('DELETE', `${BASE_URL}/api/favorites/invalid`);
+  const res4 = await sendRequest('DELETE', `${BASE_URL}/api/likes/invalid`, {}, '边界测试：无效的故事ID（storyId=invalid）');
   assert(res4.status === 400 || res4.status === 500, '无效故事ID应该失败');
 
   // 3.5 边界测试：无Token访问
   const tempToken = accessToken;
   accessToken = null;
-  const res5 = await sendRequest('DELETE', `${BASE_URL}/api/favorites/${testStoryId}`);
-  assert(res5.status === 401, '无Token取消收藏应该返回401');
+  const res5 = await sendRequest('DELETE', `${BASE_URL}/api/likes/${testStoryId}`, {}, '边界测试：无Token取消点赞');
+  assert(res5.status === 401, '无Token取消点赞应该返回401');
   accessToken = tempToken;
 }
 
 /**
- * 4. 获取用户收藏列表测试
+ * 4. 获取用户点赞列表测试
  */
-async function testGetUserFavorites() {
-  console.log('\n========== 4. 获取用户收藏列表测试 ==========\n');
+async function testGetUserLikes() {
+  console.log('\n========== 4. 获取用户点赞列表测试 ==========\n');
 
   // 4.1 正常获取
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/favorites/me`);
-  assert(res1.status === 200, '获取用户收藏列表成功');
-  assert(Array.isArray(res1.data?.data?.favorites), '返回收藏数组');
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/likes/me`, {}, '正常测试：获取用户点赞列表');
+  assert(res1.status === 200, '获取用户点赞列表成功');
+  assert(Array.isArray(res1.data?.data?.likes), '返回点赞数组');
 
   // 4.2 分页测试
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/favorites/me?page=1&limit=5`);
-  assert(res2.status === 200, '分页获取收藏列表成功');
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/likes/me?page=1&limit=5`, {}, '正常测试：分页获取点赞列表（limit=5）');
+  assert(res2.status === 200, '分页获取点赞列表成功');
   assert(res2.data?.data?.pagination, '返回分页信息');
 
   // 4.3 边界测试：无Token访问
   const tempToken = accessToken;
   accessToken = null;
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/favorites/me`);
-  assert(res3.status === 401, '无Token获取收藏列表应该返回401');
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/likes/me`, {}, '边界测试：无Token获取点赞列表');
+  assert(res3.status === 401, '无Token获取点赞列表应该返回401');
   accessToken = tempToken;
 }
 
 /**
- * 5. 获取故事收藏列表测试
+ * 5. 获取故事点赞列表测试
  */
-async function testGetFavoritesByStoryId() {
-  console.log('\n========== 5. 获取故事收藏列表测试 ==========\n');
+async function testGetLikesByStoryId() {
+  console.log('\n========== 5. 获取故事点赞列表测试 ==========\n');
 
   // 5.1 正常获取
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/favorites/story/${testStoryId}`);
-  assert(res1.status === 200, '获取故事收藏列表成功');
-  assert(Array.isArray(res1.data?.data?.favorites), '返回收藏数组');
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/likes/story/${testStoryId}`, {}, '正常测试：获取故事点赞列表');
+  assert(res1.status === 200, '获取故事点赞列表成功');
+  assert(Array.isArray(res1.data?.data?.likes), '返回点赞数组');
 
   // 5.2 分页测试
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/favorites/story/${testStoryId}?page=1&limit=5`);
-  assert(res2.status === 200, '分页获取故事收藏成功');
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/likes/story/${testStoryId}?page=1&limit=5`, {}, '正常测试：分页获取故事点赞（limit=5）');
+  assert(res2.status === 200, '分页获取故事点赞成功');
 
   // 5.3 边界测试：不存在的故事
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/favorites/story/999999`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/likes/story/999999`, {}, '边界测试：获取不存在故事的点赞列表');
   assert(res3.status === 200 || res3.status === 404, '不存在的故事返回正确状态');
 
   // 5.4 边界测试：无效的故事ID
-  const res4 = await sendRequest('GET', `${BASE_URL}/api/favorites/story/invalid`);
+  const res4 = await sendRequest('GET', `${BASE_URL}/api/likes/story/invalid`, {}, '边界测试：无效故事ID格式（storyId=invalid）');
   assert(res4.status === 400 || res4.status === 500, '无效故事ID应该失败');
 }
 
 /**
- * 6. 检查是否已收藏测试
+ * 6. 检查是否已点赞测试
  */
-async function testCheckIsFavorited() {
-  console.log('\n========== 6. 检查是否已收藏测试 ==========\n');
+async function testCheckIsLiked() {
+  console.log('\n========== 6. 检查是否已点赞测试 ==========\n');
 
-  // 6.1 已收藏的故事
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/favorites/${testStoryId}/check`);
-  assert(res1.status === 200, '检查收藏状态成功');
-  assert(typeof res1.data?.data?.isFavorited === 'boolean', '返回收藏状态');
+  // 6.1 已点赞的故事
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/likes/${testStoryId}/check`, {}, '正常测试：检查已点赞故事的点赞状态');
+  assert(res1.status === 200, '检查点赞状态成功');
+  assert(typeof res1.data?.data?.isLiked === 'boolean', '返回点赞状态');
 
-  // 6.2 未收藏的故事
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/favorites/${secondStoryId}/check`);
-  assert(res2.status === 200, '检查未收藏故事成功');
+  // 6.2 未点赞的故事
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/likes/${secondStoryId}/check`, {}, '正常测试：检查未点赞故事的点赞状态');
+  assert(res2.status === 200, '检查未点赞故事成功');
 
   // 6.3 边界测试：不存在的故事
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/favorites/999999/check`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/likes/999999/check`, {}, '边界测试：检查不存在故事的点赞状态');
   assert(res3.status === 200 || res3.status === 404, '不存在的故事返回正确状态');
 
   // 6.4 边界测试：无效的故事ID
-  const res4 = await sendRequest('GET', `${BASE_URL}/api/favorites/invalid/check`);
+  const res4 = await sendRequest('GET', `${BASE_URL}/api/likes/invalid/check`, {}, '边界测试：无效故事ID格式');
   assert(res4.status === 400 || res4.status === 500, '无效故事ID应该失败');
 
   // 6.5 无Token访问（可选认证，应该成功）
   const tempToken = accessToken;
   accessToken = null;
-  const res5 = await sendRequest('GET', `${BASE_URL}/api/favorites/${testStoryId}/check`);
-  assert(res5.status === 200, '无Token检查收藏状态应该成功');
+  const res5 = await sendRequest('GET', `${BASE_URL}/api/likes/${testStoryId}/check`, {}, '边界测试：无Token检查点赞状态（可选认证，应成功）');
+  assert(res5.status === 200, '无Token检查点赞状态应该成功');
   accessToken = tempToken;
 }
 
 /**
- * 7. 统计收藏数量测试
+ * 7. 统计点赞数量测试
  */
-async function testGetFavoriteCount() {
-  console.log('\n========== 7. 统计收藏数量测试 ==========\n');
+async function testGetLikeCount() {
+  console.log('\n========== 7. 统计点赞数量测试 ==========\n');
 
   // 7.1 正常统计
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/favorites/${testStoryId}/count`);
-  assert(res1.status === 200, '统计收藏数量成功');
-  assert(typeof res1.data?.data?.favoriteCount === 'number', '返回收藏数量');
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/likes/${testStoryId}/count`, {}, '正常测试：统计故事点赞数量');
+  assert(res1.status === 200, '统计点赞数量成功');
+  assert(typeof res1.data?.data?.likeCount === 'number', '返回点赞数量');
 
   // 7.2 边界测试：不存在的故事
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/favorites/999999/count`);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/likes/999999/count`, {}, '边界测试：统计不存在故事的点赞数');
   assert(res2.status === 200 || res2.status === 404, '不存在的故事统计返回正确状态');
 
   // 7.3 边界测试：无效的故事ID
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/favorites/invalid/count`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/likes/invalid/count`, {}, '边界测试：无效故事ID格式');
   assert(res3.status === 400 || res3.status === 500, '无效故事ID应该失败');
 }
 
 /**
- * 8. 批量检查收藏状态测试
+ * 8. 批量检查点赞状态测试
  */
-async function testCheckMultipleFavorited() {
-  console.log('\n========== 8. 批量检查收藏状态测试 ==========\n');
+async function testCheckMultipleLiked() {
+  console.log('\n========== 8. 批量检查点赞状态测试 ==========\n');
 
   // 8.1 正常批量检查
-  const res1 = await sendRequest('POST', `${BASE_URL}/api/favorites/check-multiple`, {
+  const res1 = await sendRequest('POST', `${BASE_URL}/api/likes/check-multiple`, {
     storyIds: [testStoryId, secondStoryId, 999999]
-  });
-  assert(res1.status === 200, '批量检查收藏状态成功');
+  }, {}, '正常测试：批量检查多个故事的点赞状态');
+  assert(res1.status === 200, '批量检查点赞状态成功');
   assert(Array.isArray(res1.data?.data), '返回状态数组');
 
   // 8.2 边界测试：空数组
-  const res2 = await sendRequest('POST', `${BASE_URL}/api/favorites/check-multiple`, {
+  const res2 = await sendRequest('POST', `${BASE_URL}/api/likes/check-multiple`, {
     storyIds: []
-  });
+  }, {}, '边界测试：storyIds为空数组');
   assert(res2.status === 200 || res2.status === 400, '空数组处理正确');
 
   // 8.3 边界测试：缺少storyIds
-  const res3 = await sendRequest('POST', `${BASE_URL}/api/favorites/check-multiple`, {});
+  const res3 = await sendRequest('POST', `${BASE_URL}/api/likes/check-multiple`, {}, {}, '边界测试：缺少storyIds字段');
   assert(res3.status === 400, '缺少storyIds应该返回400');
 
   // 8.4 边界测试：无效的storyIds格式
-  const res4 = await sendRequest('POST', `${BASE_URL}/api/favorites/check-multiple`, {
+  const res4 = await sendRequest('POST', `${BASE_URL}/api/likes/check-multiple`, {
     storyIds: 'invalid'
-  });
+  }, {}, '边界测试：storyIds为非数组（字符串）');
   assert(res4.status === 400, '无效的storyIds格式应该返回400');
 
   // 8.5 无Token访问（可选认证，应该成功）
   const tempToken = accessToken;
   accessToken = null;
-  const res5 = await sendRequest('POST', `${BASE_URL}/api/favorites/check-multiple`, {
+  const res5 = await sendRequest('POST', `${BASE_URL}/api/likes/check-multiple`, {
     storyIds: [testStoryId]
-  });
+  }, {}, '边界测试：无Token批量检查点赞（可选认证，应成功）');
   assert(res5.status === 200, '无Token批量检查应该成功');
   accessToken = tempToken;
 }
@@ -640,8 +633,8 @@ async function resetEnvironment() {
 async function main() {
   const now = new Date().toISOString();
   console.log(`[${now}] ╔════════════════════════════════════════════════════╗`);
-  console.log(`[${now}] ║            EchoStar API 测试开始                    ║`);
-  console.log(`[${now}] ║            模块: Favorite (收藏)                    ║`);
+  console.log(`[${now}] ║              EchoStar API 测试开始                  ║`);
+  console.log(`[${now}] ║                模块: Like (点赞)                    ║`);
   console.log(`[${now}] ╚════════════════════════════════════════════════════╝`);
   console.log(`[${now}] 目标服务器: ${BASE_URL}`);
   if (SHOULD_RESET) {
@@ -675,14 +668,14 @@ async function main() {
     }
 
     // 执行测试
-    await testToggleFavorite();
-    await testCreateFavorite();
-    await testDeleteFavorite();
-    await testGetUserFavorites();
-    await testGetFavoritesByStoryId();
-    await testCheckIsFavorited();
-    await testGetFavoriteCount();
-    await testCheckMultipleFavorited();
+    await testToggleLike();
+    await testCreateLike();
+    await testDeleteLike();
+    await testGetUserLikes();
+    await testGetLikesByStoryId();
+    await testCheckIsLiked();
+    await testGetLikeCount();
+    await testCheckMultipleLiked();
 
     // 生成报告
     generateTestReport();

@@ -43,7 +43,7 @@ const stats = {
 /**
  * 记录请求
  */
-function recordRequest(method, url, headers, body, status, response) {
+function recordRequest(method, url, headers, body, status, response, testDescription = '') {
   requestCounter++;
   const record = {
     序号: requestCounter,
@@ -52,7 +52,8 @@ function recordRequest(method, url, headers, body, status, response) {
     返回状态: status,
     请求头: headers,
     请求体: body || null,
-    返回内容: response
+    返回内容: response,
+    测试说明: testDescription
   };
   requestRecords.push(record);
   return record;
@@ -75,6 +76,7 @@ function generateReportContent() {
     content += `**序号**: ${record.序号}\n\n`;
     content += `**请求类型**: ${record.请求类型}\n\n`;
     content += `**接口地址**: ${record.接口地址}\n\n`;
+    content += `**测试说明**: ${record.测试说明 || '无'}\n\n`;
     content += `**返回状态**: ${record.返回状态}\n\n`;
     content += `**请求头**:\n\`\`\`json\n${JSON.stringify(record.请求头, null, 2)}\n\`\`\`\n\n`;
     if (record.请求体) {
@@ -90,8 +92,10 @@ function generateReportContent() {
 function getTestName(record) {
   const url = record.接口地址;
   const method = record.请求类型;
-  
+
   if (url.includes('/statistics')) return '获取举报统计测试';
+  if (url.endsWith('/reports/stories')) return '获取故事举报列表测试';
+  if (url.endsWith('/reports/comments')) return '获取评论举报列表测试';
   if (url.includes('/handle')) {
     if (record.返回状态 === 403) return '处理举报-无管理员权限测试';
     if (record.请求体?.action === 'approve') return '批准举报测试';
@@ -155,7 +159,7 @@ async function saveRequestRecords() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `report_request_${now}.md`);
+  const reportPath = path.join(reportDir, `report.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
@@ -179,7 +183,7 @@ async function saveTestReport() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
-  const reportPath = path.join(reportDir, `report_test_report_${now}.txt`);
+  const reportPath = path.join(reportDir, `report.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
@@ -203,7 +207,7 @@ async function saveTestReport() {
 /**
  * 发送请求并记录
  */
-async function sendRequest(method, url, data = null, customHeaders = {}, useToken = true) {
+async function sendRequest(method, url, data = null, customHeaders = {}, useToken = true, testDescription = '') {
   const headers = {
     'Content-Type': 'application/json',
     ...customHeaders
@@ -234,7 +238,8 @@ async function sendRequest(method, url, data = null, customHeaders = {}, useToke
       { ...headers },
       data,
       response.status,
-      response.data
+      response.data,
+      testDescription
     );
 
     return response;
@@ -245,7 +250,8 @@ async function sendRequest(method, url, data = null, customHeaders = {}, useToke
       { ...headers },
       data,
       error.response?.status || 500,
-      error.response?.data || { error: error.message }
+      error.response?.data || { error: error.message },
+      testDescription
     );
 
     return error.response || { status: 500, data: { error: error.message } };
@@ -278,31 +284,20 @@ async function setupTestUser() {
   const email = `${TEST_PREFIX}${timestamp}@test.com`;
   const password = 'Test123456';
 
-  const registerRes = await sendRequest('POST', `${BASE_URL}/api/auth/register`, {
+  const registerRes = await sendRequest('POST', `${BASE_URL}/api/auth/register_2`, {
     username,
     email,
     password
-  }, {}, false);
+  }, {}, false, '创建测试用户（无需验证码）');
 
-  if (registerRes.status === 200 || registerRes.status === 201) {
+  if (registerRes.status === 200 || registerRes.data?.code === 0) {
     accessToken = registerRes.data?.data?.accessToken;
     testUserId = registerRes.data?.data?.user?.id;
     console.log(`[INFO] 测试用户创建成功: ${username}, ID=${testUserId}`);
     return true;
   }
   
-  const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/login`, {
-    email,
-    password
-  }, {}, false);
-  
-  if (loginRes.status === 200) {
-    accessToken = loginRes.data?.data?.accessToken;
-    testUserId = loginRes.data?.data?.user?.id;
-    console.log(`[INFO] 测试用户登录成功: ${username}, ID=${testUserId}`);
-    return true;
-  }
-  
+  console.error('[ERROR] register_2 注册失败');
   return false;
 }
 
@@ -315,7 +310,7 @@ async function setupTestStory() {
       lat: 39.90923,
       lng: 116.397428
     }
-  });
+  }, {}, true, '创建测试故事（用于后续举报测试）');
 
   if (storyRes.status === 200 || storyRes.status === 201) {
     testStoryId = storyRes.data?.data?.id;
@@ -330,7 +325,7 @@ async function setupTestComment() {
   const commentRes = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: testStoryId,
     content: `测试评论用于举报测试 ${Date.now()}`
-  });
+  }, {}, true, '创建测试评论（用于后续举报测试）');
 
   if (commentRes.status === 200 || commentRes.status === 201) {
     testCommentId = commentRes.data?.data?.id;
@@ -354,7 +349,7 @@ async function testCreateReport() {
     targetType: 'story',
     targetId: testStoryId,
     reason: '测试举报故事原因'
-  });
+  }, {}, true, '正常测试：举报一个存在的故事');
   assert(res1.status === 201, '举报故事成功');
   testReportId = res1.data?.data?.id;
 
@@ -363,7 +358,7 @@ async function testCreateReport() {
     targetType: 'story',
     targetId: testStoryId,
     reason: '重复举报测试'
-  });
+  }, {}, true, '边界测试：重复举报同一故事');
   assert(res2.status === 400, '重复举报同一故事应该失败');
 
   // 1.3 举报评论
@@ -371,7 +366,7 @@ async function testCreateReport() {
     targetType: 'comment',
     targetId: testCommentId,
     reason: '测试举报评论原因'
-  });
+  }, {}, true, '正常测试：举报一个存在的评论');
   assert(res3.status === 201, '举报评论成功');
 
   // 1.4 边界测试：举报不存在的故事
@@ -379,7 +374,7 @@ async function testCreateReport() {
     targetType: 'story',
     targetId: 999999,
     reason: '举报不存在的故事'
-  });
+  }, {}, true, '边界测试：举报不存在的故事（targetId=999999）');
   assert(res4.status === 404 || res4.status === 400, '举报不存在的故事应该失败');
 
   // 1.5 边界测试：举报不存在的评论
@@ -387,28 +382,28 @@ async function testCreateReport() {
     targetType: 'comment',
     targetId: 999999,
     reason: '举报不存在的评论'
-  });
+  }, {}, true, '边界测试：举报不存在的评论（targetId=999999）');
   assert(res5.status === 404 || res5.status === 400, '举报不存在的评论应该失败');
 
   // 1.6 边界测试：缺少targetType
   const res6 = await sendRequest('POST', `${BASE_URL}/api/reports`, {
     targetId: testStoryId,
     reason: '缺少类型测试'
-  });
+  }, {}, true, '边界测试：创建举报时缺少targetType参数');
   assert(res6.status === 400, '缺少targetType应该失败');
 
   // 1.7 边界测试：缺少targetId
   const res7 = await sendRequest('POST', `${BASE_URL}/api/reports`, {
     targetType: 'story',
     reason: '缺少目标ID测试'
-  });
+  }, {}, true, '边界测试：创建举报时缺少targetId参数');
   assert(res7.status === 400, '缺少targetId应该失败');
 
   // 1.8 边界测试：缺少reason
   const res8 = await sendRequest('POST', `${BASE_URL}/api/reports`, {
     targetType: 'story',
     targetId: testStoryId
-  });
+  }, {}, true, '边界测试：创建举报时缺少reason参数');
   assert(res8.status === 400, '缺少reason应该失败');
 
   // 1.9 边界测试：无效的targetType
@@ -416,7 +411,7 @@ async function testCreateReport() {
     targetType: 'invalid',
     targetId: testStoryId,
     reason: '无效类型测试'
-  });
+  }, {}, true, '边界测试：创建举报时使用无效的targetType值');
   assert(res9.status === 400, '无效的targetType应该失败');
 
   // 1.10 边界测试：reason超长
@@ -425,7 +420,7 @@ async function testCreateReport() {
     targetType: 'story',
     targetId: testStoryId,
     reason: longReason
-  });
+  }, {}, true, '边界测试：创建举报时reason超过500字符限制');
   assert(res10.status === 400, 'reason超长应该失败');
 
   // 1.11 边界测试：无Token访问
@@ -433,7 +428,7 @@ async function testCreateReport() {
     targetType: 'story',
     targetId: testStoryId,
     reason: '无Token测试'
-  }, {}, false);
+  }, {}, false, '边界测试：未登录时创建举报（应返回401）');
   assert(res11.status === 401, '无Token创建举报应该返回401');
 }
 
@@ -444,21 +439,21 @@ async function testGetUserReports() {
   console.log('\n========== 2. 获取用户举报列表测试 ==========\n');
 
   // 2.1 正常获取
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/reports/me`);
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/reports/me`, null, {}, true, '正常测试：获取当前用户的举报列表');
   assert(res1.status === 200, '获取用户举报列表成功');
   assert(Array.isArray(res1.data?.data?.reports), '返回举报数组');
 
   // 2.2 分页测试
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/reports/me?page=1&limit=5`);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/reports/me?page=1&limit=5`, null, {}, true, '正常测试：分页获取用户举报列表（page=1, limit=5）');
   assert(res2.status === 200, '分页获取举报列表成功');
   assert(res2.data?.data?.pagination, '返回分页信息');
 
   // 2.3 边界测试：无效分页参数
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/reports/me?page=-1&limit=5`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/reports/me?page=-1&limit=5`, null, {}, true, '边界测试：使用无效分页参数（page=-1）');
   assert(res3.status === 200 || res3.status === 400, '无效分页参数处理正确');
 
   // 2.4 边界测试：无Token访问
-  const res4 = await sendRequest('GET', `${BASE_URL}/api/reports/me`, null, {}, false);
+  const res4 = await sendRequest('GET', `${BASE_URL}/api/reports/me`, null, {}, false, '边界测试：未登录时获取举报列表（应返回401）');
   assert(res4.status === 401, '无Token获取举报列表应该返回401');
 }
 
@@ -469,23 +464,23 @@ async function testGetReportsAsAdmin() {
   console.log('\n========== 3. 管理员获取举报列表测试 ==========\n');
 
   // 3.1 普通用户访问管理员接口（应该返回403）
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/reports?targetType=story&status=pending`);
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/reports?targetType=story&status=pending`, null, {}, true, '边界测试：普通用户访问管理员举报列表接口（应返回403）');
   assert(res1.status === 403, '普通用户访问管理员接口应该返回403');
 
   // 3.2 测试缺少targetType参数
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/reports?status=pending`);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/reports?status=pending`, null, {}, true, '边界测试：获取举报列表时缺少targetType参数');
   assert(res2.status === 403 || res2.status === 400, '缺少targetType参数处理正确');
 
   // 3.3 测试无效的targetType
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/reports?targetType=invalid&status=pending`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/reports?targetType=invalid&status=pending`, null, {}, true, '边界测试：获取举报列表时使用无效的targetType值');
   assert(res3.status === 403 || res3.status === 400, '无效targetType参数处理正确');
 
   // 3.4 测试无效的status
-  const res4 = await sendRequest('GET', `${BASE_URL}/api/reports?targetType=story&status=invalid`);
+  const res4 = await sendRequest('GET', `${BASE_URL}/api/reports?targetType=story&status=invalid`, null, {}, true, '边界测试：获取举报列表时使用无效的status值');
   assert(res4.status === 403 || res4.status === 400, '无效status参数处理正确');
 
   // 3.5 无Token访问
-  const res5 = await sendRequest('GET', `${BASE_URL}/api/reports?targetType=story&status=pending`, null, {}, false);
+  const res5 = await sendRequest('GET', `${BASE_URL}/api/reports?targetType=story&status=pending`, null, {}, false, '边界测试：未登录时访问管理员举报列表接口（应返回401）');
   assert(res5.status === 401, '无Token访问管理员接口应该返回401');
 }
 
@@ -498,35 +493,35 @@ async function testHandleReport() {
   // 4.1 普通用户尝试批准举报（应该返回403）
   const res1 = await sendRequest('POST', `${BASE_URL}/api/reports/${testReportId}/handle`, {
     action: 'approve'
-  });
+  }, {}, true, '边界测试：普通用户批准举报（应返回403）');
   assert(res1.status === 403, '普通用户批准举报应该返回403');
 
   // 4.2 普通用户尝试拒绝举报（应该返回403）
   const res2 = await sendRequest('POST', `${BASE_URL}/api/reports/${testReportId}/handle`, {
     action: 'reject'
-  });
+  }, {}, true, '边界测试：普通用户拒绝举报（应返回403）');
   assert(res2.status === 403, '普通用户拒绝举报应该返回403');
 
   // 4.3 边界测试：无效的action
   const res3 = await sendRequest('POST', `${BASE_URL}/api/reports/${testReportId}/handle`, {
     action: 'invalid'
-  });
+  }, {}, true, '边界测试：处理举报时使用无效的action值');
   assert(res3.status === 403 || res3.status === 400, '无效action处理正确');
 
   // 4.4 边界测试：缺少action
-  const res4 = await sendRequest('POST', `${BASE_URL}/api/reports/${testReportId}/handle`, {});
+  const res4 = await sendRequest('POST', `${BASE_URL}/api/reports/${testReportId}/handle`, {}, {}, true, '边界测试：处理举报时缺少action参数');
   assert(res4.status === 403 || res4.status === 400, '缺少action处理正确');
 
   // 4.5 边界测试：不存在的举报ID
   const res5 = await sendRequest('POST', `${BASE_URL}/api/reports/999999/handle`, {
     action: 'approve'
-  });
+  }, {}, true, '边界测试：处理不存在的举报（reportId=999999）');
   assert(res5.status === 403 || res5.status === 404, '处理不存在的举报返回正确状态');
 
   // 4.6 无Token访问
   const res6 = await sendRequest('POST', `${BASE_URL}/api/reports/${testReportId}/handle`, {
     action: 'approve'
-  }, {}, false);
+  }, {}, false, '边界测试：未登录时处理举报（应返回401）');
   assert(res6.status === 401, '无Token处理举报应该返回401');
 }
 
@@ -537,11 +532,11 @@ async function testGetStatistics() {
   console.log('\n========== 5. 获取举报统计测试 ==========\n');
 
   // 5.1 普通用户访问统计接口（应该返回403）
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/reports/statistics`);
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/reports/statistics`, null, {}, true, '边界测试：普通用户访问举报统计接口（应返回403）');
   assert(res1.status === 403, '普通用户访问统计接口应该返回403');
 
   // 5.2 无Token访问
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/reports/statistics`, null, {}, false);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/reports/statistics`, null, {}, false, '边界测试：未登录时访问举报统计接口（应返回401）');
   assert(res2.status === 401, '无Token访问统计接口应该返回401');
 }
 
@@ -554,8 +549,10 @@ async function testEdgeCases() {
   // 6.1 创建新故事用于重复举报测试
   const storyRes = await sendRequest('POST', `${BASE_URL}/api/stories`, {
     content: `边界测试故事 ${Date.now()}`,
-    emotionTag: '开心'
-  });
+    images: ['https://example.com/test-image.jpg'],
+    emotionTag: '开心',
+    location: { lat: 39.90923, lng: 116.397428 }
+  }, {}, true, '创建测试故事（用于重复举报边界测试）');
   const newStoryId = storyRes.data?.data?.id;
 
   if (newStoryId) {
@@ -564,7 +561,7 @@ async function testEdgeCases() {
       targetType: 'story',
       targetId: newStoryId,
       reason: '边界测试举报'
-    });
+    }, {}, true, '正常测试：举报新创建的故事');
     assert(reportRes.status === 201, '边界测试-举报新故事成功');
 
     // 6.3 再次举报同一故事
@@ -572,13 +569,45 @@ async function testEdgeCases() {
       targetType: 'story',
       targetId: newStoryId,
       reason: '边界测试-重复举报'
-    });
+    }, {}, true, '边界测试：重复举报同一故事（应返回400）');
     assert(dupRes.status === 400, '边界测试-重复举报应该失败');
   }
 
   // 6.4 测试举报列表空结果
-  const emptyRes = await sendRequest('GET', `${BASE_URL}/api/reports/me?page=1000&limit=10`);
+  const emptyRes = await sendRequest('GET', `${BASE_URL}/api/reports/me?page=1000&limit=10`, null, {}, true, '边界测试：获取不存在的分页（page=1000）');
   assert(emptyRes.status === 200, '边界测试-空结果页返回成功');
+}
+
+/**
+ * 7. 获取故事举报列表测试（管理员接口，普通用户无权限）
+ * GET /api/reports/stories
+ */
+async function testGetStoryReports() {
+  console.log('\n========== 7. 获取故事举报列表测试 ==========\n');
+
+  // 7.1 普通用户访问故事举报列表（应该返回403）
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/reports/stories`, null, {}, true, '边界测试：普通用户访问故事举报列表接口（应返回403）');
+  assert(res1.status === 403, '普通用户访问故事举报列表应该返回403');
+
+  // 7.2 无Token访问
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/reports/stories`, null, {}, false, '边界测试：未登录时访问故事举报列表接口（应返回401）');
+  assert(res2.status === 401, '无Token访问故事举报列表应该返回401');
+}
+
+/**
+ * 8. 获取评论举报列表测试（管理员接口，普通用户无权限）
+ * GET /api/reports/comments
+ */
+async function testGetCommentReports() {
+  console.log('\n========== 8. 获取评论举报列表测试 ==========\n');
+
+  // 8.1 普通用户访问评论举报列表（应该返回403）
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/reports/comments`, null, {}, true, '边界测试：普通用户访问评论举报列表接口（应返回403）');
+  assert(res1.status === 403, '普通用户访问评论举报列表应该返回403');
+
+  // 8.2 无Token访问
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/reports/comments`, null, {}, false, '边界测试：未登录时访问评论举报列表接口（应返回401）');
+  assert(res2.status === 401, '无Token访问评论举报列表应该返回401');
 }
 
 // ==================== 主函数 ====================
@@ -660,6 +689,8 @@ async function main() {
     await testHandleReport();
     await testGetStatistics();
     await testEdgeCases();
+    await testGetStoryReports();
+    await testGetCommentReports();
 
     // 生成报告
     generateTestReport();

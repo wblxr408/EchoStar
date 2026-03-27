@@ -48,7 +48,7 @@ const stats = {
 /**
  * 记录请求
  */
-function recordRequest(method, url, headers, body, status, response) {
+function recordRequest(method, url, headers, body, status, response, testDescription = '') {
   requestCounter++;
   const record = {
     序号: requestCounter,
@@ -57,7 +57,8 @@ function recordRequest(method, url, headers, body, status, response) {
     返回状态: status,
     请求头: headers,
     请求体: body || null,
-    返回内容: response
+    返回内容: response,
+    测试说明: testDescription
   };
   requestRecords.push(record);
   return record;
@@ -77,6 +78,7 @@ function generateReportContent() {
   // 按请求顺序依次输出
   requestRecords.forEach((record, idx) => {
     content += `## ${idx + 1}. ${record.请求类型} ${record.接口地址}\n\n`;
+    content += `**测试说明**: ${record.测试说明 || '无'}\n\n`;
     content += `**序号**: ${record.序号}\n\n`;
     content += `**返回状态**: ${record.返回状态}\n\n`;
     content += `**请求头**:\n\`\`\`json\n${JSON.stringify(record.请求头, null, 2)}\n\`\`\`\n\n`;
@@ -124,7 +126,7 @@ async function saveRequestRecords() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `notification_request_${now}.md`);
+  const reportPath = path.join(reportDir, `notification.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
@@ -148,7 +150,7 @@ async function saveTestReport() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
-  const reportPath = path.join(reportDir, `notification_test_report_${now}.txt`);
+  const reportPath = path.join(reportDir, `notification.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
@@ -177,7 +179,7 @@ async function saveTestReport() {
  * @param {object} customHeaders - 自定义请求头
  * @param {string} userKey - 使用哪个用户的token: 'A' 或 'B'，默认 'A'
  */
-async function sendRequest(method, url, data = null, customHeaders = {}, userKey = 'A') {
+async function sendRequest(method, url, data = null, customHeaders = {}, userKey = 'A', testDescription = '') {
   const headers = {
     'Content-Type': 'application/json',
     ...customHeaders
@@ -209,7 +211,8 @@ async function sendRequest(method, url, data = null, customHeaders = {}, userKey
       { ...headers },
       data,
       response.status,
-      response.data
+      response.data,
+      testDescription
     );
 
     return response;
@@ -220,7 +223,8 @@ async function sendRequest(method, url, data = null, customHeaders = {}, userKey
       { ...headers },
       data,
       error.response?.status || 500,
-      error.response?.data || { error: error.message }
+      error.response?.data || { error: error.message },
+      testDescription
     );
 
     return error.response || { status: 500, data: { error: error.message } };
@@ -256,13 +260,13 @@ async function setupUser(suffix) {
   const email = `${TEST_PREFIX}${suffix}_${timestamp}@test.com`;
   const password = 'Test123456';
 
-  const registerRes = await sendRequest('POST', `${BASE_URL}/api/auth/register`, {
+  const registerRes = await sendRequest('POST', `${BASE_URL}/api/auth/register_2`, {
     username,
     email,
     password
-  }, {}, null); // 不使用token
+  }, {}, null, '创建测试用户（为通知测试创建数据基础）');
 
-  if (registerRes.status === 200 || registerRes.status === 201) {
+  if (registerRes.status === 200 || registerRes.data?.code === 0) {
     return {
       token: registerRes.data?.data?.accessToken,
       userId: registerRes.data?.data?.user?.id,
@@ -270,20 +274,7 @@ async function setupUser(suffix) {
     };
   }
   
-  // 如果注册失败，尝试登录
-  const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/login`, {
-    email,
-    password
-  }, {}, null);
-  
-  if (loginRes.status === 200) {
-    return {
-      token: loginRes.data?.data?.accessToken,
-      userId: loginRes.data?.data?.user?.id,
-      username
-    };
-  }
-  
+  console.error('[ERROR] register_2 注册失败');
   return null;
 }
 
@@ -326,7 +317,7 @@ async function setupTestStory() {
       lat: 39.90923,
       lng: 116.397428
     }
-  }, {}, 'A'); // 用户A创建故事
+  }, {}, 'A', '用户A创建测试故事（为通知测试创建数据基础）');
 
   if (storyRes.status === 200 || storyRes.status === 201) {
     testStoryId = storyRes.data?.data?.id;
@@ -337,7 +328,7 @@ async function setupTestStory() {
   console.log(`[WARN] 故事创建失败，尝试使用现有故事`);
   
   // 尝试获取用户A的现有故事
-  const storiesRes = await sendRequest('GET', `${BASE_URL}/api/stories/me/list`, null, {}, 'A');
+  const storiesRes = await sendRequest('GET', `${BASE_URL}/api/stories/me/list`, null, {}, 'A', '获取用户A现有故事列表（备用数据）');
   if (storiesRes.status === 200 && storiesRes.data?.data?.stories?.length > 0) {
     testStoryId = storiesRes.data.data.stories[0].id;
     console.log(`[INFO] 使用用户A的现有故事: ID=${testStoryId}`);
@@ -356,39 +347,39 @@ async function userBInteractions() {
 
   // 1. 点赞
   console.log('[1] 用户B点赞...');
-  await sendRequest('POST', `${BASE_URL}/api/likes`, { storyId: testStoryId }, {}, 'B');
+  await sendRequest('POST', `${BASE_URL}/api/likes`, { storyId: testStoryId }, {}, 'B', '用户B点赞用户A的故事（产生点赞通知）');
 
   // 2. 评论"用户B评论1"
   console.log('[2] 用户B评论"用户B评论1"...');
-  await sendRequest('POST', `${BASE_URL}/api/comments`, { storyId: testStoryId, content: '用户B评论1' }, {}, 'B');
+  await sendRequest('POST', `${BASE_URL}/api/comments`, { storyId: testStoryId, content: '用户B评论1' }, {}, 'B', '用户B评论用户A的故事（产生评论通知）');
 
   // 3. 收藏
   console.log('[3] 用户B收藏...');
-  await sendRequest('POST', `${BASE_URL}/api/favorites`, { storyId: testStoryId }, {}, 'B');
+  await sendRequest('POST', `${BASE_URL}/api/favorites`, { storyId: testStoryId }, {}, 'B', '用户B收藏用户A的故事（产生收藏通知）');
 
   // 4. 取消点赞
   console.log('[4] 用户B取消点赞...');
-  await sendRequest('DELETE', `${BASE_URL}/api/likes/${testStoryId}`, null, {}, 'B');
+  await sendRequest('DELETE', `${BASE_URL}/api/likes/${testStoryId}`, null, {}, 'B', '用户B取消点赞（测试通知不重复产生）');
 
   // 5. 评论"用户B评论2"
   console.log('[5] 用户B评论"用户B评论2"...');
-  await sendRequest('POST', `${BASE_URL}/api/comments`, { storyId: testStoryId, content: '用户B评论2' }, {}, 'B');
+  await sendRequest('POST', `${BASE_URL}/api/comments`, { storyId: testStoryId, content: '用户B评论2' }, {}, 'B', '用户B再次评论用户A的故事（产生评论通知）');
 
   // 6. 取消收藏
   console.log('[6] 用户B取消收藏...');
-  await sendRequest('DELETE', `${BASE_URL}/api/favorites/${testStoryId}`, null, {}, 'B');
+  await sendRequest('DELETE', `${BASE_URL}/api/favorites/${testStoryId}`, null, {}, 'B', '用户B取消收藏（测试通知不重复产生）');
 
   // 7. 再次点赞
   console.log('[7] 用户B再次点赞...');
-  await sendRequest('POST', `${BASE_URL}/api/likes`, { storyId: testStoryId }, {}, 'B');
+  await sendRequest('POST', `${BASE_URL}/api/likes`, { storyId: testStoryId }, {}, 'B', '用户B再次点赞用户A的故事（产生点赞通知）');
 
   // 8. 评论"用户B评论3"
   console.log('[8] 用户B评论"用户B评论3"...');
-  await sendRequest('POST', `${BASE_URL}/api/comments`, { storyId: testStoryId, content: '用户B评论3' }, {}, 'B');
+  await sendRequest('POST', `${BASE_URL}/api/comments`, { storyId: testStoryId, content: '用户B评论3' }, {}, 'B', '用户B第三次评论（产生评论通知）');
 
   // 9. 再次收藏
   console.log('[9] 用户B再次收藏...');
-  await sendRequest('POST', `${BASE_URL}/api/favorites`, { storyId: testStoryId }, {}, 'B');
+  await sendRequest('POST', `${BASE_URL}/api/favorites`, { storyId: testStoryId }, {}, 'B', '用户B再次收藏用户A的故事（产生收藏通知）');
 
   // 等待通知创建
   await new Promise(resolve => setTimeout(resolve, 500));
@@ -403,7 +394,7 @@ async function userBInteractions() {
 async function testGetNotifications() {
   console.log('\n========== 1. 获取通知列表测试 ==========\n');
 
-  const res = await sendRequest('GET', `${BASE_URL}/api/notifications/me`, null, {}, 'A');
+  const res = await sendRequest('GET', `${BASE_URL}/api/notifications/me`, null, {}, 'A', '正常测试：用户A获取通知列表');
   assert(res.status === 200, '获取通知列表成功');
   assert(Array.isArray(res.data?.data?.notifications), '返回通知数组');
   
@@ -423,7 +414,7 @@ async function testGetNotifications() {
 async function testGetUnreadCount() {
   console.log('\n========== 2. 获取未读通知数量测试 ==========\n');
 
-  const res = await sendRequest('GET', `${BASE_URL}/api/notifications/me/unread-count`, null, {}, 'A');
+  const res = await sendRequest('GET', `${BASE_URL}/api/notifications/me/unread-count`, null, {}, 'A', '正常测试：获取用户A未读通知数量');
   assert(res.status === 200, '获取未读数量成功');
   console.log(`[INFO] 用户A未读通知数量: ${res.data?.data?.unreadCount}`);
 }
@@ -439,7 +430,7 @@ async function testMarkAsRead() {
     return;
   }
 
-  const res = await sendRequest('PUT', `${BASE_URL}/api/notifications/${testNotificationId}/mark-read`, null, {}, 'A');
+  const res = await sendRequest('PUT', `${BASE_URL}/api/notifications/${testNotificationId}/mark-read`, null, {}, 'A', '正常测试：标记单条通知为已读');
   assert(res.status === 200, '标记单条已读成功');
   console.log(`[INFO] 已标记通知 ${testNotificationId} 为已读`);
 }
@@ -450,11 +441,11 @@ async function testMarkAsRead() {
 async function testMarkAllAsRead() {
   console.log('\n========== 4. 标记全部已读测试 ==========\n');
 
-  const res = await sendRequest('PUT', `${BASE_URL}/api/notifications/me/mark-read`, null, {}, 'A');
+  const res = await sendRequest('PUT', `${BASE_URL}/api/notifications/me/mark-read`, null, {}, 'A', '正常测试：标记所有通知为已读');
   assert(res.status === 200, '标记全部已读成功');
 
   // 验证未读数量为0
-  const countRes = await sendRequest('GET', `${BASE_URL}/api/notifications/me/unread-count`, null, {}, 'A');
+  const countRes = await sendRequest('GET', `${BASE_URL}/api/notifications/me/unread-count`, null, {}, 'A', '正常测试：验证标记全部已读后未读数量为0');
   console.log(`[INFO] 标记全部已读后，未读数量: ${countRes.data?.data?.unreadCount}`);
 }
 
@@ -464,11 +455,11 @@ async function testMarkAllAsRead() {
 async function testClearAllNotifications() {
   console.log('\n========== 5. 清空所有通知测试 ==========\n');
 
-  const res = await sendRequest('DELETE', `${BASE_URL}/api/notifications/me`, null, {}, 'A');
+  const res = await sendRequest('DELETE', `${BASE_URL}/api/notifications/me`, null, {}, 'A', '正常测试：清空用户A所有通知');
   assert(res.status === 200, '清空所有通知成功');
 
   // 验证通知列表为空
-  const listRes = await sendRequest('GET', `${BASE_URL}/api/notifications/me`, null, {}, 'A');
+  const listRes = await sendRequest('GET', `${BASE_URL}/api/notifications/me`, null, {}, 'A', '正常测试：验证清空后通知列表为空');
   console.log(`[INFO] 清空后通知数量: ${listRes.data?.data?.notifications?.length || 0}`);
 }
 

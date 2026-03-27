@@ -89,7 +89,7 @@ async function saveRequestRecords() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `update_user_info_request_${now}.md`);
+  const reportPath = path.join(reportDir, `update_user_info.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });

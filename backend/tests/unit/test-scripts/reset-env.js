@@ -12,6 +12,8 @@
 import { spawn, exec } from 'child_process';
 import { promisify } from 'util';
 import http from 'http';
+import fs from 'fs';
+import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -20,7 +22,7 @@ const __dirname = dirname(__filename);
 
 const execAsync = promisify(exec);
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
-const BACKEND_DIR = join(__dirname, '..', '..');
+const BACKEND_DIR = join(__dirname, '..', '..', '..');
 
 // 检查服务器是否就绪
 function checkServerReady(url) {
@@ -138,15 +140,34 @@ async function main() {
 
     // 4. 启动开发服务器（在后台）
     console.log('\n[STEP 4] 启动开发服务器...');
-    
-    // 使用 spawn 在后台启动，不继承 stdio 避免事件循环问题
+
+    // 创建日志文件路径
+    const logFile = path.join(BACKEND_DIR, 'tests', 'test-results', 'server.log');
+    const logDir = path.dirname(logFile);
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+
+    // 设置测试环境变量（放宽速率限制）
+    const testEnv = {
+      ...process.env,
+      K6_TEST: 'true',
+    };
+    // 确保 NODE_ENV 不被设为 test，否则 syncDatabase 会被跳过
+    delete testEnv.NODE_ENV;
+
+    // 使用 spawn 在后台启动，将日志输出到文件
     const serverProcess = spawn('npm', ['run', 'dev'], {
       cwd: BACKEND_DIR,
       shell: true,
       detached: true,
-      stdio: 'ignore'  // 忽略输出，避免与父进程冲突
+      stdio: ['ignore', fs.openSync(logFile, 'a'), fs.openSync(logFile, 'a')],
+      env: testEnv,
     });
-    
+
+    console.log(`[INFO] 服务器日志输出到: ${logFile}`);
+    console.log('[INFO] 已启用测试模式（放宽速率限制）');
+
     // 不等待子进程，让它在后台运行
     serverProcess.unref();
     
@@ -154,8 +175,14 @@ async function main() {
     
     // 5. 等待服务器就绪
     console.log('\n[STEP 5] 等待服务器就绪...');
-    if (!await waitForServer(BASE_URL)) {
+    const serverReady = await waitForServer(BASE_URL);
+    if (!serverReady) {
       console.log('[ERROR] 服务器启动失败');
+      console.log('[INFO] 查看服务器日志：');
+      try {
+        const { stdout } = await execAsync('npm run dev 2>&1 | head -50', { cwd: BACKEND_DIR });
+        console.log(stdout);
+      } catch (e) {}
       process.exit(1);
     }
 
@@ -163,6 +190,15 @@ async function main() {
     console.log('\n[STEP 6] 等待数据库表同步...');
     await new Promise(r => setTimeout(r, 5000));
     console.log('[INFO] 数据库表同步等待完成');
+
+    // 7. 验证服务器健康状态
+    console.log('\n[STEP 7] 验证服务器健康状态...');
+    const healthCheck = await checkServerReady(BASE_URL);
+    if (!healthCheck) {
+      console.log('[ERROR] 服务器健康检查失败');
+      process.exit(1);
+    }
+    console.log('[INFO] 服务器健康检查通过');
 
     console.log('\n========================================');
     console.log('     环境重启完成！');
