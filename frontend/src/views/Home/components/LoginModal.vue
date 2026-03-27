@@ -153,9 +153,11 @@
             required
             minlength="6"
             :disabled="loading"
+            :class="{ 'input-error': passwordError }"
             @focus="handleFocus('password')"
             @blur="handleBlur"
           >
+          <div v-if="passwordError" class="field-error">{{ passwordError }}</div>
         </div>
 
         <div v-if="!isLogin" class="form-group">
@@ -167,9 +169,11 @@
             required
             minlength="6"
             :disabled="loading"
+            :class="{ 'input-error': confirmPasswordError }"
             @focus="handleFocus('confirm')"
             @blur="handleBlur"
           >
+          <div v-if="confirmPasswordError" class="field-error">{{ confirmPasswordError }}</div>
         </div>
 
         <!-- 邮箱验证码 - 暂时注释，后端未完成 -->
@@ -256,7 +260,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onUnmounted } from 'vue';
+import { ref, reactive, computed, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../../../stores/user';
 import { authApi } from '../../../api/auth';
@@ -288,9 +292,49 @@ const form = reactive({
 const countdown = ref(0);
 const countdownTimer = ref(null);
 
+// 实时验证错误
+const passwordError = ref('');
+const confirmPasswordError = ref('');
+
 // 是否可以发送验证码
 const canSendCode = computed(() => {
-  return form.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
+  const emailValid = form.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
+  // 注册模式下，还需要密码验证通过才能发送验证码
+  if (!isLogin.value && !isForgotPassword.value) {
+    return emailValid && form.password.length >= 6 && form.password === form.confirmPassword;
+  }
+  return emailValid;
+});
+
+// 实时密码验证
+watch(() => form.password, (val) => {
+  if (!isLogin.value && val) {
+    if (val.length < 6) {
+      passwordError.value = '密码至少需要6位';
+    } else {
+      passwordError.value = '';
+    }
+    // 同时验证确认密码
+    if (form.confirmPassword) {
+      confirmPasswordError.value = val !== form.confirmPassword ? '两次输入的密码不一致' : '';
+    }
+  } else {
+    passwordError.value = '';
+  }
+});
+
+watch(() => form.confirmPassword, (val) => {
+  if (!isLogin.value && val) {
+    if (val !== form.password) {
+      confirmPasswordError.value = '两次输入的密码不一致';
+    } else if (val.length < 6) {
+      confirmPasswordError.value = '密码至少需要6位';
+    } else {
+      confirmPasswordError.value = '';
+    }
+  } else {
+    confirmPasswordError.value = '';
+  }
 });
 
 function toggleMode() {
@@ -305,6 +349,9 @@ function toggleMode() {
   form.newPassword = '';
   form.confirmNewPassword = '';
   focusedField.value = null;
+  // 清除错误状态
+  passwordError.value = '';
+  confirmPasswordError.value = '';
   // 清除倒计时
   if (countdownTimer.value) {
     clearInterval(countdownTimer.value);
@@ -333,7 +380,23 @@ function toggleForgotPassword() {
 // 发送验证码
 async function sendVerificationCode() {
   if (!canSendCode.value) {
-    alert('请先输入有效的邮箱地址');
+    // 注册模式：检查具体哪个字段有问题
+    if (!isLogin.value && !isForgotPassword.value) {
+      if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+        alert('请先输入有效的邮箱地址');
+        return;
+      }
+      if (form.password.length < 6) {
+        alert('密码至少需要6位');
+        return;
+      }
+      if (form.password !== form.confirmPassword) {
+        alert('两次输入的密码不一致');
+        return;
+      }
+    } else {
+      alert('请先输入有效的邮箱地址');
+    }
     return;
   }
 
@@ -794,6 +857,24 @@ onUnmounted(() => {
 .form-group input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.form-group input.input-error {
+  border-color: rgba(244, 67, 54, 0.6);
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.field-error {
+  font-size: 0.75rem;
+  color: #ff6b6b;
+  margin-top: 0.25rem;
+  animation: shake 0.3s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
 }
 
 .verification-group {
