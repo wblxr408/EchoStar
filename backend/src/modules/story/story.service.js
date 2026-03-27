@@ -114,6 +114,7 @@ class StoryServiceClass {
     return {
       id: story.id,
       content: story.content,
+      images: story.images,
       createdAt: story.createdAt,
       visibilityStartTime: story.visibilityStartTime,
       visibilityEndTime: story.visibilityEndTime

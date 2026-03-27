@@ -2792,13 +2792,24 @@ async function handlePublishSubmit(storyData) {
 
     // 调用后端API创建故事
     const { storyApi } = await import('../../api/story');
+    const { uploadImages, validateImage } = await import('../../utils/upload');
 
-    // TODO: 图片上传到阿里云 OSS，获取 URL 后再提交
-    // 目前阿里云 OSS 未配置，暂时发送空数组
+    // 上传图片到 OSS
     let imageUrls = [];
     if (storyData.images && storyData.images.length > 0) {
-      // 图片上传功能待实现：上传到阿里云 OSS -> 获取 URL -> 添加到 imageUrls
-      console.log('图片上传功能待实现，暂时忽略图片');
+      for (const file of storyData.images) {
+        const validation = validateImage(file);
+        if (!validation.valid) {
+          console.warn('图片验证失败:', validation.error);
+          continue;
+        }
+      }
+      try {
+        imageUrls = await uploadImages(storyData.images);
+        console.log('图片上传成功:', imageUrls);
+      } catch (error) {
+        console.error('图片上传失败:', error);
+      }
     }
 
     const response = await storyApi.createStory({

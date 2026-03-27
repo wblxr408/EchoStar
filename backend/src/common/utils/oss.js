@@ -95,8 +95,8 @@ export function getOSSUrl(key) {
 export function getRandomDefaultAvatar() {
   const avatars = config.defaultAvatars;
   if (!avatars || avatars.length === 0) {
-    // 如果没有配置默认头像，返回一个占位图
-    return `https://echostar.oss-cn-shanghai.aliyuncs.com/avatars/default${Math.floor(Math.random() * 5) + 1}.png`;
+    // 如果没有配置默认头像，返回默认头像（共8张）
+    return `https://echostar.oss-cn-shanghai.aliyuncs.com/avatars/default-${Math.floor(Math.random() * 8) + 1}.png`;
   }
   return avatars[Math.floor(Math.random() * avatars.length)];
 }

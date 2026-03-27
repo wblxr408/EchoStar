@@ -39,7 +39,7 @@ export async function uploadFile(file, uploadDir = 'uploads/', onProgress) {
   const fileName = `${uploadDir}${timestamp}-${randomStr}.${ext}`;
 
   // 4. 上传文件
-  const result = await client.put(fileName, file, {
+  await client.put(fileName, file, {
     progress: (p) => {
       if (onProgress) {
         onProgress(Math.floor(p * 100));
@@ -47,8 +47,14 @@ export async function uploadFile(file, uploadDir = 'uploads/', onProgress) {
     }
   });
 
-  // 5. 返回图片 URL
-  return result.url;
+  // 5. 使用配置的 host 拼接完整 URL
+  // 处理 region 格式：URL 中需要不带 oss- 前缀的 region
+  let region = credentials.region;
+  if (region.startsWith('oss-')) {
+    region = region.replace('oss-', '');
+  }
+  const host = credentials.host || `https://${credentials.bucket}.oss-${region}.aliyuncs.com`;
+  return `${host}/${fileName}`;
 }
 
 /**
