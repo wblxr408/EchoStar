@@ -163,19 +163,21 @@ export const MapService = {
     return stories.map(MapServiceUtil.formatStory).filter(Boolean);
   },
 
-   // ===================== 优化：动态计算聚合网格大小 =====================
-  getDynamicGridSize(bounds) {
-    const { northEast, southWest } = bounds;
-    const lngSpan = northEast.lng - southWest.lng;
-    // 地图视野越大，聚合半径越大（行业标准配置）
-    if (lngSpan > 5) return 2000;
-    if (lngSpan > 1) return 1000;
-    if (lngSpan > 0.2) return 500;
-    if (lngSpan > 0.05) return 200;
-    return 50;
+   // ===================== 优化：根据 zoom 动态计算聚合网格大小 =====================
+  getDynamicGridSize(zoom) {
+    // zoom 越小（地图缩小），gridSize 越大，聚合范围越大
+    // zoom 越大（地图放大），gridSize 越小，聚合范围越小
+    const z = zoom ?? 10;
+    if (z <= 5) return 10000;   // 全球视野，10km 网格
+    if (z <= 7) return 5000;    // 国家/省份级别，5km 网格
+    if (z <= 9) return 2000;    // 城市级别，2km 网格
+    if (z <= 11) return 1000;   // 城区级别，1km 网格
+    if (z <= 13) return 500;    // 街道级别，500m 网格
+    if (z <= 14) return 200;    // 详细级别，200m 网格
+    return 100;                  // 最详细，100m 网格
   },
 
-  async getClusterData(bounds) {
+  async getClusterData(bounds, zoom) {
     const { northEast, southWest } = bounds;
     const stories = await Story.findAll({
       where: {
@@ -195,8 +197,8 @@ export const MapService = {
       attributes: ['id', 'location', 'emotionTag']
     });
 
-    // 🔥 传入动态计算的网格大小（核心优化）
-    const gridSize = this.getDynamicGridSize(bounds);
+    // 🔥 传入动态计算的网格大小（根据 zoom 级别）
+    const gridSize = this.getDynamicGridSize(zoom);
     const points = stories.map(s => {
       const { lat, lng } = parsePoint(s.location);
       return {
@@ -207,6 +209,7 @@ export const MapService = {
       };
     });
 
+    console.log(`[Cluster] zoom=${zoom}, gridSize=${gridSize}m, points=${points.length}`);
     return clusterPoints(points, gridSize);
   },
 

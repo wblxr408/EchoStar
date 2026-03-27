@@ -71,15 +71,19 @@ export const mapApi = {
 
   /**
    * 获取聚合数据
+   * @param {Object} northEast - 东北角坐标 { lat, lng }
+   * @param {Object} southWest - 西南角坐标 { lat, lng }
+   * @param {number} zoom - 当前缩放级别
    */
-  getClusterData(northEast, southWest) {
+  getClusterData(northEast, southWest, zoom) {
     if (mapApiProxy) {
-      return mapApiProxy.getClusterData(northEast, southWest);
+      return mapApiProxy.getClusterData(northEast, southWest, zoom);
     }
     return api.get('/v1/map/clusters', {
       params: {
         northEast: JSON.stringify(northEast),
-        southWest: JSON.stringify(southWest)
+        southWest: JSON.stringify(southWest),
+        zoom
       }
     });
   }

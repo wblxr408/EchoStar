@@ -21,6 +21,7 @@
       <AMap
         ref="amapRef"
         :stories="mapStore.stories"
+        :clusters="clusters"
         :user-location="mapStore.userLocation"
         :center="mapStore.center"
         :zoom="mapStore.zoom"
@@ -30,6 +31,7 @@
         @marker-click="handleMarkerClick"
         @map-click="handlePublishMapClick"
         @map-move="handleMapMove"
+        @cluster-click="handleClusterClick"
         @theme-change="handleThemeChange"
       />
     </div>
@@ -337,12 +339,10 @@
       <div
         v-if="showUserSidebar"
         class="user-modal-shell"
-        @click.self="closeUserPanel"
       >
         <div
           class="user-sidebar"
           :class="{ 'show-sidebar': showUserSidebar, dark: effectiveMapTheme === 'dark' }"
-          @click.stop
         >
       <div class="user-sidebar-header">
         <h3>个人信息</h3>
@@ -452,28 +452,33 @@
                     v-model="passwordForm.currentPassword"
                     :type="showCurrentPassword ? 'text' : 'password'"
                     placeholder="当前密码"
+                    :class="{ 'input-error': currentPasswordError }"
                   />
                   <button class="eye-btn-small" @click="showCurrentPassword = !showCurrentPassword">
                     <span>{{ showCurrentPassword ? '🙈' : '👁️' }}</span>
                   </button>
                 </div>
+                <div v-if="currentPasswordError" class="field-error">{{ currentPasswordError }}</div>
                 <div class="password-input-wrapper">
                   <input
                     v-model="passwordForm.newPassword"
                     :type="showNewPassword ? 'text' : 'password'"
                     placeholder="新密码（至少6位）"
                     minlength="6"
+                    :class="{ 'input-error': newPasswordError }"
                   />
                   <button class="eye-btn-small" @click="showNewPassword = !showNewPassword">
                     <span>{{ showNewPassword ? '🙈' : '👁️' }}</span>
                   </button>
                 </div>
+                <div v-if="newPasswordError" class="field-error">{{ newPasswordError }}</div>
                 <div class="password-input-wrapper">
                   <input
                     v-model="passwordForm.confirmPassword"
                     :type="showConfirmPassword ? 'text' : 'password'"
                     placeholder="确认新密码"
                     minlength="6"
+                    :class="{ 'input-error': confirmPasswordError }"
                     @keyup.enter="savePassword"
                     @keyup.esc="cancelEditPassword"
                   />
@@ -481,6 +486,7 @@
                     <span>{{ showConfirmPassword ? '🙈' : '👁️' }}</span>
                   </button>
                 </div>
+                <div v-if="confirmPasswordError" class="field-error">{{ confirmPasswordError }}</div>
                 <div class="password-actions">
                   <button class="save-btn" :disabled="!canSavePassword || savingPassword" @click="savePassword">
                     <span v-if="savingPassword">⌛</span>
@@ -630,7 +636,8 @@
     <PaperPlaneStory
       v-if="selectedStory"
       :story="selectedStory"
-      :direct-open="true"
+      :start-position="storyStartPosition"
+      :direct-open="storyDirectOpen"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
       @like="handleStoryLike"
@@ -667,6 +674,9 @@ import { uploadAvatar as uploadToOSS, validateImage } from '../../utils/upload';
 const mapStore = useMapStore();
 const userStore = useUserStore();
 
+// 聚合数据
+const clusters = ref([]);
+
 const showSidebar = ref(false);
 const showPublishSidebar = ref(false);
 const showUserSidebar = ref(false);
@@ -684,6 +694,8 @@ const feedPagination = ref({ total: 0, totalPages: 0 });
 const feedHasMore = computed(() => feedPage.value < feedPagination.value.totalPages);
 const randomWalking = ref(false);
 const selectedStory = ref(null);
+const storyStartPosition = ref({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+const storyDirectOpen = ref(true); // true = 直接打开，false = 从起始位置飞入
 // 地图主题：'light' | 'dark' | 'auto'（跟随当地时间 06:00-18:00 白天/18:00-06:00 夜晚）
 const mapTheme = ref(localStorage.getItem('mapTheme') || 'auto');
 const amapRef = ref(null);
@@ -813,6 +825,10 @@ const passwordForm = ref({
   newPassword: '',
   confirmPassword: ''
 });
+// 实时验证错误
+const currentPasswordError = ref('');
+const newPasswordError = ref('');
+const confirmPasswordError = ref('');
 
 // 计算属性：是否可以保存密码
 const canSavePassword = computed(() => {
@@ -820,7 +836,41 @@ const canSavePassword = computed(() => {
          passwordForm.value.newPassword.length >= 6 &&
          passwordForm.value.confirmPassword.length >= 6 &&
          passwordForm.value.newPassword === passwordForm.value.confirmPassword &&
-         !savingPassword.value;
+         !savingPassword.value &&
+         !currentPasswordError.value &&
+         !newPasswordError.value &&
+         !confirmPasswordError.value;
+});
+
+// 实时密码验证
+watch(() => passwordForm.value.currentPassword, (val) => {
+  if (!val) {
+    currentPasswordError.value = '请输入当前密码';
+  } else {
+    currentPasswordError.value = '';
+  }
+});
+
+watch(() => passwordForm.value.newPassword, (val) => {
+  if (val && val.length < 6) {
+    newPasswordError.value = '新密码至少需要 6 位';
+  } else {
+    newPasswordError.value = '';
+  }
+  // 同时验证确认密码
+  if (passwordForm.value.confirmPassword) {
+    confirmPasswordError.value = val !== passwordForm.value.confirmPassword ? '两次输入的新密码不一致' : '';
+  }
+});
+
+watch(() => passwordForm.value.confirmPassword, (val) => {
+  if (val && val !== passwordForm.value.newPassword) {
+    confirmPasswordError.value = '两次输入的新密码不一致';
+  } else if (val && val.length < 6) {
+    confirmPasswordError.value = '新密码至少需要 6 位';
+  } else {
+    confirmPasswordError.value = '';
+  }
 });
 
 // 我的点赞/发布面板相关
@@ -1079,14 +1129,23 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
   }
 }
 
-function openStoryModal(story, delay = 0) {
+function openStoryModal(story, delay = 0, options = {}) {
   if (!story) {
     return;
   }
 
+  const { directOpen = true, startPosition = null } = options;
+
   clearTimeout(storyOpenTimer);
   const show = () => {
     storyOpenTimer = null;
+    // 设置动画参数
+    storyDirectOpen.value = directOpen;
+    if (startPosition) {
+      storyStartPosition.value = startPosition;
+    } else {
+      storyStartPosition.value = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    }
     selectedStory.value = story;
     void hydrateStoryLocations([story]);
   };
@@ -2469,23 +2528,35 @@ function handlePostsScroll(event) {
   }
 }
 
-// 处理故事点击
+// 处理故事点击（从我的发布/我的点赞列表点击）
 function handleStoryClick(story) {
-  // 关闭子面板但不关闭用户侧边栏
+  // 关闭子面板和用户侧边栏
   showLikesPanel.value = false;
   showPostsPanel.value = false;
+  showUserSidebar.value = false;
 
-  // 如果故事有位置信息，将地图中心移动到该位置
+  // 获取故事位置对应的屏幕坐标
+  let startPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+  // 如果故事有位置信息，将地图中心移动到该位置，并计算屏幕坐标
   if (story.location?.latitude && story.location?.longitude) {
     mapStore.updateCenter(story.location.latitude, story.location.longitude);
-    mapStore.updateZoom(16); // 缩放到合适的级别
+    mapStore.updateZoom(16);
+
+    // 尝试获取屏幕坐标（地图会移动到该位置，所以用屏幕中心）
+    // 等地图移动完成后，屏幕中心就是故事位置
+    startPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   } else if (story.location?.lng && story.location?.lat) {
-    // 兼容不同的位置字段命名
     mapStore.updateCenter(story.location.lat, story.location.lng);
     mapStore.updateZoom(16);
+    startPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   }
 
-  openStoryModal(story, STORY_MODAL_OPEN_DELAY_MS);
+  // 启用飞行动画
+  openStoryModal(story, STORY_MODAL_OPEN_DELAY_MS, {
+    directOpen: false,
+    startPosition
+  });
 }
 
 async function handleUnlike(story) {
@@ -2709,6 +2780,9 @@ async function uploadAvatar(file) {
 function startEditPassword() {
   isEditingPassword.value = true;
   passwordError.value = '';
+  currentPasswordError.value = '';
+  newPasswordError.value = '';
+  confirmPasswordError.value = '';
   passwordForm.value = {
     currentPassword: '',
     newPassword: '',
@@ -2723,6 +2797,9 @@ function startEditPassword() {
 function cancelEditPassword() {
   isEditingPassword.value = false;
   passwordError.value = '';
+  currentPasswordError.value = '';
+  newPasswordError.value = '';
+  confirmPasswordError.value = '';
   passwordForm.value = {
     currentPassword: '',
     newPassword: '',
@@ -2973,6 +3050,7 @@ function handlePageClick(event) {
   const storyTarotShell = document.querySelector('.story-tarot-shell');
   const publishModal = document.querySelector('.publish-modal');
   const userSidebar = document.querySelector('.user-sidebar');
+  const userModalShell = document.querySelector('.user-modal-shell');
   const likesPanel = document.querySelector('.likes-panel');
   const postsPanel = document.querySelector('.posts-panel');
   const dockContainer = document.querySelector('.dock-container');
@@ -2983,8 +3061,8 @@ function handlePageClick(event) {
     return;
   }
 
-  // 如果点击的是用户侧边栏内部（但不是子面板），只关闭子面板
-  if (userSidebar?.contains(target)) {
+  // 如果点击的是用户侧边栏或其遮罩层内部（但不是子面板），只关闭子面板
+  if (userSidebar?.contains(target) || userModalShell?.contains(target)) {
     showLikesPanel.value = false;
     showPostsPanel.value = false;
     return;
@@ -2998,10 +3076,9 @@ function handlePageClick(event) {
     return;
   }
 
-  // 关闭所有侧边栏
+  // 关闭其他侧边栏（不关闭用户侧边栏）
   closeStoryPanel();
   closePublishPanel();
-  closeUserPanel();
 }
 
 // 故事列表
@@ -3046,6 +3123,97 @@ async function loadStories() {
   } finally {
     loading.value = false;
   }
+}
+
+// 聚合显示的 zoom 阈值，超过此值显示原始标记点
+const CLUSTER_ZOOM_THRESHOLD = 15;
+
+// 加载聚合数据
+async function loadClusterData() {
+  try {
+    // 当 zoom 超过阈值时，清空聚合数据，显示原始标记点
+    const currentZoom = mapStore.zoom;
+    if (currentZoom >= CLUSTER_ZOOM_THRESHOLD) {
+      console.log('[Map] zoom >= threshold, clearing clusters, zoom:', currentZoom);
+      clusters.value = [];
+      return;
+    }
+
+    // 获取地图视野边界
+    if (!amapRef.value) {
+      console.log('[Map] amapRef not ready');
+      return;
+    }
+
+    const bounds = getMapBounds();
+    console.log('[Map] getBounds result:', bounds);
+
+    if (!bounds) {
+      console.log('[Map] No bounds available, using default');
+      // 使用默认边界
+      const center = extractCoordinates(mapStore.center);
+      if (!center) return;
+
+      const defaultBounds = {
+        northEast: { lat: center.latitude + 0.05, lng: center.longitude + 0.05 },
+        southWest: { lat: center.latitude - 0.05, lng: center.longitude - 0.05 }
+      };
+
+      const response = await mapApi.getClusterData(
+        defaultBounds.northEast,
+        defaultBounds.southWest,
+        mapStore.zoom
+      );
+
+      const data = response?.data ?? response;
+      console.log('[Map] cluster API response:', data);
+      if (Array.isArray(data)) {
+        clusters.value = data;
+        console.log('[Map] clusters loaded with default bounds:', clusters.value.length);
+      }
+      return;
+    }
+
+    const response = await mapApi.getClusterData(
+      bounds.northEast,
+      bounds.southWest,
+      mapStore.zoom
+    );
+
+    const data = response?.data ?? response;
+    console.log('[Map] cluster API response:', data);
+    if (Array.isArray(data)) {
+      clusters.value = data;
+      console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
+    }
+  } catch (error) {
+    console.error('加载聚合数据失败:', error);
+    clusters.value = [];
+  }
+}
+
+// 获取地图边界
+function getMapBounds() {
+  if (!amapRef.value) return null;
+  return amapRef.value.getBounds();
+}
+
+// 点击聚合气泡
+function handleClusterClick({ cluster, latitude, longitude, count }) {
+  console.log('[Map] cluster clicked:', cluster, count);
+
+  // 放大地图并移动到聚合中心
+  const currentZoom = mapStore.zoom;
+  const newZoom = Math.min(currentZoom + 2, 18);
+
+  mapStore.updateCenter(latitude, longitude);
+  mapStore.updateZoom(newZoom);
+
+  // 延迟重新加载数据
+  setTimeout(() => {
+    loadStories();
+    loadClusterData();
+  }, 300);
 }
 
 // 加载推荐流
@@ -3112,7 +3280,11 @@ async function loadMoreFeed() {
 
 // 标记点击事件
 function handleMarkerClick(data) {
-  openStoryModal(data.story);
+  const { story, screenX, screenY } = data;
+  openStoryModal(story, 0, {
+    directOpen: false,
+    startPosition: { x: screenX, y: screenY }
+  });
 }
 
 // 关闭故事弹窗
@@ -3140,7 +3312,10 @@ function handleMapMove(event) {
 
   // 防抖加载
   clearTimeout(loadTimer);
-  loadTimer = setTimeout(loadStories, 500);
+  loadTimer = setTimeout(() => {
+    loadStories();
+    loadClusterData();
+  }, 500);
 }
 
 let loadTimer = null;
@@ -3454,6 +3629,8 @@ let themeAutoCheckInterval = null;
 onMounted(() => {
   getUserLocation();
   loadStories();
+  // 延迟加载聚合数据，等待地图初始化完成
+  setTimeout(loadClusterData, 1000);
   themeAutoCheckInterval = setInterval(() => {
     minuteTicker.value += 1;
   }, 60000);
@@ -5536,6 +5713,24 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
+.field-error {
+  font-size: 12px;
+  color: #f44336;
+  padding: 2px 0 0 2px;
+  animation: shake 0.3s ease;
+}
+
+.password-input-wrapper input.input-error {
+  border-color: rgba(244, 67, 54, 0.6);
+  background: rgba(244, 67, 54, 0.08);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
 .user-actions {
   display: flex;
   flex-direction: column;
@@ -6807,6 +7002,20 @@ onUnmounted(() => {
   background: rgba(255, 253, 248, 0.74);
   border-color: rgba(164, 122, 48, 0.18);
   color: #3c2910;
+}
+
+.user-sidebar:not(.dark) .username-edit-form input::placeholder,
+.user-sidebar:not(.dark) .password-input-wrapper input::placeholder {
+  color: rgba(94, 63, 20, 0.5);
+}
+
+.user-sidebar:not(.dark) .password-input-wrapper input.input-error {
+  border-color: rgba(180, 60, 40, 0.6);
+  background: rgba(244, 180, 160, 0.15);
+}
+
+.user-sidebar:not(.dark) .field-error {
+  color: #b33c2c;
 }
 
 .user-sidebar:not(.dark) .edit-btn,

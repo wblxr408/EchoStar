@@ -175,7 +175,7 @@ export const getLocationWall = async (req, res, next) => {
  */
 export const getClusterData = async (req, res, next) => {
   try {
-    const { northEast, southWest } = req.query;
+    const { northEast, southWest, zoom } = req.query;
 
     if (!northEast || !southWest) {
       return res.status(400).json({
@@ -243,7 +243,10 @@ export const getClusterData = async (req, res, next) => {
       });
     }
 
-    const clusters = await MapService.getClusterData(bounds);
+    // 解析 zoom 参数
+    const zoomNum = zoom ? parseInt(zoom, 10) : 10;
+
+    const clusters = await MapService.getClusterData(bounds, zoomNum);
     res.json({ code: 0, data: clusters });
   } catch (error) {
     next(error);

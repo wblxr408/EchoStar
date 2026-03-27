@@ -449,20 +449,36 @@ export const mockMapApi = {
     };
   },
 
-  async getClusterData(northEast, southWest) {
+  async getClusterData(northEast, southWest, zoom) {
     await delay();
+
+    // 根据 zoom 级别模拟不同的聚合效果
+    const z = zoom ?? 10;
+
+    // zoom >= 15 时返回空数组，让前端显示原始标记点
+    if (z >= 15) {
+      return { code: 0, data: [] };
+    }
+
+    // 模拟聚合数量随 zoom 减小而增大
+    const baseCount = Math.max(3, Math.floor(20 - z));
+
     return {
       code: 0,
       data: [
         {
-          location: { lat: 39.9042, lng: 116.4074 },
-          count: 3,
-          stories: mockStories.slice(0, 3)
+          type: 'cluster',
+          latitude: 39.9042,
+          longitude: 116.4074,
+          count: baseCount,
+          pointIds: ['1', '2', '3', '4', '5'].slice(0, baseCount)
         },
         {
-          location: { lat: 39.9142, lng: 116.4174 },
+          type: 'cluster',
+          latitude: 39.9142,
+          longitude: 116.4174,
           count: 2,
-          stories: mockStories.slice(3, 5)
+          pointIds: ['4', '5']
         }
       ]
     };
