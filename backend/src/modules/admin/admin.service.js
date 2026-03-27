@@ -1,6 +1,8 @@
 import { Story } from '../story/story.model.js';
 import { User } from '../auth/auth.model.js';
 import { AdminAction } from './admin.model.js';
+import { Blacklist } from '../auth/blacklist.model.js';
+import { sequelize } from '../../config/database.js';
 import { Op } from 'sequelize';
 
 /**
@@ -151,15 +153,30 @@ export const AdminService = {
       throw new AdminError('用户已被封禁或删除', 400);
     }
 
-    // 将用户状态标记为 deleted，现有 auth.middleware.js 会拦截其请求
-    await user.update({ status: 'deleted' });
+    // 检查是否已在黑名单中
+    const existingBlacklist = await Blacklist.findOne({ where: { email: user.email } });
+    if (existingBlacklist) {
+      throw new AdminError('该用户已在黑名单中', 400);
+    }
 
-    // 在黑名单中记录被封禁信息
-    await Blacklist.create({
-      email: user.email,
-      reason: reason || '违规操作',
-      bannedBy: adminId
-    });
+    // 使用事务确保原子性
+    const transaction = await sequelize.transaction();
+    try {
+      // 将用户状态标记为 deleted
+      await user.update({ status: 'deleted' }, { transaction });
+
+      // 在黑名单中记录被封禁信息
+      await Blacklist.create({
+        email: user.email,
+        reason: reason || '违规操作',
+        bannedBy: adminId
+      }, { transaction });
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   },
 
   /**
@@ -178,15 +195,23 @@ export const AdminService = {
       throw new AdminError('用户不在封禁状态', 400);
     }
 
-    // 解封用户
-    await userdata.update({ status: 'normal' });
+    // 使用事务确保原子性
+    const transaction = await sequelize.transaction();
+    try {
+      // 解封用户
+      await userdata.update({ status: 'normal' }, { transaction });
 
-    // 从黑名单中移除该用户的记录
-    await Blacklist.destroy({
-      where: {
-        email: userdata.email
-      }
-    });
+      // 从黑名单中移除该用户的记录
+      await Blacklist.destroy({
+        where: { email: userdata.email },
+        transaction
+      });
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   },
 
   /**
