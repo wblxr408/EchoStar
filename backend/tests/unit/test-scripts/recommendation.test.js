@@ -533,7 +533,7 @@ async function saveRequestRecords() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `recommendation_request_${now}.md`);
+  const reportPath = path.join(reportDir, `recommendation.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
   
@@ -547,7 +547,7 @@ async function saveTestReport() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
-  const reportPath = path.join(reportDir, `recommendation_test_report_${now}.txt`);
+  const reportPath = path.join(reportDir, `recommendation.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
   

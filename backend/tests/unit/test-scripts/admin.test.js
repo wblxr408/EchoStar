@@ -81,7 +81,7 @@ const stats = { total: 0, passed: 0, failed: 0, errors: [] };
 
 // ==================== 工具函数 ====================
 
-function recordRequest(method, url, headers, body, status, response) {
+function recordRequest(method, url, headers, body, status, response, testDescription = '') {
   requestCounter++;
   requestRecords.push({
     序号: requestCounter,
@@ -90,11 +90,12 @@ function recordRequest(method, url, headers, body, status, response) {
     返回状态: status,
     请求头: headers,
     请求体: body || null,
-    返回内容: response
+    返回内容: response,
+    测试说明: testDescription
   });
 }
 
-async function sendRequest(method, url, data = null, customHeaders = {}, token = null) {
+async function sendRequest(method, url, data = null, customHeaders = {}, token = null, testDescription = '') {
   const headers = { 'Content-Type': 'application/json', ...customHeaders };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -102,10 +103,10 @@ async function sendRequest(method, url, data = null, customHeaders = {}, token =
     const config = { method, url, headers, validateStatus: () => true };
     if (data !== null && data !== undefined) config.data = data;
     const response = await axios(config);
-    recordRequest(method.toUpperCase(), url, { ...headers }, data, response.status, response.data);
+    recordRequest(method.toUpperCase(), url, { ...headers }, data, response.status, response.data, testDescription);
     return response;
   } catch (error) {
-    recordRequest(method.toUpperCase(), url, { ...headers }, data, error.response?.status || 500, error.response?.data || { error: error.message });
+    recordRequest(method.toUpperCase(), url, { ...headers }, data, error.response?.status || 500, error.response?.data || { error: error.message }, testDescription);
     return error.response || { status: 500, data: { error: error.message } };
   }
 }
@@ -170,7 +171,7 @@ async function setupAdminUser() {
     username: adminUsername,
     email: adminEmail,
     password
-  });
+  }, {}, null, '创建管理员账号（使用register_2无需验证码）');
 
   if (registerRes.status === 200 || registerRes.data?.code === 0) {
     adminUserId = registerRes.data?.data?.user?.id;
@@ -179,7 +180,7 @@ async function setupAdminUser() {
     const promoted = await promoteUserToAdmin(adminUserId);
 
     if (promoted) {
-      const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/admin/login`, { email: adminEmail, password });
+      const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/admin/login`, { email: adminEmail, password }, {}, null, '管理员登录（promoted后）');
       if (loginRes.status === 200 || loginRes.data?.code === 0) {
         adminToken = loginRes.data?.data?.accessToken;
         console.log(`[INFO] 管理员登录成功`);
@@ -193,7 +194,7 @@ async function setupAdminUser() {
       console.log('='.repeat(60));
       await waitForContinue('完成数据库操作后按回车继续...');
 
-      const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/admin/login`, { email: adminEmail, password });
+      const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/admin/login`, { email: adminEmail, password }, {}, null, '管理员登录（手动promoted后）');
       if (loginRes.status === 200 || loginRes.data?.code === 0) {
         adminToken = loginRes.data?.data?.accessToken;
         return true;
@@ -215,7 +216,7 @@ async function setupUser01() {
     username: user01Username,
     email: user01Email,
     password
-  });
+  }, {}, null, '创建普通用户user01（使用register_2无需验证码）');
 
   if (registerRes.status === 200 || registerRes.data?.code === 0) {
     user01Id = registerRes.data?.data?.user?.id;
@@ -238,7 +239,7 @@ async function setupUser02() {
     username: user02Username,
     email,
     password
-  });
+  }, {}, null, '创建普通用户user02（使用register_2无需验证码）');
 
   if (registerRes.status === 200 || registerRes.data?.code === 0) {
     user02Id = registerRes.data?.data?.user?.id;
@@ -261,7 +262,7 @@ async function setupUser03() {
     username: user03Username,
     email,
     password
-  });
+  }, {}, null, '创建普通用户user03（使用register_2无需验证码）');
 
   if (registerRes.status === 200 || registerRes.data?.code === 0) {
     user03Id = registerRes.data?.data?.user?.id;
@@ -280,7 +281,7 @@ async function setupUser01Story() {
     images: ['https://example.com/test-image.jpg'],
     emotionTag: '开心',
     location: { lat: 39.90923, lng: 116.397428 }
-  }, {}, user01Token);
+  }, {}, user01Token, '创建测试故事（user01 story）');
 
   if (storyRes.status === 200 || storyRes.status === 201) {
     user01StoryId = storyRes.data?.data?.id;
@@ -299,7 +300,7 @@ async function setupUser02Story() {
     images: ['https://example.com/test-image.jpg'],
     emotionTag: '开心',
     location: { lat: 39.90923, lng: 116.397428 }
-  }, {}, user02Token);
+  }, {}, user02Token, '创建测试故事（user02story）');
 
   if (storyRes.status === 200 || storyRes.status === 201) {
     user02StoryId = storyRes.data?.data?.id;
@@ -324,35 +325,35 @@ async function testBanUser() {
   console.log('\n--- 1.1 无Token封禁 ---');
   const res1 = await sendRequest('POST', `${BASE_URL}/api/admin/users/${user01Id}/ban`, {
     reason: '无Token封禁测试'
-  }, {}, null);
+  }, {}, null, '边界测试：未登录时封禁用户（应返回401）');
   assert(res1.status === 401, '无Token返回401');
 
   // 1.2 边界：使用 user01 自己的 token 封禁自己
   console.log('\n--- 1.2 user01 封禁自己（使用自己的token） ---');
   const res2 = await sendRequest('POST', `${BASE_URL}/api/admin/users/${user01Id}/ban`, {
     reason: '自己封禁自己'
-  }, {}, user01Token);
+  }, {}, user01Token, '边界测试：普通用户封禁自己（应返回403）');
   assert(res2.status === 403, '普通用户封禁返回403');
 
   // 1.3 边界：admin01 封禁自己
   console.log('\n--- 1.3 admin01 封禁自己 ---');
   const res3 = await sendRequest('POST', `${BASE_URL}/api/admin/users/${adminUserId}/ban`, {
     reason: '管理员封禁自己'
-  }, {}, adminToken);
+  }, {}, adminToken, '边界测试：管理员封禁自己（应返回400/403）');
   assert(res3.status === 403 || res3.status === 400, '封禁管理员返回400/403');
 
   // 1.4 边界：封禁不存在的用户
   console.log('\n--- 1.4 封禁不存在的用户 ---');
   const res4 = await sendRequest('POST', `${BASE_URL}/api/admin/users/999999/ban`, {
     reason: '测试'
-  }, {}, adminToken);
+  }, {}, adminToken, '边界测试：封禁不存在的用户（userId=999999，应返回404）');
   assert(res4.status === 404, '不存在的用户返回404');
 
   // 1.5 正常封禁：admin01 封禁 user01
   console.log('\n--- 1.5 admin01 正常封禁 user01 ---');
   const res5 = await sendRequest('POST', `${BASE_URL}/api/admin/users/${user01Id}/ban`, {
     reason: 'user01 违规，进行封禁'
-  }, {}, adminToken);
+  }, {}, adminToken, '正常测试：admin01封禁user01');
   assert(res5.status === 200, '封禁用户成功');
   console.log(`[INFO] user01 已被封禁`);
 
@@ -360,7 +361,7 @@ async function testBanUser() {
   console.log('\n--- 1.6 重复封禁 ---');
   const res6 = await sendRequest('POST', `${BASE_URL}/api/admin/users/${user01Id}/ban`, {
     reason: '重复封禁'
-  }, {}, adminToken);
+  }, {}, adminToken, '边界测试：重复封禁已封禁用户（应返回400）');
   assert(res6.status === 400, '重复封禁返回400');
 }
 
@@ -377,7 +378,7 @@ async function testUser01AfterBanned() {
   const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/login`, {
     email: user01Email,
     password: user01Password
-  }, {}, null);
+  }, {}, null, '边界测试：被封禁用户尝试登录');
   console.log(`[结果] 登录状态码: ${loginRes.status}`);
 
   // 2.2 使用 user01 的 token 发布故事
@@ -385,8 +386,9 @@ async function testUser01AfterBanned() {
   const storyRes = await sendRequest('POST', `${BASE_URL}/api/stories`, {
     content: 'user01 banned story',
     images: ['https://example.com/test.jpg'],
-    emotionTag: '开心'
-  }, {}, user01Token);
+    emotionTag: '开心',
+    location: { lat: 39.90923, lng: 116.397428 }
+  }, {}, user01Token, '边界测试：被封禁用户发布故事');
   console.log(`[结果] 发布故事状态码: ${storyRes.status}`);
 
   // 2.3 user01 评论 user02 的故事（测试封禁后是否能操作其他用户的故事）
@@ -394,46 +396,46 @@ async function testUser01AfterBanned() {
   const commentRes = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: user02StoryId,
     content: 'user01 self-comment'
-  }, {}, user01Token);
+  }, {}, user01Token, '边界测试：被封禁用户评论其他用户的故事');
   console.log(`[结果] 评论状态码: ${commentRes.status}`);
 
   // 2.4 user01 点赞 user02 的故事
   console.log('\n--- 2.4 user01 点赞 user02 的故事 ---');
   const likeRes = await sendRequest('POST', `${BASE_URL}/api/likes`, {
     storyId: user02StoryId
-  }, {}, user01Token);
+  }, {}, user01Token, '边界测试：被封禁用户点赞其他用户的故事');
   console.log(`[结果] 点赞状态码: ${likeRes.status}`);
 
   // 2.5 user01 收藏 user02 的故事
   console.log('\n--- 2.5 user01 收藏 user02 的故事 ---');
   const favoriteRes = await sendRequest('POST', `${BASE_URL}/api/favorites`, {
     storyId: user02StoryId
-  }, {}, user01Token);
+  }, {}, user01Token, '边界测试：被封禁用户收藏其他用户的故事');
   console.log(`[结果] 收藏状态码: ${favoriteRes.status}`);
 
   // 2.6 user01 获取用户信息
   console.log('\n--- 2.6 user01 获取用户信息 ---');
-  const meRes = await sendRequest('GET', `${BASE_URL}/api/auth/me`, null, {}, user01Token);
+  const meRes = await sendRequest('GET', `${BASE_URL}/api/auth/me`, null, {}, user01Token, '边界测试：被封禁用户获取自己的用户信息');
   console.log(`[结果] 获取用户信息状态码: ${meRes.status}`);
 
   // 2.7 user01 访问故事列表（使用搜索接口）
   console.log('\n--- 2.7 user01 访问故事列表 ---');
-  const storiesRes = await sendRequest('GET', `${BASE_URL}/api/stories/search?keyword=test&page=1&limit=10`, null, {}, user01Token);
+  const storiesRes = await sendRequest('GET', `${BASE_URL}/api/stories/search?keyword=test&page=1&limit=10`, null, {}, user01Token, '边界测试：被封禁用户访问故事列表');
   console.log(`[结果] 访问故事列表状态码: ${storiesRes.status}`);
 
   // 2.8 user01 查看自己的故事
   console.log('\n--- 2.8 user01 查看自己的故事 ---');
-  const mineRes = await sendRequest('GET', `${BASE_URL}/api/stories/me/list?page=1&limit=10`, null, {}, user01Token);
+  const mineRes = await sendRequest('GET', `${BASE_URL}/api/stories/me/list?page=1&limit=10`, null, {}, user01Token, '边界测试：被封禁用户查看自己的故事列表');
   console.log(`[结果] 查看自己故事状态码: ${mineRes.status}`);
 
   // 2.9 user01 查看通知
   console.log('\n--- 2.9 user01 查看通知 ---');
-  const notifRes = await sendRequest('GET', `${BASE_URL}/api/notifications/me?page=1&limit=10`, null, {}, user01Token);
+  const notifRes = await sendRequest('GET', `${BASE_URL}/api/notifications/me?page=1&limit=10`, null, {}, user01Token, '边界测试：被封禁用户查看通知列表');
   console.log(`[结果] 查看通知状态码: ${notifRes.status}`);
 
   // 2.10 user01 查看收藏列表
   console.log('\n--- 2.10 user01 查看收藏列表 ---');
-  const favListRes = await sendRequest('GET', `${BASE_URL}/api/favorites/me?page=1&limit=10`, null, {}, user01Token);
+  const favListRes = await sendRequest('GET', `${BASE_URL}/api/favorites/me?page=1&limit=10`, null, {}, user01Token, '边界测试：被封禁用户查看收藏列表');
   console.log(`[结果] 查看收藏列表状态码: ${favListRes.status}`);
 }
 
@@ -449,28 +451,28 @@ async function testShadowbanStory() {
   console.log('\n--- 3.1 无Token封禁故事 ---');
   const res1 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/shadowban`, {
     reason: '无Token封禁测试'
-  }, {}, null);
+  }, {}, null, '边界测试：未登录时封禁故事（应返回401）');
   assert(res1.status === 401, '无Token返回401');
 
   // 3.2 边界：使用普通用户 token 封禁故事
   console.log('\n--- 3.2 user02 封禁自己的故事 ---');
   const res2 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/shadowban`, {
     reason: '用户封禁自己的故事'
-  }, {}, user02Token);
+  }, {}, user02Token, '边界测试：普通用户封禁自己的故事（应返回403）');
   assert(res2.status === 403, '普通用户封禁故事返回403');
 
   // 3.3 边界：封禁不存在的故事
   console.log('\n--- 3.3 封禁不存在的故事 ---');
   const res3 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/999999/shadowban`, {
     reason: '测试'
-  }, {}, adminToken);
+  }, {}, adminToken, '边界测试：封禁不存在的故事（storyId=999999，应返回404）');
   assert(res3.status === 404, '不存在的故事返回404');
 
   // 3.4 正常封禁：admin01 封禁 user02 的故事
   console.log('\n--- 3.4 admin01 正常封禁 user02 的故事 ---');
   const res4 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/shadowban`, {
     reason: 'user02 的故事违规，进行 shadowban'
-  }, {}, adminToken);
+  }, {}, adminToken, '正常测试：admin01封禁user02的故事（shadowban）');
   assert(res4.status === 200, '封禁故事成功');
   console.log(`[INFO] user02 的故事已被封禁`);
 
@@ -478,7 +480,7 @@ async function testShadowbanStory() {
   console.log('\n--- 3.5 重复封禁故事 ---');
   const res5 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/shadowban`, {
     reason: '重复封禁'
-  }, {}, adminToken);
+  }, {}, adminToken, '边界测试：重复封禁已封禁的故事（应返回400）');
   assert(res5.status === 400, '重复封禁返回400');
 }
 
@@ -492,12 +494,12 @@ async function testUser03AccessShadowbannedStory() {
 
   // 4.1 user03 访问故事列表
   console.log('\n--- 4.1 user03 访问故事列表 ---');
-  const storiesRes = await sendRequest('GET', `${BASE_URL}/api/stories/search?keyword=user02&page=1&limit=10`, null, {}, user03Token);
+  const storiesRes = await sendRequest('GET', `${BASE_URL}/api/stories/search?keyword=user02&page=1&limit=10`, null, {}, user03Token, '验证shadowban：user03搜索故事列表（不应包含被禁故事）');
   console.log(`[结果] 故事列表中是否包含 user02 的故事: 需检查返回数据`);
 
   // 4.2 user03 查看 user02 故事的详情
   console.log('\n--- 4.2 user03 查看 user02 故事详情 ---');
-  const detailRes = await sendRequest('GET', `${BASE_URL}/api/stories/${user02StoryId}`, null, {}, user03Token);
+  const detailRes = await sendRequest('GET', `${BASE_URL}/api/stories/${user02StoryId}`, null, {}, user03Token, '验证shadowban：user03查看被封禁故事的详情');
   console.log(`[结果] 查看故事详情状态码: ${detailRes.status}`);
 
   // 4.3 user03 评论 user02 的故事
@@ -505,26 +507,26 @@ async function testUser03AccessShadowbannedStory() {
   const commentRes = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: user02StoryId,
     content: 'user03 comment on shadowbanned story'
-  }, {}, user03Token);
+  }, {}, user03Token, '验证shadowban：user03评论被封禁的故事');
   console.log(`[结果] 评论状态码: ${commentRes.status}`);
 
   // 4.4 user03 点赞 user02 的故事
   console.log('\n--- 4.4 user03 点赞 user02 的故事 ---');
   const likeRes = await sendRequest('POST', `${BASE_URL}/api/likes`, {
     storyId: user02StoryId
-  }, {}, user03Token);
+  }, {}, user03Token, '验证shadowban：user03点赞被封禁的故事');
   console.log(`[结果] 点赞状态码: ${likeRes.status}`);
 
   // 4.5 user03 收藏 user02 的故事
   console.log('\n--- 4.5 user03 收藏 user02 的故事 ---');
   const favoriteRes = await sendRequest('POST', `${BASE_URL}/api/favorites`, {
     storyId: user02StoryId
-  }, {}, user03Token);
+  }, {}, user03Token, '验证shadowban：user03收藏被封禁的故事');
   console.log(`[结果] 收藏状态码: ${favoriteRes.status}`);
 
   // 4.6 user03 查看 user02 故事的评论列表
   console.log('\n--- 4.6 user03 查看 user02 故事的评论列表 ---');
-  const commentsRes = await sendRequest('GET', `${BASE_URL}/api/comments/story/${user02StoryId}?page=1&limit=10`, null, {}, user03Token);
+  const commentsRes = await sendRequest('GET', `${BASE_URL}/api/comments/story/${user02StoryId}?page=1&limit=10`, null, {}, user03Token, '验证shadowban：user03查看被封禁故事的评论列表');
   console.log(`[结果] 查看评论列表状态码: ${commentsRes.status}`);
 }
 
@@ -536,24 +538,24 @@ async function testUnban() {
 
   // 5.1 解封 user01
   console.log('\n--- 5.1 解封 user01 ---');
-  const unbanUserRes = await sendRequest('POST', `${BASE_URL}/api/admin/users/${user01Id}/unban`, {}, {}, adminToken);
+  const unbanUserRes = await sendRequest('POST', `${BASE_URL}/api/admin/users/${user01Id}/unban`, {}, {}, adminToken, '正常测试：admin01解封user01');
   assert(unbanUserRes.status === 200, '解封用户成功');
   console.log(`[INFO] user01 已解封`);
 
   // 5.2 边界：重复解封用户
   console.log('\n--- 5.2 重复解封用户 ---');
-  const unbanUserAgain = await sendRequest('POST', `${BASE_URL}/api/admin/users/${user01Id}/unban`, {}, {}, adminToken);
+  const unbanUserAgain = await sendRequest('POST', `${BASE_URL}/api/admin/users/${user01Id}/unban`, {}, {}, adminToken, '边界测试：重复解封已解封用户（应返回400）');
   assert(unbanUserAgain.status === 400, '重复解封用户返回400');
 
   // 5.3 解封 user02 的故事
   console.log('\n--- 5.3 解封 user02 的故事 ---');
-  const unbanStoryRes = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/restore`, {}, {}, adminToken);
+  const unbanStoryRes = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/restore`, {}, {}, adminToken, '正常测试：admin01解封user02的故事（restore）');
   assert(unbanStoryRes.status === 200, '解封故事成功');
   console.log(`[INFO] user02 的故事已解封`);
 
   // 5.4 边界：重复解封故事
   console.log('\n--- 5.4 重复解封故事 ---');
-  const unbanStoryAgain = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/restore`, {}, {}, adminToken);
+  const unbanStoryAgain = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/restore`, {}, {}, adminToken, '边界测试：重复解封已解封的故事（应返回400）');
   assert(unbanStoryAgain.status === 400, '重复解封故事返回400');
 }
 
@@ -568,7 +570,7 @@ async function testAfterUnban() {
   const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/login`, {
     email: user01Email,
     password: user01Password
-  }, {}, null);
+  }, {}, null, '正常测试：user01解封后重新登录');
   if (loginRes.status === 200 || loginRes.data?.code === 0) {
     user01Token = loginRes.data?.data?.accessToken;
     console.log(`[INFO] user01 登录成功，获取新 token`);
@@ -584,7 +586,7 @@ async function testAfterUnban() {
       "lat": 39.90923,
       "lng": 116.397428
     }
-  }, {}, user01Token);
+  }, {}, user01Token, '正常测试：user01解封后发布新故事');
   console.log(`[结果] 发布故事状态码: ${storyRes.status}`);
 
   // 6.3 user03 评论 user02 的故事 "user03 comment user02 story after unshadowban"
@@ -592,7 +594,7 @@ async function testAfterUnban() {
   const commentRes = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: user02StoryId,
     content: 'user03 comment user02 story after unshadowban'
-  }, {}, user03Token);
+  }, {}, user03Token, '正常测试：user03对解封后的user02故事发表评论');
   console.log(`[结果] 评论状态码: ${commentRes.status}`);
 }
 
@@ -605,21 +607,73 @@ async function testGetStatistics() {
 
   // 7.1 边界：无Token
   console.log('\n--- 7.1 无Token获取统计 ---');
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/admin/statistics`, null, {}, null);
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/admin/statistics`, null, {}, null, '边界测试：未登录时获取统计（应返回401）');
   assert(res1.status === 401, '无Token返回401');
 
   // 7.2 边界：使用普通用户 token
   console.log('\n--- 7.2 普通用户获取统计 ---');
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/admin/statistics`, null, {}, user01Token);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/admin/statistics`, null, {}, user01Token, '边界测试：普通用户获取统计（应返回403）');
   assert(res2.status === 403, '普通用户返回403');
 
   // 7.3 正常：管理员获取统计
   console.log('\n--- 7.3 管理员获取统计 ---');
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/admin/statistics`, null, {}, adminToken);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/admin/statistics`, null, {}, adminToken, '正常测试：管理员获取平台统计数据');
   assert(res3.status === 200, '管理员获取统计成功');
   assert(typeof res3.data?.data?.totalUsers === 'number', '返回总用户数');
   assert(typeof res3.data?.data?.totalStories === 'number', '返回总故事数');
   console.log(`[INFO] 统计数据: 总用户=${res3.data?.data?.totalUsers}, 总故事=${res3.data?.data?.totalStories}`);
+}
+
+/**
+ * 8. 推荐故事测试（边界测试）
+ * POST /api/admin/stories/:storyId/recommend
+ * POST /api/admin/stories/:storyId/unrecommend
+ */
+async function testRecommendStory() {
+  console.log('\n========== 8. 推荐故事测试（边界测试） ==========\n');
+  console.log(`[INFO] 推荐对象: user02 的故事 (ID=${user02StoryId})`);
+
+  // 8.1 边界：无Token推荐
+  console.log('\n--- 8.1 无Token推荐 ---');
+  const res1 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/recommend`, {}, {}, null, '边界测试：未登录时推荐故事（应返回401）');
+  assert(res1.status === 401, '无Token推荐返回401');
+
+  // 8.2 边界：普通用户推荐
+  console.log('\n--- 8.2 普通用户推荐 ---');
+  const res2 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/recommend`, {}, {}, user01Token, '边界测试：普通用户推荐故事（应返回403）');
+  assert(res2.status === 403, '普通用户推荐返回403');
+
+  // 8.3 边界：推荐不存在的故事
+  console.log('\n--- 8.3 推荐不存在的故事 ---');
+  const res3 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/999999/recommend`, {}, {}, adminToken, '边界测试：推荐不存在的故事（storyId=999999）');
+  assert(res3.status === 404, '不存在的故事返回404');
+
+  // 8.4 正常推荐：admin01 推荐 user02 的故事
+  console.log('\n--- 8.4 admin01 正常推荐故事 ---');
+  const res4 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/recommend`, {}, {}, adminToken, '正常测试：admin01推荐user02的故事');
+  assert(res4.status === 200, '推荐故事成功');
+  console.log(`[INFO] user02 的故事已被推荐`);
+
+  // 8.5 边界：重复推荐
+  console.log('\n--- 8.5 重复推荐 ---');
+  const res5 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/recommend`, {}, {}, adminToken, '边界测试：重复推荐已推荐的故事（应返回400）');
+  assert(res5.status === 400, '重复推荐返回400');
+
+  // 8.6 正常取消推荐：admin01 取消推荐
+  console.log('\n--- 8.6 admin01 取消推荐 ---');
+  const res6 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/unrecommend`, {}, {}, adminToken, '正常测试：admin01取消推荐user02的故事');
+  assert(res6.status === 200, '取消推荐成功');
+  console.log(`[INFO] user02 的故事已取消推荐`);
+
+  // 8.7 边界：重复取消推荐
+  console.log('\n--- 8.7 重复取消推荐 ---');
+  const res7 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/unrecommend`, {}, {}, adminToken, '边界测试：重复取消推荐（应返回400）');
+  assert(res7.status === 400, '重复取消推荐返回400');
+
+  // 8.8 边界：无Token取消推荐
+  console.log('\n--- 8.8 无Token取消推荐 ---');
+  const res8 = await sendRequest('POST', `${BASE_URL}/api/admin/stories/${user02StoryId}/unrecommend`, {}, {}, null, '边界测试：未登录时取消推荐（应返回401）');
+  assert(res8.status === 401, '无Token取消推荐返回401');
 }
 
 // ==================== 保存报告 ====================
@@ -634,7 +688,7 @@ async function saveRequestRecords() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `admin_request_${now}.md`);
+  const reportPath = path.join(reportDir, `admin.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
   
@@ -652,7 +706,7 @@ async function saveTestReport() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
-  const reportPath = path.join(reportDir, `admin_test_report_${now}.txt`);
+  const reportPath = path.join(reportDir, `admin.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
   
@@ -664,7 +718,7 @@ async function saveTestReport() {
   requestRecords.forEach(record => {
     const status = record.返回状态 >= 200 && record.返回状态 < 300 ? 'PASS' : 
                    record.返回状态 >= 400 && record.返回状态 < 500 ? 'FAIL' : 'ERROR';
-    content += `[${status}] ${record.请求类型} ${record.接口地址} - 状态码: ${record.返回状态}\n`;
+    content += `[${status}] ${record.请求类型} ${record.接口地址} - 状态码: ${record.返回状态} - ${record.测试说明}\n`;
   });
   
   content += `\n${'='.repeat(50)}\n`;
@@ -691,6 +745,7 @@ function generateReportContent() {
 
   requestRecords.forEach((record, idx) => {
     content += `## ${idx + 1}. ${record.请求类型} ${record.接口地址}\n\n`;
+    content += `**测试说明**: ${record.测试说明 || '无'}\n\n`;
     content += `**返回状态**: ${record.返回状态}\n\n`;
     content += `**请求头**:\n\`\`\`json\n${JSON.stringify(record.请求头, null, 2)}\n\`\`\`\n\n`;
     if (record.请求体) {
@@ -808,6 +863,7 @@ async function main() {
     await testUnban();                            // 5. 解封用户和故事测试
     await testAfterUnban();                       // 6. 解封后操作测试
     await testGetStatistics();                    // 7. 获取数据统计测试（边界测试）
+    await testRecommendStory();                   // 8. 推荐故事测试（边界测试）
 
     // 报告
     printTestReport();

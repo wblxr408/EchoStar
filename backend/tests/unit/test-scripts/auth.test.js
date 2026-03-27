@@ -124,7 +124,7 @@ async function saveRequestRecords() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `auth_request_${now}.md`);
+  const reportPath = path.join(reportDir, `auth.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
@@ -144,7 +144,7 @@ async function saveTestReport() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
-  const reportPath = path.join(reportDir, `auth_test_report_${now}.txt`);
+  const reportPath = path.join(reportDir, `auth.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
@@ -609,7 +609,26 @@ async function testForgotPassword() {
 }
 
 /**
- * 9. 注销账号测试
+ * 9. 获取头像上传凭证测试
+ * GET /api/auth/avatar/upload-token
+ */
+async function testGetAvatarUploadToken() {
+  console.log('\n========== 9. 获取头像上传凭证测试 ==========\n');
+
+  // 9.1 正常获取上传凭证
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/auth/avatar/upload-token`, null, {}, true, '正常测试：使用有效Token获取头像上传凭证');
+  assert(res1.status === 200, '获取头像上传凭证成功');
+  if (res1.status === 200) {
+    console.log(`[INFO] 上传凭证返回数据: ${JSON.stringify(res1.data?.data).substring(0, 200)}`);
+  }
+
+  // 9.2 边界测试：无Token获取上传凭证
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/auth/avatar/upload-token`, null, {}, false, '边界测试：未登录时获取头像上传凭证（应返回401）');
+  assert(res2.status === 401, '无Token获取上传凭证应该返回401');
+}
+
+/**
+ * 10. 注销账号测试
  */
 async function testDeleteAccount() {
   console.log('\n========== 9. 注销账号测试 ==========\n');
@@ -698,7 +717,8 @@ async function main() {
     await testAdminLogin();               // 6. 管理员登录
     await testSendVerificationCode();     // 7. 发送验证码
     await testForgotPassword();           // 8. 忘记密码
-    await testDeleteAccount();            // 9. 注销账号
+    await testGetAvatarUploadToken();     // 9. 获取头像上传凭证
+    await testDeleteAccount();            // 10. 注销账号
 
     // 生成报告
     generateTestReport();

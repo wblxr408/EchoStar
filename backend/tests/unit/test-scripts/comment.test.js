@@ -41,7 +41,7 @@ const stats = {
 /**
  * 记录请求
  */
-function recordRequest(method, url, headers, body, status, response) {
+function recordRequest(method, url, headers, body, status, response, testDescription = '') {
   requestCounter++;
   const record = {
     序号: requestCounter,
@@ -50,7 +50,8 @@ function recordRequest(method, url, headers, body, status, response) {
     返回状态: status,
     请求头: headers,
     请求体: body || null,
-    返回内容: response
+    返回内容: response,
+    测试说明: testDescription
   };
   requestRecords.push(record);
   return record;
@@ -90,6 +91,7 @@ function generateReportContent() {
     
     records.forEach((record, idx) => {
       content += `### ${sectionCounter}.${idx + 1} ${record.接口地址.split('/').pop()} - ${getTestName(record)}\n\n`;
+      content += `**测试说明**: ${record.测试说明 || '无'}\n\n`;
       content += `**序号**: ${record.序号}\n\n`;
       content += `**请求类型**: ${record.请求类型}\n\n`;
       content += `**接口地址**: ${record.接口地址}\n\n`;
@@ -160,7 +162,7 @@ async function saveRequestRecords() {
   // 从 test-method 目录向上找到 tests 目录，再定位到 test-results
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
-  const reportPath = path.join(reportDir, `comment_request_${now}.md`);
+  const reportPath = path.join(reportDir, `comment.request-${now}.md`);
   
   // 确保目录存在
   if (!fs.existsSync(reportDir)) {
@@ -186,7 +188,7 @@ async function saveTestReport() {
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
   const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
-  const reportPath = path.join(reportDir, `comment_test_report_${now}.txt`);
+  const reportPath = path.join(reportDir, `comment.test.report-${now}.txt`);
   
   // 确保目录存在
   if (!fs.existsSync(reportDir)) {
@@ -211,7 +213,7 @@ async function saveTestReport() {
 /**
  * 发送请求并记录
  */
-async function sendRequest(method, url, data = null, customHeaders = {}) {
+async function sendRequest(method, url, data = null, customHeaders = {}, testDescription = '') {
   const headers = {
     'Content-Type': 'application/json',
     ...customHeaders
@@ -242,7 +244,8 @@ async function sendRequest(method, url, data = null, customHeaders = {}) {
       { ...headers },
       data,
       response.status,
-      response.data
+      response.data,
+      testDescription
     );
 
     return response;
@@ -253,7 +256,8 @@ async function sendRequest(method, url, data = null, customHeaders = {}) {
       { ...headers },
       data,
       error.response?.status || 500,
-      error.response?.data || { error: error.message }
+      error.response?.data || { error: error.message },
+      testDescription
     );
 
     return error.response || { status: 500, data: { error: error.message } };
@@ -290,32 +294,20 @@ async function setupTestUser() {
   const password = 'Test123456';
 
   // 注册
-  const registerRes = await sendRequest('POST', `${BASE_URL}/api/auth/register`, {
+  const registerRes = await sendRequest('POST', `${BASE_URL}/api/auth/register_2`, {
     username,
     email,
     password
-  });
+  }, {}, '创建测试用户（为评论模块测试创建数据基础）');
 
-  if (registerRes.status === 200 || registerRes.status === 201) {
+  if (registerRes.status === 200 || registerRes.data?.code === 0) {
     accessToken = registerRes.data?.data?.accessToken;
     testUserId = registerRes.data?.data?.user?.id;
     console.log(`[INFO] 测试用户创建成功: ${username}, ID=${testUserId}`);
     return true;
   }
   
-  // 如果注册失败，尝试登录
-  const loginRes = await sendRequest('POST', `${BASE_URL}/api/auth/login`, {
-    email,
-    password
-  });
-  
-  if (loginRes.status === 200) {
-    accessToken = loginRes.data?.data?.accessToken;
-    testUserId = loginRes.data?.data?.user?.id;
-    console.log(`[INFO] 测试用户登录成功: ${username}, ID=${testUserId}`);
-    return true;
-  }
-  
+  console.log(`[ERROR] 注册失败: ${JSON.stringify(registerRes.data)}`);
   return false;
 }
 
@@ -331,7 +323,7 @@ async function setupTestStory() {
       lat: 39.90923,
       lng: 116.397428
     }
-  });
+  }, {}, '创建测试故事（为评论模块测试创建数据基础）');
 
   if (storyRes.status === 200 || storyRes.status === 201) {
     testStoryId = storyRes.data?.data?.id;
@@ -341,7 +333,7 @@ async function setupTestStory() {
   console.log(`[WARN] 测试故事创建失败 (状态: ${storyRes.status})，尝试使用现有故事`);
   
   // 尝试获取现有故事
-  const storiesRes = await sendRequest('GET', `${BASE_URL}/api/stories/me/list`);
+  const storiesRes = await sendRequest('GET', `${BASE_URL}/api/stories/me/list`, {}, '获取现有故事列表（备用数据）');
   if (storiesRes.status === 200 && storiesRes.data?.data?.stories?.length > 0) {
     testStoryId = storiesRes.data.data.stories[0].id;
     console.log(`[INFO] 使用现有故事: ID=${testStoryId}`);
@@ -363,7 +355,7 @@ async function testCreateComment() {
   const res1 = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: testStoryId,
     content: '这是一条测试评论'
-  });
+  }, {}, '正常测试：创建评论');
   assert(res1.status === 200 || res1.status === 201, '创建评论成功');
   testCommentId = res1.data?.data?.id;
 
@@ -372,7 +364,7 @@ async function testCreateComment() {
     await sendRequest('POST', `${BASE_URL}/api/comments`, {
       storyId: testStoryId,
       content: `测试评论 #${i + 1}`
-    });
+    }, {}, '创建多条评论（为评论列表分页测试创建数据基础）');
   }
   console.log('[INFO] 创建了5条额外评论用于分页测试');
 
@@ -380,20 +372,20 @@ async function testCreateComment() {
   const res2 = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: testStoryId,
     content: ''
-  });
+  }, {}, '边界测试：评论内容为空（content为空字符串）');
   assert(res2.status === 400 || res2.status === 500, '内容为空应该失败');
 
   // 1.4 边界测试：缺少故事ID
   const res3 = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     content: '没有故事ID的评论'
-  });
+  }, {}, '边界测试：缺少故事ID（请求体缺少storyId字段）');
   assert(res3.status === 400 || res3.status === 500, '缺少故事ID应该失败');
 
   // 1.5 边界测试：不存在的故事ID
   const res4 = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: 999999,
     content: '评论不存在的故事'
-  });
+  }, {}, '边界测试：评论不存在的故事（storyId=999999）');
   assert(res4.status === 400 || res4.status === 404 || res4.status === 500, '评论不存在的故事应该失败');
 
   // 1.6 边界测试：无Token访问
@@ -402,7 +394,7 @@ async function testCreateComment() {
   const res5 = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: testStoryId,
     content: '无Token评论'
-  });
+  }, {}, '边界测试：无Token创建评论');
   assert(res5.status === 401, '无Token创建评论应该返回401');
   accessToken = tempToken;
 }
@@ -414,23 +406,23 @@ async function testGetCommentsByStoryId() {
   console.log('\n========== 2. 获取故事评论列表测试 ==========\n');
 
   // 2.1 正常获取评论列表
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/comments/story/${testStoryId}`);
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/comments/story/${testStoryId}`, {}, '正常测试：获取故事评论列表');
   assert(res1.status === 200, '获取评论列表成功');
   assert(Array.isArray(res1.data?.data?.comments), '返回评论数组');
   assert(res1.data?.data?.pagination, '返回分页信息');
 
   // 2.2 分页测试
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/comments/story/${testStoryId}?page=1&limit=3`);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/comments/story/${testStoryId}?page=1&limit=3`, {}, '正常测试：分页获取评论列表（limit=3）');
   assert(res2.status === 200, '分页获取评论成功');
   assert(res2.data?.data?.comments?.length <= 3, '分页限制生效');
 
   // 2.3 边界测试：不存在的故事
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/comments/story/999999`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/comments/story/999999`, {}, '边界测试：获取不存在故事的评论（storyId=999999）');
   // 可能返回空列表或错误，取决于实现
   assert(res3.status === 200 || res3.status === 404, '不存在的故事返回正确状态');
 
   // 2.4 边界测试：无效的故事ID格式
-  const res4 = await sendRequest('GET', `${BASE_URL}/api/comments/story/invalid`);
+  const res4 = await sendRequest('GET', `${BASE_URL}/api/comments/story/invalid`, {}, '边界测试：无效的故事ID格式（storyId=invalid）');
   assert(res4.status === 400 || res4.status === 500, '无效故事ID格式应该失败');
 }
 
@@ -441,19 +433,19 @@ async function testGetUserComments() {
   console.log('\n========== 3. 获取当前用户评论列表测试 ==========\n');
 
   // 3.1 正常获取
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/comments/me`);
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/comments/me`, {}, '正常测试：获取当前用户评论列表');
   assert(res1.status === 200, '获取用户评论列表成功');
   assert(Array.isArray(res1.data?.data?.comments), '返回评论数组');
 
   // 3.2 分页测试
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/comments/me?page=1&limit=5`);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/comments/me?page=1&limit=5`, {}, '正常测试：分页获取用户评论（limit=5）');
   assert(res2.status === 200, '分页获取用户评论成功');
   assert(res2.data?.data?.comments?.length <= 5, '分页限制生效');
 
   // 3.3 边界测试：无Token访问
   const tempToken = accessToken;
   accessToken = null;
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/comments/me`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/comments/me`, {}, '边界测试：无Token获取用户评论');
   assert(res3.status === 401, '无Token获取用户评论应该返回401');
   accessToken = tempToken;
 }
@@ -465,16 +457,16 @@ async function testGetCommentCount() {
   console.log('\n========== 4. 统计评论数量测试 ==========\n');
 
   // 4.1 正常统计
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/comments/${testStoryId}/count`);
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/comments/${testStoryId}/count`, {}, '正常测试：统计评论数量');
   assert(res1.status === 200, '统计评论数量成功');
   assert(typeof res1.data?.data?.commentCount === 'number', '返回评论数量');
 
   // 4.2 边界测试：不存在的故事
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/comments/999999/count`);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/comments/999999/count`, {}, '边界测试：统计不存在故事的评论数（storyId=999999）');
   assert(res2.status === 200 || res2.status === 404, '不存在的故事统计返回正确状态');
 
   // 4.3 边界测试：无效的故事ID
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/comments/invalid/count`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/comments/invalid/count`, {}, '边界测试：无效故事ID格式（storyId=invalid）');
   assert(res3.status === 400 || res3.status === 500, '无效故事ID格式应该失败');
 }
 
@@ -485,20 +477,20 @@ async function testSearchComments() {
   console.log('\n========== 5. 搜索评论测试 ==========\n');
 
   // 5.1 正常搜索
-  const res1 = await sendRequest('GET', `${BASE_URL}/api/comments/search?keyword=测试`);
+  const res1 = await sendRequest('GET', `${BASE_URL}/api/comments/search?keyword=测试`, {}, '正常测试：搜索评论（keyword=测试）');
   assert(res1.status === 200, '搜索评论成功');
   assert(Array.isArray(res1.data?.data?.comments), '返回评论数组');
 
   // 5.2 分页搜索
-  const res2 = await sendRequest('GET', `${BASE_URL}/api/comments/search?keyword=测试&page=1&limit=3`);
+  const res2 = await sendRequest('GET', `${BASE_URL}/api/comments/search?keyword=测试&page=1&limit=3`, {}, '正常测试：分页搜索评论（limit=3）');
   assert(res2.status === 200, '分页搜索成功');
 
   // 5.3 边界测试：缺少关键词
-  const res3 = await sendRequest('GET', `${BASE_URL}/api/comments/search`);
+  const res3 = await sendRequest('GET', `${BASE_URL}/api/comments/search`, {}, '边界测试：缺少搜索关键词参数');
   assert(res3.status === 400, '缺少搜索关键词应该返回400');
 
   // 5.4 边界测试：空关键词
-  const res4 = await sendRequest('GET', `${BASE_URL}/api/comments/search?keyword=`);
+  const res4 = await sendRequest('GET', `${BASE_URL}/api/comments/search?keyword=`, {}, '边界测试：空关键词搜索（keyword为空字符串）');
   assert(res4.status === 400 || res4.status === 200, '空关键词处理正确');
 }
 
@@ -512,33 +504,33 @@ async function testDeleteComment() {
   const createRes = await sendRequest('POST', `${BASE_URL}/api/comments`, {
     storyId: testStoryId,
     content: '准备删除的评论'
-  });
+  }, {}, '创建评论（为删除测试创建数据基础）');
   const commentToDelete = createRes.data?.data?.id;
 
   // 6.1 正常删除
   if (commentToDelete) {
-    const res1 = await sendRequest('DELETE', `${BASE_URL}/api/comments/${commentToDelete}`);
+    const res1 = await sendRequest('DELETE', `${BASE_URL}/api/comments/${commentToDelete}`, {}, '正常测试：删除评论');
     assert(res1.status === 200, '删除评论成功');
   }
 
   // 6.2 边界测试：删除不存在的评论
-  const res2 = await sendRequest('DELETE', `${BASE_URL}/api/comments/999999`);
+  const res2 = await sendRequest('DELETE', `${BASE_URL}/api/comments/999999`, {}, '边界测试：删除不存在的评论（commentId=999999）');
   assert(res2.status === 404 || res2.status === 400 || res2.status === 500, '删除不存在的评论应该失败');
 
   // 6.3 边界测试：删除无效ID
-  const res3 = await sendRequest('DELETE', `${BASE_URL}/api/comments/invalid`);
+  const res3 = await sendRequest('DELETE', `${BASE_URL}/api/comments/invalid`, {}, '边界测试：删除无效ID评论（commentId=invalid）');
   assert(res3.status === 400 || res3.status === 500, '删除无效ID评论应该失败');
 
   // 6.4 边界测试：无Token删除
   const tempToken = accessToken;
   accessToken = null;
-  const res4 = await sendRequest('DELETE', `${BASE_URL}/api/comments/${testCommentId || 1}`);
+  const res4 = await sendRequest('DELETE', `${BASE_URL}/api/comments/${testCommentId || 1}`, {}, '边界测试：无Token删除评论');
   assert(res4.status === 401, '无Token删除评论应该返回401');
   accessToken = tempToken;
 
   // 6.5 重复删除
   if (commentToDelete) {
-    const res5 = await sendRequest('DELETE', `${BASE_URL}/api/comments/${commentToDelete}`);
+    const res5 = await sendRequest('DELETE', `${BASE_URL}/api/comments/${commentToDelete}`, {}, '边界测试：重复删除已删除的评论');
     assert(res5.status === 404 || res5.status === 400 || res5.status === 500, '重复删除应该失败');
   }
 }
