@@ -166,28 +166,25 @@ export const AdminService = {
    * 解封用户
    */
   async unbanUser(userId, adminId) {
-    // const user = await User.findByPk(userId);
-    const user = await Blacklist.findOne({ where: { email } });
-
-    if (!user) {
-      throw new AdminError('用户不存在或当前不是封禁状态', 404);
-    }
-
-    // if (user.status !== 'deleted') {
-    //   throw new AdminError('用户不存在或当前不是封禁状态', 400);
-    // }
-
+    // 先查找用户获取 email
     const userdata = await User.findByPk(userId);
-    if ( !userdata ) {
+    if (!userdata) {
       throw new AdminError('原用户数据已被清除，无法解封', 404);
     }
+
+    // 查找黑名单记录
+    const blacklistEntry = await Blacklist.findOne({ where: { email: userdata.email } });
+    if (!blacklistEntry) {
+      throw new AdminError('用户不在封禁状态', 400);
+    }
+
     // 解封用户
     await userdata.update({ status: 'normal' });
 
     // 从黑名单中移除该用户的记录
     await Blacklist.destroy({
       where: {
-        email: user.email
+        email: userdata.email
       }
     });
   },
