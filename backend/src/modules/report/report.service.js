@@ -324,12 +324,12 @@ export const ReportService = {
         if (report.targetType === 'story') {
           const story = await Story.findByPk(report.targetId);
           if (story) {
-            await story.update({ visibility: 'normal' });
+            await story.update({ visibility: 'public' });
           }
         } else if (report.targetType === 'comment') {
           const comment = await Comment.findByPk(report.targetId);
           if (comment) {
-            await comment.update({ status: 'normal' });
+            await comment.update({ status: 'active' });
           }
         }
       }
