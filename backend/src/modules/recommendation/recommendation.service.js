@@ -1,5 +1,6 @@
 import { Story } from '../story/story.model.js';
 import { Like } from '../like/like.model.js';
+import { User } from '../auth/auth.model.js';
 import { sequelize } from '../../config/database.js';
 import { Op } from 'sequelize';
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
@@ -96,6 +97,11 @@ async function fetchCandidateStories(options = {}) {
     where,
     replacements: Object.keys(replacements).length ? replacements : undefined,
     attributes: ['id', 'content', 'images', 'location', 'locationName', 'emotionTag', 'isRecommended', 'createdAt'],
+    include: [{
+      model: User,
+      as: 'author',
+      attributes: ['id', 'username', 'avatarUrl']
+    }],
     order: [['createdAt', 'DESC']],
     limit: RECOMMENDATION.CANDIDATE_POOL_SIZE
   });
@@ -174,6 +180,15 @@ function formatStoryForResponse(story) {
     id: story.id,
     content: story.content,
     images: safeParseJSONB(story.images, []),
+    username: story.author?.username || story.username || '',
+    avatar: story.author?.avatarUrl || story.avatar || null,
+    author: story.author
+      ? {
+          id: story.author.id,
+          username: story.author.username || '匿名用户',
+          avatar: story.author.avatarUrl || null
+        }
+      : null,
     location: { latitude: lat, longitude: lng },
     locationName: story.locationName,
     emotionTag: story.emotionTag,

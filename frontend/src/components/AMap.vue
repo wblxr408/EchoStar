@@ -413,7 +413,6 @@ function createMarker(story) {
 
   content.innerHTML = `
     <div class="marker-wrapper" style="background: ${color}; ${isLocked ? 'opacity: 0.6;' : ''}">
-      <div class="marker-star">*</div>
       <div class="marker-emotion">${isLocked ? 'LOCK' : getEmotionEmoji(story.emotionTag || story.emotion)}</div>
     </div>
   `;
@@ -937,37 +936,11 @@ watch(() => props.tempPickedLocation, (newLocation) => {
   box-shadow: 0 0 12px currentColor, 0 0 24px rgba(255, 255, 255, 0.3), 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
-:deep(.marker-star) {
-  position: absolute;
-  font-size: 24px;
-  animation: twinkle 2s ease-in-out infinite;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-}
-
 :deep(.marker-emotion) {
   position: absolute;
   font-size: 20px;
   z-index: 1;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-@keyframes twinkle {
-  0%, 100% {
-    transform: scale(1) rotate(0deg);
-    opacity: 1;
-  }
-  25% {
-    transform: scale(1.1) rotate(5deg);
-    opacity: 0.9;
-  }
-  50% {
-    transform: scale(1.2) rotate(0deg);
-    opacity: 1;
-  }
-  75% {
-    transform: scale(1.1) rotate(-5deg);
-    opacity: 0.9;
-  }
 }
 
 @keyframes user-location-pulse {

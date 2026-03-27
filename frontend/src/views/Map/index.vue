@@ -88,6 +88,7 @@
               :key="story.id"
               :story="story"
               @preview-image="handlePreviewImage"
+              @select-story="openStoryFromCollection"
             />
           </div>
         </div>
@@ -105,6 +106,7 @@
               :key="story.id"
               :story="story"
               @preview-image="handlePreviewImage"
+              @select-story="openStoryFromCollection"
             />
             <div v-if="feedHasMore" class="load-more-wrap">
               <button class="load-more-btn" :disabled="feedLoadingMore" @click="loadMoreFeed">
@@ -135,6 +137,13 @@
                 </div>
               </div>
               <div class="featured-content">
+                <div class="featured-author">
+                  <div class="featured-author-avatar">
+                    <img v-if="getStoryAuthorAvatar(story)" :src="getStoryAuthorAvatar(story)" :alt="getStoryAuthorName(story)">
+                    <span v-else>{{ getStoryAuthorInitial(story) }}</span>
+                  </div>
+                  <span class="featured-author-name">{{ getStoryAuthorName(story) }}</span>
+                </div>
                 <p class="featured-text">{{ story.content }}</p>
                 <div class="featured-meta">
                   <span class="emotion">{{ getEmotionEmoji(story.emotionTag || story.emotion) }}</span>
@@ -502,11 +511,11 @@
           </div>
         </div>
         <div class="user-actions">
-          <button class="user-action-btn my-likes-btn" :class="{ active: showLikesPanel }" @click="handleMyLikes">
+          <button class="user-action-btn my-likes-btn" :class="{ active: showLikesPanel }" @click.stop="handleMyLikes">
             <span class="btn-icon">❤️</span>
             <span class="btn-text">我的点赞</span>
           </button>
-          <button class="user-action-btn my-posts-btn" :class="{ active: showPostsPanel }" @click="handleMyPosts">
+          <button class="user-action-btn my-posts-btn" :class="{ active: showPostsPanel }" @click.stop="handleMyPosts">
             <span class="btn-icon">📝</span>
             <span class="btn-text">我的发布</span>
           </button>
@@ -544,7 +553,7 @@
             <div class="item-header">
               <img :src="story.avatar" class="item-avatar" alt="头像" />
               <div class="item-meta">
-                <span class="item-author">{{ story.author }}</span>
+                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
                 <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
               </div>
               <button 
@@ -599,7 +608,7 @@
             <div class="item-header">
               <img :src="story.avatar" class="item-avatar" alt="头像" />
               <div class="item-meta">
-                <span class="item-author">{{ story.author }}</span>
+                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
                 <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
               </div>
               <button 
@@ -636,11 +645,12 @@
     <PaperPlaneStory
       v-if="selectedStory"
       :story="selectedStory"
+      :like-pending="storyLikePending"
       :start-position="storyStartPosition"
       :direct-open="storyDirectOpen"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
-      @like="handleStoryLike"
+      @like="toggleStoryLike"
       @comment="handleStoryComment"
       @report="handleStoryReport"
     />
@@ -1086,8 +1096,20 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
   }
 
   storyCommentsLoading.value = true;
+  const detailFallbackAuthor = {
+    username: firstNonEmptyString(
+      story?.username,
+      typeof story?.author === 'string' ? story.author : '',
+      story?.author?.username
+    ),
+    avatar: firstNonEmptyString(
+      story?.avatar,
+      story?.author?.avatar
+    )
+  };
 
   const tasks = [
+    storyApi.getStoryById(storyId),
     commentApi.getStoryComments(storyId, { page: 1, limit: 20 })
   ];
 
@@ -1098,9 +1120,72 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
   }
 
   try {
-    const [commentsResult, likeResult] = await Promise.allSettled(tasks);
+    const [detailResult, commentsResult, likeResult] = await Promise.allSettled(tasks);
     if (requestToken !== activeStoryRequestToken || selectedStory.value?.id !== storyId) {
       return;
+    }
+
+    if (detailResult.status === 'fulfilled' && detailResult.value) {
+      const detailData = detailResult.value?.data ?? detailResult.value;
+      const normalizedDetail = normalizeUserPanelStory(detailData, detailFallbackAuthor);
+
+      if (normalizedDetail) {
+        const nextLikeCount = Number(normalizedDetail.likeCount ?? normalizedDetail.likes ?? 0);
+        const detailAuthor = resolveStoryAuthor(normalizedDetail, detailFallbackAuthor);
+        syncStoryAcrossCollections(storyId, (item) => {
+          const existingLocationLabel = pickLocationText([
+            item.location?.address,
+            item.location?.formattedAddress,
+            item.location?.name,
+            item.locationName
+          ], false);
+          const detailLocationLabel = pickLocationText([
+            normalizedDetail.location?.address,
+            normalizedDetail.location?.formattedAddress,
+            normalizedDetail.location?.name,
+            normalizedDetail.locationName
+          ], false);
+
+          item.content = firstNonEmptyString(normalizedDetail.content, item.content);
+          item.createdAt = normalizedDetail.createdAt || item.createdAt;
+          item.username = firstNonEmptyString(detailAuthor.username, item.username, getStoryAuthorName(item));
+          item.avatar = firstNonEmptyString(detailAuthor.avatar, item.avatar, item.author?.avatar);
+          item.author = {
+            ...(item.author && typeof item.author === 'object' ? item.author : {}),
+            id: detailAuthor.id ?? item.author?.id ?? null,
+            username: item.username,
+            avatar: item.avatar
+          };
+          item.images = Array.isArray(normalizedDetail.images) ? normalizedDetail.images : item.images;
+          item.emotion = firstNonEmptyString(normalizedDetail.emotion, item.emotion);
+          item.emotionTag = firstNonEmptyString(normalizedDetail.emotionTag, item.emotionTag);
+
+          if (Number.isFinite(nextLikeCount)) {
+            item.likes = nextLikeCount;
+            item.likeCount = nextLikeCount;
+          }
+
+          if (normalizedDetail.location && extractCoordinates(normalizedDetail.location)) {
+            item.location = buildNormalizedStoryLocation(
+              normalizedDetail,
+              extractCoordinates(normalizedDetail.location),
+              existingLocationLabel ? item.location : null
+            );
+          }
+
+          if (detailLocationLabel) {
+            item.locationName = detailLocationLabel;
+          }
+
+          if (typeof detailData?.isFeatured === 'boolean') {
+            item.isFeatured = detailData.isFeatured;
+          }
+
+          if (typeof detailData?.isPinned === 'boolean') {
+            item.isPinned = detailData.isPinned;
+          }
+        });
+      }
     }
 
     if (commentsResult.status === 'fulfilled') {
@@ -1158,6 +1243,26 @@ function openStoryModal(story, delay = 0, options = {}) {
   show();
 }
 
+function openStoryFromCollection(story) {
+  if (!story) {
+    return;
+  }
+
+  const coords = extractCoordinates(story.location) || extractCoordinates(story);
+  const shouldAnimateAfterMove = Boolean(coords);
+
+  if (coords) {
+    suppressMapReloadUntil = Date.now() + 1200;
+    mapStore.updateCenter(coords.latitude, coords.longitude);
+    mapStore.updateZoom(16);
+  }
+
+  openStoryModal(story, shouldAnimateAfterMove ? STORY_MODAL_OPEN_DELAY_MS : 0, {
+    directOpen: true,
+    startPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+  });
+}
+
 async function toggleStoryLike() {
   if (!selectedStory.value) {
     return;
@@ -1184,7 +1289,16 @@ async function toggleStoryLike() {
   handleStoryLike({ storyId, liked: nextLiked, likeCount: nextCount });
 
   try {
-    await likeApi.toggle(storyId);
+    const response = await likeApi.toggle(storyId);
+    const result = response?.data ?? response;
+    const resolvedLiked = typeof result?.isLiked === 'boolean' ? result.isLiked : nextLiked;
+    const resolvedLikeCount = Number.isFinite(Number(result?.likeCount))
+      ? Number(result.likeCount)
+      : nextCount;
+
+    storyIsLiked.value = resolvedLiked;
+    storyLikeCount.value = resolvedLikeCount;
+    handleStoryLike({ storyId, liked: resolvedLiked, likeCount: resolvedLikeCount });
   } catch (error) {
     console.error('点赞失败:', error);
     storyIsLiked.value = previousLiked;
@@ -1987,6 +2101,57 @@ function firstNonEmptyString(...values) {
   return '';
 }
 
+function resolveStoryAuthor(source, fallbackAuthor = null) {
+  if (!source || typeof source !== 'object') {
+    return {
+      id: fallbackAuthor?.id ?? null,
+      username: firstNonEmptyString(fallbackAuthor?.username, '\u533f\u540d\u7528\u6237'),
+      avatar: firstNonEmptyString(fallbackAuthor?.avatar)
+    };
+  }
+
+  const authorObject = source.author && typeof source.author === 'object'
+    ? source.author
+    : null;
+  const userObject = source.user && typeof source.user === 'object'
+    ? source.user
+    : null;
+
+  return {
+    id: authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null,
+    username: firstNonEmptyString(
+      authorObject?.username,
+      userObject?.username,
+      typeof source.author === 'string' ? source.author : '',
+      source.username,
+      source.userName,
+      fallbackAuthor?.username,
+      '\u533f\u540d\u7528\u6237'
+    ),
+    avatar: firstNonEmptyString(
+      authorObject?.avatar,
+      authorObject?.avatarUrl,
+      userObject?.avatar,
+      userObject?.avatarUrl,
+      source.avatar,
+      source.avatarUrl,
+      fallbackAuthor?.avatar
+    )
+  };
+}
+
+function getStoryAuthorName(story) {
+  return resolveStoryAuthor(story).username;
+}
+
+function getStoryAuthorAvatar(story) {
+  return resolveStoryAuthor(story).avatar;
+}
+
+function getStoryAuthorInitial(story) {
+  return getStoryAuthorName(story).slice(0, 1).toUpperCase() || '\u533f';
+}
+
 function isCoordinateOnlyLocationLabel(value) {
   if (typeof value !== 'string') {
     return false;
@@ -2077,17 +2242,17 @@ function buildNormalizedStoryLocation(story, coords = null, fallbackLocation = n
     : {};
   const normalizedCoords = coords || extractCoordinates(sourceLocation) || extractCoordinates(fallback);
   const address = pickLocationText([
-    sourceLocation.address,
-    sourceLocation.formattedAddress,
     story?.locationName,
     sourceLocation.name,
     fallback.name,
+    sourceLocation.address,
+    sourceLocation.formattedAddress,
     fallback.address,
     normalizedCoords ? formatMapPickAddress(normalizedCoords.latitude, normalizedCoords.longitude) : ''
   ]);
   const name = pickLocationText([
-    sourceLocation.name,
     story?.locationName,
+    sourceLocation.name,
     fallback.name,
     sourceLocation.address,
     fallback.address
@@ -2530,6 +2695,8 @@ function handlePostsScroll(event) {
 
 // 处理故事点击（从我的发布/我的点赞列表点击）
 function handleStoryClick(story) {
+  openStoryFromCollection(story);
+  return;
   // 关闭子面板和用户侧边栏
   showLikesPanel.value = false;
   showPostsPanel.value = false;
@@ -2552,9 +2719,9 @@ function handleStoryClick(story) {
     startPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   }
 
-  // 启用飞行动画
+  // 直接打开故事详情弹窗
   openStoryModal(story, STORY_MODAL_OPEN_DELAY_MS, {
-    directOpen: false,
+    directOpen: true,
     startPosition
   });
 }
@@ -3282,7 +3449,7 @@ async function loadMoreFeed() {
 function handleMarkerClick(data) {
   const { story, screenX, screenY } = data;
   openStoryModal(story, 0, {
-    directOpen: false,
+    directOpen: true,
     startPosition: { x: screenX, y: screenY }
   });
 }
@@ -3308,6 +3475,10 @@ function handleMapMove(event) {
   const zoom = Number(event?.zoom);
   if (Number.isFinite(zoom)) {
     mapStore.updateZoom(zoom);
+    if (Date.now() < suppressMapReloadUntil) {
+      clearTimeout(loadTimer);
+      return;
+    }
   }
 
   // 防抖加载
@@ -3319,6 +3490,7 @@ function handleMapMove(event) {
 }
 
 let loadTimer = null;
+let suppressMapReloadUntil = 0;
 
 function extractCoordinates(location) {
   if (!location || typeof location !== 'object') {
@@ -3354,13 +3526,63 @@ function normalizeStoryForMap(story, fallbackLocation = null) {
     return null;
   }
 
+  const author = resolveStoryAuthor(story);
+  const nextLikeCount = Number(story.likeCount ?? story.likes ?? 0);
+  const normalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+
   return {
     ...story,
+    images: Array.isArray(story.images) ? story.images : [],
+    likes: normalizedLikeCount,
+    likeCount: normalizedLikeCount,
+    username: author.username,
+    avatar: author.avatar,
+    author,
+    locationName: pickLocationText([
+      story.locationName,
+      story.location?.name,
+      story.location?.address
+    ], false),
     location: buildNormalizedStoryLocation(story, coords, fallbackLocation)
   };
 }
 
 function normalizeUserPanelStory(item, fallbackAuthor = null) {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  const nextBaseStory = item.story && typeof item.story === 'object'
+    ? item.story
+    : item;
+  if (!nextBaseStory || typeof nextBaseStory !== 'object') {
+    return null;
+  }
+
+  const nextAuthor = resolveStoryAuthor(nextBaseStory, fallbackAuthor);
+  const nextCoords = extractCoordinates(nextBaseStory.location);
+  const nextLikeCount = Number(nextBaseStory.likeCount ?? nextBaseStory.likes ?? 0);
+  const nextNormalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+  const nextLocationName = pickLocationText([
+    nextBaseStory.locationName,
+    nextBaseStory.location?.name,
+    nextBaseStory.location?.address
+  ], false);
+
+  return {
+    ...nextBaseStory,
+    id: nextBaseStory.id ?? item.storyId ?? item.id,
+    createdAt: nextBaseStory.createdAt || item.createdAt,
+    images: Array.isArray(nextBaseStory.images) ? nextBaseStory.images : [],
+    likes: nextNormalizedLikeCount,
+    likeCount: nextNormalizedLikeCount,
+    username: nextAuthor.username,
+    avatar: nextAuthor.avatar,
+    author: nextAuthor,
+    locationName: nextLocationName,
+    location: buildNormalizedStoryLocation(nextBaseStory, nextCoords)
+  };
+
   if (!item || typeof item !== 'object') {
     return null;
   }
@@ -3532,7 +3754,7 @@ function handlePreviewImage({ index, images }) {
 
 // 打开精选故事
 function openFeaturedStory(story) {
-  openStoryModal(story);
+  openStoryFromCollection(story);
 }
 
 // 处理点赞
@@ -4118,6 +4340,40 @@ onUnmounted(() => {
 
 .featured-content {
   padding: 12px;
+}
+
+.featured-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.featured-author-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.featured-author-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.featured-author-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .featured-text {

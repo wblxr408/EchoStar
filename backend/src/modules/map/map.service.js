@@ -1,4 +1,5 @@
 import { Story } from '../story/story.model.js';
+import { User } from '../auth/auth.model.js';
 import { sequelize } from '../../config/database.js';
 import { Op } from 'sequelize';
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
@@ -73,6 +74,15 @@ const MapServiceUtil = {
       id: story.id,
       content: story.content,
       images: safeParseJSONB(story.images, []),
+      username: story.author?.username || story.username || '',
+      avatar: story.author?.avatarUrl || story.avatar || null,
+      author: story.author
+        ? {
+            id: story.author.id,
+            username: story.author.username || '匿名用户',
+            avatar: story.author.avatarUrl || null
+          }
+        : null,
       location: {
         latitude: lat,
         longitude: lng
@@ -99,6 +109,11 @@ export const MapService = {
       },
       replacements: { lat: latitude, lng: longitude, radius },
       attributes: MapServiceUtil.STORY_ATTRIBUTES,
+      include: [{
+        model: User,
+        as: 'author',
+        attributes: ['id', 'username', 'avatarUrl']
+      }],
       order: [['createdAt', 'DESC']],
       limit: CONSTANTS.MAX_EXPLORE_LIMIT
     });
@@ -156,6 +171,11 @@ export const MapService = {
       },
       replacements: { lat: latitude, lng: longitude, radius },
       attributes: MapServiceUtil.STORY_ATTRIBUTES,
+      include: [{
+        model: User,
+        as: 'author',
+        attributes: ['id', 'username', 'avatarUrl']
+      }],
       order: [['createdAt', 'DESC']],
       limit: CONSTANTS.MAX_WALL_LIMIT
     });
