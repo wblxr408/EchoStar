@@ -453,24 +453,107 @@ function createMarker(story) {
   return marker;
 }
 
-// 计算聚合气泡半径（随 zoom 增大而增大）
+// 计算聚合气泡半径（随 count 增大逼近上限但永远不达到）
 function calculateClusterRadius(count) {
-  const R_MIN = 28; // 最小半径
-  const R_MAX = 80; // 最大半径
-  const k = 2; // 每个故事增加的像素（可调整）
+  const R_MIN = 25;   // 最小半径（和单个标记一致，count=1）
+  const R_MAX = 80;   // 上限半径（直径 160px）
+  const DECAY = 8;    // 衰减参数，越大收敛越慢
+  // 公式：R = R_MIN + (R_MAX - R_MIN) * count / (count + DECAY)
+  // count=1 → 30.6, count=3 → 41.3, count=10 → 58.6, count=50 → 72.2, count→∞ → 80
+  return R_MIN + (R_MAX - R_MIN) * (count / (count + DECAY));
+}
 
-  // 获取当前 zoom 级别
-  const zoom = map?.getZoom?.() ?? props.zoom ?? 10;
+// 检查两个气泡是否重叠超过阈值
+function isOverlapping(m1, m2, threshold) {
+  const dx = m1.px - m2.px;
+  const dy = m1.py - m2.py;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist >= m1.radius + m2.radius) return false;
+  if (dist <= 0) return true;
+  // 重叠比例 = 两圆重叠部分的宽度 / 较小圆直径的近似
+  const overlap = m1.radius + m2.radius - dist;
+  const minDiameter = 2 * Math.min(m1.radius, m2.radius);
+  return (overlap / minDiameter) > threshold;
+}
 
-  // zoom 缩放因子：zoom 越大，气泡越大
-  // zoom 4-14 范围内，因子从 0.6 到 1.5
-  const zoomFactor = Math.max(0.6, Math.min(1.5, 0.6 + (zoom - 4) * 0.09));
+// 合并重叠的聚合气泡（基于像素坐标检测，>20% 重叠则合并）
+function mergeOverlappingClusters(clusterList) {
+  if (!map || clusterList.length <= 1) return clusterList;
 
-  // 基础半径 + 数量加成，再乘以缩放因子
-  const baseRadius = R_MIN + count * k;
-  const radius = Math.min(R_MAX, baseRadius * zoomFactor);
+  // 转换为像素坐标并计算半径
+  let items = clusterList.map(cluster => {
+    const coords = resolveCoordinates(cluster);
+    if (!coords) return null;
+    let pixel;
+    try {
+      pixel = map.lngLatToContainer([coords.longitude, coords.latitude]);
+    } catch (e) {
+      return null;
+    }
+    if (!pixel) return null;
+    const px = pixel.getX?.();
+    const py = pixel.getY?.();
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+    const count = cluster.count || 1;
+    return {
+      cluster: {
+        type: 'cluster',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        count,
+        pointIds: [...(cluster.pointIds || [])]
+      },
+      px,
+      py,
+      radius: calculateClusterRadius(count),
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      count
+    };
+  }).filter(Boolean);
 
-  return Math.max(R_MIN, radius);
+  if (items.length <= 1) return items.map(i => i.cluster);
+
+  // 迭代合并，直到没有新的重叠
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        if (isOverlapping(items[i], items[j], 0.2)) {
+          // 合并：按 count 加权平均位置，count 和 pointIds 累加
+          const total = items[i].count + items[j].count;
+          const newLat = (items[i].latitude * items[i].count + items[j].latitude * items[j].count) / total;
+          const newLng = (items[i].longitude * items[i].count + items[j].longitude * items[j].count) / total;
+          const mergedCluster = {
+            type: 'cluster',
+            latitude: newLat,
+            longitude: newLng,
+            count: total,
+            pointIds: [
+              ...(items[i].cluster.pointIds || []),
+              ...(items[j].cluster.pointIds || [])
+            ]
+          };
+          items[i] = {
+            cluster: mergedCluster,
+            px: (items[i].px * items[i].count + items[j].px * items[j].count) / total,
+            py: (items[i].py * items[i].count + items[j].py * items[j].count) / total,
+            radius: calculateClusterRadius(total),
+            latitude: newLat,
+            longitude: newLng,
+            count: total
+          };
+          items.splice(j, 1);
+          changed = true;
+          break;
+        }
+      }
+      if (changed) break;
+    }
+  }
+
+  return items.map(item => item.cluster);
 }
 
 // 创建聚合标记
@@ -492,47 +575,52 @@ function createClusterMarker(cluster) {
 
   const count = cluster.count || 1;
   const radius = calculateClusterRadius(count);
-
-  // 鎏金黄色渐变
-  const gradientColors = isDarkMode.value
-    ? 'radial-gradient(circle at 30% 30%, #fff7e6 0%, #ffd700 30%, #daa520 70%, #b8860b 100%)'
-    : 'radial-gradient(circle at 30% 30%, #fffef5 0%, #ffd700 25%, #ffb347 60%, #cc9900 100%)';
+  const size = Math.round(radius * 2);
 
   const content = document.createElement('div');
   content.className = 'cluster-marker';
   content.style.cssText = `
-    width: ${radius * 2}px;
-    height: ${radius * 2}px;
-    border-radius: 50%;
-    background: ${gradientColors};
-    box-shadow: 0 4px 16px rgba(218, 165, 32, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+    width: ${size}px;
+    height: ${size}px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    border: 2px solid rgba(255, 255, 255, 0.6);
+    transition: transform 0.2s ease, filter 0.2s ease;
   `;
+
+  const img = document.createElement('img');
+  img.src = '/images/star.png';
+  img.alt = count;
+  img.style.cssText = `
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 8px rgba(218, 165, 32, 0.5));
+  `;
+  content.appendChild(img);
 
   const countSpan = document.createElement('span');
   countSpan.className = 'cluster-count';
   countSpan.textContent = count;
   countSpan.style.cssText = `
+    position: absolute;
     color: #4a3000;
     font-weight: 700;
-    font-size: ${Math.max(12, Math.min(20, 10 + count * 0.5))}px;
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+    font-size: ${Math.round(size * 0.2)}px;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
   `;
   content.appendChild(countSpan);
 
   // Hover 效果
   content.addEventListener('mouseenter', () => {
     content.style.transform = 'scale(1.15)';
-    content.style.boxShadow = `0 6px 24px rgba(218, 165, 32, 0.7), inset 0 2px 4px rgba(255, 255, 255, 0.4)`;
+    img.style.filter = 'drop-shadow(0 6px 16px rgba(218, 165, 32, 0.7))';
   });
   content.addEventListener('mouseleave', () => {
     content.style.transform = 'scale(1)';
-    content.style.boxShadow = `0 4px 16px rgba(218, 165, 32, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.4)`;
+    img.style.filter = 'drop-shadow(0 4px 8px rgba(218, 165, 32, 0.5))';
   });
 
   const marker = new window.AMap.Marker({
@@ -554,35 +642,123 @@ function createClusterMarker(cluster) {
   return marker;
 }
 
+// 保存被聚合气泡吸收的单点故事 ID（前端重叠吸收）
+let absorbedStoryIds = new Set();
+
 function updateClusterMarkers() {
   if (!map || !window.AMap) {
     return;
   }
 
   clearClusterMarkers();
+  absorbedStoryIds = new Set();
 
   const clusterList = Array.isArray(props.clusters) ? props.clusters : [];
-  console.log('[AMap] updateClusterMarkers, clusterList:', clusterList);
 
-  clusterList.forEach((cluster) => {
-    // 兼容不同格式：检查是否有 count > 1
+  // 筛选出需要显示的聚合点
+  const validClusters = clusterList.filter(cluster => {
     const count = cluster.count || 0;
-    // 判断是否为聚合点：type === 'cluster' 或 count > 1 且有 location/latitude
     const isCluster = cluster.type === 'cluster' || (count > 1 && (cluster.latitude || cluster.location));
+    return isCluster && count > 1;
+  });
 
-    if (isCluster && count > 1) {
-      console.log('[AMap] creating cluster marker:', cluster);
-      const marker = createClusterMarker(cluster);
-      if (marker) {
-        clusterMarkers.push(marker);
-      }
+  // 前端重叠检测与合并
+  let merged = mergeOverlappingClusters(validClusters);
+
+  // 聚合气泡吸收附近的单个故事点
+  const storyList = Array.isArray(props.stories) ? props.stories : [];
+  merged = absorbNearbyStories(merged, storyList);
+
+  // 根据吸收后的最终 count 重新计算并创建标记
+  merged.forEach((cluster) => {
+    const marker = createClusterMarker(cluster);
+    if (marker) {
+      clusterMarkers.push(marker);
     }
   });
 
   if (clusterMarkers.length > 0) {
     map.add(clusterMarkers);
-    console.log('[AMap] added', clusterMarkers.length, 'cluster markers');
   }
+}
+
+// 聚合气泡吸收被其显示范围覆盖的单个故事点
+function absorbNearbyStories(clusters, stories) {
+  if (!map || !clusters.length || !stories.length) return clusters;
+
+  // 将聚合气泡转为像素坐标（深拷贝避免修改 props）
+  const pixelClusters = clusters.map(cluster => {
+    const coords = resolveCoordinates(cluster);
+    if (!coords) return null;
+    let pixel;
+    try {
+      pixel = map.lngLatToContainer([coords.longitude, coords.latitude]);
+    } catch (e) {
+      return null;
+    }
+    if (!pixel) return null;
+    const px = pixel.getX?.();
+    const py = pixel.getY?.();
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+    const count = cluster.count || 1;
+    return {
+      cluster: {
+        type: 'cluster',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        count,
+        pointIds: [...(cluster.pointIds || [])]
+      },
+      px,
+      py,
+      radius: calculateClusterRadius(count),
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      count
+    };
+  }).filter(Boolean);
+
+  // 检查每个单点是否在某个气泡范围内
+  stories.forEach(story => {
+    const coords = resolveCoordinates(story);
+    if (!coords) return;
+
+    let pixel;
+    try {
+      pixel = map.lngLatToContainer([coords.longitude, coords.latitude]);
+    } catch (e) {
+      return;
+    }
+    if (!pixel) return;
+    const spx = pixel.getX?.();
+    const spy = pixel.getY?.();
+    if (!Number.isFinite(spx) || !Number.isFinite(spy)) return;
+
+    for (const pc of pixelClusters) {
+      const dx = spx - pc.px;
+      const dy = spy - pc.py;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // 单点在气泡范围内（像素距离 <= 气泡半径）
+      if (dist <= pc.radius) {
+        absorbedStoryIds.add(story.id);
+        pc.count += 1;
+        pc.radius = calculateClusterRadius(pc.count);
+        pc.cluster.pointIds.push(story.id);
+        pc.cluster.count = pc.count;
+        // 按 count 加权平均更新位置
+        const total = pc.count;
+        const origCount = total - 1;
+        pc.latitude = (pc.latitude * origCount + coords.latitude) / total;
+        pc.longitude = (pc.longitude * origCount + coords.longitude) / total;
+        pc.cluster.latitude = pc.latitude;
+        pc.cluster.longitude = pc.longitude;
+        break; // 一个单点只被一个气泡吸收
+      }
+    }
+  });
+
+  return pixelClusters.map(pc => pc.cluster);
 }
 
 function updateMarkers() {
@@ -606,8 +782,8 @@ function updateMarkers() {
 
   const storyList = Array.isArray(props.stories) ? props.stories : [];
   storyList.forEach((story) => {
-    // 跳过已被聚合的故事
-    if (clusteredStoryIds.has(story.id)) {
+    // 跳过已被聚合或被气泡吸收的故事
+    if (clusteredStoryIds.has(story.id) || absorbedStoryIds.has(story.id)) {
       return;
     }
     const marker = createMarker(story);
@@ -709,8 +885,8 @@ onMounted(async () => {
   try {
     await loadAMapScript();
     initMap();
-    updateMarkers();
     updateClusterMarkers();
+    updateMarkers();
     updateUserLocationMarker();
     updateTempPickedMarker();
 
@@ -756,14 +932,14 @@ function toggleTheme() {
 }
 
 watch(() => props.stories, () => {
-  updateMarkers();
   updateClusterMarkers();
-}, { deep: true });
+  updateMarkers();
+}, { deep: true, flush: 'post' });
 
 watch(() => props.clusters, () => {
-  updateMarkers();
   updateClusterMarkers();
-}, { deep: true });
+  updateMarkers();
+}, { deep: true, flush: 'post' });
 
 watch(() => props.userLocation, (newLocation) => {
   updateUserLocationMarker(newLocation);
