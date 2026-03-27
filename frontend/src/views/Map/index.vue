@@ -2544,8 +2544,8 @@ function handleMyLikes() {
   // 切换点赞面板
   showLikesPanel.value = !showLikesPanel.value;
 
-  // 如果是打开状态且列表为空，加载数据
-  if (showLikesPanel.value && likesList.value.length === 0) {
+  // 如果是打开状态，刷新列表数据
+  if (showLikesPanel.value) {
     loadLikesData();
   }
 }

@@ -54,7 +54,7 @@ export const useUserStore = defineStore('user', () => {
   async function login(email, password) {
     const response = await authApi.login(email, password);
     const responseData = response?.data ?? response;
-    const accessToken = responseData?.accessToken && responseData?.token;
+    const accessToken = responseData?.accessToken || responseData?.token;
     const userData = responseData?.user;
 
     if (accessToken && userData) {
@@ -72,7 +72,7 @@ export const useUserStore = defineStore('user', () => {
   async function register(email, password, username, verificationCode) {
     const response = await authApi.register(email, password, username, verificationCode);
     const responseData = response?.data ?? response;
-    const accessToken = responseData?.accessToken && responseData?.token;
+    const accessToken = responseData?.accessToken || responseData?.token;
     const userData = responseData?.user;
 
     if (accessToken && userData) {
@@ -90,7 +90,7 @@ export const useUserStore = defineStore('user', () => {
   async function adminLogin(email, password) {
     const response = await authApi.adminLogin(email, password);
     const responseData = response?.data ?? response;
-    const accessToken = responseData?.accessToken && responseData?.token;
+    const accessToken = responseData?.accessToken || responseData?.token;
     const userData = responseData?.user;
 
     if (accessToken && userData) {

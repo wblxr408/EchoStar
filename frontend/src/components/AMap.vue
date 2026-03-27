@@ -834,9 +834,14 @@ defineExpose({
       }
       const ne = bounds.getNorthEast();
       const sw = bounds.getSouthWest();
+
+      // 兼容不同版本的高德地图 API（lat/lng 可能是属性或方法）
+      const getLat = (obj) => typeof obj.lat === 'function' ? obj.lat() : obj.lat;
+      const getLng = (obj) => typeof obj.lng === 'function' ? obj.lng() : obj.lng;
+
       const result = {
-        northEast: { lat: ne.lat(), lng: ne.lng() },
-        southWest: { lat: sw.lat(), lng: sw.lng() }
+        northEast: { lat: getLat(ne), lng: getLng(ne) },
+        southWest: { lat: getLat(sw), lng: getLng(sw) }
       };
       console.log('[AMap] getBounds returning:', result);
       return result;
