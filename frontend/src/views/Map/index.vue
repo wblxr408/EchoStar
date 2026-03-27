@@ -617,11 +617,10 @@
     <!-- 项目标题 -->
     <div class="project-title"></div>
 
-    <!-- 纸飞机故事展示 -->
     <PaperPlaneStory
       v-if="selectedStory"
       :story="selectedStory"
-      :start-position="storyClickPosition"
+      :direct-open="true"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
       @like="handleStoryLike"
@@ -641,6 +640,7 @@ import { useUserStore } from '../../stores/user';
 import PaperPlaneStory from '../../components/PaperPlaneStory.vue';
 import { mapApi } from '../../api/map';
 import { likeApi } from '../../api/like';
+import { commentApi } from '../../api/comment';
 import { storyApi } from '../../api/story';
 import { authApi } from '../../api/auth';
 import { reportApi } from '../../api/report';
@@ -651,6 +651,7 @@ import LoginModal from '../Home/components/LoginModal.vue';
 import { formatRelativeTime } from '../../utils/time';
 import { getEmotionEmoji } from '../../utils/emotion';
 import { getAnnouncementTypeIcon } from '../../utils/announcement';
+import { REPORT_TYPES } from '../../utils/report';
 import { uploadAvatar as uploadToOSS, validateImage } from '../../utils/upload';
 
 const mapStore = useMapStore();
@@ -673,7 +674,6 @@ const feedPagination = ref({ total: 0, totalPages: 0 });
 const feedHasMore = computed(() => feedPage.value < feedPagination.value.totalPages);
 const randomWalking = ref(false);
 const selectedStory = ref(null);
-const storyClickPosition = ref({ x: 0, y: 0 });
 // 地图主题：'light' | 'dark' | 'auto'（跟随当地时间 06:00-18:00 白天/18:00-06:00 夜晚）
 const mapTheme = ref(localStorage.getItem('mapTheme') || 'auto');
 const amapRef = ref(null);
@@ -709,6 +709,7 @@ const reverseGeocodePending = new Map();
 const DOCK_CARD_PREP_MS = 120;
 const DOCK_CARD_DRAW_MS = 250;
 const DOCK_CARD_RETURN_MS = 300;
+const STORY_MODAL_OPEN_DELAY_MS = 420;
 
 // --- 欢迎语相关状态 ---
 const showWelcomeOverlay = ref(true); 
@@ -795,6 +796,369 @@ const featuredStories = ref([]);
 
 // 公告（从API获取）
 const announcements = ref([]);
+
+const storyCommentComposerOpen = ref(false);
+const storyCommentDraft = ref('');
+const storyCommentSubmitting = ref(false);
+const storyComments = ref([]);
+const storyCommentsLoading = ref(false);
+const storyLikeCount = ref(0);
+const storyIsLiked = ref(false);
+const storyLikePending = ref(false);
+const storyReportPanelOpen = ref(false);
+const selectedStoryReportReason = ref('');
+const storyReportDescription = ref('');
+const storyReportError = ref('');
+const storyReportSubmitting = ref(false);
+const storyReportReasons = REPORT_TYPES;
+let storyOpenTimer = null;
+let activeStoryRequestToken = 0;
+
+const storyAuthorName = computed(() => firstNonEmptyString(
+  selectedStory.value?.username,
+  selectedStory.value?.author,
+  '匿名用户'
+));
+const storyAuthorInitial = computed(() => storyAuthorName.value.slice(0, 1).toUpperCase() || '匿');
+const storyAuthorAvatar = computed(() => firstNonEmptyString(selectedStory.value?.avatar));
+const storyPrimaryImage = computed(() => Array.isArray(selectedStory.value?.images) ? selectedStory.value.images[0] || '' : '');
+const storyGalleryImages = computed(() => Array.isArray(selectedStory.value?.images) ? selectedStory.value.images.slice(1) : []);
+const storyDisplayLocation = computed(() => selectedStory.value ? getStoryLocationText(selectedStory.value) : '未知地点');
+const storyCommentCount = computed(() => {
+  const fromList = Array.isArray(storyComments.value) ? storyComments.value.length : 0;
+  const fromStory = Number(selectedStory.value?.commentCount ?? selectedStory.value?.comments?.length ?? 0);
+  return Math.max(fromList, Number.isFinite(fromStory) ? fromStory : 0);
+});
+const storyTarotKicker = computed(() => {
+  if (selectedStory.value?.isFeatured) {
+    return '精选秘牌';
+  }
+  if (selectedStory.value?.isPinned) {
+    return '置顶回响';
+  }
+  return '故事显影';
+});
+const storyTarotTitle = computed(() => {
+  const locationText = storyDisplayLocation.value;
+  return locationText && locationText !== '未知地点' ? locationText : '回响之牌';
+});
+const storyTarotSuit = computed(() => {
+  const emotion = firstNonEmptyString(
+    selectedStory.value?.emotionTag,
+    selectedStory.value?.emotion
+  );
+
+  if (emotion.includes('喜') || emotion.includes('乐')) {
+    return '♦';
+  }
+  if (emotion.includes('伤') || emotion.includes('悲')) {
+    return '♥';
+  }
+  if (emotion.includes('怒') || emotion.includes('躁')) {
+    return '♠';
+  }
+  return '✦';
+});
+
+watch(
+  () => selectedStory.value?.id ?? null,
+  (storyId) => {
+    activeStoryRequestToken += 1;
+    const requestToken = activeStoryRequestToken;
+    resetStoryOverlayState();
+
+    if (!storyId || !selectedStory.value) {
+      return;
+    }
+
+    storyLikeCount.value = Number(selectedStory.value.likeCount ?? selectedStory.value.likes ?? 0);
+    storyIsLiked.value = Boolean(selectedStory.value.isLiked);
+    storyComments.value = normalizeStoryComments(selectedStory.value.comments);
+    void hydrateSelectedStoryDetail(selectedStory.value, requestToken);
+  }
+);
+
+function resetStoryOverlayState() {
+  storyCommentComposerOpen.value = false;
+  storyCommentDraft.value = '';
+  storyCommentSubmitting.value = false;
+  storyComments.value = [];
+  storyCommentsLoading.value = false;
+  storyLikeCount.value = 0;
+  storyIsLiked.value = false;
+  storyLikePending.value = false;
+  storyReportPanelOpen.value = false;
+  selectedStoryReportReason.value = '';
+  storyReportDescription.value = '';
+  storyReportError.value = '';
+  storyReportSubmitting.value = false;
+}
+
+function normalizeStoryComment(comment) {
+  if (!comment || typeof comment !== 'object') {
+    return null;
+  }
+
+  const commentUser = comment.user && typeof comment.user === 'object'
+    ? comment.user
+    : null;
+  const author = firstNonEmptyString(
+    commentUser?.username,
+    comment.author,
+    '匿名用户'
+  );
+
+  return {
+    id: comment.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    author,
+    avatar: firstNonEmptyString(commentUser?.avatar, comment.avatar),
+    content: firstNonEmptyString(comment.content),
+    createdAt: comment.createdAt || new Date().toISOString()
+  };
+}
+
+function normalizeStoryComments(comments) {
+  if (!Array.isArray(comments)) {
+    return [];
+  }
+
+  return comments
+    .map((comment) => normalizeStoryComment(comment))
+    .filter(Boolean);
+}
+
+function getCommentInitial(author) {
+  return firstNonEmptyString(author, '匿').slice(0, 1).toUpperCase();
+}
+
+function closeStoryReportPanel() {
+  storyReportPanelOpen.value = false;
+  selectedStoryReportReason.value = '';
+  storyReportDescription.value = '';
+  storyReportError.value = '';
+}
+
+function mutateStoryReference(target, storyId, mutate) {
+  if (!target || typeof target !== 'object') {
+    return false;
+  }
+
+  if (target.id === storyId) {
+    mutate(target);
+    return true;
+  }
+
+  if (target.story && typeof target.story === 'object' && target.story.id === storyId) {
+    mutate(target.story);
+    return true;
+  }
+
+  return false;
+}
+
+function syncStoryAcrossCollections(storyId, mutate) {
+  const collections = [
+    stories,
+    feedStories,
+    featuredStories,
+    likesList,
+    postsList
+  ];
+
+  collections.forEach((collection) => {
+    if (!Array.isArray(collection.value)) {
+      return;
+    }
+
+    collection.value.forEach((item) => {
+      mutateStoryReference(item, storyId, mutate);
+    });
+  });
+
+  mutateStoryReference(selectedStory.value, storyId, mutate);
+}
+
+async function hydrateSelectedStoryDetail(story, requestToken) {
+  const storyId = story?.id;
+  if (!storyId) {
+    return;
+  }
+
+  storyCommentsLoading.value = true;
+
+  const tasks = [
+    commentApi.getStoryComments(storyId, { page: 1, limit: 20 })
+  ];
+
+  if (userStore.isLoggedIn && !userStore.isGuest) {
+    tasks.push(likeApi.check(storyId));
+  } else {
+    tasks.push(Promise.resolve(null));
+  }
+
+  try {
+    const [commentsResult, likeResult] = await Promise.allSettled(tasks);
+    if (requestToken !== activeStoryRequestToken || selectedStory.value?.id !== storyId) {
+      return;
+    }
+
+    if (commentsResult.status === 'fulfilled') {
+      const commentsData = commentsResult.value?.data ?? commentsResult.value;
+      const nextComments = normalizeStoryComments(commentsData?.comments);
+      storyComments.value = nextComments;
+      syncStoryAcrossCollections(storyId, (item) => {
+        item.comments = nextComments;
+        item.commentCount = nextComments.length;
+      });
+    }
+
+    if (likeResult.status === 'fulfilled' && likeResult.value) {
+      const likeData = likeResult.value?.data ?? likeResult.value;
+      storyIsLiked.value = Boolean(likeData?.isLiked);
+      syncStoryAcrossCollections(storyId, (item) => {
+        item.isLiked = storyIsLiked.value;
+      });
+    }
+  } catch (error) {
+    console.error('加载故事详情失败:', error);
+  } finally {
+    if (requestToken === activeStoryRequestToken && selectedStory.value?.id === storyId) {
+      storyCommentsLoading.value = false;
+    }
+  }
+}
+
+function openStoryModal(story, delay = 0) {
+  if (!story) {
+    return;
+  }
+
+  clearTimeout(storyOpenTimer);
+  const show = () => {
+    storyOpenTimer = null;
+    selectedStory.value = story;
+    void hydrateStoryLocations([story]);
+  };
+
+  if (delay > 0) {
+    storyOpenTimer = setTimeout(show, delay);
+    return;
+  }
+
+  show();
+}
+
+async function toggleStoryLike() {
+  if (!selectedStory.value) {
+    return;
+  }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再点赞');
+    return;
+  }
+
+  if (storyLikePending.value) {
+    return;
+  }
+
+  const storyId = selectedStory.value.id;
+  const previousLiked = storyIsLiked.value;
+  const previousCount = storyLikeCount.value;
+  const nextLiked = !previousLiked;
+  const nextCount = Math.max(0, previousCount + (nextLiked ? 1 : -1));
+
+  storyLikePending.value = true;
+  storyIsLiked.value = nextLiked;
+  storyLikeCount.value = nextCount;
+  handleStoryLike({ storyId, liked: nextLiked, likeCount: nextCount });
+
+  try {
+    await likeApi.toggle(storyId);
+  } catch (error) {
+    console.error('点赞失败:', error);
+    storyIsLiked.value = previousLiked;
+    storyLikeCount.value = previousCount;
+    handleStoryLike({ storyId, liked: previousLiked, likeCount: previousCount });
+    alert(error.message || '点赞失败，请重试');
+  } finally {
+    storyLikePending.value = false;
+  }
+}
+
+async function submitStoryComment() {
+  const storyId = selectedStory.value?.id;
+  const content = storyCommentDraft.value.trim();
+
+  if (!storyId || !content) {
+    return;
+  }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再评论');
+    return;
+  }
+
+  if (storyCommentSubmitting.value) {
+    return;
+  }
+
+  storyCommentSubmitting.value = true;
+  try {
+    const response = await commentApi.create(storyId, content);
+    const data = response?.data ?? response;
+    const newComment = normalizeStoryComment({
+      ...(data?.data ?? data),
+      content,
+      user: {
+        username: userStore.user?.username,
+        avatar: userStore.user?.avatar
+      }
+    });
+
+    storyComments.value = [newComment, ...storyComments.value];
+    handleStoryComment({ storyId, comment: newComment });
+    storyCommentDraft.value = '';
+    storyCommentComposerOpen.value = false;
+  } catch (error) {
+    console.error('评论失败:', error);
+    alert(error.message || '评论失败，请重试');
+  } finally {
+    storyCommentSubmitting.value = false;
+  }
+}
+
+async function submitStoryReport() {
+  if (!selectedStory.value?.id) {
+    return;
+  }
+
+  if (!selectedStoryReportReason.value) {
+    storyReportError.value = '请选择举报原因';
+    return;
+  }
+
+  if (storyReportDescription.value.trim().length < 10) {
+    storyReportError.value = '请至少输入 10 个字的举报说明';
+    return;
+  }
+
+  storyReportSubmitting.value = true;
+  storyReportError.value = '';
+
+  try {
+    await handleStoryReport({
+      storyId: selectedStory.value.id,
+      reason: selectedStoryReportReason.value,
+      description: storyReportDescription.value.trim()
+    });
+    closeStoryReportPanel();
+  } catch (error) {
+    storyReportError.value = error.message || '举报失败，请稍后再试';
+  } finally {
+    storyReportSubmitting.value = false;
+  }
+}
 
 const dockActions = computed(() => [
   {
@@ -2070,12 +2434,7 @@ function handleStoryClick(story) {
     mapStore.updateZoom(16);
   }
 
-  // 延迟显示纸飞机动画，等待地图移动和刷新完成（地图动画约500-800ms）
-  setTimeout(() => {
-    // 设置纸飞机动画起点（从屏幕中央开始）
-    storyClickPosition.value = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    selectedStory.value = story;
-  }, 800);
+  openStoryModal(story, STORY_MODAL_OPEN_DELAY_MS);
 }
 
 async function handleUnlike(story) {
@@ -2549,6 +2908,7 @@ function handlePageClick(event) {
 
   // 检查点击目标是否在侧边栏或dock容器内
   const storySidebar = document.querySelector('.story-sidebar');
+  const storyTarotShell = document.querySelector('.story-tarot-shell');
   const publishModal = document.querySelector('.publish-modal');
   const userSidebar = document.querySelector('.user-sidebar');
   const likesPanel = document.querySelector('.likes-panel');
@@ -2570,6 +2930,7 @@ function handlePageClick(event) {
 
   // 如果点击的是其他侧边栏内部或dock区域，不处理
   if (storySidebar?.contains(target) ||
+      storyTarotShell?.contains(target) ||
       publishModal?.contains(target) ||
       dockContainer?.contains(target)) {
     return;
@@ -2689,16 +3050,14 @@ async function loadMoreFeed() {
 
 // 标记点击事件
 function handleMarkerClick(data) {
-  // 记录点击位置（用于纸飞机动画起点）
-  storyClickPosition.value = {
-    x: data.screenX,
-    y: data.screenY
-  };
-  selectedStory.value = data.story;
+  openStoryModal(data.story);
 }
 
 // 关闭故事弹窗
 function closeStoryModal() {
+  clearTimeout(storyOpenTimer);
+  storyOpenTimer = null;
+  closeStoryReportPanel();
   selectedStory.value = null;
 }
 
@@ -2915,14 +3274,9 @@ async function handleRandomWalk() {
     mapStore.updateCenter(nextLatitude, nextLongitude);
     // 自动缩放到合适的级别（15级适合查看街景）
     mapStore.updateZoom(15);
-    // 等待地图动画完成后再显示纸飞机
+    // 等待地图动画完成后再展开故事牌面
     setTimeout(() => {
-      // 计算故事在屏幕上的位置（地图中心）
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      storyClickPosition.value = { x: centerX, y: centerY };
-      selectedStory.value = story;
-      void hydrateStoryLocations([story]);
+      openStoryModal(story);
     }, 800); // 等待地图移动和缩放动画完成
   } catch (error) {
     console.error('随机漫步失败:', error);
@@ -2941,36 +3295,43 @@ function handlePreviewImage({ index, images }) {
 
 // 打开精选故事
 function openFeaturedStory(story) {
-  selectedStory.value = story;
-  storyClickPosition.value = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  openStoryModal(story);
 }
 
 // 处理点赞
-function handleStoryLike({ storyId, liked }) {
-  // 检查是否登录（游客不能点赞）
-  if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再点赞');
-    return;
-  }
-  console.log('点赞:', storyId, liked);
-  // TODO: 调用API更新点赞
+function handleStoryLike({ storyId, liked, likeCount }) {
+  const currentLikeCount = Number(
+    selectedStory.value?.likeCount
+    ?? selectedStory.value?.likes
+    ?? storyLikeCount.value
+    ?? 0
+  );
+  const nextLikeCount = Number.isFinite(Number(likeCount))
+    ? Number(likeCount)
+    : Math.max(0, currentLikeCount + (liked ? 1 : -1));
+
+  storyLikeCount.value = nextLikeCount;
+
+  syncStoryAcrossCollections(storyId, (story) => {
+    story.likes = nextLikeCount;
+    story.likeCount = nextLikeCount;
+    story.isLiked = liked;
+  });
 }
 
 // 处理评论
 function handleStoryComment({ storyId, comment }) {
-  // 检查是否登录（游客不能评论）
-  if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再评论');
+  const normalizedComment = normalizeStoryComment(comment);
+  if (!normalizedComment) {
     return;
   }
-  console.log('评论:', storyId, comment);
-  // TODO: 调用API提交评论
-  // 更新本地数据
-  const story = featuredStories.value.find(s => s.id === storyId);
-  if (story) {
-    if (!story.comments) story.comments = [];
-    story.comments.unshift(comment);
-  }
+
+  syncStoryAcrossCollections(storyId, (story) => {
+    const nextComments = normalizeStoryComments(story.comments);
+    const exists = nextComments.some((item) => item.id === normalizedComment.id);
+    story.comments = exists ? nextComments : [normalizedComment, ...nextComments];
+    story.commentCount = story.comments.length;
+  });
 }
 
 // 处理举报
@@ -2986,7 +3347,9 @@ async function handleStoryReport({ storyId, reason, description }) {
     alert('举报已提交，我们会尽快处理');
   } catch (error) {
     console.error('举报失败:', error);
-    alert(error.message || '举报失败，请重试');
+    const message = error.message || '举报失败，请重试';
+    alert(message);
+    throw new Error(message);
   }
 }
 
@@ -3044,6 +3407,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick);
   clearTimeout(loadTimer);
+  clearTimeout(storyOpenTimer);
   if (themeAutoCheckInterval) clearInterval(themeAutoCheckInterval);
 });
 </script>
@@ -3515,6 +3879,9 @@ onUnmounted(() => {
   --dock-card-order: rgba(27, 33, 52, 0.44);
   --dock-card-subtitle: rgba(27, 33, 52, 0.72);
   --dock-card-icon-bg: linear-gradient(145deg, rgba(255, 248, 234, 0.9) 0%, rgba(232, 214, 186, 0.82) 100%);
+  --dock-card-active-border: rgba(255, 239, 192, 0.98);
+  --dock-card-active-frame: rgba(236, 190, 96, 0.82);
+  --dock-card-active-corner: rgba(228, 176, 66, 0.92);
   position: fixed;
   bottom: 32px;
   right: 96px;
@@ -3543,6 +3910,9 @@ onUnmounted(() => {
   --dock-card-order: rgba(64, 43, 21, 0.42);
   --dock-card-subtitle: rgba(64, 43, 21, 0.72);
   --dock-card-icon-bg: linear-gradient(145deg, rgba(255, 247, 228, 0.9) 0%, rgba(234, 214, 180, 0.82) 100%);
+  --dock-card-active-border: rgba(255, 245, 213, 1);
+  --dock-card-active-frame: rgba(222, 164, 61, 0.88);
+  --dock-card-active-corner: rgba(215, 151, 41, 0.96);
 }
 
 .dock-container.dock-dark {
@@ -3562,6 +3932,9 @@ onUnmounted(() => {
   --dock-card-order: rgba(220, 231, 255, 0.38);
   --dock-card-subtitle: rgba(220, 231, 255, 0.72);
   --dock-card-icon-bg: linear-gradient(145deg, rgba(27, 42, 79, 0.92) 0%, rgba(39, 59, 108, 0.86) 100%);
+  --dock-card-active-border: rgba(226, 238, 255, 0.98);
+  --dock-card-active-frame: rgba(155, 193, 255, 0.78);
+  --dock-card-active-corner: rgba(155, 193, 255, 0.96);
 }
 
 
@@ -3829,12 +4202,6 @@ onUnmounted(() => {
 
 .dock-menu.expanded .dock-card.drawing {
   transform: translate3d(var(--prep-x), var(--prep-y), 0) rotate(var(--prep-rotate)) scale(var(--prep-scale));
-  box-shadow:
-    0 22px 40px rgba(8, 12, 24, 0.28),
-    0 0 0 1px rgba(255, 255, 255, 0.48),
-    inset 0 0 0 2px rgba(255, 248, 227, 0.8);
-  border-color: rgba(255, 255, 255, 0.68);
-  filter: saturate(1.04) brightness(1.01);
   transition-duration: 0.24s, 0.28s, 0.28s, 0.18s, 0.28s;
   transition-timing-function: cubic-bezier(0.32, 0.94, 0.48, 1), ease, ease, ease, ease;
   z-index: var(--card-z) !important;
@@ -3842,13 +4209,6 @@ onUnmounted(() => {
 
 .dock-menu.expanded .dock-card.lifting {
   transform: translate3d(var(--draw-x), var(--draw-y), 0) rotate(var(--draw-rotate)) scale(var(--draw-scale));
-  box-shadow:
-    0 26px 48px rgba(8, 12, 24, 0.3),
-    0 0 0 1px rgba(255, 255, 255, 0.78),
-    0 0 22px rgba(255, 255, 255, 0.14),
-    inset 0 0 0 2px rgba(255, 248, 227, 0.86);
-  border-color: rgba(255, 255, 255, 0.82);
-  filter: saturate(1.1) brightness(1.02);
   transition-duration: 0.24s, 0.22s, 0.22s, 0.16s, 0.22s;
   transition-timing-function: cubic-bezier(0.2, 0.88, 0.24, 1), ease, ease, ease, ease;
   z-index: 116 !important;
@@ -3856,15 +4216,36 @@ onUnmounted(() => {
 
 .dock-menu.expanded .dock-card.active {
   transform: translate3d(var(--hover-x), var(--hover-y), 0) rotate(var(--hover-rotate)) scale(var(--hover-scale));
-  box-shadow:
-    0 26px 48px rgba(8, 12, 24, 0.3),
-    0 0 0 1px rgba(255, 255, 255, 0.78),
-    0 0 22px rgba(255, 255, 255, 0.14),
-    inset 0 0 0 2px rgba(255, 248, 227, 0.86);
-  border-color: rgba(255, 255, 255, 0.82);
-  filter: saturate(1.1) brightness(1.02);
   transition-duration: 0.16s, 0.22s, 0.22s, 0.16s, 0.22s;
   z-index: 116 !important;
+}
+
+.dock-menu.expanded .dock-card.drawing,
+.dock-menu.expanded .dock-card.lifting,
+.dock-menu.expanded .dock-card.active {
+  border-width: 2px;
+  border-color: var(--dock-card-active-border);
+  filter: none;
+}
+
+.dock-menu.expanded .dock-card.drawing::before,
+.dock-menu.expanded .dock-card.lifting::before,
+.dock-menu.expanded .dock-card.active::before {
+  opacity: 0.98;
+  border-width: 2px;
+  border-color: var(--dock-card-active-frame);
+}
+
+.dock-menu.expanded .dock-card.drawing .dock-card-corner,
+.dock-menu.expanded .dock-card.lifting .dock-card-corner,
+.dock-menu.expanded .dock-card.active .dock-card-corner {
+  border-color: var(--dock-card-active-corner);
+}
+
+.dock-menu.expanded .dock-card.drawing::after,
+.dock-menu.expanded .dock-card.lifting::after,
+.dock-menu.expanded .dock-card.active::after {
+  opacity: 0.65;
 }
 
 .dock-menu.expanded .dock-card.returning {
@@ -5318,6 +5699,663 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.5);
 }
 
+.story-tarot-shell {
+  --story-tarot-surface: linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 54%, rgba(229, 201, 150, 0.98) 100%);
+  --story-tarot-border: rgba(196, 142, 48, 0.42);
+  --story-tarot-frame: rgba(188, 141, 52, 0.34);
+  --story-tarot-pattern: rgba(151, 101, 34, 0.16);
+  --story-tarot-panel: rgba(255, 250, 241, 0.68);
+  --story-tarot-panel-strong: rgba(255, 252, 246, 0.84);
+  --story-tarot-text: #3c2910;
+  --story-tarot-muted: rgba(72, 48, 17, 0.7);
+  --story-tarot-accent: #8b561d;
+  --story-tarot-accent-soft: rgba(159, 105, 34, 0.14);
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px;
+  background:
+    radial-gradient(circle at top, rgba(255, 226, 170, 0.26) 0%, transparent 30%),
+    rgba(10, 13, 22, 0.62);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  z-index: 341;
+}
+
+.story-tarot-shell.dark {
+  --story-tarot-surface: linear-gradient(160deg, rgba(14, 23, 41, 0.98) 0%, rgba(24, 35, 59, 0.98) 54%, rgba(33, 50, 84, 0.98) 100%);
+  --story-tarot-border: rgba(141, 176, 235, 0.28);
+  --story-tarot-frame: rgba(141, 176, 235, 0.18);
+  --story-tarot-pattern: rgba(141, 176, 235, 0.14);
+  --story-tarot-panel: rgba(255, 255, 255, 0.07);
+  --story-tarot-panel-strong: rgba(255, 255, 255, 0.1);
+  --story-tarot-text: #eef4ff;
+  --story-tarot-muted: rgba(219, 229, 255, 0.72);
+  --story-tarot-accent: #b8d1ff;
+  --story-tarot-accent-soft: rgba(131, 176, 255, 0.16);
+}
+
+.story-tarot-stage {
+  position: relative;
+  width: min(760px, calc(100vw - 40px));
+  max-height: calc(100vh - 56px);
+}
+
+.story-tarot-card {
+  position: relative;
+  max-height: calc(100vh - 56px);
+  padding: 28px;
+  border-radius: 34px;
+  border: 1px solid var(--story-tarot-border);
+  background: var(--story-tarot-surface);
+  box-shadow:
+    0 40px 88px -36px rgba(4, 8, 18, 0.72),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  color: var(--story-tarot-text);
+  overflow: hidden;
+}
+
+.story-tarot-card::before,
+.story-tarot-card::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.story-tarot-card::before {
+  inset: 14px;
+  border-radius: 26px;
+  border: 1px solid var(--story-tarot-frame);
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.16) 0 18%, transparent 18.5%),
+    radial-gradient(circle at center, transparent 0 40%, var(--story-tarot-pattern) 40.5%, transparent 41.5%),
+    linear-gradient(0deg, transparent calc(50% - 1px), var(--story-tarot-pattern) 50%, transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent calc(50% - 1px), var(--story-tarot-pattern) 50%, transparent calc(50% + 1px));
+  opacity: 0.72;
+}
+
+.story-tarot-card::after {
+  inset: 26px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top center, rgba(255, 255, 255, 0.24) 0%, transparent 24%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 6px, rgba(255, 255, 255, 0) 6px 12px);
+  mix-blend-mode: soft-light;
+}
+
+.story-tarot-scroll {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 18px;
+  max-height: calc(100vh - 112px);
+  padding-right: 8px;
+  overflow-y: auto;
+}
+
+.story-tarot-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 3;
+  height: 46px;
+  padding: 0 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(10, 17, 33, 0.8);
+  color: #eef4ff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.story-tarot-close:hover {
+  transform: translateY(-2px);
+  background: rgba(16, 28, 52, 0.94);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.story-tarot-shell:not(.dark) .story-tarot-close {
+  background: rgba(53, 34, 13, 0.84);
+  color: #fff8ee;
+}
+
+.story-tarot-shell:not(.dark) .story-tarot-close:hover {
+  background: rgba(76, 49, 17, 0.96);
+}
+
+.story-tarot-close .close-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.story-tarot-close .close-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.story-tarot-suit {
+  position: absolute;
+  z-index: 1;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--story-tarot-accent);
+  opacity: 0.88;
+}
+
+.story-tarot-suit.suit-top {
+  top: 22px;
+  left: 26px;
+}
+
+.story-tarot-suit.suit-bottom {
+  right: 26px;
+  bottom: 22px;
+  transform: rotate(180deg);
+}
+
+.story-tarot-corner {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  z-index: 1;
+  border: 1px solid var(--story-tarot-frame);
+  opacity: 0.74;
+}
+
+.story-tarot-corner.corner-top-right {
+  top: 22px;
+  right: 26px;
+  border-left: none;
+  border-bottom: none;
+  border-top-right-radius: 16px;
+}
+
+.story-tarot-corner.corner-bottom-left {
+  left: 26px;
+  bottom: 22px;
+  border-right: none;
+  border-top: none;
+  border-bottom-left-radius: 16px;
+}
+
+.story-tarot-headline {
+  text-align: center;
+  padding-top: 10px;
+}
+
+.story-tarot-kicker {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--story-tarot-accent);
+}
+
+.story-tarot-headline h3 {
+  margin: 0;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: clamp(28px, 4vw, 38px);
+  line-height: 1.1;
+}
+
+.story-tarot-location {
+  margin: 10px 0 0 0;
+  font-size: 14px;
+  color: var(--story-tarot-muted);
+}
+
+.story-tarot-author,
+.story-tarot-panel,
+.story-tarot-content-block {
+  position: relative;
+  border-radius: 24px;
+  border: 1px solid var(--story-tarot-frame);
+  background: var(--story-tarot-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.story-tarot-author {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+}
+
+.story-tarot-avatar,
+.story-tarot-comment-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.52) 0%, var(--story-tarot-accent-soft) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--story-tarot-accent);
+}
+
+.story-tarot-avatar img,
+.story-tarot-comment-avatar img,
+.story-tarot-hero img,
+.story-tarot-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.story-tarot-author-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.story-tarot-author-meta strong {
+  font-size: 16px;
+}
+
+.story-tarot-author-meta span {
+  font-size: 13px;
+  color: var(--story-tarot-muted);
+}
+
+.story-tarot-emotion {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  border: 1px solid var(--story-tarot-frame);
+  background: var(--story-tarot-panel-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.story-tarot-hero {
+  position: relative;
+  min-height: 260px;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid var(--story-tarot-frame);
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.18) 0%, transparent 24%),
+    linear-gradient(135deg, var(--story-tarot-accent-soft) 0%, transparent 100%);
+}
+
+.story-tarot-hero.has-image img {
+  display: block;
+  cursor: pointer;
+}
+
+.story-tarot-oracle {
+  min-height: 260px;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  padding: 28px;
+  text-align: center;
+}
+
+.story-tarot-oracle strong {
+  font-size: 30px;
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
+
+.story-tarot-oracle span:last-child {
+  font-size: 14px;
+  color: var(--story-tarot-muted);
+}
+
+.story-tarot-oracle-icon {
+  font-size: 44px;
+}
+
+.story-tarot-badges {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.story-tarot-badge {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.story-tarot-badge.pinned {
+  background: rgba(27, 36, 58, 0.7);
+  color: #eef4ff;
+}
+
+.story-tarot-badge.featured {
+  background: rgba(120, 72, 19, 0.78);
+  color: #fff5e7;
+}
+
+.story-tarot-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 10px;
+}
+
+.story-tarot-thumb {
+  height: 92px;
+  padding: 0;
+  border: 1px solid var(--story-tarot-frame);
+  border-radius: 18px;
+  overflow: hidden;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.story-tarot-thumb:hover {
+  transform: translateY(-2px);
+  border-color: var(--story-tarot-accent);
+  box-shadow: 0 16px 26px -22px rgba(0, 0, 0, 0.45);
+}
+
+.story-tarot-content-block {
+  padding: 18px 20px;
+}
+
+.story-tarot-content {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.story-tarot-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.story-tarot-stat {
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--story-tarot-frame);
+  background: var(--story-tarot-panel);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--story-tarot-muted);
+}
+
+.story-tarot-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.story-tarot-action {
+  min-height: 70px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--story-tarot-frame);
+  background: var(--story-tarot-panel);
+  color: var(--story-tarot-text);
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.story-tarot-action:hover {
+  transform: translateY(-2px);
+  border-color: var(--story-tarot-accent);
+  box-shadow: 0 18px 28px -24px rgba(0, 0, 0, 0.4);
+}
+
+.story-tarot-action span {
+  font-size: 13px;
+  color: var(--story-tarot-muted);
+}
+
+.story-tarot-action strong {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.story-tarot-action.active,
+.story-tarot-action.liked {
+  border-color: var(--story-tarot-accent);
+  background: var(--story-tarot-panel-strong);
+  box-shadow:
+    0 0 0 2px var(--story-tarot-accent-soft),
+    0 20px 30px -24px rgba(0, 0, 0, 0.42);
+}
+
+.story-tarot-action.pending {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.story-tarot-panel {
+  padding: 18px;
+}
+
+.story-tarot-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.story-tarot-section-head span,
+.story-tarot-section-head strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.story-tarot-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--story-tarot-accent);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.story-tarot-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 110px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--story-tarot-frame);
+  background: var(--story-tarot-panel-strong);
+  color: var(--story-tarot-text);
+  font-size: 14px;
+  line-height: 1.7;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.story-tarot-textarea:focus {
+  border-color: var(--story-tarot-accent);
+  box-shadow: 0 0 0 3px var(--story-tarot-accent-soft);
+}
+
+.story-tarot-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.story-tarot-secondary,
+.story-tarot-primary {
+  min-width: 112px;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.story-tarot-secondary {
+  border-color: var(--story-tarot-frame);
+  background: transparent;
+  color: var(--story-tarot-muted);
+}
+
+.story-tarot-primary {
+  background: linear-gradient(135deg, rgba(108, 67, 20, 0.96) 0%, rgba(144, 92, 28, 0.96) 100%);
+  color: #fff7ea;
+  box-shadow: 0 20px 30px -24px rgba(77, 45, 11, 0.7);
+}
+
+.story-tarot-shell.dark .story-tarot-primary {
+  background: linear-gradient(135deg, rgba(110, 149, 218, 0.9) 0%, rgba(82, 122, 200, 0.92) 100%);
+  color: #08111f;
+  box-shadow: 0 20px 30px -24px rgba(10, 17, 33, 0.7);
+}
+
+.story-tarot-primary:disabled,
+.story-tarot-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.story-tarot-empty,
+.story-tarot-error {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--story-tarot-panel-strong);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.story-tarot-empty {
+  color: var(--story-tarot-muted);
+}
+
+.story-tarot-error {
+  margin: 14px 0 0;
+  color: #b3342b;
+}
+
+.story-tarot-shell.dark .story-tarot-error {
+  color: #ff9d94;
+}
+
+.story-tarot-comment-list {
+  display: grid;
+  gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.story-tarot-comment {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid var(--story-tarot-frame);
+  background: var(--story-tarot-panel-strong);
+}
+
+.story-tarot-comment-avatar {
+  width: 42px;
+  height: 42px;
+  font-size: 14px;
+}
+
+.story-tarot-comment-body {
+  display: grid;
+  gap: 6px;
+}
+
+.story-tarot-comment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.story-tarot-comment-head strong {
+  font-size: 14px;
+}
+
+.story-tarot-comment-head span {
+  font-size: 12px;
+  color: var(--story-tarot-muted);
+}
+
+.story-tarot-comment-body p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.story-tarot-report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.story-tarot-report-option {
+  position: relative;
+}
+
+.story-tarot-report-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.story-tarot-report-option span {
+  display: block;
+  min-height: 52px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--story-tarot-frame);
+  background: var(--story-tarot-panel-strong);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.story-tarot-report-option span:hover {
+  transform: translateY(-1px);
+}
+
+.story-tarot-report-option input:checked + span {
+  border-color: var(--story-tarot-accent);
+  box-shadow: 0 0 0 2px var(--story-tarot-accent-soft);
+}
+
 .story-modal-shell,
 .user-modal-shell {
   position: fixed;
@@ -5344,7 +6382,9 @@ onUnmounted(() => {
 .publish-modal-enter-active .story-sidebar,
 .publish-modal-leave-active .story-sidebar,
 .publish-modal-enter-active .user-sidebar,
-.publish-modal-leave-active .user-sidebar {
+.publish-modal-leave-active .user-sidebar,
+.publish-modal-enter-active .story-tarot-stage,
+.publish-modal-leave-active .story-tarot-stage {
   transition:
     transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
     opacity 0.26s ease;
@@ -5353,9 +6393,16 @@ onUnmounted(() => {
 .publish-modal-enter-from .story-sidebar,
 .publish-modal-leave-to .story-sidebar,
 .publish-modal-enter-from .user-sidebar,
-.publish-modal-leave-to .user-sidebar {
+.publish-modal-leave-to .user-sidebar,
+.publish-modal-enter-from .story-tarot-stage,
+.publish-modal-leave-to .story-tarot-stage {
   transform: translate(-50%, -47%) scale(0.94);
   opacity: 0;
+}
+
+.publish-modal-enter-from .story-tarot-stage,
+.publish-modal-leave-to .story-tarot-stage {
+  transform: translateY(24px) scale(0.94) rotate(-0.8deg);
 }
 
 .story-sidebar::after,
@@ -5627,16 +6674,49 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .story-modal-shell,
-  .user-modal-shell {
+  .user-modal-shell,
+  .story-tarot-shell {
     padding: 12px;
   }
 
   .story-sidebar,
   .user-sidebar,
+  .story-tarot-stage,
   .user-sub-sidebar {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 24px);
     border-radius: 28px;
+  }
+
+  .story-tarot-card {
+    max-height: calc(100vh - 24px);
+    padding: 20px;
+    border-radius: 28px;
+  }
+
+  .story-tarot-scroll {
+    max-height: calc(100vh - 88px);
+    padding-right: 2px;
+  }
+
+  .story-tarot-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .story-tarot-author {
+    grid-template-columns: auto 1fr;
+  }
+
+  .story-tarot-emotion {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .story-tarot-close {
+    top: 12px;
+    right: 12px;
+    height: 42px;
+    padding: 0 12px;
   }
 
   .sidebar-header,

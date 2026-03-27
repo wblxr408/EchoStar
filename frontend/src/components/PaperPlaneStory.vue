@@ -2,7 +2,7 @@
   <Teleport to="body">
     <div class="paper-plane-overlay" @click="handleClose">
       <!-- 飞行轨迹线 -->
-      <svg class="flight-path" v-if="isFlying">
+      <svg class="flight-path" v-if="!directOpen && isFlying">
         <path 
           :d="flightPath" 
           fill="none" 
@@ -13,7 +13,8 @@
       </svg>
 
       <!-- 纸飞机 -->
-      <div 
+      <div
+        v-if="!directOpen"
         class="paper-plane"
         :class="{ 'flying': isFlying, 'hovering': isHovering, 'unfolding': isUnfolding }"
         :style="planeStyle"
@@ -49,7 +50,7 @@
       <!-- 展开的纸张 -->
       <div 
         class="paper-sheet"
-        :class="{ 'show': isUnfolded }"
+        :class="{ 'show': isSheetVisible }"
         :style="sheetStyle"
         @click.stop
       >
@@ -222,6 +223,10 @@ const props = defineProps({
   startPosition: {
     type: Object,
     default: () => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+  },
+  directOpen: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -254,6 +259,8 @@ const currentPos = ref({ x: props.startPosition.x, y: props.startPosition.y });
 const targetPos = ref({ x: 0, y: 0 });
 // 旋转角度
 const rotation = ref(0);
+const directOpen = computed(() => props.directOpen);
+const isSheetVisible = computed(() => directOpen.value || isUnfolded.value);
 
 // 计算纸飞机样式
 const planeStyle = computed(() => ({
@@ -264,11 +271,13 @@ const planeStyle = computed(() => ({
 
 // 计算纸张展开位置
 const sheetStyle = computed(() => ({
-  left: currentPos.value.x + 'px',
-  top: currentPos.value.y + 'px',
-  transform: isUnfolded.value 
-    ? 'translate(-50%, -50%) scale(1) rotate(0deg)' 
-    : 'translate(-50%, -50%) scale(0.1) rotate(-5deg)'
+  left: directOpen.value ? '50%' : currentPos.value.x + 'px',
+  top: directOpen.value ? '50%' : currentPos.value.y + 'px',
+  transform: directOpen.value
+    ? 'translate(-50%, -50%) scale(1) rotate(0deg)'
+    : isUnfolded.value
+      ? 'translate(-50%, -50%) scale(1) rotate(0deg)'
+      : 'translate(-50%, -50%) scale(0.1) rotate(-5deg)'
 }));
 
 // 控制点（根据距离动态计算弧度）
@@ -443,6 +452,12 @@ function calculateAngle(from, to) {
 
 // 动画序列
 onMounted(() => {
+  if (directOpen.value) {
+    currentPos.value = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    isUnfolded.value = true;
+    return;
+  }
+
   // 生成随机目标位置
   targetPos.value = generateTargetPosition();
   
