@@ -2,8 +2,18 @@
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
-        <div class="welcome-content">
-          <p class="welcome-text">{{ currentWelcomeQuote }}</p>
+        <div class="welcome-overlay__sky" aria-hidden="true">
+          <div class="welcome-overlay__nebula"></div>
+          <div class="welcome-overlay__stars"></div>
+        </div>
+        <div ref="welcomeContentRef" class="welcome-content">
+          <p
+            ref="welcomeTextRef"
+            class="welcome-text"
+            :style="{ '--welcome-text-scale': welcomeTextScale }"
+          >
+            {{ currentWelcomeQuote }}
+          </p>
         </div>
       </div>
     </transition>
@@ -713,16 +723,22 @@ const STORY_MODAL_OPEN_DELAY_MS = 420;
 
 // --- 欢迎语相关状态 ---
 const showWelcomeOverlay = ref(true); 
+const welcomeContentRef = ref(null);
+const welcomeTextRef = ref(null);
+const welcomeTextScale = ref(1);
+let welcomeOverlayTimer = null;
+let welcomeTextResizeFrame = 0;
 
 // 欢迎语语录库
 const welcomeQuotes = [
   "欢迎来到心灵栖息之所！",
-  "今日もがんばったね、ほんとにお疲れ様。",
+  "今日もがんばったね、ほんとにお疲れ様",
   "Breathe. You are safe in this moment.",
   "在这颗星球的某个角落，总有故事与你共鸣。",
   "Quiet the mind, and the soul will speak.",
-  "前端怎么改都很丑",
-  "原神牛逼"
+  "前端怎么改？？？",
+  "原神牛逼",
+  "竟敢无视灯！"
 ];
 
 // 随机选择一句欢迎语
@@ -732,6 +748,41 @@ const currentWelcomeQuote = ref(
 // --- 欢迎语逻辑结束 ---
 
 // 用户名编辑相关
+function fitWelcomeTextToSingleLine() {
+  if (!showWelcomeOverlay.value) {
+    return;
+  }
+
+  const container = welcomeContentRef.value;
+  const text = welcomeTextRef.value;
+
+  if (!(container instanceof HTMLElement) || !(text instanceof HTMLElement)) {
+    return;
+  }
+
+  welcomeTextScale.value = 1;
+
+  const availableWidth = container.clientWidth;
+  const contentWidth = text.scrollWidth;
+
+  if (!availableWidth || !contentWidth) {
+    return;
+  }
+
+  welcomeTextScale.value = Math.min(1, availableWidth / contentWidth);
+}
+
+function scheduleWelcomeTextFit() {
+  if (welcomeTextResizeFrame) {
+    window.cancelAnimationFrame(welcomeTextResizeFrame);
+  }
+
+  welcomeTextResizeFrame = window.requestAnimationFrame(() => {
+    welcomeTextResizeFrame = 0;
+    fitWelcomeTextToSingleLine();
+  });
+}
+
 const isEditingUsername = ref(false);
 const editingUsername = ref('');
 const usernameError = ref('');
@@ -3409,16 +3460,26 @@ onMounted(() => {
 
   // 添加全局点击事件来关闭 Dock 菜单
   document.addEventListener('click', handleDocumentClick);
+  window.addEventListener('resize', scheduleWelcomeTextFit);
+  scheduleWelcomeTextFit();
+  if (document.fonts?.ready) {
+    document.fonts.ready.then(scheduleWelcomeTextFit).catch(() => {});
+  }
   // --- 新增：控制欢迎界面消失的定时器 ---
-  setTimeout(() => {
+  welcomeOverlayTimer = window.setTimeout(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick);
+  window.removeEventListener('resize', scheduleWelcomeTextFit);
   clearTimeout(loadTimer);
   clearTimeout(storyOpenTimer);
+  clearTimeout(welcomeOverlayTimer);
+  if (welcomeTextResizeFrame) {
+    window.cancelAnimationFrame(welcomeTextResizeFrame);
+  }
   if (themeAutoCheckInterval) clearInterval(themeAutoCheckInterval);
 });
 </script>
@@ -3459,8 +3520,10 @@ onUnmounted(() => {
   text-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
   
   /* 电影字幕般的缓慢浮现效果 */
+  display: inline-block;
   opacity: 0;
-  transform: translateY(15px);
+  transform: translateY(15px) scale(var(--welcome-text-scale, 1));
+  transform-origin: center center;
   animation: textCinematicShow 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   animation-delay: 0.2s; /* 略微延迟，等背景出来后再出字幕 */
 }
@@ -3469,7 +3532,7 @@ onUnmounted(() => {
 @keyframes textCinematicShow {
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(var(--welcome-text-scale, 1));
   }
 }
 
@@ -3484,6 +3547,98 @@ onUnmounted(() => {
 .welcome-fade-leave-to {
   opacity: 0;
   transform: scale(1.04); /* 退场时微微放大 */
+}
+
+.welcome-overlay {
+  overflow: hidden;
+  background: linear-gradient(180deg, #02040b 0%, #060b18 46%, #0b1530 100%);
+}
+
+.welcome-overlay__sky,
+.welcome-overlay__nebula,
+.welcome-overlay__stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.welcome-overlay__sky {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(56, 74, 168, 0.14) 0%, transparent 22%),
+    radial-gradient(circle at 82% 14%, rgba(82, 52, 142, 0.12) 0%, transparent 20%),
+    radial-gradient(circle at 50% 110%, rgba(28, 62, 120, 0.18) 0%, transparent 34%),
+    linear-gradient(180deg, #02040b 0%, #060b18 46%, #0b1530 100%);
+}
+
+.welcome-overlay__nebula {
+  background:
+    radial-gradient(circle at 24% 28%, rgba(118, 141, 241, 0.09) 0%, transparent 24%),
+    radial-gradient(circle at 76% 32%, rgba(154, 113, 222, 0.08) 0%, transparent 20%),
+    radial-gradient(circle at 50% 72%, rgba(82, 136, 226, 0.08) 0%, transparent 26%);
+  filter: blur(20px);
+  opacity: 0.8;
+  animation: welcomeNebulaFloat 12s ease-in-out infinite alternate;
+}
+
+.welcome-overlay__stars {
+  background-image:
+    radial-gradient(circle at 7% 12%, rgba(255, 255, 255, 0.95) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 17% 68%, rgba(255, 244, 201, 0.88) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 24% 22%, rgba(255, 255, 255, 0.78) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 32% 14%, rgba(201, 224, 255, 0.8) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 43% 82%, rgba(255, 244, 201, 0.84) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 54% 18%, rgba(255, 255, 255, 0.78) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 63% 72%, rgba(201, 224, 255, 0.84) 0 1.4px, transparent 2.1px),
+    radial-gradient(circle at 72% 10%, rgba(255, 244, 201, 0.9) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 86% 24%, rgba(255, 255, 255, 0.85) 0 1.1px, transparent 1.8px),
+    radial-gradient(circle at 93% 66%, rgba(201, 224, 255, 0.82) 0 1.4px, transparent 2.2px),
+    radial-gradient(circle at 14% 88%, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 84% 86%, rgba(255, 244, 201, 0.82) 0 1.2px, transparent 2px);
+  opacity: 0.95;
+  animation: welcomeStarsPulse 4.8s ease-in-out infinite;
+}
+
+.welcome-content {
+  position: relative;
+  z-index: 1;
+  width: min(96vw, 1280px);
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+}
+
+.welcome-text {
+  font-size: clamp(36px, 4vw, 52px);
+  white-space: nowrap;
+  letter-spacing: clamp(1px, 0.22vw, 4px);
+  background: linear-gradient(135deg, #fff8e8 0%, #f0d79a 44%, #c9923a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter:
+    drop-shadow(0 6px 20px rgba(0, 0, 0, 0.42))
+    drop-shadow(0 0 18px rgba(255, 220, 150, 0.2));
+}
+
+@keyframes welcomeNebulaFloat {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: scale(1.06) translate3d(-1.5%, 1.5%, 0);
+  }
+}
+
+@keyframes welcomeStarsPulse {
+  0%,
+  100% {
+    opacity: 0.82;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .map-page {
