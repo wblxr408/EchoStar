@@ -39,10 +39,10 @@ export const createReportSchema = Joi.object({
  */
 export const handleReportSchema = Joi.object({
   action: Joi.string()
-    .valid('approve', 'reject')
+    .valid('approve', 'reject', 'restore')
     .required()
     .messages({
-      'any.only': '操作类型必须是 approve 或 reject',
+      'any.only': '操作类型必须是 approve、reject 或 restore',
       'any.required': '操作类型不能为空'
     })
 });

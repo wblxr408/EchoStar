@@ -313,6 +313,35 @@ export const ReportService = {
       throw new ReportError('举报不存在', 4004);
     }
 
+    // restore: 将已处理的举报恢复为待处理
+    if (action === 'restore') {
+      if (report.status === 'pending') {
+        throw new ReportError('该举报已是待处理状态', 4000);
+      }
+
+      // 如果之前是批准状态，恢复对应内容
+      if (report.status === 'approved') {
+        if (report.targetType === 'story') {
+          const story = await Story.findByPk(report.targetId);
+          if (story) {
+            await story.update({ visibility: 'normal' });
+          }
+        } else if (report.targetType === 'comment') {
+          const comment = await Comment.findByPk(report.targetId);
+          if (comment) {
+            await comment.update({ status: 'normal' });
+          }
+        }
+      }
+
+      await report.update({
+        status: 'pending',
+        handledBy: null,
+        handledAt: null
+      });
+      return;
+    }
+
     if (report.status !== 'pending') {
       throw new ReportError('举报已处理', 4000);
     }

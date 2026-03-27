@@ -304,14 +304,28 @@
               </div>
 
               <div class="report-actions">
-                <!-- API 9.4 驳回举报 -->
-                <button class="btn-action dismiss" @click="handleDismissReport(report.id)">
-                  驳回举报
-                </button>
-                <!-- API 9.4 批准举报 -->
-                <button class="btn-action approve" @click="handleApproveReport(report.id)">
-                  批准举报
-                </button>
+                <template v-if="report.status === 'approved'">
+                  <span class="report-status approved">已批准</span>
+                  <button class="btn-action restore" @click="handleRestoreReport(report.id)">
+                    恢复待处理
+                  </button>
+                </template>
+                <template v-else-if="report.status === 'rejected'">
+                  <span class="report-status rejected">已驳回</span>
+                  <button class="btn-action restore" @click="handleRestoreReport(report.id)">
+                    恢复待处理
+                  </button>
+                </template>
+                <template v-else>
+                  <!-- API 9.4 驳回举报 -->
+                  <button class="btn-action dismiss" @click="handleDismissReport(report.id)">
+                    驳回举报
+                  </button>
+                  <!-- API 9.4 批准举报 -->
+                  <button class="btn-action approve" @click="handleApproveReport(report.id)">
+                    批准举报
+                  </button>
+                </template>
               </div>
             </div>
           </div>
@@ -949,6 +963,33 @@ async function handleApproveReport(reportId) {
   }
 }
 
+// 恢复举报为待处理
+async function handleRestoreReport(reportId) {
+  try {
+    await reportApi.handle(reportId, 'restore');
+    const report = reports.value.find(r => r.id === reportId);
+    if (report) {
+      report.status = 'pending';
+      // 更新计数
+      const pendingCount = reports.value.filter(r => r.status === 'pending').length;
+      const approvedCount = reports.value.filter(r => r.status === 'approved').length;
+      const rejectedCount = reports.value.filter(r => r.status === 'rejected').length;
+      reportFilters.value = [
+        { key: 'pending', label: '待处理', count: pendingCount },
+        { key: 'approved', label: '已批准', count: approvedCount },
+        { key: 'rejected', label: '已驳回', count: rejectedCount }
+      ];
+      // 更新标签 badge
+      const reportsTab = tabs.value.find(t => t.key === 'reports');
+      if (reportsTab) reportsTab.badge = pendingCount;
+    }
+    alert('举报已恢复为待处理');
+  } catch (error) {
+    console.error('恢复举报失败:', error);
+    alert(error.message || '操作失败');
+  }
+}
+
 // 初始化
 onMounted(() => {
   loadStatistics();
@@ -1540,6 +1581,24 @@ function handleLogout() {
 .report-actions {
   display: flex;
   gap: 12px;
+  align-items: center;
+}
+
+.report-status {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: 12px;
+}
+
+.report-status.approved {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.report-status.rejected {
+  background: #e2e3e5;
+  color: #383d41;
 }
 
 .btn-action.dismiss {
@@ -1550,6 +1609,11 @@ function handleLogout() {
 .btn-action.approve {
   background: #f8d7da;
   color: #721c24;
+}
+
+.btn-action.restore {
+  background: #d1ecf1;
+  color: #0c5460;
 }
 
 /* 弹窗 */
