@@ -11,6 +11,7 @@
       <AMap
         ref="amapRef"
         :stories="mapStore.stories"
+        :clusters="clusters"
         :user-location="mapStore.userLocation"
         :center="mapStore.center"
         :zoom="mapStore.zoom"
@@ -20,6 +21,7 @@
         @marker-click="handleMarkerClick"
         @map-click="handlePublishMapClick"
         @map-move="handleMapMove"
+        @cluster-click="handleClusterClick"
         @theme-change="handleThemeChange"
       />
     </div>
@@ -661,6 +663,9 @@ import { uploadAvatar as uploadToOSS, validateImage } from '../../utils/upload';
 
 const mapStore = useMapStore();
 const userStore = useUserStore();
+
+// 聚合数据
+const clusters = ref([]);
 
 const showSidebar = ref(false);
 const showPublishSidebar = ref(false);
@@ -3069,6 +3074,97 @@ async function loadStories() {
   }
 }
 
+// 聚合显示的 zoom 阈值，超过此值显示原始标记点
+const CLUSTER_ZOOM_THRESHOLD = 15;
+
+// 加载聚合数据
+async function loadClusterData() {
+  try {
+    // 当 zoom 超过阈值时，清空聚合数据，显示原始标记点
+    const currentZoom = mapStore.zoom;
+    if (currentZoom >= CLUSTER_ZOOM_THRESHOLD) {
+      console.log('[Map] zoom >= threshold, clearing clusters, zoom:', currentZoom);
+      clusters.value = [];
+      return;
+    }
+
+    // 获取地图视野边界
+    if (!amapRef.value) {
+      console.log('[Map] amapRef not ready');
+      return;
+    }
+
+    const bounds = getMapBounds();
+    console.log('[Map] getBounds result:', bounds);
+
+    if (!bounds) {
+      console.log('[Map] No bounds available, using default');
+      // 使用默认边界
+      const center = extractCoordinates(mapStore.center);
+      if (!center) return;
+
+      const defaultBounds = {
+        northEast: { lat: center.latitude + 0.05, lng: center.longitude + 0.05 },
+        southWest: { lat: center.latitude - 0.05, lng: center.longitude - 0.05 }
+      };
+
+      const response = await mapApi.getClusterData(
+        defaultBounds.northEast,
+        defaultBounds.southWest,
+        mapStore.zoom
+      );
+
+      const data = response?.data ?? response;
+      console.log('[Map] cluster API response:', data);
+      if (Array.isArray(data)) {
+        clusters.value = data;
+        console.log('[Map] clusters loaded with default bounds:', clusters.value.length);
+      }
+      return;
+    }
+
+    const response = await mapApi.getClusterData(
+      bounds.northEast,
+      bounds.southWest,
+      mapStore.zoom
+    );
+
+    const data = response?.data ?? response;
+    console.log('[Map] cluster API response:', data);
+    if (Array.isArray(data)) {
+      clusters.value = data;
+      console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
+    }
+  } catch (error) {
+    console.error('加载聚合数据失败:', error);
+    clusters.value = [];
+  }
+}
+
+// 获取地图边界
+function getMapBounds() {
+  if (!amapRef.value) return null;
+  return amapRef.value.getBounds();
+}
+
+// 点击聚合气泡
+function handleClusterClick({ cluster, latitude, longitude, count }) {
+  console.log('[Map] cluster clicked:', cluster, count);
+
+  // 放大地图并移动到聚合中心
+  const currentZoom = mapStore.zoom;
+  const newZoom = Math.min(currentZoom + 2, 18);
+
+  mapStore.updateCenter(latitude, longitude);
+  mapStore.updateZoom(newZoom);
+
+  // 延迟重新加载数据
+  setTimeout(() => {
+    loadStories();
+    loadClusterData();
+  }, 300);
+}
+
 // 加载推荐流
 async function loadRecommendationFeed(reset = true) {
   if (reset) {
@@ -3165,7 +3261,10 @@ function handleMapMove(event) {
 
   // 防抖加载
   clearTimeout(loadTimer);
-  loadTimer = setTimeout(loadStories, 500);
+  loadTimer = setTimeout(() => {
+    loadStories();
+    loadClusterData();
+  }, 500);
 }
 
 let loadTimer = null;
@@ -3479,6 +3578,8 @@ let themeAutoCheckInterval = null;
 onMounted(() => {
   getUserLocation();
   loadStories();
+  // 延迟加载聚合数据，等待地图初始化完成
+  setTimeout(loadClusterData, 1000);
   themeAutoCheckInterval = setInterval(() => {
     minuteTicker.value += 1;
   }, 60000);

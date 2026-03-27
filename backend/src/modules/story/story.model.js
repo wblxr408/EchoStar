@@ -169,7 +169,7 @@ export const TimeCapsule = sequelize.define('TimeCapsule', {
   indexes: [
     {
       name: 'time_capsules_unlock_at_idx',
-      fields: ['unlockAt', 'isUnlocked']
+      fields: ['unlock_at', 'isUnlocked']
     }
   ]
 });

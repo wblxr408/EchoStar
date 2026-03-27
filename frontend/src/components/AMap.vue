@@ -11,6 +11,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  clusters: {
+    type: Array,
+    default: () => []
+  },
   userLocation: {
     type: Object,
     default: null
@@ -37,7 +41,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['marker-click', 'map-move', 'theme-change', 'map-click']);
+const emit = defineEmits(['marker-click', 'map-move', 'theme-change', 'map-click', 'cluster-click']);
 
 const mapContainer = ref(null);
 const DEFAULT_CENTER = Object.freeze({ latitude: 39.9042, longitude: 116.4074 });
@@ -58,6 +62,7 @@ const emotionColorsDark = {
 
 let map = null;
 let markers = [];
+let clusterMarkers = []; // 聚合标记
 let userLocationMarker = null;
 let tempPickedMarker = null;
 const isDarkMode = ref(props.theme === 'dark');
@@ -229,6 +234,16 @@ function clearMarkers() {
 
   markers.forEach((marker) => map.remove(marker));
   markers = [];
+}
+
+function clearClusterMarkers() {
+  if (!map) {
+    clusterMarkers = [];
+    return;
+  }
+
+  clusterMarkers.forEach((marker) => map.remove(marker));
+  clusterMarkers = [];
 }
 
 function clearUserLocationMarker() {
@@ -438,6 +453,138 @@ function createMarker(story) {
   return marker;
 }
 
+// 计算聚合气泡半径（随 zoom 增大而增大）
+function calculateClusterRadius(count) {
+  const R_MIN = 28; // 最小半径
+  const R_MAX = 80; // 最大半径
+  const k = 2; // 每个故事增加的像素（可调整）
+
+  // 获取当前 zoom 级别
+  const zoom = map?.getZoom?.() ?? props.zoom ?? 10;
+
+  // zoom 缩放因子：zoom 越大，气泡越大
+  // zoom 4-14 范围内，因子从 0.6 到 1.5
+  const zoomFactor = Math.max(0.6, Math.min(1.5, 0.6 + (zoom - 4) * 0.09));
+
+  // 基础半径 + 数量加成，再乘以缩放因子
+  const baseRadius = R_MIN + count * k;
+  const radius = Math.min(R_MAX, baseRadius * zoomFactor);
+
+  return Math.max(R_MIN, radius);
+}
+
+// 创建聚合标记
+function createClusterMarker(cluster) {
+  if (!map || !window.AMap) {
+    return null;
+  }
+
+  // 兼容不同坐标格式
+  const coords = resolveCoordinates(cluster) || resolveCoordinates({
+    latitude: cluster.latitude ?? cluster.location?.lat,
+    longitude: cluster.longitude ?? cluster.location?.lng
+  });
+
+  if (!coords) {
+    console.warn('[AMap] createClusterMarker: invalid coords for cluster:', cluster);
+    return null;
+  }
+
+  const count = cluster.count || 1;
+  const radius = calculateClusterRadius(count);
+
+  // 鎏金黄色渐变
+  const gradientColors = isDarkMode.value
+    ? 'radial-gradient(circle at 30% 30%, #fff7e6 0%, #ffd700 30%, #daa520 70%, #b8860b 100%)'
+    : 'radial-gradient(circle at 30% 30%, #fffef5 0%, #ffd700 25%, #ffb347 60%, #cc9900 100%)';
+
+  const content = document.createElement('div');
+  content.className = 'cluster-marker';
+  content.style.cssText = `
+    width: ${radius * 2}px;
+    height: ${radius * 2}px;
+    border-radius: 50%;
+    background: ${gradientColors};
+    box-shadow: 0 4px 16px rgba(218, 165, 32, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 2px solid rgba(255, 255, 255, 0.6);
+  `;
+
+  const countSpan = document.createElement('span');
+  countSpan.className = 'cluster-count';
+  countSpan.textContent = count;
+  countSpan.style.cssText = `
+    color: #4a3000;
+    font-weight: 700;
+    font-size: ${Math.max(12, Math.min(20, 10 + count * 0.5))}px;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+  `;
+  content.appendChild(countSpan);
+
+  // Hover 效果
+  content.addEventListener('mouseenter', () => {
+    content.style.transform = 'scale(1.15)';
+    content.style.boxShadow = `0 6px 24px rgba(218, 165, 32, 0.7), inset 0 2px 4px rgba(255, 255, 255, 0.4)`;
+  });
+  content.addEventListener('mouseleave', () => {
+    content.style.transform = 'scale(1)';
+    content.style.boxShadow = `0 4px 16px rgba(218, 165, 32, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.4)`;
+  });
+
+  const marker = new window.AMap.Marker({
+    position: [coords.longitude, coords.latitude],
+    content,
+    offset: new window.AMap.Pixel(-radius, -radius),
+    zIndex: 50
+  });
+
+  marker.on('click', () => {
+    emit('cluster-click', {
+      cluster,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      count
+    });
+  });
+
+  return marker;
+}
+
+function updateClusterMarkers() {
+  if (!map || !window.AMap) {
+    return;
+  }
+
+  clearClusterMarkers();
+
+  const clusterList = Array.isArray(props.clusters) ? props.clusters : [];
+  console.log('[AMap] updateClusterMarkers, clusterList:', clusterList);
+
+  clusterList.forEach((cluster) => {
+    // 兼容不同格式：检查是否有 count > 1
+    const count = cluster.count || 0;
+    // 判断是否为聚合点：type === 'cluster' 或 count > 1 且有 location/latitude
+    const isCluster = cluster.type === 'cluster' || (count > 1 && (cluster.latitude || cluster.location));
+
+    if (isCluster && count > 1) {
+      console.log('[AMap] creating cluster marker:', cluster);
+      const marker = createClusterMarker(cluster);
+      if (marker) {
+        clusterMarkers.push(marker);
+      }
+    }
+  });
+
+  if (clusterMarkers.length > 0) {
+    map.add(clusterMarkers);
+    console.log('[AMap] added', clusterMarkers.length, 'cluster markers');
+  }
+}
+
 function updateMarkers() {
   if (!map || !window.AMap) {
     return;
@@ -445,8 +592,24 @@ function updateMarkers() {
 
   clearMarkers();
 
+  // 获取已被聚合的故事 ID 集合
+  const clusterList = Array.isArray(props.clusters) ? props.clusters : [];
+  const clusteredStoryIds = new Set();
+  clusterList.forEach(cluster => {
+    // 兼容不同格式
+    const count = cluster.count || 0;
+    const isCluster = cluster.type === 'cluster' || (count > 1 && (cluster.latitude || cluster.location));
+    if (isCluster && count > 1 && cluster.pointIds) {
+      cluster.pointIds.forEach(id => clusteredStoryIds.add(id));
+    }
+  });
+
   const storyList = Array.isArray(props.stories) ? props.stories : [];
   storyList.forEach((story) => {
+    // 跳过已被聚合的故事
+    if (clusteredStoryIds.has(story.id)) {
+      return;
+    }
     const marker = createMarker(story);
     if (marker) {
       markers.push(marker);
@@ -479,7 +642,34 @@ function addNewStoryMarker(story) {
 }
 
 defineExpose({
-  addNewStoryMarker
+  addNewStoryMarker,
+  getMap: () => map,
+  getBounds: () => {
+    console.log('[AMap] getBounds called, map:', !!map);
+    if (!map) {
+      console.log('[AMap] getBounds: no map');
+      return null;
+    }
+    try {
+      const bounds = map.getBounds();
+      console.log('[AMap] getBounds result:', bounds);
+      if (!bounds) {
+        console.log('[AMap] getBounds: no bounds');
+        return null;
+      }
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const result = {
+        northEast: { lat: ne.lat(), lng: ne.lng() },
+        southWest: { lat: sw.lat(), lng: sw.lng() }
+      };
+      console.log('[AMap] getBounds returning:', result);
+      return result;
+    } catch (e) {
+      console.error('[AMap] getBounds error:', e);
+      return null;
+    }
+  }
 });
 
 function loadAMapScript() {
@@ -520,6 +710,7 @@ onMounted(async () => {
     await loadAMapScript();
     initMap();
     updateMarkers();
+    updateClusterMarkers();
     updateUserLocationMarker();
     updateTempPickedMarker();
 
@@ -533,6 +724,7 @@ onMounted(async () => {
 onUnmounted(() => {
   clearUserLocationMarker();
   clearTempPickedMarker();
+  clearClusterMarkers();
   clearMarkers();
 
   if (map) {
@@ -563,7 +755,15 @@ function toggleTheme() {
   }
 }
 
-watch(() => props.stories, updateMarkers, { deep: true });
+watch(() => props.stories, () => {
+  updateMarkers();
+  updateClusterMarkers();
+}, { deep: true });
+
+watch(() => props.clusters, () => {
+  updateMarkers();
+  updateClusterMarkers();
+}, { deep: true });
 
 watch(() => props.userLocation, (newLocation) => {
   updateUserLocationMarker(newLocation);
