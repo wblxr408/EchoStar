@@ -574,6 +574,134 @@ function calculateClusterRadius(count) {
   return R_MIN + (R_MAX - R_MIN) * (count / (count + DECAY));
 }
 
+const STORY_MARKER_SIZE = 50;
+const FORCED_STORY_CLUSTER_OVERLAP_RATIO = 0.25;
+
+function createStoryPixelState(story) {
+  if (!map) {
+    return null;
+  }
+
+  const storyIdKey = getStoryIdKey(story?.id);
+  const coords = resolveCoordinates(story);
+  if (!storyIdKey || !coords) {
+    return null;
+  }
+
+  let pixel;
+  try {
+    pixel = map.lngLatToContainer([coords.longitude, coords.latitude]);
+  } catch (e) {
+    return null;
+  }
+
+  const px = pixel?.getX?.();
+  const py = pixel?.getY?.();
+  if (!Number.isFinite(px) || !Number.isFinite(py)) {
+    return null;
+  }
+
+  const half = STORY_MARKER_SIZE / 2;
+
+  return {
+    story,
+    storyIdKey,
+    px,
+    py,
+    left: px - half,
+    right: px + half,
+    top: py - half,
+    bottom: py + half,
+    latitude: coords.latitude,
+    longitude: coords.longitude
+  };
+}
+
+function getStoryMarkerOverlapRatio(a, b) {
+  const overlapWidth = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+  const overlapHeight = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  if (overlapWidth <= 0 || overlapHeight <= 0) {
+    return 0;
+  }
+
+  return (overlapWidth * overlapHeight) / (STORY_MARKER_SIZE * STORY_MARKER_SIZE);
+}
+
+function buildForcedStoryClusters(stories, excludedStoryIdKeys = new Set()) {
+  if (!map || !stories.length) {
+    return { clusters: [], absorbedIds: new Set() };
+  }
+
+  const items = stories
+    .map(createStoryPixelState)
+    .filter((item) => item && !excludedStoryIdKeys.has(item.storyIdKey));
+
+  if (items.length <= 1) {
+    return { clusters: [], absorbedIds: new Set() };
+  }
+
+  const parent = items.map((_, index) => index);
+  const find = (index) => {
+    if (parent[index] !== index) {
+      parent[index] = find(parent[index]);
+    }
+    return parent[index];
+  };
+  const union = (a, b) => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) {
+      parent[rootB] = rootA;
+    }
+  };
+
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (getStoryMarkerOverlapRatio(items[i], items[j]) >= FORCED_STORY_CLUSTER_OVERLAP_RATIO) {
+        union(i, j);
+      }
+    }
+  }
+
+  const grouped = new Map();
+  items.forEach((item, index) => {
+    const root = find(index);
+    if (!grouped.has(root)) {
+      grouped.set(root, []);
+    }
+    grouped.get(root).push(item);
+  });
+
+  const clusters = [];
+  const absorbedIds = new Set();
+
+  grouped.forEach((group) => {
+    if (group.length < 2) {
+      return;
+    }
+
+    let latitude = 0;
+    let longitude = 0;
+    const pointIds = dedupePointIds(group.map((item) => item.story.id));
+
+    group.forEach((item) => {
+      latitude += item.latitude;
+      longitude += item.longitude;
+      absorbedIds.add(item.storyIdKey);
+    });
+
+    clusters.push({
+      type: 'cluster',
+      latitude: latitude / group.length,
+      longitude: longitude / group.length,
+      count: pointIds.length || group.length,
+      pointIds
+    });
+  });
+
+  return { clusters, absorbedIds };
+}
+
 function createPixelClusterState(cluster) {
   if (!map) {
     return null;
@@ -785,16 +913,50 @@ function updateClusterMarkers() {
 
   const clusterList = Array.isArray(props.clusters) ? props.clusters : [];
   const storyList = Array.isArray(props.stories) ? props.stories : [];
+  const clusterPointStories = getClusterPointStories(clusterList, storyList);
+  const renderableStories = [];
+  const renderedStoryIds = new Set();
 
-  // 筛选出需要显示的聚合点
+  [...storyList, ...clusterPointStories].forEach((story) => {
+    const storyIdKey = getStoryIdKey(story?.id);
+    if (storyIdKey && renderedStoryIds.has(storyIdKey)) {
+      return;
+    }
+
+    if (storyIdKey) {
+      renderedStoryIds.add(storyIdKey);
+    }
+
+    renderableStories.push(story);
+  });
+
+  const clusteredStoryIdKeys = new Set();
+  clusterList.forEach((cluster) => {
+    if (isClusterEntry(cluster) && cluster.pointIds) {
+      dedupePointIds(cluster.pointIds).forEach((id) => {
+        const key = getStoryIdKey(id);
+        if (key) {
+          clusteredStoryIdKeys.add(key);
+        }
+      });
+    }
+  });
+
+  const forcedStoryClustersResult = buildForcedStoryClusters(renderableStories, clusteredStoryIdKeys);
   const validClusters = clusterList.filter((cluster) => isClusterEntry(cluster));
 
   // 前端重叠检测与合并
-  let merged = mergeOverlappingClusters(validClusters);
+  let merged = mergeOverlappingClusters([
+    ...validClusters,
+    ...forcedStoryClustersResult.clusters
+  ]);
 
   // 聚合气泡吸收附近的单个故事点
-  const clusterPointStories = getClusterPointStories(clusterList, storyList);
-  merged = absorbNearbyStories(merged, clusterPointStories);
+  merged = absorbNearbyStories(merged, renderableStories);
+
+  forcedStoryClustersResult.absorbedIds.forEach((id) => {
+    absorbedStoryIds.add(id);
+  });
 
   // 根据吸收后的最终 count 重新计算并创建标记
   merged.forEach((cluster) => {
@@ -977,17 +1139,22 @@ defineExpose({
         console.log('[AMap] getBounds: no bounds');
         return null;
       }
-      const ne = resolveLngLatPoint(bounds.getNorthEast?.() ?? bounds.northEast);
-      const sw = resolveLngLatPoint(bounds.getSouthWest?.() ?? bounds.southWest);
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
 
       if (!ne || !sw) {
         console.warn('[AMap] getBounds: invalid bounds points', bounds);
         return null;
       }
 
+
+      // 兼容不同版本的高德地图 API（lat/lng 可能是属性或方法）
+      const getLat = (obj) => typeof obj.lat === 'function' ? obj.lat() : obj.lat;
+      const getLng = (obj) => typeof obj.lng === 'function' ? obj.lng() : obj.lng;
+
       const result = {
-        northEast: ne,
-        southWest: sw
+        northEast: { lat: getLat(ne), lng: getLng(ne) },
+        southWest: { lat: getLat(sw), lng: getLng(sw) }
       };
       console.log('[AMap] getBounds returning:', result);
       return result;

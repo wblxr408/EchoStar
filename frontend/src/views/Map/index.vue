@@ -2544,8 +2544,8 @@ function handleMyLikes() {
   // 切换点赞面板
   showLikesPanel.value = !showLikesPanel.value;
 
-  // 如果是打开状态且列表为空，加载数据
-  if (showLikesPanel.value && likesList.value.length === 0) {
+  // 如果是打开状态，刷新列表数据
+  if (showLikesPanel.value) {
     loadLikesData();
   }
 }
@@ -3293,13 +3293,13 @@ async function loadStories() {
 }
 
 // 聚合显示的 zoom 阈值，超过此值显示原始标记点
-const CLUSTER_ZOOM_THRESHOLD = 15;
+const CLUSTER_ZOOM_THRESHOLD = 16;
 
 // 加载聚合数据
 async function loadClusterData() {
   try {
-    // 当 zoom 超过阈值时，清空聚合数据，显示原始标记点
     const currentZoom = mapStore.zoom;
+
     if (currentZoom >= CLUSTER_ZOOM_THRESHOLD) {
       console.log('[Map] zoom >= threshold, clearing clusters, zoom:', currentZoom);
       clusters.value = [];
@@ -3317,7 +3317,6 @@ async function loadClusterData() {
 
     if (!bounds) {
       console.log('[Map] No bounds available, using default');
-      // 使用默认边界
       const center = extractCoordinates(mapStore.center);
       if (!center) return;
 
@@ -3354,8 +3353,8 @@ async function loadClusterData() {
       console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
     }
   } catch (error) {
-    console.error('加载聚合数据失败:', error);
     clusters.value = [];
+    console.error('加载聚合数据失败:', error);
   }
 }
 

@@ -196,6 +196,21 @@ class LikeServiceClass {
       offset: parseInt(offset, 10)
     });
 
+    // 获取每个故事的点赞数
+    const storyIds = rows.map((like) => like.storyId).filter(Boolean);
+    const likeCounts = await Like.findAll({
+      where: { storyId: { [Op.in]: storyIds } },
+      attributes: ['storyId', [Like.sequelize.fn('COUNT', Like.sequelize.col('id')), 'count']],
+      group: ['storyId'],
+      raw: true
+    });
+
+    // 构建点赞数映射
+    const likeCountMap = {};
+    likeCounts.forEach((item) => {
+      likeCountMap[item.storyId] = parseInt(item.count, 10) || 0;
+    });
+
     return {
       likes: rows.map((like) => ({
         id: like.id,
@@ -208,6 +223,7 @@ class LikeServiceClass {
           createdAt: like.story?.createdAt,
           location: parseStoryLocationValue(like.story?.location),
           locationName: like.story?.locationName,
+          likeCount: likeCountMap[like.storyId] || 0,
           author: like.story?.author
             ? {
                 id: like.story.author.id,
