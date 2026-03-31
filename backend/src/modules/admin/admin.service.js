@@ -3,7 +3,7 @@ import { User } from '../auth/auth.model.js';
 import { AdminAction } from './admin.model.js';
 import { Blacklist } from '../auth/blacklist.model.js';
 import { sequelize } from '../../config/database.js';
-import { clearUserCache } from './auth.middleware.js';
+import { clearUserCache } from '../auth/auth.middleware.js';
 import { Op } from 'sequelize';
 
 /**
