@@ -55,7 +55,16 @@
 
     <div class="hero-wrapper">
       <div class="hero">
-        <h1 class="logo artistic-text">EchoStar</h1>
+        <h1 ref="logoRef" class="logo">
+          <span class="logo-layer logo-layer--base artistic-text" :style="logoBaseStyle">EchoStar</span>
+          <span
+            class="logo-layer logo-layer--inverse artistic-text"
+            :style="logoInverseStyle"
+            aria-hidden="true"
+          >
+            EchoStar
+          </span>
+        </h1>
         <p class="tagline artistic-sub">在地图上留下你的情绪印记</p>
 
         <div class="actions">
@@ -69,7 +78,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../../stores/user';
 import LoginModal from './components/LoginModal.vue';
@@ -77,6 +86,7 @@ import LoginModal from './components/LoginModal.vue';
 const router = useRouter();
 const userStore = useUserStore();
 const showLogin = ref(false);
+const logoRef = ref(null);
 
 const decorativeStars = [
   { id: 1, symbol: '✦', top: '8%', left: '9%', size: '24px', delay: '0s', duration: '4.8s', opacity: 0.72 },
@@ -133,6 +143,10 @@ const pointerPrevious = { x: 0, y: 0 };
 const pointerVelocity = { x: 0, y: 0 };
 let pointerInside = false;
 let animationFrameId = 0;
+let logoResizeObserver = null;
+const logoBounds = ref(null);
+const lensInnerStop = 68;
+const lensOuterStop = 77;
 
 const nightMaskStyle = computed(() => {
   if (!lensVisible.value) {
@@ -142,15 +156,83 @@ const nightMaskStyle = computed(() => {
     };
   }
 
-  const centerX = lensX.value + lensOffsetX.value;
-  const centerY = lensY.value + lensOffsetY.value;
-  const mask = `radial-gradient(ellipse ${lensRadiusX.value}px ${lensRadiusY.value}px at ${centerX}px ${centerY}px, transparent 0, transparent 68%, black 77%)`;
+  const centerX = lensX.value;
+  const centerY = lensY.value;
+  const mask = `radial-gradient(ellipse ${lensRadiusX.value}px ${lensRadiusY.value}px at ${centerX}px ${centerY}px, transparent 0, transparent ${lensInnerStop}%, black ${lensOuterStop}%)`;
 
   return {
     maskImage: mask,
     WebkitMaskImage: mask,
   };
 });
+
+function buildMaskedLogoStyle(maskImage, opacity = 1) {
+  return {
+    opacity,
+    maskImage,
+    WebkitMaskImage: maskImage,
+    maskRepeat: 'no-repeat',
+    WebkitMaskRepeat: 'no-repeat',
+    maskSize: '100% 100%',
+    WebkitMaskSize: '100% 100%',
+  };
+}
+
+function getLogoMasks() {
+  if (!lensVisible.value || !logoBounds.value) {
+    return null;
+  }
+
+  const localX = lensX.value - logoBounds.value.left;
+  const localY = lensY.value - logoBounds.value.top;
+  const revealMask = `radial-gradient(ellipse ${lensRadiusX.value}px ${lensRadiusY.value}px at ${localX}px ${localY}px, black 0, black ${lensInnerStop}%, transparent ${lensOuterStop}%)`;
+  const hideMask = `radial-gradient(ellipse ${lensRadiusX.value}px ${lensRadiusY.value}px at ${localX}px ${localY}px, transparent 0, transparent ${lensInnerStop}%, black ${lensOuterStop}%)`;
+
+  return {
+    revealMask,
+    hideMask,
+  };
+}
+
+const logoBaseStyle = computed(() => {
+  const masks = getLogoMasks();
+
+  if (!masks) {
+    return {
+      opacity: 1,
+      maskImage: 'none',
+      WebkitMaskImage: 'none',
+    };
+  }
+
+  return buildMaskedLogoStyle(masks.hideMask);
+});
+
+const logoInverseStyle = computed(() => {
+  if (!lensVisible.value || !logoBounds.value) {
+    return {
+      opacity: 0,
+      maskImage: 'none',
+      WebkitMaskImage: 'none',
+    };
+  }
+
+  return buildMaskedLogoStyle(getLogoMasks().revealMask, 1);
+});
+
+function updateLogoBounds() {
+  if (!logoRef.value) {
+    return;
+  }
+
+  const rect = logoRef.value.getBoundingClientRect();
+  logoBounds.value = {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
 
 function seedPointer(event) {
   pointerTarget.x = event.clientX;
@@ -163,6 +245,7 @@ function seedPointer(event) {
   pointerVelocity.y = 0;
   lensX.value = event.clientX;
   lensY.value = event.clientY;
+  updateLogoBounds();
 }
 
 function handlePointerEnter(event) {
@@ -179,6 +262,8 @@ function handlePointerMove(event) {
 
   pointerTarget.x = event.clientX;
   pointerTarget.y = event.clientY;
+  lensX.value = event.clientX;
+  lensY.value = event.clientY;
 }
 
 function handlePointerLeave() {
@@ -187,48 +272,41 @@ function handlePointerLeave() {
 }
 
 function animateReveal() {
-  const easing = pointerInside ? 0.24 : 0.12;
-  pointerCurrent.x += (pointerTarget.x - pointerCurrent.x) * easing;
-  pointerCurrent.y += (pointerTarget.y - pointerCurrent.y) * easing;
-
-  const velocityX = pointerCurrent.x - pointerPrevious.x;
-  const velocityY = pointerCurrent.y - pointerPrevious.y;
-  const speed = Math.min(Math.hypot(velocityX, velocityY), 34);
+  const nextX = pointerTarget.x;
+  const nextY = pointerTarget.y;
+  const velocityX = nextX - pointerPrevious.x;
+  const velocityY = nextY - pointerPrevious.y;
+  const speed = Math.min(Math.hypot(velocityX, velocityY), 42);
   const accelerationX = velocityX - pointerVelocity.x;
   const accelerationY = velocityY - pointerVelocity.y;
-  const acceleration = Math.min(Math.hypot(accelerationX, accelerationY), 26);
 
-  pointerPrevious.x = pointerCurrent.x;
-  pointerPrevious.y = pointerCurrent.y;
+  pointerPrevious.x = nextX;
+  pointerPrevious.y = nextY;
   pointerVelocity.x = velocityX;
   pointerVelocity.y = velocityY;
 
-  const offsetTargetX = -velocityX * 1.8 - accelerationX * 1.25;
-  const offsetTargetY = -velocityY * 1.8 - accelerationY * 1.25;
-  lensOffsetX.value += (offsetTargetX - lensOffsetX.value) * 0.2;
-  lensOffsetY.value += (offsetTargetY - lensOffsetY.value) * 0.2;
+  const stretchX = Math.min(88, Math.abs(velocityX) * 2.4 + Math.abs(accelerationX) * 1.3 + speed * 0.38);
+  const stretchY = Math.min(88, Math.abs(velocityY) * 2.4 + Math.abs(accelerationY) * 1.3 + speed * 0.38);
+  const squeezeX = Math.min(22, Math.abs(velocityY) * 0.55 + speed * 0.14);
+  const squeezeY = Math.min(22, Math.abs(velocityX) * 0.55 + speed * 0.14);
 
   const radiusXTarget = Math.max(
-    206,
-    220 + Math.abs(velocityX) * 1.7 + Math.abs(accelerationX) * 1.9 - Math.abs(velocityY) * 0.14 + speed * 0.14 + acceleration * 0.2
+    198,
+    220 + stretchX - squeezeX
   );
   const radiusYTarget = Math.max(
-    206,
-    220 + Math.abs(velocityY) * 1.7 + Math.abs(accelerationY) * 1.9 - Math.abs(velocityX) * 0.14 + speed * 0.14 + acceleration * 0.2
+    198,
+    220 + stretchY - squeezeY
   );
 
-  lensRadiusX.value += (radiusXTarget - lensRadiusX.value) * 0.22;
-  lensRadiusY.value += (radiusYTarget - lensRadiusY.value) * 0.22;
-  lensX.value = pointerCurrent.x;
-  lensY.value = pointerCurrent.y;
+  lensRadiusX.value += (radiusXTarget - lensRadiusX.value) * 0.48;
+  lensRadiusY.value += (radiusYTarget - lensRadiusY.value) * 0.48;
 
   if (!pointerInside) {
-    lensOffsetX.value += (0 - lensOffsetX.value) * 0.17;
-    lensOffsetY.value += (0 - lensOffsetY.value) * 0.17;
     lensRadiusX.value += (220 - lensRadiusX.value) * 0.15;
     lensRadiusY.value += (220 - lensRadiusY.value) * 0.15;
-    pointerVelocity.x += (0 - pointerVelocity.x) * 0.2;
-    pointerVelocity.y += (0 - pointerVelocity.y) * 0.2;
+    pointerVelocity.x += (0 - pointerVelocity.x) * 0.4;
+    pointerVelocity.y += (0 - pointerVelocity.y) * 0.4;
   }
 
   animationFrameId = window.requestAnimationFrame(animateReveal);
@@ -245,6 +323,17 @@ onMounted(() => {
   pointerPrevious.y = centerY;
   lensX.value = centerX;
   lensY.value = centerY;
+  nextTick(() => {
+    updateLogoBounds();
+
+    if (typeof ResizeObserver !== 'undefined' && logoRef.value) {
+      logoResizeObserver = new ResizeObserver(() => {
+        updateLogoBounds();
+      });
+      logoResizeObserver.observe(logoRef.value);
+    }
+  });
+  window.addEventListener('resize', updateLogoBounds);
   animationFrameId = window.requestAnimationFrame(animateReveal);
 });
 
@@ -252,6 +341,12 @@ onBeforeUnmount(() => {
   if (animationFrameId) {
     window.cancelAnimationFrame(animationFrameId);
   }
+
+  if (logoResizeObserver) {
+    logoResizeObserver.disconnect();
+  }
+
+  window.removeEventListener('resize', updateLogoBounds);
 });
 
 if (userStore?.isLoggedIn) {
@@ -410,10 +505,38 @@ if (userStore?.isLoggedIn) {
   align-items: center;
 }
 
+.logo {
+  position: relative;
+  display: inline-block;
+  margin: 0 0 16px;
+}
+
+.logo-layer {
+  display: block;
+  white-space: nowrap;
+}
+
+.logo-layer--base {
+  filter: none;
+}
+
+.logo-layer--inverse {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, #fff9ef 0%, #f3d59b 44%, #d79a43 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: invert(1) hue-rotate(180deg) saturate(1.15) contrast(1.08);
+  text-shadow: none;
+  transition: opacity 120ms ease-out;
+}
+
 .artistic-text {
+  display: block;
   font-size: 80px;
   font-weight: 700;
-  margin-bottom: 16px;
   font-family: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -421,8 +544,6 @@ if (userStore?.isLoggedIn) {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: drop-shadow(0px 6px 4px rgba(51, 31, 5, 0.32))
-          drop-shadow(0px 0px 18px rgba(255, 220, 150, 0.32));
 }
 
 .artistic-sub {
