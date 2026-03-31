@@ -3,6 +3,7 @@ import { User } from '../auth/auth.model.js';
 import { AdminAction } from './admin.model.js';
 import { Blacklist } from '../auth/blacklist.model.js';
 import { sequelize } from '../../config/database.js';
+import { clearUserCache } from './auth.middleware.js';
 import { Op } from 'sequelize';
 
 /**
@@ -173,6 +174,8 @@ export const AdminService = {
       }, { transaction });
 
       await transaction.commit();
+
+      await clearUserCache(user.id);
     } catch (error) {
       await transaction.rollback();
       throw error;
@@ -208,6 +211,8 @@ export const AdminService = {
       });
 
       await transaction.commit();
+
+      await clearUserCache(userdata.id);
     } catch (error) {
       await transaction.rollback();
       throw error;
