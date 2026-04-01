@@ -15,8 +15,9 @@ export const AdminAction = sequelize.define('AdminAction', {
     autoIncrement: true
   },
   storyId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     allowNull: false,
+    field: 'story_id',
     references: {
       model: 'stories',
       key: 'id'
