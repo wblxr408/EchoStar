@@ -5,6 +5,7 @@ import { Comment } from '../comment/comment.model.js';
 import { generateStoryUploadToken } from '../../common/utils/oss.js';
 import { wrapWithCache, wrapWithClearCache, redisClient } from '../../common/utils/redis.js';
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
+import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
 import { Op } from 'sequelize';
 
 function parseStoryLocationValue(locationValue) {
@@ -162,28 +163,6 @@ class StoryServiceClass {
 // ✅ 这是你要粘贴进去的新代码
     // PostGIS 坐标转换（可缓存）
     let location = parseStoryLocationValue(story.location);
-    if (false && story.location) {
-      // 1. 如果 Sequelize 已经把它解析成了 GeoJSON 对象 (绝大多数情况)
-      if (story.location.type === 'Point' && Array.isArray(story.location.coordinates)) {
-        location = {
-          lng: story.location.coordinates[0],
-          lat: story.location.coordinates[1]
-        };
-      }
-      // 2. 备用逻辑：如果是 WKT 字符串格式
-      else {
-        const locationStr = typeof story.location === 'string'
-          ? story.location
-          : story.location.toString();
-        const match = locationStr.match(/POINT\(([^ ]+) ([^ ]+)\)/i);
-        if (match) {
-          location = {
-            lng: parseFloat(match[1]),
-            lat: parseFloat(match[2])
-          };
-        }
-      }
-    }
 
     // 返回原始数据结构
     return {
@@ -278,6 +257,11 @@ class StoryServiceClass {
     }
 
     await story.update({ visibility: 'deleted' });
+
+    // 清理点赞缓存
+    likeCacheUtil.clearStoryCache(storyId).catch((err) => {
+      console.error(`❌ 清理故事点赞缓存失败 [storyId: ${storyId}]:`, err);
+    });
 
     return { success: true, message: '删除成功' };
   }

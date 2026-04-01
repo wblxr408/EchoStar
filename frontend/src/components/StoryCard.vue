@@ -1,10 +1,13 @@
 <template>
-  <div class="story-card" :class="emotionClass">
+  <div class="story-card" :class="emotionClass" @click="handleSelect">
     <div class="story-header">
       <div class="user-info">
-        <img :src="story.author?.avatar || story.avatar" :alt="story.author?.username || story.username" class="avatar" />
+        <div class="avatar-shell">
+          <img v-if="storyAuthorAvatar" :src="storyAuthorAvatar" :alt="storyAuthorName" class="avatar" />
+          <span v-else class="avatar-fallback">{{ getInitial(storyAuthorName) }}</span>
+        </div>
         <div class="user-details">
-          <span class="username">{{ story.author?.username || story.username }}</span>
+          <span class="username">{{ storyAuthorName }}</span>
           <span class="time">{{ formatRelativeTime(story.createdAt) }}</span>
         </div>
       </div>
@@ -20,8 +23,8 @@
         v-for="(image, index) in story.images"
         :key="index"
         :src="image"
-        :alt="`图片 ${index + 1}`"
-        @click="previewImage(index)"
+        :alt="`故事图片 ${index + 1}`"
+        @click.stop="previewImage(index)"
       />
     </div>
 
@@ -53,11 +56,9 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['preview-image']);
+const emit = defineEmits(['preview-image', 'select-story']);
 
-// 情绪对应的 class
 const emotionClass = computed(() => {
-  // 转换后端emotionTag为前端emotion
   const emotion = fromEmotionTag(props.story.emotionTag) || props.story.emotion;
   const emotionMap = {
     happy: 'emotion-happy',
@@ -69,9 +70,50 @@ const emotionClass = computed(() => {
   return emotionMap[emotion] || '';
 });
 
-// 预览图片
+const storyAuthorName = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
+  const userObject = props.story?.user && typeof props.story.user === 'object'
+    ? props.story.user
+    : null;
+
+  return [
+    authorObject?.username,
+    userObject?.username,
+    typeof props.story?.author === 'string' ? props.story.author : '',
+    props.story?.username,
+    '\u533f\u540d\u7528\u6237'
+  ].find((value) => typeof value === 'string' && value.trim()) || '\u533f\u540d\u7528\u6237';
+});
+
+const storyAuthorAvatar = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
+  const userObject = props.story?.user && typeof props.story.user === 'object'
+    ? props.story.user
+    : null;
+
+  return authorObject?.avatar
+    || authorObject?.avatarUrl
+    || userObject?.avatar
+    || userObject?.avatarUrl
+    || props.story?.avatar
+    || props.story?.avatarUrl
+    || '';
+});
+
+function getInitial(name) {
+  return String(name || '\u533f').trim().slice(0, 1).toUpperCase() || '\u533f';
+}
+
 function previewImage(index) {
   emit('preview-image', { index, images: props.story.images });
+}
+
+function handleSelect() {
+  emit('select-story', props.story);
 }
 </script>
 
@@ -82,6 +124,7 @@ function previewImage(index) {
   padding: 20px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   margin-bottom: 16px;
+  cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -101,19 +144,39 @@ function previewImage(index) {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
-.avatar {
+.avatar-shell {
   width: 40px;
   height: 40px;
   border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72) 0%, rgba(139, 86, 29, 0.18) 100%);
+  color: #8b561d;
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+}
+
+.avatar-fallback {
+  line-height: 1;
 }
 
 .user-details {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .username {
@@ -194,7 +257,6 @@ function previewImage(index) {
   font-size: 16px;
 }
 
-/* 情绪主题色 */
 .story-card.emotion-happy {
   border-left: 4px solid #ffd93d;
 }

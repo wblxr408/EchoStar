@@ -1,85 +1,36 @@
 <template>
   <Teleport to="body">
     <div class="paper-plane-overlay" @click="handleClose">
-      <!-- 飞行轨迹线 -->
-      <svg class="flight-path" v-if="!directOpen && isFlying">
-        <path 
-          :d="flightPath" 
-          fill="none" 
-          stroke="rgba(255,255,255,0.3)" 
-          stroke-width="2"
-          stroke-dasharray="5,5"
-        />
-      </svg>
+      <div class="paper-sheet" @click.stop>
+        <div class="paper-texture"></div>
+        <span class="tarot-suit suit-top">✦</span>
+        <span class="tarot-suit suit-bottom">✦</span>
+        <span class="tarot-corner corner-top-right"></span>
+        <span class="tarot-corner corner-bottom-left"></span>
 
-      <!-- 纸飞机 -->
-      <div
-        v-if="!directOpen"
-        class="paper-plane"
-        :class="{ 'flying': isFlying, 'hovering': isHovering, 'unfolding': isUnfolding }"
-        :style="planeStyle"
-      >
-        <svg viewBox="0 0 100 100" class="plane-svg">
-          <path 
-            d="M50 10 L90 80 L50 65 L10 80 Z" 
-            fill="#f5f5f5" 
-            stroke="#ddd" 
-            stroke-width="1"
-          />
-          <path 
-            d="M50 10 L50 65" 
-            stroke="#ccc" 
-            stroke-width="1"
-            fill="none"
-          />
-          <path 
-            d="M50 65 L90 80" 
-            stroke="#ccc" 
-            stroke-width="1"
-            fill="none"
-          />
-          <path 
-            d="M50 65 L10 80" 
-            stroke="#ccc" 
-            stroke-width="1"
-            fill="none"
-          />
-        </svg>
-      </div>
-
-      <!-- 展开的纸张 -->
-      <div 
-        class="paper-sheet"
-        :class="{ 'show': isSheetVisible }"
-        :style="sheetStyle"
-        @click.stop
-      >
-        <!-- 纸张褶皱效果 -->
-        <div class="paper-texture">
-          <div class="crease crease-1"></div>
-          <div class="crease crease-2"></div>
-          <div class="crease crease-3"></div>
-          <div class="crease crease-4"></div>
-        </div>
-
-        <!-- 关闭按钮 -->
-        <button class="close-btn" @click="handleClose">
+        <button
+          type="button"
+          class="close-btn"
+          aria-label="关闭故事详情"
+          @click="handleClose"
+        >
           <span>×</span>
         </button>
 
-        <!-- 精选/置顶标识 -->
         <div v-if="story.isFeatured || story.isPinned" class="story-badges">
-          <span v-if="story.isPinned" class="badge pinned">📌 置顶</span>
-          <span v-if="story.isFeatured" class="badge featured">⭐ 精选</span>
+          <span v-if="story.isPinned" class="badge pinned">置顶</span>
+          <span v-if="story.isFeatured" class="badge featured">精选</span>
         </div>
 
-        <!-- 故事内容 -->
         <div class="story-content-wrapper">
           <div class="story-header">
             <div class="user-info">
-              <img :src="story.avatar" :alt="story.username" class="avatar" />
+              <div class="avatar-shell">
+                <img v-if="storyAuthorAvatar" :src="storyAuthorAvatar" :alt="storyAuthorName" class="avatar" />
+                <span v-else class="avatar-fallback">{{ getInitial(storyAuthorName) }}</span>
+              </div>
               <div class="user-details">
-                <span class="username">{{ story.username }}</span>
+                <span class="username">{{ storyAuthorName }}</span>
                 <span class="time">{{ formatRelativeTime(story.createdAt) }}</span>
               </div>
             </div>
@@ -87,14 +38,16 @@
           </div>
 
           <div class="story-body">
-            <p class="story-text">{{ story.content }}</p>
-            
+            <div class="story-text-card">
+              <p class="story-text">{{ story.content }}</p>
+            </div>
+
             <div v-if="story.images && story.images.length > 0" class="story-images">
               <img
                 v-for="(image, index) in story.images"
                 :key="index"
                 :src="image"
-                :alt="`图片 ${index + 1}`"
+                :alt="`故事图片 ${index + 1}`"
                 @click="previewImage(index)"
               />
             </div>
@@ -107,44 +60,65 @@
             </div>
           </div>
 
-          <!-- 互动功能区 -->
           <div class="story-actions">
-            <button class="action-btn like" :class="{ 'liked': isLiked }" @click="handleLike">
-              <span class="icon">❤️</span>
-              <span class="count">{{ likeCount }}</span>
+            <button
+              type="button"
+              class="action-btn like"
+              :class="{ liked: isLiked, pending: likePending }"
+              :disabled="likePending"
+              @click="handleLike"
+            >
+              <span class="icon">♥</span>
+              <span class="action-copy">
+                <span class="action-label">共鸣</span>
+                <strong class="action-count">{{ likeCount }}</strong>
+              </span>
             </button>
-            <button class="action-btn comment" @click="showCommentInput = true">
-              <span class="icon">💬</span>
-              <span class="count">{{ comments.length }}</span>
+            <button type="button" class="action-btn comment" @click="showCommentInput = true">
+              <span class="icon">✎</span>
+              <span class="action-copy">
+                <span class="action-label">评论</span>
+                <strong class="action-count">{{ commentCount }}</strong>
+              </span>
             </button>
-            <button class="action-btn report" @click="showReportModal = true">
-              <span class="icon">🚨</span>
-              <span>举报</span>
+            <button type="button" class="action-btn report" @click="openReportModal">
+              <span class="icon">⚑</span>
+              <span class="action-copy">
+                <span class="action-label">举报</span>
+                <strong class="action-count compact">反馈</strong>
+              </span>
             </button>
           </div>
 
-          <!-- 评论区 -->
           <div class="comments-section">
-            <h4 class="comments-title">评论 ({{ comments.length }})</h4>
-            
-            <!-- 评论输入 -->
+            <h4 class="comments-title">评论 ({{ commentCount }})</h4>
+
             <div v-if="showCommentInput" class="comment-input-area">
-              <textarea 
-                v-model="newComment" 
-                placeholder="写下你的评论..." 
+              <textarea
+                v-model="newComment"
+                placeholder="写下你的评论..."
                 rows="2"
                 class="comment-textarea"
               ></textarea>
               <div class="comment-actions">
-                <button class="btn-cancel" @click="showCommentInput = false">取消</button>
-                <button class="btn-submit" @click="submitComment" :disabled="!newComment.trim()">发送</button>
+                <button type="button" class="btn-cancel" @click="showCommentInput = false">取消</button>
+                <button
+                  type="button"
+                  class="btn-submit"
+                  :disabled="!newComment.trim()"
+                  @click="submitComment"
+                >
+                  发布
+                </button>
               </div>
             </div>
 
-            <!-- 评论列表 -->
             <div class="comments-list">
               <div v-for="comment in comments" :key="comment.id" class="comment-item">
-                <img :src="comment.avatar" class="comment-avatar">
+                <div class="comment-avatar">
+                  <img v-if="comment.avatar" :src="comment.avatar" :alt="comment.author" />
+                  <span v-else>{{ getInitial(comment.author) }}</span>
+                </div>
                 <div class="comment-content">
                   <div class="comment-header">
                     <span class="comment-author">{{ comment.author }}</span>
@@ -154,7 +128,7 @@
                 </div>
               </div>
               <div v-if="comments.length === 0" class="no-comments">
-                还没有评论，来说点什么吧～
+                还没有评论，来说点什么吧。
               </div>
             </div>
           </div>
@@ -162,18 +136,22 @@
       </div>
     </div>
 
-    <!-- 举报弹窗 -->
     <Teleport to="body" v-if="showReportModal">
-      <div class="report-modal-overlay" @click.self="showReportModal = false">
+      <div class="report-modal-overlay" @click.self="closeReportModal">
         <div class="report-modal-content">
-          <h3>🚨 举报内容</h3>
-          <p class="report-desc">请选择举报原因并填写详细描述，帮助我们更好地处理：</p>
-          
+          <span class="tarot-suit suit-top report-suit">✦</span>
+          <span class="tarot-suit suit-bottom report-suit">✦</span>
+          <span class="tarot-corner corner-top-right"></span>
+          <span class="tarot-corner corner-bottom-left"></span>
+
+          <h3>举报内容</h3>
+          <p class="report-desc">请选择举报原因并补充说明，帮助我们更快处理这条故事。</p>
+
           <div class="report-reasons">
             <label v-for="reason in reportReasons" :key="reason.key" class="reason-option">
-              <input 
-                type="radio" 
-                v-model="selectedReportReason" 
+              <input
+                v-model="selectedReportReason"
+                type="radio"
                 :value="reason.key"
                 name="reportReason"
               >
@@ -181,20 +159,21 @@
             </label>
           </div>
 
-          <textarea 
-            v-model="reportDescription" 
-            placeholder="请详细描述举报原因（不少于10个字）..." 
+          <textarea
+            v-model="reportDescription"
             rows="4"
             class="report-textarea"
+            placeholder="请详细描述举报原因，不少于 10 个字..."
           ></textarea>
           <p v-if="reportError" class="report-error">{{ reportError }}</p>
 
           <div class="report-actions">
-            <button class="btn-cancel" @click="showReportModal = false">取消</button>
-            <button 
-              class="btn-submit" 
+            <button type="button" class="btn-cancel" @click="closeReportModal">取消</button>
+            <button
+              type="button"
+              class="btn-submit"
+              :disabled="!selectedReportReason || reportDescription.trim().length < 10"
               @click="submitReport"
-              :disabled="!selectedReportReason || reportDescription.length < 10"
             >
               提交举报
             </button>
@@ -206,7 +185,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { formatRelativeTime } from '../utils/time';
 import { getEmotionEmoji } from '../utils/emotion';
 import { REPORT_TYPES } from '../utils/report';
@@ -226,577 +205,491 @@ const props = defineProps({
   },
   directOpen: {
     type: Boolean,
+    default: true
+  },
+  likePending: {
+    type: Boolean,
     default: false
   }
 });
 
 const emit = defineEmits(['close', 'preview-image', 'like', 'comment', 'report']);
 
-const isFlying = ref(false);
-const isHovering = ref(false);
-const isUnfolding = ref(false);
-const isUnfolded = ref(false);
-
-// 互动功能状态
 const isLiked = ref(false);
-const likeCount = ref(props.story.likes || 0);
+const likeCount = ref(0);
+const commentCount = ref(0);
 const showCommentInput = ref(false);
 const newComment = ref('');
-const comments = ref(props.story.comments || []);
+const comments = ref([]);
 
-// 举报弹窗状态
 const showReportModal = ref(false);
 const selectedReportReason = ref('');
 const reportDescription = ref('');
 const reportError = ref('');
 
-// 使用共享的举报类型
 const reportReasons = REPORT_TYPES;
+const storyAuthorName = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
 
-// 纸飞机当前位置
-const currentPos = ref({ x: props.startPosition.x, y: props.startPosition.y });
-// 目标位置（随机生成）
-const targetPos = ref({ x: 0, y: 0 });
-// 旋转角度
-const rotation = ref(0);
-const directOpen = computed(() => props.directOpen);
-const isSheetVisible = computed(() => directOpen.value || isUnfolded.value);
-
-// 计算纸飞机样式
-const planeStyle = computed(() => ({
-  left: currentPos.value.x + 'px',
-  top: currentPos.value.y + 'px',
-  transform: `translate(-50%, -50%) rotate(${rotation.value}deg) scale(${isHovering.value ? 1.2 : 1})`
-}));
-
-// 计算纸张展开位置
-const sheetStyle = computed(() => ({
-  left: directOpen.value ? '50%' : currentPos.value.x + 'px',
-  top: directOpen.value ? '50%' : currentPos.value.y + 'px',
-  transform: directOpen.value
-    ? 'translate(-50%, -50%) scale(1) rotate(0deg)'
-    : isUnfolded.value
-      ? 'translate(-50%, -50%) scale(1) rotate(0deg)'
-      : 'translate(-50%, -50%) scale(0.1) rotate(-5deg)'
-}));
-
-// 控制点（根据距离动态计算弧度）
-const controlPoint = ref({ x: 0, y: 0 });
-
-// 计算飞行轨迹路径
-const flightPath = computed(() => {
-  const startX = props.startPosition.x;
-  const startY = props.startPosition.y;
-  const endX = targetPos.value.x;
-  const endY = targetPos.value.y;
-  const cx = controlPoint.value.x;
-  const cy = controlPoint.value.y;
-  return `M ${startX} ${startY} Q ${cx} ${cy} ${endX} ${endY}`;
+  return [
+    props.story?.username,
+    authorObject?.username,
+    typeof props.story?.author === 'string' ? props.story.author : '',
+    '匿名用户'
+  ].find((value) => typeof value === 'string' && value.trim()) || '匿名用户';
 });
 
-// 计算贝塞尔曲线上的点
-function getBezierPoint(t, p0, p1, p2) {
-  const x = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x;
-  const y = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y;
-  return { x, y };
-}
+const storyAuthorAvatar = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
 
-// 计算贝塞尔曲线在t点的切线角度
-function getBezierAngle(t, p0, p1, p2, prevAngle = null) {
-  const dx = 2 * (1 - t) * (p1.x - p0.x) + 2 * t * (p2.x - p1.x);
-  const dy = 2 * (1 - t) * (p1.y - p0.y) + 2 * t * (p2.y - p1.y);
-  let angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
-  
-  // 避免角度突变（处理360°跳跃问题）
-  if (prevAngle !== null) {
-    while (angle - prevAngle > 180) angle -= 360;
-    while (angle - prevAngle < -180) angle += 360;
+  return authorObject?.avatar || props.story?.avatar || '';
+});
+
+function resolveLikeCount(story) {
+  if (Array.isArray(story?.likes)) {
+    return story.likes.length;
   }
-  
-  return angle;
+
+  const nextCount = Number(story?.likeCount ?? story?.likes ?? 0);
+  return Number.isFinite(nextCount) ? nextCount : 0;
 }
 
-// 预览图片
+function resolveCommentCount(story, nextComments) {
+  const nextCount = Number(story?.commentCount);
+  if (Number.isFinite(nextCount)) {
+    return nextCount;
+  }
+  return nextComments.length;
+}
+
+watch(
+  () => props.story,
+  (story) => {
+    const nextComments = Array.isArray(story?.comments) ? story.comments : [];
+    isLiked.value = Boolean(story?.isLiked);
+    likeCount.value = resolveLikeCount(story);
+    comments.value = nextComments;
+    commentCount.value = resolveCommentCount(story, nextComments);
+  },
+  { immediate: true, deep: true }
+);
+
+watch(
+  () => props.story?.id,
+  () => {
+    showCommentInput.value = false;
+    newComment.value = '';
+    closeReportModal();
+  },
+  { immediate: true }
+);
+
+function getInitial(name) {
+  return String(name || '匿').trim().slice(0, 1).toUpperCase() || '匿';
+}
+
 function previewImage(index) {
   emit('preview-image', { index, images: props.story.images });
 }
 
-// 关闭
 function handleClose() {
   emit('close');
 }
 
-// 点赞
 function handleLike() {
-  // 检查是否登录（游客不能点赞）
   if (!userStore.isLoggedIn || userStore.isGuest) {
     alert('请先登录后再点赞');
     return;
   }
-  if (isLiked.value) {
-    likeCount.value--;
-    isLiked.value = false;
-  } else {
-    likeCount.value++;
-    isLiked.value = true;
+
+  if (props.likePending) {
+    return;
   }
-  emit('like', { storyId: props.story.id, liked: isLiked.value });
+
+  emit('like', { storyId: props.story.id });
 }
 
-// 提交评论
 function submitComment() {
-  // 检查是否登录（游客不能评论）
   if (!userStore.isLoggedIn || userStore.isGuest) {
     alert('请先登录后再评论');
     return;
   }
-  if (!newComment.value.trim()) return;
+
+  const content = newComment.value.trim();
+  if (!content) {
+    return;
+  }
 
   const comment = {
     id: Date.now(),
-    author: '我',
-    avatar: 'https://picsum.photos/32/32?random=me',
-    content: newComment.value.trim(),
+    author: userStore.user?.username || userStore.user?.name || '我',
+    avatar: userStore.user?.avatar || '',
+    content,
     createdAt: new Date().toISOString()
   };
 
-  comments.value.unshift(comment);
+  comments.value = [comment, ...comments.value];
+  commentCount.value = comments.value.length;
   emit('comment', { storyId: props.story.id, comment });
 
   newComment.value = '';
   showCommentInput.value = false;
 }
 
-// 提交举报
+function openReportModal() {
+  reportError.value = '';
+  showReportModal.value = true;
+}
+
+function closeReportModal() {
+  showReportModal.value = false;
+  selectedReportReason.value = '';
+  reportDescription.value = '';
+  reportError.value = '';
+}
+
 async function submitReport() {
-  // 检查是否登录（游客不能举报）
   if (!userStore.isLoggedIn || userStore.isGuest) {
     alert('请先登录后再举报');
     return;
   }
+
   if (!selectedReportReason.value) {
     reportError.value = '请选择举报原因';
     return;
   }
-  if (reportDescription.value.length < 10) {
-    reportError.value = '请详细描述举报原因（不少于10个字）';
+
+  const description = reportDescription.value.trim();
+  if (description.length < 10) {
+    reportError.value = '请详细描述举报原因，不少于 10 个字';
     return;
   }
 
+  reportError.value = '';
+
   try {
-    await reportApi.create('story', props.story.id, `${selectedReportReason.value}: ${reportDescription.value}`);
-
-    // 重置并关闭弹窗
-    selectedReportReason.value = '';
-    reportDescription.value = '';
-    reportError.value = '';
-    showReportModal.value = false;
-
+    await reportApi.create('story', props.story.id, `${selectedReportReason.value}: ${description}`);
+    closeReportModal();
     alert('举报已提交，我们会尽快处理');
   } catch (error) {
     console.error('举报失败:', error);
     alert(error.message || '举报失败，请重试');
   }
 }
-
-// 生成随机目标位置（确保故事框能完整显示在页面内）
-function generateTargetPosition() {
-  // 故事框尺寸（与CSS中的max-width和max-height对应）
-  const sheetWidth = Math.min(window.innerWidth * 0.9, 500);
-  const sheetHeight = Math.min(window.innerHeight * 0.8, 600);
-  
-  // 边距：减小边距，增加飞行距离
-  const marginX = sheetWidth / 2 + 20;
-  const marginY = sheetHeight / 2 + 20;
-  
-  const maxX = window.innerWidth - marginX;
-  const maxY = window.innerHeight - marginY;
-  const minX = marginX;
-  const minY = marginY;
-  
-  return {
-    x: Math.random() * (maxX - minX) + minX,
-    y: Math.random() * (maxY - minY) + minY
-  };
-}
-
-// 根据距离计算控制点（距离越长，弧度越大）
-function calculateControlPoint(start, end) {
-  const midX = (start.x + end.x) / 2;
-  const midY = (start.y + end.y) / 2;
-  
-  // 计算距离
-  const distance = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
-  
-  // 根据距离计算弧度大小（距离越长，弧度越大，但有上限）
-  const baseArc = Math.min(distance * 0.3, 300);
-  const arcHeight = baseArc + Math.random() * 100;
-  
-  // 计算垂直方向（垂直于起点到终点的连线）
-  const angle = Math.atan2(end.y - start.y, end.x - start.x);
-  const perpAngle = angle + Math.PI / 2; // 垂直角度
-  
-  // 随机选择弧线方向（向上或向下弯曲）
-  const direction = Math.random() > 0.5 ? 1 : -1;
-  
-  return {
-    x: midX + Math.cos(perpAngle) * arcHeight * direction,
-    y: midY + Math.sin(perpAngle) * arcHeight * direction
-  };
-}
-
-// 计算角度
-function calculateAngle(from, to) {
-  return Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI + 90;
-}
-
-// 动画序列
-onMounted(() => {
-  if (directOpen.value) {
-    currentPos.value = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    isUnfolded.value = true;
-    return;
-  }
-
-  // 生成随机目标位置
-  targetPos.value = generateTargetPosition();
-  
-  // 计算控制点（根据距离决定弧度）
-  controlPoint.value = calculateControlPoint(props.startPosition, targetPos.value);
-  
-  // 设置初始位置
-  currentPos.value = { x: props.startPosition.x, y: props.startPosition.y };
-  
-  // 开始飞行动画
-  setTimeout(() => {
-    isFlying.value = true;
-    
-    // 动画飞行
-    const duration = 1200; // 1.2秒飞行时间
-    const startTime = Date.now();
-    const start = { x: props.startPosition.x, y: props.startPosition.y };
-    const end = { x: targetPos.value.x, y: targetPos.value.y };
-    const control = controlPoint.value;
-    let prevRotation = rotation.value;
-    
-    function animate() {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // 缓动函数：先快后慢
-      const easeOut = 1 - Math.pow(1 - progress, 3);
-      
-      // 使用贝塞尔曲线计算位置（严格按照轨迹飞行）
-      const pos = getBezierPoint(easeOut, start, control, end);
-      
-      // 添加轻微的随机摆动（不影响主要轨迹）
-      const wobble = Math.sin(progress * Math.PI * 6) * 5 * (1 - progress);
-      const wobbleAngle = Math.atan2(end.y - start.y, end.x - start.x) + Math.PI / 2;
-      
-      currentPos.value = {
-        x: pos.x + Math.cos(wobbleAngle) * wobble,
-        y: pos.y + Math.sin(wobbleAngle) * wobble
-      };
-      
-      // 根据贝塞尔曲线切线方向计算旋转角度（传入前一个角度避免突变）
-      const newRotation = getBezierAngle(easeOut, start, control, end, prevRotation);
-      rotation.value = newRotation;
-      prevRotation = newRotation;
-      
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        // 飞行结束，开始悬停
-        isFlying.value = false;
-        isHovering.value = true;
-        currentPos.value = { x: end.x, y: end.y };
-        // 保持最后飞行时的方向，不重置
-        
-        // 悬停一下再展开
-        setTimeout(() => {
-          isHovering.value = false;
-          isUnfolding.value = true;
-          
-          setTimeout(() => {
-            isUnfolded.value = true;
-          }, 500);
-        }, 300);
-      }
-    }
-    
-    requestAnimationFrame(animate);
-  }, 100);
-});
 </script>
 
 <style scoped>
 .paper-plane-overlay {
+  --story-detail-surface: linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 54%, rgba(229, 201, 150, 0.98) 100%);
+  --story-detail-border: rgba(196, 142, 48, 0.42);
+  --story-detail-frame: rgba(188, 141, 52, 0.34);
+  --story-detail-pattern: rgba(151, 101, 34, 0.16);
+  --story-detail-panel: rgba(255, 250, 241, 0.68);
+  --story-detail-panel-strong: rgba(255, 252, 246, 0.84);
+  --story-detail-text: #3c2910;
+  --story-detail-muted: rgba(72, 48, 17, 0.7);
+  --story-detail-accent: #8b561d;
+  --story-detail-accent-soft: rgba(159, 105, 34, 0.14);
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px;
+  background:
+    radial-gradient(circle at top, rgba(255, 226, 170, 0.26) 0%, transparent 30%),
+    rgba(10, 13, 22, 0.62);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   z-index: 10000;
-  overflow: hidden;
 }
 
-/* 飞行轨迹 */
-.flight-path {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* 纸飞机 */
-.paper-plane {
-  position: absolute;
-  width: 50px;
-  height: 50px;
-  z-index: 3;
-  pointer-events: none;
-  transition: transform 0.1s ease-out;
-}
-
-.paper-plane.flying {
-  opacity: 1;
-}
-
-.paper-plane.hovering {
-  animation: hover 0.3s ease-in-out infinite alternate;
-  /* 悬停时保持当前旋转角度，只添加小幅摆动 */
-}
-
-.paper-plane.unfolding {
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.1) rotate(180deg);
-  transition: all 0.5s ease-in-out;
-}
-
-@keyframes hover {
-  from {
-    margin-top: -3px;
-  }
-  to {
-    margin-top: 3px;
-  }
-}
-
-.plane-svg {
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(3px 6px 8px rgba(0, 0, 0, 0.3));
-}
-
-/* 展开的纸张 */
 .paper-sheet {
-  position: absolute;
-  width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 
-    0 0 60px rgba(102, 126, 234, 0.3),
-    0 0 100px rgba(118, 75, 162, 0.2),
-    0 8px 32px rgba(0, 0, 0, 0.1);
-  opacity: 0;
+  position: relative;
+  width: min(500px, calc(100vw - 40px));
+  max-height: calc(100vh - 56px);
+  border-radius: 34px;
+  border: 1px solid var(--story-detail-border);
+  background: var(--story-detail-surface);
+  box-shadow:
+    0 40px 88px -36px rgba(4, 8, 18, 0.72),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  color: var(--story-detail-text);
   overflow: hidden;
-  z-index: 2;
-  transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.paper-sheet::before,
+.paper-sheet::after,
+.report-modal-content::before,
+.report-modal-content::after {
+  content: '';
+  position: absolute;
   pointer-events: none;
 }
 
-.paper-sheet.show {
-  opacity: 1;
-  pointer-events: auto;
+.paper-sheet::before,
+.report-modal-content::before {
+  inset: 14px;
+  border-radius: 26px;
+  border: 1px solid var(--story-detail-frame);
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.16) 0 18%, transparent 18.5%),
+    radial-gradient(circle at center, transparent 0 40%, var(--story-detail-pattern) 40.5%, transparent 41.5%),
+    linear-gradient(0deg, transparent calc(50% - 1px), var(--story-detail-pattern) 50%, transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent calc(50% - 1px), var(--story-detail-pattern) 50%, transparent calc(50% + 1px));
+  opacity: 0.72;
 }
 
-/* 纸张褶皱效果 */
+.paper-sheet::after,
+.report-modal-content::after {
+  inset: 26px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top center, rgba(255, 255, 255, 0.24) 0%, transparent 24%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 6px, rgba(255, 255, 255, 0) 6px 12px);
+  mix-blend-mode: soft-light;
+}
+
 .paper-texture {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.18) 0%, transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, transparent 100%);
+  opacity: 0.8;
   pointer-events: none;
-  overflow: hidden;
-  z-index: 0;
 }
 
-.crease {
+.tarot-suit {
   position: absolute;
-  background: linear-gradient(
-    to right,
-    transparent 0%,
-    rgba(0, 0, 0, 0.03) 40%,
-    rgba(0, 0, 0, 0.06) 50%,
-    rgba(0, 0, 0, 0.03) 60%,
-    transparent 100%
-  );
+  z-index: 1;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--story-detail-accent);
+  opacity: 0.88;
 }
 
-.crease-1 {
-  top: 25%;
-  left: -10%;
-  width: 120%;
-  height: 1px;
-  transform: rotate(-3deg);
+.tarot-suit.suit-top {
+  top: 22px;
+  left: 26px;
 }
 
-.crease-2 {
-  top: 60%;
-  left: -10%;
-  width: 120%;
-  height: 1px;
-  transform: rotate(2deg);
+.tarot-suit.suit-bottom {
+  right: 26px;
+  bottom: 22px;
+  transform: rotate(180deg);
 }
 
-.crease-3 {
-  top: 40%;
-  left: 30%;
-  width: 1px;
-  height: 120%;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgba(0, 0, 0, 0.03) 40%,
-    rgba(0, 0, 0, 0.06) 50%,
-    rgba(0, 0, 0, 0.03) 60%,
-    transparent 100%
-  );
-  transform: rotate(-1deg);
+.tarot-corner {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  z-index: 1;
+  border: 1px solid var(--story-detail-frame);
+  opacity: 0.74;
 }
 
-.crease-4 {
-  bottom: 20%;
-  left: 70%;
-  width: 1px;
-  height: 80%;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgba(0, 0, 0, 0.02) 30%,
-    rgba(0, 0, 0, 0.04) 50%,
-    rgba(0, 0, 0, 0.02) 70%,
-    transparent 100%
-  );
-  transform: rotate(1deg);
+.tarot-corner.corner-top-right {
+  top: 22px;
+  right: 26px;
+  border-left: none;
+  border-bottom: none;
+  border-top-right-radius: 16px;
 }
 
-/* 关闭按钮 */
+.tarot-corner.corner-bottom-left {
+  left: 26px;
+  bottom: 22px;
+  border-right: none;
+  border-top: none;
+  border-bottom-left-radius: 16px;
+}
+
 .close-btn {
   position: absolute;
   top: 16px;
   right: 16px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(0, 0, 0, 0.08);
-  color: #555;
-  font-size: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
+  z-index: 3;
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(53, 34, 13, 0.84);
+  color: #fff8ee;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  z-index: 10;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
 .close-btn:hover {
-  background: rgba(0, 0, 0, 0.15);
-  color: #333;
+  transform: translateY(-2px);
+  background: rgba(76, 49, 17, 0.96);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .close-btn span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 24px;
   line-height: 1;
-  height: 100%;
-  width: 100%;
-  transform: translate(-0.25px, -1.25px);
 }
 
-/* 故事内容 */
+.story-badges {
+  position: absolute;
+  top: 22px;
+  left: 64px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 2;
+}
+
+.badge {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.badge.pinned {
+  background: rgba(27, 36, 58, 0.7);
+  color: #eef4ff;
+}
+
+.badge.featured {
+  background: rgba(120, 72, 19, 0.78);
+  color: #fff5e7;
+}
+
 .story-content-wrapper {
   position: relative;
   z-index: 1;
-  padding: 24px;
-  max-height: 80vh;
+  max-height: calc(100vh - 56px);
+  padding: 30px 28px 28px;
   overflow-y: auto;
+}
+
+.story-header,
+.story-footer,
+.comments-section {
+  position: relative;
+  border-radius: 24px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .story-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  gap: 16px;
+  margin: 18px 0 16px;
+  padding: 16px 18px;
 }
 
 .user-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  min-width: 0;
 }
 
-.avatar {
-  width: 44px;
-  height: 44px;
+.avatar-shell,
+.comment-avatar {
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.52) 0%, var(--story-detail-accent-soft) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--story-detail-accent);
+  flex-shrink: 0;
+}
+
+.avatar,
+.comment-avatar img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.avatar-fallback,
+.comment-avatar span {
+  font-size: 20px;
+  line-height: 1;
 }
 
 .user-details {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .username {
-  font-size: 15px;
-  font-weight: 600;
-  color: #2d3436;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--story-detail-text);
 }
 
 .time {
-  font-size: 12px;
-  color: #888;
+  font-size: 13px;
+  color: var(--story-detail-muted);
 }
 
 .emotion-icon {
-  font-size: 28px;
-  margin-right: 40px; /* 向右平移，避免与关闭按钮重叠 */
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
 }
 
 .story-body {
   margin-bottom: 16px;
 }
 
+.story-text-card {
+  margin-bottom: 16px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
 .story-text {
-  margin: 0 0 16px 0;
-  font-size: 15px;
-  line-height: 1.8;
-  color: #2d3436;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.9;
+  color: var(--story-detail-text);
   white-space: pre-wrap;
-  word-wrap: break-word;
+  word-break: break-word;
   font-family: 'Georgia', 'Times New Roman', serif;
 }
 
 .story-images {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .story-images:has(:nth-child(1)):not(:has(:nth-child(2))) {
@@ -815,320 +708,421 @@ onMounted(() => {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 18px;
+  border: 1px solid var(--story-detail-frame);
   cursor: pointer;
-  transition: opacity 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 16px 26px -22px rgba(0, 0, 0, 0.28);
 }
 
 .story-images img:hover {
-  opacity: 0.9;
+  transform: translateY(-2px);
+  border-color: var(--story-detail-accent);
+  box-shadow: 0 18px 30px -24px rgba(0, 0, 0, 0.42);
 }
 
 .story-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 12px;
-  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+  padding: 14px 18px;
 }
 
 .location {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 13px;
-  color: #777;
+  color: var(--story-detail-muted);
 }
 
 .location .icon {
   font-size: 16px;
 }
 
-/* 精选/置顶标识 */
-.story-badges {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  display: flex;
-  gap: 8px;
-  z-index: 10;
-}
-
-.badge {
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.badge.featured {
-  background: linear-gradient(135deg, #ffd700, #ffaa00);
-  color: white;
-}
-
-.badge.pinned {
-  background: #667eea;
-  color: white;
-}
-
-/* 互动功能区 */
 .story-actions {
-  display: flex;
-  gap: 16px;
-  padding: 16px 0;
-  margin-top: 16px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .action-btn {
+  min-height: 82px;
+  padding: 14px 16px;
+  border-radius: 22px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel);
+  color: var(--story-detail-text);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 20px;
-  border: none;
-  background: rgba(0, 0, 0, 0.04);
-  color: #666;
-  font-size: 14px;
+  gap: 12px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 }
 
 .action-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
   transform: translateY(-2px);
+  border-color: var(--story-detail-accent);
+  box-shadow: 0 18px 28px -24px rgba(0, 0, 0, 0.4);
 }
 
-.action-btn.like.liked {
-  background: #ffebee;
-  color: #e53935;
+.action-btn:disabled,
+.action-btn.pending {
+  opacity: 0.72;
+  cursor: progress;
+  transform: none;
+  box-shadow: none;
+}
+
+.action-btn.liked {
+  border-color: var(--story-detail-accent);
+  background: var(--story-detail-panel-strong);
+  box-shadow:
+    0 0 0 2px var(--story-detail-accent-soft),
+    0 20px 30px -24px rgba(0, 0, 0, 0.42);
 }
 
 .action-btn.report:hover {
-  background: #ffebee;
-  color: #c62828;
+  background: rgba(177, 80, 43, 0.1);
 }
 
-/* 评论区 */
+.action-btn .icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: var(--story-detail-accent);
+  flex-shrink: 0;
+}
+
+.action-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+}
+
+.action-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--story-detail-muted);
+}
+
+.action-count {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--story-detail-text);
+}
+
+.action-count.compact {
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--story-detail-muted);
+}
+
 .comments-section {
   margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 20px 18px 18px;
 }
 
 .comments-title {
+  margin: 0 0 16px;
   font-size: 14px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 16px;
+  font-weight: 700;
+  color: var(--story-detail-text);
 }
 
 .comment-input-area {
   margin-bottom: 16px;
 }
 
-.comment-textarea {
+.comment-textarea,
+.report-textarea {
   width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: white;
+  min-height: 110px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel-strong);
+  color: var(--story-detail-text);
   font-size: 14px;
-  resize: none;
-  font-family: inherit;
-}
-
-.comment-textarea:focus {
+  line-height: 1.7;
+  resize: vertical;
   outline: none;
-  border-color: #667eea;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.comment-actions {
+.comment-textarea {
+  min-height: 96px;
+}
+
+.comment-textarea:focus,
+.report-textarea:focus {
+  border-color: var(--story-detail-accent);
+  box-shadow: 0 0 0 3px var(--story-detail-accent-soft);
+}
+
+.comment-actions,
+.report-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 14px;
 }
 
-.btn-cancel, .btn-submit {
-  padding: 8px 16px;
-  border-radius: 6px;
-  border: none;
+.btn-cancel,
+.btn-submit {
+  min-width: 112px;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid transparent;
   font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.3s;
 }
 
 .btn-cancel {
-  background: rgba(0, 0, 0, 0.05);
-  color: #666;
+  border-color: var(--story-detail-frame);
+  background: transparent;
+  color: var(--story-detail-muted);
 }
 
 .btn-submit {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, rgba(108, 67, 20, 0.96) 0%, rgba(144, 92, 28, 0.96) 100%);
+  color: #fff7ea;
+  box-shadow: 0 20px 30px -24px rgba(77, 45, 11, 0.7);
 }
 
-.btn-submit:disabled {
-  opacity: 0.5;
+.btn-submit:disabled,
+.btn-cancel:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
-/* 评论列表 */
 .comments-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .comment-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
   gap: 12px;
-  padding: 12px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 8px;
+  align-items: start;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel-strong);
 }
 
 .comment-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  object-fit: cover;
+  width: 42px;
+  height: 42px;
+  font-size: 14px;
 }
 
 .comment-content {
-  flex: 1;
+  min-width: 0;
 }
 
 .comment-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
 }
 
 .comment-author {
-  font-size: 13px;
-  font-weight: 600;
-  color: #333;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--story-detail-text);
 }
 
 .comment-time {
-  font-size: 11px;
-  color: #999;
+  font-size: 12px;
+  color: var(--story-detail-muted);
 }
 
 .comment-text {
-  font-size: 13px;
-  color: #555;
-  line-height: 1.5;
   margin: 0;
+  font-size: 14px;
+  color: var(--story-detail-text);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .no-comments {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--story-detail-panel-strong);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--story-detail-muted);
   text-align: center;
-  padding: 24px;
-  color: #999;
-  font-size: 13px;
 }
 
-/* 举报弹窗 */
 .report-modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at top, rgba(255, 229, 176, 0.16) 0%, transparent 30%),
+    rgba(8, 11, 19, 0.58);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 11000;
 }
 
 .report-modal-content {
-  background: white;
+  position: relative;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
   padding: 28px;
-  border-radius: 16px;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border-radius: 30px;
+  border: 1px solid var(--story-detail-border);
+  background: var(--story-detail-surface);
+  box-shadow:
+    0 40px 88px -36px rgba(4, 8, 18, 0.72),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  color: var(--story-detail-text);
+  overflow-y: auto;
+}
+
+.report-suit {
+  z-index: 2;
 }
 
 .report-modal-content h3 {
-  margin: 0 0 8px 0;
-  font-size: 18px;
+  position: relative;
+  z-index: 1;
+  margin: 0 0 10px;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.1;
 }
 
 .report-desc {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 20px;
+  position: relative;
+  z-index: 1;
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--story-detail-muted);
 }
 
 .report-reasons {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
 
 .reason-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s;
+  position: relative;
 }
 
-.reason-option:hover {
-  background: rgba(0, 0, 0, 0.03);
-}
-
-.reason-option input[type="radio"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #667eea;
+.reason-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .reason-option span {
-  font-size: 14px;
-  color: #333;
+  display: block;
+  min-height: 56px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel-strong);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-.report-textarea {
-  width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  font-size: 14px;
-  resize: none;
-  font-family: inherit;
+.reason-option span:hover {
+  transform: translateY(-1px);
 }
 
-.report-textarea:focus {
-  outline: none;
-  border-color: #667eea;
+.reason-option input:checked + span {
+  border-color: var(--story-detail-accent);
+  box-shadow: 0 0 0 2px var(--story-detail-accent-soft);
 }
 
 .report-error {
-  color: #e53935;
-  font-size: 12px;
-  margin-top: 8px;
-}
-
-.report-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 20px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #b3342b;
 }
 
 .report-actions .btn-cancel,
 .report-actions .btn-submit {
   flex: 1;
-  padding: 12px;
+}
+
+@media (max-width: 640px) {
+  .paper-plane-overlay {
+    padding: 16px;
+  }
+
+  .paper-sheet {
+    width: min(100%, calc(100vw - 20px));
+    border-radius: 28px;
+  }
+
+  .story-content-wrapper,
+  .report-modal-content {
+    padding: 24px 20px 22px;
+  }
+
+  .story-badges {
+    left: 22px;
+    top: 72px;
+  }
+
+  .story-header {
+    margin-top: 56px;
+    padding: 14px;
+  }
+
+  .story-actions {
+    gap: 10px;
+  }
+
+  .action-btn {
+    min-height: 74px;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .action-btn .icon {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+
+  .action-count {
+    font-size: 19px;
+  }
+
+  .comment-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

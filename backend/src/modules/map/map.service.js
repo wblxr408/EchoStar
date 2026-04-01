@@ -1,4 +1,5 @@
 import { Story } from '../story/story.model.js';
+import { User } from '../auth/auth.model.js';
 import { sequelize } from '../../config/database.js';
 import { Op } from 'sequelize';
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
@@ -73,6 +74,15 @@ const MapServiceUtil = {
       id: story.id,
       content: story.content,
       images: safeParseJSONB(story.images, []),
+      username: story.author?.username || story.username || '',
+      avatar: story.author?.avatarUrl || story.avatar || null,
+      author: story.author
+        ? {
+            id: story.author.id,
+            username: story.author.username || '匿名用户',
+            avatar: story.author.avatarUrl || null
+          }
+        : null,
       location: {
         latitude: lat,
         longitude: lng
@@ -99,6 +109,11 @@ export const MapService = {
       },
       replacements: { lat: latitude, lng: longitude, radius },
       attributes: MapServiceUtil.STORY_ATTRIBUTES,
+      include: [{
+        model: User,
+        as: 'author',
+        attributes: ['id', 'username', 'avatarUrl']
+      }],
       order: [['createdAt', 'DESC']],
       limit: CONSTANTS.MAX_EXPLORE_LIMIT
     });
@@ -156,6 +171,11 @@ export const MapService = {
       },
       replacements: { lat: latitude, lng: longitude, radius },
       attributes: MapServiceUtil.STORY_ATTRIBUTES,
+      include: [{
+        model: User,
+        as: 'author',
+        attributes: ['id', 'username', 'avatarUrl']
+      }],
       order: [['createdAt', 'DESC']],
       limit: CONSTANTS.MAX_WALL_LIMIT
     });
@@ -165,16 +185,14 @@ export const MapService = {
 
    // ===================== 优化：根据 zoom 动态计算聚合网格大小 =====================
   getDynamicGridSize(zoom) {
-    // zoom 越小（地图缩小），gridSize 越大，聚合范围越大
-    // zoom 越大（地图放大），gridSize 越小，聚合范围越小
     const z = zoom ?? 10;
-    if (z <= 5) return 10000;   // 全球视野，10km 网格
-    if (z <= 7) return 5000;    // 国家/省份级别，5km 网格
-    if (z <= 9) return 2000;    // 城市级别，2km 网格
-    if (z <= 11) return 1000;   // 城区级别，1km 网格
-    if (z <= 13) return 500;    // 街道级别，500m 网格
-    if (z <= 14) return 200;    // 详细级别，200m 网格
-    return 100;                  // 最详细，100m 网格
+    if (z <= 5) return 15000;
+    if (z <= 7) return 8000;
+    if (z <= 9) return 3000;
+    if (z <= 11) return 1500;
+    if (z <= 13) return 800;
+    if (z <= 14) return 300;
+    return 150;
   },
 
   async getClusterData(bounds, zoom) {

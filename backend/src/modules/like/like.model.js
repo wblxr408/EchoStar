@@ -54,7 +54,6 @@ export const Like = sequelize.define('Like', {
     }
   ]
 });
-
 // 关联关系
 Like.belongsTo(User, {
   foreignKey: 'userId',

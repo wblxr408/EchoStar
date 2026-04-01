@@ -382,9 +382,18 @@ export const mockMapApi = {
       data: {
         stories: mockStories.map(s => ({
           id: s.id,
+          content: s.content,
+          images: s.images || [],
           location: s.location,
+          locationName: s.locationName,
           emotionTag: s.emotionTag || s.emotion,
-          preview: s.content?.substring(0, 50) + '...',
+          username: s.author?.username || s.username || '',
+          avatar: s.author?.avatar || s.avatar || '',
+          author: s.author || {
+            id: s.userId,
+            username: s.username || '匿名用户',
+            avatar: s.avatar || ''
+          },
           distance: Math.floor(Math.random() * radius),
           createdAt: s.createdAt,
           isTimeCapsule: s.isTimeCapsule

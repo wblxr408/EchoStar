@@ -2,8 +2,18 @@
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
-        <div class="welcome-content">
-          <p class="welcome-text">{{ currentWelcomeQuote }}</p>
+        <div class="welcome-overlay__sky" aria-hidden="true">
+          <div class="welcome-overlay__nebula"></div>
+          <div class="welcome-overlay__stars"></div>
+        </div>
+        <div ref="welcomeContentRef" class="welcome-content">
+          <p
+            ref="welcomeTextRef"
+            class="welcome-text"
+            :style="{ '--welcome-text-scale': welcomeTextScale }"
+          >
+            {{ currentWelcomeQuote }}
+          </p>
         </div>
       </div>
     </transition>
@@ -78,6 +88,7 @@
               :key="story.id"
               :story="story"
               @preview-image="handlePreviewImage"
+              @select-story="openStoryFromCollection"
             />
           </div>
         </div>
@@ -95,6 +106,7 @@
               :key="story.id"
               :story="story"
               @preview-image="handlePreviewImage"
+              @select-story="openStoryFromCollection"
             />
             <div v-if="feedHasMore" class="load-more-wrap">
               <button class="load-more-btn" :disabled="feedLoadingMore" @click="loadMoreFeed">
@@ -125,6 +137,13 @@
                 </div>
               </div>
               <div class="featured-content">
+                <div class="featured-author">
+                  <div class="featured-author-avatar">
+                    <img v-if="getStoryAuthorAvatar(story)" :src="getStoryAuthorAvatar(story)" :alt="getStoryAuthorName(story)">
+                    <span v-else>{{ getStoryAuthorInitial(story) }}</span>
+                  </div>
+                  <span class="featured-author-name">{{ getStoryAuthorName(story) }}</span>
+                </div>
                 <p class="featured-text">{{ story.content }}</p>
                 <div class="featured-meta">
                   <span class="emotion">{{ getEmotionEmoji(story.emotionTag || story.emotion) }}</span>
@@ -492,11 +511,11 @@
           </div>
         </div>
         <div class="user-actions">
-          <button class="user-action-btn my-likes-btn" :class="{ active: showLikesPanel }" @click="handleMyLikes">
+          <button class="user-action-btn my-likes-btn" :class="{ active: showLikesPanel }" @click.stop="handleMyLikes">
             <span class="btn-icon">❤️</span>
             <span class="btn-text">我的点赞</span>
           </button>
-          <button class="user-action-btn my-posts-btn" :class="{ active: showPostsPanel }" @click="handleMyPosts">
+          <button class="user-action-btn my-posts-btn" :class="{ active: showPostsPanel }" @click.stop="handleMyPosts">
             <span class="btn-icon">📝</span>
             <span class="btn-text">我的发布</span>
           </button>
@@ -534,7 +553,7 @@
             <div class="item-header">
               <img :src="story.avatar" class="item-avatar" alt="头像" />
               <div class="item-meta">
-                <span class="item-author">{{ story.author }}</span>
+                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
                 <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
               </div>
               <button 
@@ -589,7 +608,7 @@
             <div class="item-header">
               <img :src="story.avatar" class="item-avatar" alt="头像" />
               <div class="item-meta">
-                <span class="item-author">{{ story.author }}</span>
+                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
                 <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
               </div>
               <button 
@@ -626,11 +645,12 @@
     <PaperPlaneStory
       v-if="selectedStory"
       :story="selectedStory"
+      :like-pending="storyLikePending"
       :start-position="storyStartPosition"
       :direct-open="storyDirectOpen"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
-      @like="handleStoryLike"
+      @like="toggleStoryLike"
       @comment="handleStoryComment"
       @report="handleStoryReport"
     />
@@ -725,16 +745,22 @@ const STORY_MODAL_OPEN_DELAY_MS = 420;
 
 // --- 欢迎语相关状态 ---
 const showWelcomeOverlay = ref(true); 
+const welcomeContentRef = ref(null);
+const welcomeTextRef = ref(null);
+const welcomeTextScale = ref(1);
+let welcomeOverlayTimer = null;
+let welcomeTextResizeFrame = 0;
 
 // 欢迎语语录库
 const welcomeQuotes = [
   "欢迎来到心灵栖息之所！",
-  "今日もがんばったね、ほんとにお疲れ様。",
+  "今日もがんばったね、ほんとにお疲れ様",
   "Breathe. You are safe in this moment.",
   "在这颗星球的某个角落，总有故事与你共鸣。",
   "Quiet the mind, and the soul will speak.",
-  "前端怎么改都很丑",
-  "原神牛逼"
+  "前端怎么改？？？",
+  "原神牛逼",
+  "竟敢无视灯！"
 ];
 
 // 随机选择一句欢迎语
@@ -744,6 +770,41 @@ const currentWelcomeQuote = ref(
 // --- 欢迎语逻辑结束 ---
 
 // 用户名编辑相关
+function fitWelcomeTextToSingleLine() {
+  if (!showWelcomeOverlay.value) {
+    return;
+  }
+
+  const container = welcomeContentRef.value;
+  const text = welcomeTextRef.value;
+
+  if (!(container instanceof HTMLElement) || !(text instanceof HTMLElement)) {
+    return;
+  }
+
+  welcomeTextScale.value = 1;
+
+  const availableWidth = container.clientWidth;
+  const contentWidth = text.scrollWidth;
+
+  if (!availableWidth || !contentWidth) {
+    return;
+  }
+
+  welcomeTextScale.value = Math.min(1, availableWidth / contentWidth);
+}
+
+function scheduleWelcomeTextFit() {
+  if (welcomeTextResizeFrame) {
+    window.cancelAnimationFrame(welcomeTextResizeFrame);
+  }
+
+  welcomeTextResizeFrame = window.requestAnimationFrame(() => {
+    welcomeTextResizeFrame = 0;
+    fitWelcomeTextToSingleLine();
+  });
+}
+
 const isEditingUsername = ref(false);
 const editingUsername = ref('');
 const usernameError = ref('');
@@ -1035,8 +1096,20 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
   }
 
   storyCommentsLoading.value = true;
+  const detailFallbackAuthor = {
+    username: firstNonEmptyString(
+      story?.username,
+      typeof story?.author === 'string' ? story.author : '',
+      story?.author?.username
+    ),
+    avatar: firstNonEmptyString(
+      story?.avatar,
+      story?.author?.avatar
+    )
+  };
 
   const tasks = [
+    storyApi.getStoryById(storyId),
     commentApi.getStoryComments(storyId, { page: 1, limit: 20 })
   ];
 
@@ -1047,9 +1120,72 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
   }
 
   try {
-    const [commentsResult, likeResult] = await Promise.allSettled(tasks);
+    const [detailResult, commentsResult, likeResult] = await Promise.allSettled(tasks);
     if (requestToken !== activeStoryRequestToken || selectedStory.value?.id !== storyId) {
       return;
+    }
+
+    if (detailResult.status === 'fulfilled' && detailResult.value) {
+      const detailData = detailResult.value?.data ?? detailResult.value;
+      const normalizedDetail = normalizeUserPanelStory(detailData, detailFallbackAuthor);
+
+      if (normalizedDetail) {
+        const nextLikeCount = Number(normalizedDetail.likeCount ?? normalizedDetail.likes ?? 0);
+        const detailAuthor = resolveStoryAuthor(normalizedDetail, detailFallbackAuthor);
+        syncStoryAcrossCollections(storyId, (item) => {
+          const existingLocationLabel = pickLocationText([
+            item.location?.address,
+            item.location?.formattedAddress,
+            item.location?.name,
+            item.locationName
+          ], false);
+          const detailLocationLabel = pickLocationText([
+            normalizedDetail.location?.address,
+            normalizedDetail.location?.formattedAddress,
+            normalizedDetail.location?.name,
+            normalizedDetail.locationName
+          ], false);
+
+          item.content = firstNonEmptyString(normalizedDetail.content, item.content);
+          item.createdAt = normalizedDetail.createdAt || item.createdAt;
+          item.username = firstNonEmptyString(detailAuthor.username, item.username, getStoryAuthorName(item));
+          item.avatar = firstNonEmptyString(detailAuthor.avatar, item.avatar, item.author?.avatar);
+          item.author = {
+            ...(item.author && typeof item.author === 'object' ? item.author : {}),
+            id: detailAuthor.id ?? item.author?.id ?? null,
+            username: item.username,
+            avatar: item.avatar
+          };
+          item.images = Array.isArray(normalizedDetail.images) ? normalizedDetail.images : item.images;
+          item.emotion = firstNonEmptyString(normalizedDetail.emotion, item.emotion);
+          item.emotionTag = firstNonEmptyString(normalizedDetail.emotionTag, item.emotionTag);
+
+          if (Number.isFinite(nextLikeCount)) {
+            item.likes = nextLikeCount;
+            item.likeCount = nextLikeCount;
+          }
+
+          if (normalizedDetail.location && extractCoordinates(normalizedDetail.location)) {
+            item.location = buildNormalizedStoryLocation(
+              normalizedDetail,
+              extractCoordinates(normalizedDetail.location),
+              existingLocationLabel ? item.location : null
+            );
+          }
+
+          if (detailLocationLabel) {
+            item.locationName = detailLocationLabel;
+          }
+
+          if (typeof detailData?.isFeatured === 'boolean') {
+            item.isFeatured = detailData.isFeatured;
+          }
+
+          if (typeof detailData?.isPinned === 'boolean') {
+            item.isPinned = detailData.isPinned;
+          }
+        });
+      }
     }
 
     if (commentsResult.status === 'fulfilled') {
@@ -1107,6 +1243,26 @@ function openStoryModal(story, delay = 0, options = {}) {
   show();
 }
 
+function openStoryFromCollection(story) {
+  if (!story) {
+    return;
+  }
+
+  const coords = extractCoordinates(story.location) || extractCoordinates(story);
+  const shouldAnimateAfterMove = Boolean(coords);
+
+  if (coords) {
+    suppressMapReloadUntil = Date.now() + 1200;
+    mapStore.updateCenter(coords.latitude, coords.longitude);
+    mapStore.updateZoom(16);
+  }
+
+  openStoryModal(story, shouldAnimateAfterMove ? STORY_MODAL_OPEN_DELAY_MS : 0, {
+    directOpen: true,
+    startPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+  });
+}
+
 async function toggleStoryLike() {
   if (!selectedStory.value) {
     return;
@@ -1133,7 +1289,16 @@ async function toggleStoryLike() {
   handleStoryLike({ storyId, liked: nextLiked, likeCount: nextCount });
 
   try {
-    await likeApi.toggle(storyId);
+    const response = await likeApi.toggle(storyId);
+    const result = response?.data ?? response;
+    const resolvedLiked = typeof result?.isLiked === 'boolean' ? result.isLiked : nextLiked;
+    const resolvedLikeCount = Number.isFinite(Number(result?.likeCount))
+      ? Number(result.likeCount)
+      : nextCount;
+
+    storyIsLiked.value = resolvedLiked;
+    storyLikeCount.value = resolvedLikeCount;
+    handleStoryLike({ storyId, liked: resolvedLiked, likeCount: resolvedLikeCount });
   } catch (error) {
     console.error('点赞失败:', error);
     storyIsLiked.value = previousLiked;
@@ -1936,6 +2101,57 @@ function firstNonEmptyString(...values) {
   return '';
 }
 
+function resolveStoryAuthor(source, fallbackAuthor = null) {
+  if (!source || typeof source !== 'object') {
+    return {
+      id: fallbackAuthor?.id ?? null,
+      username: firstNonEmptyString(fallbackAuthor?.username, '\u533f\u540d\u7528\u6237'),
+      avatar: firstNonEmptyString(fallbackAuthor?.avatar)
+    };
+  }
+
+  const authorObject = source.author && typeof source.author === 'object'
+    ? source.author
+    : null;
+  const userObject = source.user && typeof source.user === 'object'
+    ? source.user
+    : null;
+
+  return {
+    id: authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null,
+    username: firstNonEmptyString(
+      authorObject?.username,
+      userObject?.username,
+      typeof source.author === 'string' ? source.author : '',
+      source.username,
+      source.userName,
+      fallbackAuthor?.username,
+      '\u533f\u540d\u7528\u6237'
+    ),
+    avatar: firstNonEmptyString(
+      authorObject?.avatar,
+      authorObject?.avatarUrl,
+      userObject?.avatar,
+      userObject?.avatarUrl,
+      source.avatar,
+      source.avatarUrl,
+      fallbackAuthor?.avatar
+    )
+  };
+}
+
+function getStoryAuthorName(story) {
+  return resolveStoryAuthor(story).username;
+}
+
+function getStoryAuthorAvatar(story) {
+  return resolveStoryAuthor(story).avatar;
+}
+
+function getStoryAuthorInitial(story) {
+  return getStoryAuthorName(story).slice(0, 1).toUpperCase() || '\u533f';
+}
+
 function isCoordinateOnlyLocationLabel(value) {
   if (typeof value !== 'string') {
     return false;
@@ -2026,17 +2242,17 @@ function buildNormalizedStoryLocation(story, coords = null, fallbackLocation = n
     : {};
   const normalizedCoords = coords || extractCoordinates(sourceLocation) || extractCoordinates(fallback);
   const address = pickLocationText([
-    sourceLocation.address,
-    sourceLocation.formattedAddress,
     story?.locationName,
     sourceLocation.name,
     fallback.name,
+    sourceLocation.address,
+    sourceLocation.formattedAddress,
     fallback.address,
     normalizedCoords ? formatMapPickAddress(normalizedCoords.latitude, normalizedCoords.longitude) : ''
   ]);
   const name = pickLocationText([
-    sourceLocation.name,
     story?.locationName,
+    sourceLocation.name,
     fallback.name,
     sourceLocation.address,
     fallback.address
@@ -2328,8 +2544,8 @@ function handleMyLikes() {
   // 切换点赞面板
   showLikesPanel.value = !showLikesPanel.value;
 
-  // 如果是打开状态且列表为空，加载数据
-  if (showLikesPanel.value && likesList.value.length === 0) {
+  // 如果是打开状态，刷新列表数据
+  if (showLikesPanel.value) {
     loadLikesData();
   }
 }
@@ -2479,6 +2695,8 @@ function handlePostsScroll(event) {
 
 // 处理故事点击（从我的发布/我的点赞列表点击）
 function handleStoryClick(story) {
+  openStoryFromCollection(story);
+  return;
   // 关闭子面板和用户侧边栏
   showLikesPanel.value = false;
   showPostsPanel.value = false;
@@ -2501,9 +2719,9 @@ function handleStoryClick(story) {
     startPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   }
 
-  // 启用飞行动画
+  // 直接打开故事详情弹窗
   openStoryModal(story, STORY_MODAL_OPEN_DELAY_MS, {
-    directOpen: false,
+    directOpen: true,
     startPosition
   });
 }
@@ -3075,13 +3293,13 @@ async function loadStories() {
 }
 
 // 聚合显示的 zoom 阈值，超过此值显示原始标记点
-const CLUSTER_ZOOM_THRESHOLD = 15;
+const CLUSTER_ZOOM_THRESHOLD = 16;
 
 // 加载聚合数据
 async function loadClusterData() {
   try {
-    // 当 zoom 超过阈值时，清空聚合数据，显示原始标记点
     const currentZoom = mapStore.zoom;
+
     if (currentZoom >= CLUSTER_ZOOM_THRESHOLD) {
       console.log('[Map] zoom >= threshold, clearing clusters, zoom:', currentZoom);
       clusters.value = [];
@@ -3099,7 +3317,6 @@ async function loadClusterData() {
 
     if (!bounds) {
       console.log('[Map] No bounds available, using default');
-      // 使用默认边界
       const center = extractCoordinates(mapStore.center);
       if (!center) return;
 
@@ -3136,8 +3353,8 @@ async function loadClusterData() {
       console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
     }
   } catch (error) {
-    console.error('加载聚合数据失败:', error);
     clusters.value = [];
+    console.error('加载聚合数据失败:', error);
   }
 }
 
@@ -3231,7 +3448,7 @@ async function loadMoreFeed() {
 function handleMarkerClick(data) {
   const { story, screenX, screenY } = data;
   openStoryModal(story, 0, {
-    directOpen: false,
+    directOpen: true,
     startPosition: { x: screenX, y: screenY }
   });
 }
@@ -3257,6 +3474,10 @@ function handleMapMove(event) {
   const zoom = Number(event?.zoom);
   if (Number.isFinite(zoom)) {
     mapStore.updateZoom(zoom);
+    if (Date.now() < suppressMapReloadUntil) {
+      clearTimeout(loadTimer);
+      return;
+    }
   }
 
   // 防抖加载
@@ -3268,6 +3489,7 @@ function handleMapMove(event) {
 }
 
 let loadTimer = null;
+let suppressMapReloadUntil = 0;
 
 function extractCoordinates(location) {
   if (!location || typeof location !== 'object') {
@@ -3303,13 +3525,63 @@ function normalizeStoryForMap(story, fallbackLocation = null) {
     return null;
   }
 
+  const author = resolveStoryAuthor(story);
+  const nextLikeCount = Number(story.likeCount ?? story.likes ?? 0);
+  const normalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+
   return {
     ...story,
+    images: Array.isArray(story.images) ? story.images : [],
+    likes: normalizedLikeCount,
+    likeCount: normalizedLikeCount,
+    username: author.username,
+    avatar: author.avatar,
+    author,
+    locationName: pickLocationText([
+      story.locationName,
+      story.location?.name,
+      story.location?.address
+    ], false),
     location: buildNormalizedStoryLocation(story, coords, fallbackLocation)
   };
 }
 
 function normalizeUserPanelStory(item, fallbackAuthor = null) {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  const nextBaseStory = item.story && typeof item.story === 'object'
+    ? item.story
+    : item;
+  if (!nextBaseStory || typeof nextBaseStory !== 'object') {
+    return null;
+  }
+
+  const nextAuthor = resolveStoryAuthor(nextBaseStory, fallbackAuthor);
+  const nextCoords = extractCoordinates(nextBaseStory.location);
+  const nextLikeCount = Number(nextBaseStory.likeCount ?? nextBaseStory.likes ?? 0);
+  const nextNormalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+  const nextLocationName = pickLocationText([
+    nextBaseStory.locationName,
+    nextBaseStory.location?.name,
+    nextBaseStory.location?.address
+  ], false);
+
+  return {
+    ...nextBaseStory,
+    id: nextBaseStory.id ?? item.storyId ?? item.id,
+    createdAt: nextBaseStory.createdAt || item.createdAt,
+    images: Array.isArray(nextBaseStory.images) ? nextBaseStory.images : [],
+    likes: nextNormalizedLikeCount,
+    likeCount: nextNormalizedLikeCount,
+    username: nextAuthor.username,
+    avatar: nextAuthor.avatar,
+    author: nextAuthor,
+    locationName: nextLocationName,
+    location: buildNormalizedStoryLocation(nextBaseStory, nextCoords)
+  };
+
   if (!item || typeof item !== 'object') {
     return null;
   }
@@ -3481,7 +3753,7 @@ function handlePreviewImage({ index, images }) {
 
 // 打开精选故事
 function openFeaturedStory(story) {
-  openStoryModal(story);
+  openStoryFromCollection(story);
 }
 
 // 处理点赞
@@ -3586,16 +3858,26 @@ onMounted(() => {
 
   // 添加全局点击事件来关闭 Dock 菜单
   document.addEventListener('click', handleDocumentClick);
+  window.addEventListener('resize', scheduleWelcomeTextFit);
+  scheduleWelcomeTextFit();
+  if (document.fonts?.ready) {
+    document.fonts.ready.then(scheduleWelcomeTextFit).catch(() => {});
+  }
   // --- 新增：控制欢迎界面消失的定时器 ---
-  setTimeout(() => {
+  welcomeOverlayTimer = window.setTimeout(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick);
+  window.removeEventListener('resize', scheduleWelcomeTextFit);
   clearTimeout(loadTimer);
   clearTimeout(storyOpenTimer);
+  clearTimeout(welcomeOverlayTimer);
+  if (welcomeTextResizeFrame) {
+    window.cancelAnimationFrame(welcomeTextResizeFrame);
+  }
   if (themeAutoCheckInterval) clearInterval(themeAutoCheckInterval);
 });
 </script>
@@ -3636,8 +3918,10 @@ onUnmounted(() => {
   text-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
   
   /* 电影字幕般的缓慢浮现效果 */
+  display: inline-block;
   opacity: 0;
-  transform: translateY(15px);
+  transform: translateY(15px) scale(var(--welcome-text-scale, 1));
+  transform-origin: center center;
   animation: textCinematicShow 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   animation-delay: 0.2s; /* 略微延迟，等背景出来后再出字幕 */
 }
@@ -3646,7 +3930,7 @@ onUnmounted(() => {
 @keyframes textCinematicShow {
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(var(--welcome-text-scale, 1));
   }
 }
 
@@ -3661,6 +3945,98 @@ onUnmounted(() => {
 .welcome-fade-leave-to {
   opacity: 0;
   transform: scale(1.04); /* 退场时微微放大 */
+}
+
+.welcome-overlay {
+  overflow: hidden;
+  background: linear-gradient(180deg, #02040b 0%, #060b18 46%, #0b1530 100%);
+}
+
+.welcome-overlay__sky,
+.welcome-overlay__nebula,
+.welcome-overlay__stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.welcome-overlay__sky {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(56, 74, 168, 0.14) 0%, transparent 22%),
+    radial-gradient(circle at 82% 14%, rgba(82, 52, 142, 0.12) 0%, transparent 20%),
+    radial-gradient(circle at 50% 110%, rgba(28, 62, 120, 0.18) 0%, transparent 34%),
+    linear-gradient(180deg, #02040b 0%, #060b18 46%, #0b1530 100%);
+}
+
+.welcome-overlay__nebula {
+  background:
+    radial-gradient(circle at 24% 28%, rgba(118, 141, 241, 0.09) 0%, transparent 24%),
+    radial-gradient(circle at 76% 32%, rgba(154, 113, 222, 0.08) 0%, transparent 20%),
+    radial-gradient(circle at 50% 72%, rgba(82, 136, 226, 0.08) 0%, transparent 26%);
+  filter: blur(20px);
+  opacity: 0.8;
+  animation: welcomeNebulaFloat 12s ease-in-out infinite alternate;
+}
+
+.welcome-overlay__stars {
+  background-image:
+    radial-gradient(circle at 7% 12%, rgba(255, 255, 255, 0.95) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 17% 68%, rgba(255, 244, 201, 0.88) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 24% 22%, rgba(255, 255, 255, 0.78) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 32% 14%, rgba(201, 224, 255, 0.8) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 43% 82%, rgba(255, 244, 201, 0.84) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 54% 18%, rgba(255, 255, 255, 0.78) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 63% 72%, rgba(201, 224, 255, 0.84) 0 1.4px, transparent 2.1px),
+    radial-gradient(circle at 72% 10%, rgba(255, 244, 201, 0.9) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 86% 24%, rgba(255, 255, 255, 0.85) 0 1.1px, transparent 1.8px),
+    radial-gradient(circle at 93% 66%, rgba(201, 224, 255, 0.82) 0 1.4px, transparent 2.2px),
+    radial-gradient(circle at 14% 88%, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 84% 86%, rgba(255, 244, 201, 0.82) 0 1.2px, transparent 2px);
+  opacity: 0.95;
+  animation: welcomeStarsPulse 4.8s ease-in-out infinite;
+}
+
+.welcome-content {
+  position: relative;
+  z-index: 1;
+  width: min(96vw, 1280px);
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+}
+
+.welcome-text {
+  font-size: clamp(36px, 4vw, 52px);
+  white-space: nowrap;
+  letter-spacing: clamp(1px, 0.22vw, 4px);
+  background: linear-gradient(135deg, #fff8e8 0%, #f0d79a 44%, #c9923a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter:
+    drop-shadow(0 6px 20px rgba(0, 0, 0, 0.42))
+    drop-shadow(0 0 18px rgba(255, 220, 150, 0.2));
+}
+
+@keyframes welcomeNebulaFloat {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: scale(1.06) translate3d(-1.5%, 1.5%, 0);
+  }
+}
+
+@keyframes welcomeStarsPulse {
+  0%,
+  100% {
+    opacity: 0.82;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .map-page {
@@ -3963,6 +4339,40 @@ onUnmounted(() => {
 
 .featured-content {
   padding: 12px;
+}
+
+.featured-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.featured-author-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.featured-author-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.featured-author-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .featured-text {
