@@ -6,6 +6,9 @@ import config from './config/index.js';
 import { testConnection, syncDatabase } from './config/database.js';
 import { redisClient } from './common/utils/redis.js';
 import logger from './common/utils/logger.js';
+import { rocketmqClient } from './common/utils/rocketmq.js';
+import { storyConsumer } from './consumers/story.consumer.js';
+import { commentConsumer } from './consumers/comment.consumer.js';
 
 /**
  * 启动服务器
@@ -40,9 +43,15 @@ async function startServer() {
       server.close(async () => {
         logger.info('HTTP server closed');
 
-        // 关闭数据库连接
+        // 关闭 Redis
         await redisClient.disconnect();
         logger.info('Redis disconnected');
+
+        // 关闭 RocketMQ
+        await rocketmqClient.shutdown();
+        await storyConsumer.shutdown();
+        await commentConsumer.shutdown();
+        logger.info('RocketMQ disconnected');
 
         process.exit(0);
       });

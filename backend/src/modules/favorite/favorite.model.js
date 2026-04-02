@@ -24,7 +24,7 @@ export const Favorite = sequelize.define('Favorite', {
     onDelete: 'NO ACTION'  // 用户被删除时不删除收藏记录
   },
   storyId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     allowNull: false,
     field: 'story_id',
     references: {

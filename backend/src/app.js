@@ -19,6 +19,12 @@ import reportRoutes from './routes/report.routes.js';
 
 // 导入定时任务
 import { syncStoryViewCount } from './jobs/sync-story-view-count.js';
+import { syncLikeToDatabase } from './jobs/sync-like-to-db.js';
+
+// 导入 RocketMQ
+import { rocketmqClient } from './common/utils/rocketmq.js';
+import { storyConsumer } from './consumers/story.consumer.js';
+import { commentConsumer } from './consumers/comment.consumer.js';
 
 /**
  * 创建 Express 应用
@@ -88,6 +94,20 @@ export function createApp() {
   app.use(errorHandler);
 
   // ======================
+  // RocketMQ 初始化
+  // ======================
+  // 初始化 Producer 和 Consumer（异步启动，不阻塞应用）
+  rocketmqClient.init().catch(err => {
+    console.error('❌ RocketMQ 初始化失败:', err);
+  });
+  storyConsumer.init().catch(err => {
+    console.error('❌ Story Consumer 初始化失败:', err);
+  });
+  commentConsumer.init().catch(err => {
+    console.error('❌ Comment Consumer 初始化失败:', err);
+  });
+
+  // ======================
   // 定时任务
   // ======================
 
@@ -98,9 +118,19 @@ export function createApp() {
     });
   }, 60 * 60 * 1000);  // 每小时执行一次
 
+  // 定时任务：每5分钟同步点赞数据到数据库
+  setInterval(() => {
+    syncLikeToDatabase().catch(err => {
+      console.error('❌ 同步点赞数据失败:', err);
+    });
+  }, 5 * 60 * 1000);  // 每5分钟执行一次
+
   // 启动时执行一次（防止服务重启期间的数据丢失）
   syncStoryViewCount().catch(err => {
     console.error('❌ 启动时同步浏览量失败:', err);
+  });
+  syncLikeToDatabase().catch(err => {
+    console.error('❌ 启动时同步点赞数据失败:', err);
   });
 
   return app;

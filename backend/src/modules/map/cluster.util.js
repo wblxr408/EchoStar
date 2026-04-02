@@ -21,8 +21,6 @@ function getGridIndex(lat, lng, gridSize) {
 function getSphericalCenter(points) {
   let x = 0, y = 0, z = 0;
   const count = points.length;
-
-
   // 1. 把经纬度（WGS84）转成三维笛卡尔坐标
   points.forEach(p => {
     const latRad = p.latitude * Math.PI / 180;
@@ -30,7 +28,6 @@ function getSphericalCenter(points) {
     x += Math.cos(latRad) * Math.cos(lngRad);
     y += Math.cos(latRad) * Math.sin(lngRad);
     z += Math.sin(latRad);
-
   });
 
   // 2. 计算三维坐标的平均值

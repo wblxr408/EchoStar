@@ -7,6 +7,7 @@ import { redisClient } from '../../common/utils/redis.js';
 import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
 import { getRandomDefaultAvatar } from '../../common/utils/oss.js'; 
+import { clearUserCache } from './auth.middleware.js';
 
 /**
  * Auth Service - 认证业务逻辑
@@ -384,6 +385,8 @@ export const AuthService = {
 
     await user.update(updateData);
 
+    await clearUserCache(user.id);
+
     return {
       id: user.id,
       username: user.username,
@@ -420,6 +423,8 @@ export const AuthService = {
     await user.update({
       passwordHash: hashedPassword
     });
+
+    await clearUserCache(user.id);
 
     return {
       success: true,

@@ -4,12 +4,14 @@ import { User } from '../auth/auth.model.js';
 
 /**
  * Story 模型
+ * id 使用雪花ID（BIGINT）
  */
 export const Story = sequelize.define('Story', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     primaryKey: true,
-    autoIncrement: true
+    allowNull: false,
+    field: 'id'
   },
   userId: {
     type: DataTypes.INTEGER,
@@ -35,29 +37,26 @@ export const Story = sequelize.define('Story', {
     allowNull: false,
     field: 'location'
   },
-
-  // ✅ 新增：位置名称 (前端传过来的地名，比如 "北京市朝阳区...")
+  // 位置名称
   locationName: {
     type: DataTypes.STRING(200),
     allowNull: true,
     field: 'location_name'
   },
-
-  // ✅ 新增：可见性开始时间 (前端传过来的时间字符串，比如 "08:00")
+  // 可见性开始时间
   visibilityStartTime: {
     type: DataTypes.STRING(5),
     allowNull: true,
-    field: 'visibility_start_time'
+    field: 'visibility_start_time',
+    comment: '时段限定可见：开始时间 HH:mm，null 表示无限制'
   },
-
-  // ✅ 新增：可见性结束时间 (前端传过来的时间字符串，比如 "20:00")
+  // 可见性结束时间
   visibilityEndTime: {
     type: DataTypes.STRING(5),
     allowNull: true,
-    field: 'visibility_end_time'
+    field: 'visibility_end_time',
+    comment: '时段限定可见：结束时间 HH:mm，null 表示无限制'
   },
-
-
   emotionTag: {
     type: DataTypes.STRING(20),
     allowNull: true,
@@ -87,18 +86,6 @@ export const Story = sequelize.define('Story', {
     defaultValue: false,
     field: 'is_recommended',
     comment: '是否为管理员推荐'
-  },
-  visibilityStartTime: {
-    type: DataTypes.STRING(5),
-    allowNull: true,
-    field: 'visibility_start_time',
-    comment: '时段限定可见：开始时间 HH:mm，null 表示无限制'
-  },
-  visibilityEndTime: {
-    type: DataTypes.STRING(5),
-    allowNull: true,
-    field: 'visibility_end_time',
-    comment: '时段限定可见：结束时间 HH:mm，null 表示无限制'
   }
 }, {
   tableName: 'stories',
@@ -143,9 +130,10 @@ export const TimeCapsule = sequelize.define('TimeCapsule', {
     primaryKey: true
   },
   storyId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     allowNull: false,
     unique: true,
+    field: 'story_id',
     references: {
       model: 'stories',
       key: 'id'
@@ -153,15 +141,18 @@ export const TimeCapsule = sequelize.define('TimeCapsule', {
   },
   unlockAt: {
     type: DataTypes.DATE,
-    allowNull: false
+    allowNull: false,
+    field: 'unlock_at'
   },
   isUnlocked: {
     type: DataTypes.BOOLEAN,
-    defaultValue: false
+    defaultValue: false,
+    field: 'is_unlocked'
   },
   createdAt: {
     type: DataTypes.DATE,
-    defaultValue: DataTypes.NOW
+    defaultValue: DataTypes.NOW,
+    field: 'created_at'
   }
 }, {
   tableName: 'time_capsules',

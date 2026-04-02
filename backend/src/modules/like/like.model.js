@@ -24,7 +24,7 @@ export const Like = sequelize.define('Like', {
     onDelete: 'NO ACTION'  // 用户被删除时不删除点赞记录
   },
   storyId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     allowNull: false,
     field: 'story_id',
     references: {
@@ -54,7 +54,6 @@ export const Like = sequelize.define('Like', {
     }
   ]
 });
-
 // 关联关系
 Like.belongsTo(User, {
   foreignKey: 'userId',
