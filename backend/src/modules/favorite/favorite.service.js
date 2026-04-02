@@ -6,6 +6,14 @@ import { wrapWithCache } from '../../common/utils/redis.js';
 import { wrapWithClearCache } from '../../common/utils/redis.js';
 import { redisClient } from '../../common/utils/redis.js';
 
+function parseStoryLocationValue(locationValue) {
+  if (!locationValue) return null;
+  if (locationValue.type === 'Point' && Array.isArray(locationValue.coordinates)) {
+    return { lng: locationValue.coordinates[0], lat: locationValue.coordinates[1] };
+  }
+  return null;
+}
+
 /**
  * Favorite Service - 收藏业务逻辑（Redis 缓存优化版）
  */
@@ -277,10 +285,35 @@ class FavoriteServiceClass {
     const offset = (page - 1) * limit;
     const { rows, count } = await Favorite.findAndCountAll({
       where: { userId },
-      include: [{ model: Story, as: 'story', attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt'] }],
+      include: [{
+        model: Story,
+        as: 'story',
+        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName'],
+        include: [{
+          model: User,
+          as: 'author',
+          attributes: ['id', 'username', 'avatarUrl']
+        }]
+      }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset)
+    });
+
+    // 批量获取点赞数和收藏数
+    const storyIds = rows.map(f => f.storyId).filter(Boolean);
+    const { likeCacheUtil } = await import('../../common/utils/like-cache.util.js');
+    const countPromises = [
+      ...storyIds.map(id => likeCacheUtil.getLikeCount(id)),
+      ...storyIds.map(id => this.getFavoriteCount(id))
+    ];
+    const counts = await Promise.all(countPromises);
+
+    const likeCounts = {};
+    const favoriteCounts = {};
+    storyIds.forEach((storyId, i) => {
+      likeCounts[storyId] = counts[i];
+      favoriteCounts[storyId] = counts[storyIds.length + i];
     });
 
     return {
@@ -292,7 +325,18 @@ class FavoriteServiceClass {
           content: f.story?.content,
           images: f.story?.images || [],
           emotionTag: f.story?.emotionTag,
-          createdAt: f.story?.createdAt
+          createdAt: f.story?.createdAt,
+          location: parseStoryLocationValue(f.story?.location),
+          locationName: f.story?.locationName,
+          likeCount: likeCounts[f.storyId] || 0,
+          favoriteCount: favoriteCounts[f.storyId]?.favoriteCount || 0,
+          author: f.story?.author
+            ? {
+                id: f.story.author.id,
+                username: f.story.author.username,
+                avatar: f.story.author.avatarUrl || null
+              }
+            : null
         }
       })),
       pagination: { total: count, page, limit, totalPages: Math.ceil(count / limit) }

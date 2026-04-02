@@ -651,6 +651,7 @@
             </div>
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
+              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
               <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
@@ -706,6 +707,7 @@
             </div>
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
+              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
               <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
@@ -761,6 +763,7 @@
             </div>
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
+              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
               <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
@@ -3750,6 +3753,17 @@ async function uploadAvatar(file) {
     const updatedUser = response?.data ?? response;
     userStore.updateUser(updatedUser);
 
+    // 同步更新故事列表中的头像
+    const newAvatar = updatedUser.avatar || updatedUser.avatarUrl || '';
+    if (newAvatar && postsList.value.length > 0) {
+      postsList.value.forEach(story => {
+        if (story.userId === updatedUser.id || story.authorId === updatedUser.id) {
+          if (story.avatar) story.avatar = newAvatar;
+          if (story.author && story.author.id === updatedUser.id) story.author.avatar = newAvatar;
+        }
+      });
+    }
+
     // 清除预览
     avatarPreview.value = '';
     currentAvatarFile.value = null;
@@ -4389,6 +4403,8 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
   const nextCoords = extractCoordinates(nextBaseStory.location);
   const nextLikeCount = Number(nextBaseStory.likeCount ?? nextBaseStory.likes ?? 0);
   const nextNormalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+  const nextFavoriteCount = Number(nextBaseStory.favoriteCount ?? 0);
+  const nextNormalizedFavoriteCount = Number.isFinite(nextFavoriteCount) ? nextFavoriteCount : 0;
   const nextLocationName = pickLocationText([
     nextBaseStory.locationName,
     nextBaseStory.location?.name,
@@ -4402,6 +4418,7 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
     images: Array.isArray(nextBaseStory.images) ? nextBaseStory.images : [],
     likes: nextNormalizedLikeCount,
     likeCount: nextNormalizedLikeCount,
+    favoriteCount: nextNormalizedFavoriteCount,
     username: nextAuthor.username,
     avatar: nextAuthor.avatar,
     author: nextAuthor,
@@ -4409,46 +4426,6 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
     location: buildNormalizedStoryLocation(nextBaseStory, nextCoords)
   };
 
-  if (!item || typeof item !== 'object') {
-    return null;
-  }
-
-  const baseStory = item.story && typeof item.story === 'object'
-    ? item.story
-    : item;
-  if (!baseStory || typeof baseStory !== 'object') {
-    return null;
-  }
-
-  const authorObject = baseStory.author && typeof baseStory.author === 'object'
-    ? baseStory.author
-    : null;
-  const username = firstNonEmptyString(
-    authorObject?.username,
-    typeof baseStory.author === 'string' ? baseStory.author : '',
-    baseStory.username,
-    fallbackAuthor?.username,
-    '匿名用户'
-  );
-  const avatar = firstNonEmptyString(
-    authorObject?.avatar,
-    baseStory.avatar,
-    fallbackAuthor?.avatar
-  );
-  const coords = extractCoordinates(baseStory.location);
-
-  return {
-    ...baseStory,
-    id: baseStory.id ?? item.storyId ?? item.id,
-    createdAt: baseStory.createdAt || item.createdAt,
-    images: Array.isArray(baseStory.images) ? baseStory.images : [],
-    likes: Number(baseStory.likeCount ?? baseStory.likes ?? 0),
-    username,
-    avatar,
-    author: username,
-    locationName: firstNonEmptyString(baseStory.locationName),
-    location: buildNormalizedStoryLocation(baseStory, coords)
-  };
 }
 
 async function hydrateStoryLocations(stories = []) {
