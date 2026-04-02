@@ -5,6 +5,10 @@ import { Blacklist } from '../auth/blacklist.model.js';
 import { sequelize } from '../../config/database.js';
 import { clearUserCache } from '../auth/auth.middleware.js';
 import { Op } from 'sequelize';
+import { redisClient } from '../../common/utils/redis.js';
+import { Like } from '../like/like.model.js';
+import { Comment } from '../comment/comment.model.js';
+import { Favorite } from '../favorite/favorite.model.js';
 
 /**
  * 自定义错误类 - 统一错误处理
@@ -97,6 +101,10 @@ export const AdminService = {
 
     await story.update({ visibility: 'shadowban' });
 
+    // 清除故事缓存，确保立即生效
+    const redis = redisClient.getClient();
+    await redis.del(`story:raw:${storyId}`);
+
     // 记录管理员操作
     await AdminAction.create({
       storyId,
@@ -127,6 +135,10 @@ export const AdminService = {
     }
 
     await story.update({ visibility: 'public' });
+
+    // 清除故事缓存，确保立即生效
+    const redisForRestore = redisClient.getClient();
+    await redisForRestore.del(`story:raw:${storyId}`);
 
     // 记录管理员操作
     await AdminAction.create({
@@ -226,8 +238,10 @@ export const AdminService = {
     // 总用户数
     const totalUsers = await User.count();
 
-    // 总故事数
-    const totalStories = await Story.count();
+    // 总故事数（排除 deleted）
+    const totalStories = await Story.count({
+      where: { visibility: { [Op.ne]: 'deleted' } }
+    });
 
     // 公开故事数
     const publicStories = await Story.count({
@@ -256,13 +270,27 @@ export const AdminService = {
       }
     });
 
+    // 点赞总数
+    const totalLikes = await Like.count();
+
+    // 评论总数（活跃状态）
+    const totalComments = await Comment.count({
+      where: { status: 'active' }
+    });
+
+    // 收藏总数
+    const totalFavorites = await Favorite.count();
+
     return {
       totalUsers,
       totalStories,
       publicStories,
       timeCapsules,
       shadowbannedStories,
-      todayStories
+      todayStories,
+      totalLikes,
+      totalComments,
+      totalFavorites
     };
   }
 };

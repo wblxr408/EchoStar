@@ -4,6 +4,8 @@ import { Comment } from '../comment/comment.model.js';
 import { User } from '../auth/auth.model.js';
 import { Op } from 'sequelize';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
+import { redisClient } from '../../common/utils/redis.js';
+import { commentCacheUtil } from '../../common/utils/comment-cache.util.js';
 
 /**
  * 自定义错误类 - 统一错误处理
@@ -330,6 +332,8 @@ export const ReportService = {
           const comment = await Comment.findByPk(report.targetId);
           if (comment) {
             await comment.update({ status: 'active' });
+            // 恢复评论时递增评论缓存计数
+            await commentCacheUtil.incrementCommentCount(comment.storyId);
           }
         }
       }
@@ -339,6 +343,17 @@ export const ReportService = {
         handledBy: null,
         handledAt: null
       });
+
+      // 清除相关缓存
+      try {
+        const redis = redisClient.getClient();
+        if (report.targetType === 'story') {
+          await redis.del(`story:raw:${report.targetId}`);
+        }
+      } catch (err) {
+        console.error(`❌ 清除缓存失败 [restore]:`, err);
+      }
+
       return;
     }
 
@@ -359,6 +374,8 @@ export const ReportService = {
         const comment = await Comment.findByPk(report.targetId);
         if (comment) {
           await comment.update({ status: 'deleted' });
+          // 递减评论缓存计数
+          await commentCacheUtil.decrementCommentCount(comment.storyId);
         }
       }
     }
@@ -369,6 +386,16 @@ export const ReportService = {
       handledBy: adminId,
       handledAt: new Date()
     });
+
+    // 批准故事举报时清除 story:raw 缓存
+    if (action === 'approve' && report.targetType === 'story') {
+      try {
+        const redis = redisClient.getClient();
+        await redis.del(`story:raw:${report.targetId}`);
+      } catch (err) {
+        console.error(`❌ 清除故事缓存失败 [storyId: ${report.targetId}]:`, err);
+      }
+    }
   },
 
   /**
