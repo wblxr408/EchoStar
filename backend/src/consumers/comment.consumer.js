@@ -109,7 +109,7 @@ class CommentConsumer {
   async handleMessage(message) {
     try {
       const msgId = message.messageId;
-      const body = message.getBody().toString();
+      const body = message.body instanceof Buffer ? message.body.toString() : message.body;
       const { module, operation, shardKey, timestamp, payload } = JSON.parse(body);
 
       if (module !== MessageModule.COMMENT) {
@@ -154,9 +154,10 @@ class CommentConsumer {
    * 处理创建评论
    */
   async handleCreate(payload) {
-    const { userId, storyId, content } = payload;
+    const { commentId, userId, storyId, content } = payload;
 
     const comment = await Comment.create({
+      id: commentId,
       userId,
       storyId,
       content

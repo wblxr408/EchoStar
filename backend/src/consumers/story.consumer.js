@@ -110,8 +110,8 @@ class StoryConsumer {
   async handleMessage(message) {
     try {
       const msgId = message.messageId;
-      const tag = message.getTag();
-      const body = message.getBody().toString();
+      const tag = message.tag;  // RocketMQ 5.x 使用属性而非方法
+      const body = message.body instanceof Buffer ? message.body.toString() : message.body;
       const { module, operation, shardKey, timestamp, payload } = JSON.parse(body);
 
       // 只处理 story 模块的消息
