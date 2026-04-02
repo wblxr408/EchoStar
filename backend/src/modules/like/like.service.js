@@ -1,6 +1,6 @@
 import { Like } from './like.model.js';
 import { User } from '../auth/auth.model.js';
-import { Story } from '../story/story.model.js';
+import { StoryService } from '../story/story.service.js';
 import { NotificationService } from '../notification/notification.service.js';
 import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
 
@@ -39,7 +39,7 @@ class LikeServiceClass {
    * 点赞/取消点赞（切换）
    */
   async toggleLike(userId, storyId) {
-    const story = await Story.findByPk(storyId);
+    const story = await StoryService.fetchStoryRaw(storyId);
     if (!story) {
       throw new Error('Story not found');
     }
@@ -79,7 +79,7 @@ class LikeServiceClass {
    * 创建点赞（明确点赞，不能取消）
    */
   async createLike(userId, storyId) {
-    const story = await Story.findByPk(storyId);
+    const story = await StoryService.fetchStoryRaw(storyId);
     if (!story) {
       throw new Error('Story not found');
     }
