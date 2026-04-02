@@ -141,14 +141,9 @@ class LikeCacheUtil {
     const delKey = this.getDelKey(storyId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
-    console.log(`[LikeCache] likeStory userId=${userId} storyId=${storyId}`);
-
     // 检查是否已点赞
     const isLiked = await this.isLiked(userId, storyId);
-    console.log(`[LikeCache] isLiked检查结果: ${isLiked}`);
-
     if (isLiked) {
-      console.warn(`[LikeCache] 用户已点赞，拒绝重复操作 userId=${userId} storyId=${storyId}`);
       throw new Error('Story already liked');
     }
 
@@ -162,10 +157,7 @@ class LikeCacheUtil {
     pipeline.zadd(syncKey, Date.now(), storyId);
     await pipeline.exec();
 
-    console.log(`[LikeCache] Redis操作完成: userId=${userId} 添加到addSet`);
-
     const likeCount = await this.getLikeCount(storyId);
-    console.log(`[LikeCache] 点赞完成，当前点赞数: ${likeCount}`);
 
     return {
       isLiked: true,
@@ -184,14 +176,9 @@ class LikeCacheUtil {
     const delKey = this.getDelKey(storyId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
-    console.log(`[LikeCache] unlikeStory userId=${userId} storyId=${storyId}`);
-
     // 检查是否未点赞
     const isLiked = await this.isLiked(userId, storyId);
-    console.log(`[LikeCache] isLiked检查结果: ${isLiked}`);
-
     if (!isLiked) {
-      console.warn(`[LikeCache] 用户未点赞，拒绝取消操作 userId=${userId} storyId=${storyId}`);
       throw new Error('Like record not found');
     }
 
@@ -205,10 +192,7 @@ class LikeCacheUtil {
     pipeline.zadd(syncKey, Date.now(), storyId);
     await pipeline.exec();
 
-    console.log(`[LikeCache] Redis操作完成: userId=${userId} 添加到delSet`);
-
     const likeCount = await this.getLikeCount(storyId);
-    console.log(`[LikeCache] 取消点赞完成，当前点赞数: ${likeCount}`);
 
     return {
       isLiked: false,
