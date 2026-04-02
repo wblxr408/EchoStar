@@ -26,28 +26,39 @@ class LikeCacheUtil {
    * 生成 Redis key
    */
   getBaseKey(storyId) {
-    return `${this.KEY_PREFIX.BASE}:${storyId}`;
+    return `${this.KEY_PREFIX.BASE}:${this.normalizeStoryId(storyId)}`;
   }
 
   getAddKey(storyId) {
-    return `${this.KEY_PREFIX.ADD}:${storyId}`;
+    return `${this.KEY_PREFIX.ADD}:${this.normalizeStoryId(storyId)}`;
   }
 
   getDelKey(storyId) {
-    return `${this.KEY_PREFIX.DEL}:${storyId}`;
+    return `${this.KEY_PREFIX.DEL}:${this.normalizeStoryId(storyId)}`;
   }
 
   getInitKey(storyId) {
-    return `${this.KEY_PREFIX.INIT}:${storyId}`;
+    return `${this.KEY_PREFIX.INIT}:${this.normalizeStoryId(storyId)}`;
+  }
+
+  normalizeStoryId(storyId) {
+    if (storyId === undefined || storyId === null) {
+      throw new Error('Story ID is required');
+    }
+
+    return typeof storyId === 'bigint'
+      ? storyId.toString()
+      : String(storyId).trim();
   }
 
   /**
    * 确保基准点赞 Set 已初始化（懒加载）
    */
   async ensureBaseSetInit(storyId, userIds = []) {
+    const normalizedStoryId = this.normalizeStoryId(storyId);
     const redis = redisClient.getClient();
-    const baseKey = this.getBaseKey(storyId);
-    const initKey = this.getInitKey(storyId);
+    const baseKey = this.getBaseKey(normalizedStoryId);
+    const initKey = this.getInitKey(normalizedStoryId);
 
     // 检查是否已初始化
     const baseExists = await redis.exists(baseKey);
@@ -64,7 +75,7 @@ class LikeCacheUtil {
     // 从数据库加载基准数据
     const { Like } = await import('../../modules/like/like.model.js');
     const likes = await Like.findAll({
-      where: { storyId },
+      where: { storyId: normalizedStoryId },
       attributes: ['userId'],
       raw: true
     });
@@ -87,13 +98,14 @@ class LikeCacheUtil {
    * 获取用户是否点赞过
    */
   async isLiked(userId, storyId) {
+    const normalizedStoryId = this.normalizeStoryId(storyId);
     const redis = redisClient.getClient();
-    const baseKey = this.getBaseKey(storyId);
-    const addKey = this.getAddKey(storyId);
-    const delKey = this.getDelKey(storyId);
+    const baseKey = this.getBaseKey(normalizedStoryId);
+    const addKey = this.getAddKey(normalizedStoryId);
+    const delKey = this.getDelKey(normalizedStoryId);
 
     // 确保 base 已初始化
-    await this.ensureBaseSetInit(storyId);
+    await this.ensureBaseSetInit(normalizedStoryId);
 
     // Pipeline 批量查询
     const pipeline = redis.pipeline();
@@ -111,13 +123,14 @@ class LikeCacheUtil {
    * 获取点赞数（三个 Set 大小相加）
    */
   async getLikeCount(storyId) {
+    const normalizedStoryId = this.normalizeStoryId(storyId);
     const redis = redisClient.getClient();
-    const baseKey = this.getBaseKey(storyId);
-    const addKey = this.getAddKey(storyId);
-    const delKey = this.getDelKey(storyId);
+    const baseKey = this.getBaseKey(normalizedStoryId);
+    const addKey = this.getAddKey(normalizedStoryId);
+    const delKey = this.getDelKey(normalizedStoryId);
 
     // 确保 base 已初始化
-    await this.ensureBaseSetInit(storyId);
+    await this.ensureBaseSetInit(normalizedStoryId);
 
     // Pipeline 批量获取 Set 大小
     const pipeline = redis.pipeline();
@@ -136,13 +149,14 @@ class LikeCacheUtil {
    * @returns {Object} { isLiked, likeCount }
    */
   async likeStory(userId, storyId) {
+    const normalizedStoryId = this.normalizeStoryId(storyId);
     const redis = redisClient.getClient();
-    const addKey = this.getAddKey(storyId);
-    const delKey = this.getDelKey(storyId);
+    const addKey = this.getAddKey(normalizedStoryId);
+    const delKey = this.getDelKey(normalizedStoryId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
     // 检查是否已点赞
-    const isLiked = await this.isLiked(userId, storyId);
+    const isLiked = await this.isLiked(userId, normalizedStoryId);
     if (isLiked) {
       throw new Error('Story already liked');
     }
@@ -154,10 +168,10 @@ class LikeCacheUtil {
     // 2. 加入新增 Set
     pipeline.sadd(addKey, userId);
     // 3. 添加到待同步集合
-    pipeline.zadd(syncKey, Date.now(), storyId);
+    pipeline.zadd(syncKey, Date.now(), normalizedStoryId);
     await pipeline.exec();
 
-    const likeCount = await this.getLikeCount(storyId);
+    const likeCount = await this.getLikeCount(normalizedStoryId);
 
     return {
       isLiked: true,
@@ -170,14 +184,15 @@ class LikeCacheUtil {
    * @returns {Object} { isLiked, likeCount }
    */
   async unlikeStory(userId, storyId) {
+    const normalizedStoryId = this.normalizeStoryId(storyId);
     const redis = redisClient.getClient();
-    const baseKey = this.getBaseKey(storyId);
-    const addKey = this.getAddKey(storyId);
-    const delKey = this.getDelKey(storyId);
+    const baseKey = this.getBaseKey(normalizedStoryId);
+    const addKey = this.getAddKey(normalizedStoryId);
+    const delKey = this.getDelKey(normalizedStoryId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
     // 检查是否未点赞
-    const isLiked = await this.isLiked(userId, storyId);
+    const isLiked = await this.isLiked(userId, normalizedStoryId);
     if (!isLiked) {
       throw new Error('Like record not found');
     }
@@ -189,10 +204,10 @@ class LikeCacheUtil {
     // 2. 加入取消 Set
     pipeline.sadd(delKey, userId);
     // 3. 添加到待同步集合
-    pipeline.zadd(syncKey, Date.now(), storyId);
+    pipeline.zadd(syncKey, Date.now(), normalizedStoryId);
     await pipeline.exec();
 
-    const likeCount = await this.getLikeCount(storyId);
+    const likeCount = await this.getLikeCount(normalizedStoryId);
 
     return {
       isLiked: false,
@@ -211,13 +226,14 @@ class LikeCacheUtil {
       return storyIds.map(storyId => ({ storyId, isLiked: false }));
     }
 
+    const normalizedStoryIds = storyIds.map((storyId) => this.normalizeStoryId(storyId));
     const redis = redisClient.getClient();
     const results = [];
 
     // 批量获取每个故事的点赞状态
     const pipeline = redis.pipeline();
 
-    for (const storyId of storyIds) {
+    for (const storyId of normalizedStoryIds) {
       const baseKey = this.getBaseKey(storyId);
       const addKey = this.getAddKey(storyId);
       const delKey = this.getDelKey(storyId);
@@ -233,8 +249,8 @@ class LikeCacheUtil {
     const pipelineResults = await pipeline.exec();
 
     // 每个故事对应3个结果
-    for (let i = 0; i < storyIds.length; i++) {
-      const storyId = storyIds[i];
+    for (let i = 0; i < normalizedStoryIds.length; i++) {
+      const storyId = normalizedStoryIds[i];
       const baseIdx = i * 3;
       const addIdx = i * 3 + 1;
       const delIdx = i * 3 + 2;
@@ -255,11 +271,13 @@ class LikeCacheUtil {
    * 这个接口不需要缓存，直接查数据库
    */
   async getLikesByStoryId(storyId, { page = 1, limit = 10 } = {}) {
-    const { Like, User } = await import('../../modules/like/like.model.js');
+    const normalizedStoryId = this.normalizeStoryId(storyId);
+    const { Like } = await import('../../modules/like/like.model.js');
+    const { User } = await import('../../modules/auth/auth.model.js');
     const offset = (page - 1) * limit;
 
     const { rows, count } = await Like.findAndCountAll({
-      where: { storyId },
+      where: { storyId: normalizedStoryId },
       include: [{
         model: User,
         as: 'user',
@@ -339,8 +357,9 @@ const t = await sequelize.transaction();
 
     try {
       for (const storyId of uniqueStoryIds) {
-        const addKey = this.getAddKey(storyId);
-        const delKey = this.getDelKey(storyId);
+        const normalizedStoryId = this.normalizeStoryId(storyId);
+        const addKey = this.getAddKey(normalizedStoryId);
+        const delKey = this.getDelKey(normalizedStoryId);
 
         // 获取快照
         const addUsers = await redis.smembers(addKey);
@@ -350,7 +369,7 @@ const t = await sequelize.transaction();
           continue;
         }
 
-        processedUsers[storyId] = {
+        processedUsers[normalizedStoryId] = {
           add: addUsers.map(id => parseInt(id)),
           del: delUsers.map(id => parseInt(id))
         };
@@ -358,7 +377,7 @@ const t = await sequelize.transaction();
         // 批量插入点赞
         if (addUsers.length > 0) {
           await Like.bulkCreate(
-            addUsers.map(userId => ({ userId: parseInt(userId), storyId: parseInt(storyId) })),
+            addUsers.map(userId => ({ userId: parseInt(userId), storyId: normalizedStoryId })),
             { ignoreDuplicates: true, transaction: t }
           );
         }
@@ -368,7 +387,7 @@ const t = await sequelize.transaction();
           await Like.destroy({
             where: {
               userId: { [Op.in]: delUsers.map(id => parseInt(id)) },
-              storyId: parseInt(storyId)
+              storyId: normalizedStoryId
             },
             transaction: t
           });
@@ -380,21 +399,22 @@ const t = await sequelize.transaction();
       // 精准删除已处理的用户，并清理基准 Set
       const pipeline = redis.pipeline();
       for (const storyId of uniqueStoryIds) {
-        const { add, del } = processedUsers[storyId] || { add: [], del: [] };
+        const normalizedStoryId = this.normalizeStoryId(storyId);
+        const { add, del } = processedUsers[normalizedStoryId] || { add: [], del: [] };
 
         // 只删除已同步的用户
         if (add.length > 0) {
-          pipeline.srem(this.getAddKey(storyId), add);
+          pipeline.srem(this.getAddKey(normalizedStoryId), add);
         }
         if (del.length > 0) {
-          pipeline.srem(this.getDelKey(storyId), del);
+          pipeline.srem(this.getDelKey(normalizedStoryId), del);
         }
 
         // 删除基准 Set 和初始化标记
-        pipeline.del(this.getBaseKey(storyId));
-        pipeline.del(this.getInitKey(storyId));
+        pipeline.del(this.getBaseKey(normalizedStoryId));
+        pipeline.del(this.getInitKey(normalizedStoryId));
         // 从待同步集合移除
-        pipeline.zrem(syncKey, storyId);
+        pipeline.zrem(syncKey, normalizedStoryId);
       }
 
       await pipeline.exec();
@@ -413,15 +433,16 @@ const t = await sequelize.transaction();
    * 当故事被删除时调用
    */
   async clearStoryCache(storyId) {
+    const normalizedStoryId = this.normalizeStoryId(storyId);
     const redis = redisClient.getClient();
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
     const pipeline = redis.pipeline();
-    pipeline.del(this.getBaseKey(storyId));
-    pipeline.del(this.getAddKey(storyId));
-    pipeline.del(this.getDelKey(storyId));
-    pipeline.del(this.getInitKey(storyId));
-    pipeline.zrem(syncKey, storyId);
+    pipeline.del(this.getBaseKey(normalizedStoryId));
+    pipeline.del(this.getAddKey(normalizedStoryId));
+    pipeline.del(this.getDelKey(normalizedStoryId));
+    pipeline.del(this.getInitKey(normalizedStoryId));
+    pipeline.zrem(syncKey, normalizedStoryId);
 
     await pipeline.exec();
 
