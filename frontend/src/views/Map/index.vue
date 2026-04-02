@@ -790,6 +790,7 @@
       @like="toggleStoryLike"
       @favorite="toggleStoryFavorite"
       @comment="handleStoryComment"
+      @submit-comment="handleSubmitCommentFromStory"
       @report="handleStoryReport"
     />
 
@@ -1650,6 +1651,43 @@ async function submitStoryComment() {
     handleStoryComment({ storyId, comment: newComment });
     storyCommentDraft.value = '';
     storyCommentComposerOpen.value = false;
+  } catch (error) {
+    console.error('评论失败:', error);
+    alert(error.message || '评论失败，请重试');
+  } finally {
+    storyCommentSubmitting.value = false;
+  }
+}
+
+async function handleSubmitCommentFromStory({ storyId, content }) {
+  if (!storyId || !content) {
+    return;
+  }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再评论');
+    return;
+  }
+
+  if (storyCommentSubmitting.value) {
+    return;
+  }
+
+  storyCommentSubmitting.value = true;
+  try {
+    const response = await commentApi.create(storyId, content);
+    const data = response?.data ?? response;
+    const newComment = normalizeStoryComment({
+      ...(data?.data ?? data),
+      content,
+      user: {
+        username: userStore.user?.username,
+        avatar: userStore.user?.avatar
+      }
+    });
+
+    storyComments.value = [newComment, ...storyComments.value];
+    handleStoryComment({ storyId, comment: newComment });
   } catch (error) {
     console.error('评论失败:', error);
     alert(error.message || '评论失败，请重试');

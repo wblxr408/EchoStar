@@ -386,17 +386,7 @@ function submitComment() {
     return;
   }
 
-  const comment = {
-    id: Date.now(),
-    author: userStore.user?.username || userStore.user?.name || '我',
-    avatar: userStore.user?.avatar || '',
-    content,
-    createdAt: new Date().toISOString()
-  };
-
-  comments.value = [comment, ...comments.value];
-  commentCount.value = comments.value.length;
-  emit('comment', { storyId: props.story.id, comment });
+  emit('submit-comment', { storyId: props.story.id, content });
 
   newComment.value = '';
   showCommentInput.value = false;
