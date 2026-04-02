@@ -3356,7 +3356,13 @@ async function loadLikesData(isLoadMore = false) {
             ? data
             : [];
     const stories = rawStories
-      .map((item) => normalizeUserPanelStory(item))
+      .map((item) => {
+        const story = normalizeUserPanelStory(item);
+        if (story) {
+          story.isLiked = true;
+        }
+        return story;
+      })
       .filter(Boolean);
 
     if (isLoadMore) {
@@ -3524,10 +3530,18 @@ async function handleToggleFavoriteFromList(story) {
     if (isCurrentlyFavorited) {
       if (!confirm('确定要取消收藏吗？')) return;
       await favoriteApi.remove(story.id);
-      story.isFavorited = false;
+      handleStoryFavorite({
+        storyId: story.id,
+        favorited: false,
+        favoriteCount: Math.max(0, Number(story.favoriteCount ?? 0) - 1)
+      });
     } else {
       await favoriteApi.create(story.id);
-      story.isFavorited = true;
+      handleStoryFavorite({
+        storyId: story.id,
+        favorited: true,
+        favoriteCount: Number(story.favoriteCount ?? 0) + 1
+      });
     }
 
     // 刷新收藏数量
@@ -4594,23 +4608,58 @@ function handleStoryLike({ storyId, liked, likeCount }) {
     : Math.max(0, currentLikeCount + (liked ? 1 : -1));
 
   storyLikeCount.value = nextLikeCount;
+  storyIsLiked.value = liked;
 
   syncStoryAcrossCollections(storyId, (story) => {
     story.likes = nextLikeCount;
     story.likeCount = nextLikeCount;
     story.isLiked = liked;
   });
+
+  const likesIndex = likesList.value.findIndex(
+    (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(storyId)
+  );
+  if (!liked && likesIndex > -1) {
+    likesList.value.splice(likesIndex, 1);
+  } else if (liked && likesIndex === -1 && selectedStory.value) {
+    const normalizedStory = normalizeUserPanelStory(selectedStory.value);
+    if (normalizedStory) {
+      normalizedStory.isLiked = true;
+      normalizedStory.likeCount = nextLikeCount;
+      normalizedStory.likes = nextLikeCount;
+      likesList.value.unshift(normalizedStory);
+    }
+  }
 }
 
 // 处理收藏
 function handleStoryFavorite({ storyId, favorited, favoriteCount }) {
   storyIsFavorited.value = favorited;
+  if (typeof favoriteCount === 'number') {
+    storyFavoriteCount.value = Math.max(0, favoriteCount);
+  }
   syncStoryAcrossCollections(storyId, (story) => {
     story.isFavorited = favorited;
     if (typeof favoriteCount === 'number') {
       story.favoriteCount = favoriteCount;
     }
   });
+
+  const favoritesIndex = favoritesList.value.findIndex(
+    (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(storyId)
+  );
+  if (!favorited && favoritesIndex > -1) {
+    favoritesList.value.splice(favoritesIndex, 1);
+  } else if (favorited && favoritesIndex === -1 && selectedStory.value) {
+    const normalizedStory = normalizeUserPanelStory(selectedStory.value);
+    if (normalizedStory) {
+      normalizedStory.isFavorited = true;
+      if (typeof favoriteCount === 'number') {
+        normalizedStory.favoriteCount = favoriteCount;
+      }
+      favoritesList.value.unshift(normalizedStory);
+    }
+  }
 }
 
 // 处理评论

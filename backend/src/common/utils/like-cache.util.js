@@ -149,17 +149,26 @@ class LikeCacheUtil {
 
   async likeStory(userId, storyId) {
     const normalizedStoryId = this.normalizeStoryId(storyId);
+    const { Like } = await import('../../modules/like/like.model.js');
+
+    const isLiked = await this.isLiked(userId, normalizedStoryId);
+    if (isLiked) {
+      throw new Error('Story already liked');
+    }
+
+    const [, created] = await Like.findOrCreate({
+      where: { userId, storyId: normalizedStoryId }
+    });
+
+    if (!created) {
+      throw new Error('Story already liked');
+    }
 
     try {
       const redis = redisClient.getClient();
       const addKey = this.getAddKey(normalizedStoryId);
       const delKey = this.getDelKey(normalizedStoryId);
       const syncKey = this.KEY_PREFIX.SYNC_STORIES;
-
-      const isLiked = await this.isLiked(userId, normalizedStoryId);
-      if (isLiked) {
-        throw new Error('Story already liked');
-      }
 
       const pipeline = redis.pipeline();
       pipeline.srem(delKey, userId);
@@ -173,20 +182,7 @@ class LikeCacheUtil {
         likeCount
       };
     } catch (err) {
-      if (err.message === 'Story already liked') {
-        throw err;
-      }
-
-      console.error(`[like-cache] Redis likeStory failed, fallback to DB: storyId=${normalizedStoryId}`, err);
-      const { Like } = await import('../../modules/like/like.model.js');
-      const [, created] = await Like.findOrCreate({
-        where: { userId, storyId: normalizedStoryId }
-      });
-
-      if (!created) {
-        throw new Error('Story already liked');
-      }
-
+      console.error(`[like-cache] Redis likeStory failed after DB write-through: storyId=${normalizedStoryId}`, err);
       const likeCount = await Like.count({ where: { storyId: normalizedStoryId } });
       return {
         isLiked: true,
@@ -197,17 +193,22 @@ class LikeCacheUtil {
 
   async unlikeStory(userId, storyId) {
     const normalizedStoryId = this.normalizeStoryId(storyId);
+    const { Like } = await import('../../modules/like/like.model.js');
+
+    const isLiked = await this.isLiked(userId, normalizedStoryId);
+    if (!isLiked) {
+      throw new Error('Like record not found');
+    }
+
+    await Like.destroy({
+      where: { userId, storyId: normalizedStoryId }
+    });
 
     try {
       const redis = redisClient.getClient();
       const addKey = this.getAddKey(normalizedStoryId);
       const delKey = this.getDelKey(normalizedStoryId);
       const syncKey = this.KEY_PREFIX.SYNC_STORIES;
-
-      const isLiked = await this.isLiked(userId, normalizedStoryId);
-      if (!isLiked) {
-        throw new Error('Like record not found');
-      }
 
       const pipeline = redis.pipeline();
       pipeline.srem(addKey, userId);
@@ -221,21 +222,7 @@ class LikeCacheUtil {
         likeCount
       };
     } catch (err) {
-      if (err.message === 'Like record not found') {
-        throw err;
-      }
-
-      console.error(`[like-cache] Redis unlikeStory failed, fallback to DB: storyId=${normalizedStoryId}`, err);
-      const { Like } = await import('../../modules/like/like.model.js');
-      const record = await Like.findOne({
-        where: { userId, storyId: normalizedStoryId }
-      });
-
-      if (!record) {
-        throw new Error('Like record not found');
-      }
-
-      await record.destroy();
+      console.error(`[like-cache] Redis unlikeStory failed after DB write-through: storyId=${normalizedStoryId}`, err);
       const likeCount = await Like.count({ where: { storyId: normalizedStoryId } });
       return {
         isLiked: false,
