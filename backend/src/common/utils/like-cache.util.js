@@ -322,8 +322,8 @@ class LikeCacheUtil {
 
     console.log(`🔄 开始同步点赞数据，待同步故事数: ${uniqueStoryIds.length}`);
 
-    const { Like, sequelize } = await import('../../modules/like/like.model.js');
-    const { Op } = await import('sequelize');
+    const { Like } = await import('../../modules/like/like.model.js');
+    const { sequelize, Op } = await import('../../config/database.js');
 
     const t = await sequelize.transaction();
     const processedUsers = {};

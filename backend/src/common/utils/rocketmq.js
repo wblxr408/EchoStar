@@ -92,7 +92,7 @@ class RocketMQClient {
       const receipt = await this.producer.send({
         topic: config.topic,
         tag: `${module}:${operation}`,
-        messageGroup: String(shardKey),  // 顺序消息的消息组
+        // messageGroup: String(shardKey),  // 顺序消息需要 Topic 支持 FIFO 类型，暂时禁用
         body: Buffer.from(JSON.stringify({
           module,
           operation,
