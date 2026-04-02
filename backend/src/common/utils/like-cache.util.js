@@ -1,5 +1,5 @@
 import { redisClient } from './redis.js';
-
+import{ sequelize }from '../../config/database.js';
 /**
  * 点赞缓存工具类
  * 使用三集合增量同步架构
@@ -322,10 +322,19 @@ class LikeCacheUtil {
 
     console.log(`🔄 开始同步点赞数据，待同步故事数: ${uniqueStoryIds.length}`);
 
-    const { Like, sequelize } = await import('../../modules/like/like.model.js');
-    const { Op } = await import('sequelize');
+//    const { Like, sequelize } = await import('../../modules/like/like.model.js');
+//    const { Op } = await import('sequelize');
+//    const t = await sequelize.transaction();
 
-    const t = await sequelize.transaction();
+// --- 修改后 ---
+const { Like } = await import('../../modules/like/like.model.js');
+const { Op } = await (await import('sequelize')).default || await import('sequelize');
+
+// 直接使用文件顶部 import 进来的 sequelize 变量
+const t = await sequelize.transaction();
+
+
+
     const processedUsers = {};
 
     try {

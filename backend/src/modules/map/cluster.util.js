@@ -47,25 +47,6 @@ function getSphericalCenter(points) {
 }
 
 /**
- * 统计簇内主导情绪标签（业务优化）
- */
-function getMainEmotion(points) {
-  const countMap = {};
-  points.forEach(p => {
-    if (p.emotionTag) countMap[p.emotionTag] = (countMap[p.emotionTag] || 0) + 1;
-  });
-  let maxTag = null;
-  let maxCount = 0;
-  Object.entries(countMap).forEach(([tag, count]) => {
-    if (count > maxCount) {
-      maxCount = count;
-      maxTag = tag;
-    }
-  });
-  return maxTag;
-}
-
-/**
  * 【优化后】点聚合函数
  * 🔥 完全兼容原有入参、出参格式，调用层无需修改
  * @param {Array} points - [{id, latitude, longitude, emotionTag}]
@@ -110,14 +91,12 @@ export function clusterPoints(points, gridSize = 100) {
     // 聚合点：用球面三维坐标平均计算真实中心
     const center = getSphericalCenter(bucketPoints);
 
+    // 这是一个聚合点 (cluster)，按照 PM 要求，只保留必要的属性，删除 pointIds, emotionTags 和 mainEmotion 冗余属性
     result.push({
       type: 'cluster',
       latitude: center.latitude,
       longitude: center.longitude,
-      count: bucketPoints.length,
-      pointIds: bucketPoints.map(p => p.id),
-      emotionTags: bucketPoints.map(p => p.emotionTag), // 保留原字段
-      mainEmotion: getMainEmotion(bucketPoints)         // 新增优化字段
+      count: bucketPoints.length
     });
   });
 
