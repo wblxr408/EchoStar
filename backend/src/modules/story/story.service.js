@@ -35,6 +35,16 @@ function parseStoryLocationValue(locationValue) {
   };
 }
 
+function normalizeStoryId(storyId) {
+  if (storyId === undefined || storyId === null) {
+    throw new Error('Story ID is required');
+  }
+
+  return typeof storyId === 'bigint'
+    ? storyId.toString()
+    : String(storyId).trim();
+}
+
 /**
  * Story Service - 故事业务逻辑
  */
@@ -116,7 +126,7 @@ class StoryServiceClass {
 
     // 立即返回真实的 ID
     return {
-      id: storyId,
+      id: normalizeStoryId(storyId),
       content,
       images: safeImages,
       createdAt: new Date().toISOString(),
@@ -187,7 +197,7 @@ class StoryServiceClass {
     // 检查是否正在更新
     if (rawData && rawData._updating) {
       return {
-        id: storyId,
+        id: normalizeStoryId(storyId),
         _updating: true,
         message: '故事正在更新中，请稍后再试'
       };
@@ -234,7 +244,7 @@ class StoryServiceClass {
 
     // 格式化返回数据
     return {
-      id: story.id,
+      id: normalizeStoryId(story.id),
       content,
       images: story.images,
       location,
@@ -333,7 +343,7 @@ class StoryServiceClass {
 
     return {
       stories: rows.map((story, index) => ({
-        id: story.id,
+        id: normalizeStoryId(story.id),
         content: story.content,
         images: story.images,
         createdAt: story.createdAt,
@@ -385,7 +395,7 @@ class StoryServiceClass {
     return {
       success: true,
       message: '时光胶囊解锁成功',
-      storyId: story.id
+      storyId: normalizeStoryId(story.id)
     };
   }
   //修改故事内容（只允许修改 content 和 emotionTag）
@@ -428,7 +438,7 @@ class StoryServiceClass {
 
     // 立即返回
     return {
-      id: storyId,
+      id: normalizeStoryId(storyId),
       content,
       emotionTag
     };
@@ -479,7 +489,7 @@ class StoryServiceClass {
 
     // 立即返回
     return {
-      id: storyId,
+      id: normalizeStoryId(storyId),
       visibility
     };
   }
@@ -531,7 +541,7 @@ class StoryServiceClass {
       }
 
       return {
-        id: story.id,
+        id: normalizeStoryId(story.id),
         content: story.content,
         images: story.images,
         location,
@@ -607,7 +617,7 @@ class StoryServiceClass {
 
     return {
       stories: rows.map((story, index) => ({
-        id: story.id,
+        id: normalizeStoryId(story.id),
         emotionTag: story.emotionTag,
         content: story.content,
         visibility: story.visibility,

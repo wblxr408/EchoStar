@@ -46,6 +46,16 @@ const haversineKm = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
+const normalizeStoryId = (storyId) => {
+  if (storyId === undefined || storyId === null) {
+    return null;
+  }
+
+  return typeof storyId === 'bigint'
+    ? storyId.toString()
+    : String(storyId).trim();
+};
+
 // ===================== 用户偏好 =====================
 async function getUserPreferredEmotionTags(userId, limit = 50) {
   if (!userId) return {};
@@ -177,7 +187,7 @@ function scoreAndSortStories(stories, options) {
 function formatStoryForResponse(story) {
   const { lat, lng } = story._coords || parsePoint(story.location);
   return {
-    id: story.id,
+    id: normalizeStoryId(story.id),
     content: story.content,
     images: safeParseJSONB(story.images, []),
     username: story.author?.username || story.username || '',

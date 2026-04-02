@@ -1,6 +1,12 @@
 import api from './index';
 import { reportApiProxy } from './mockProxy';
 
+function normalizeTargetId(targetId) {
+  return typeof targetId === 'bigint'
+    ? targetId.toString()
+    : String(targetId).trim();
+}
+
 /**
  * 举报相关 API
  */
@@ -9,10 +15,11 @@ export const reportApi = {
    * 创建举报
    */
   create(targetType, targetId, reason) {
+    const normalizedTargetId = normalizeTargetId(targetId);
     if (reportApiProxy) {
-      return reportApiProxy.create(targetType, targetId, reason);
+      return reportApiProxy.create(targetType, normalizedTargetId, reason);
     }
-    return api.post('/v1/reports', { targetType, targetId, reason });
+    return api.post('/v1/reports', { targetType, targetId: normalizedTargetId, reason });
   },
 
   /**

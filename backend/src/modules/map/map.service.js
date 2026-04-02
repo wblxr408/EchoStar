@@ -33,6 +33,16 @@ const parsePoint = (locationVal) => {
   return { lat: 0, lng: 0 };
 };
 
+const normalizeStoryId = (storyId) => {
+  if (storyId === undefined || storyId === null) {
+    return null;
+  }
+
+  return typeof storyId === 'bigint'
+    ? storyId.toString()
+    : String(storyId).trim();
+};
+
 // ===================== 公共工具方法 =====================
 const MapServiceUtil = {
   // ✅ 核心修改：不做SQL计算，直接查原始 location 字段
@@ -71,7 +81,7 @@ const MapServiceUtil = {
     const { lat, lng } = parsePoint(story.location);
 
     return {
-      id: story.id,
+      id: normalizeStoryId(story.id),
       content: story.content,
       images: safeParseJSONB(story.images, []),
       username: story.author?.username || story.username || '',
@@ -220,7 +230,7 @@ export const MapService = {
     const points = stories.map(s => {
       const { lat, lng } = parsePoint(s.location);
       return {
-        id: s.id,
+        id: normalizeStoryId(s.id),
         latitude: lat,
         longitude: lng,
         emotionTag: s.emotionTag

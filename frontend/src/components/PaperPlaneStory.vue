@@ -253,7 +253,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'report']);
+const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report']);
 
 const isLiked = ref(false);
 const likeCount = ref(0);
@@ -386,7 +386,9 @@ function submitComment() {
     return;
   }
 
-  emit('submit-comment', { storyId: props.story.id, content });
+  const payload = { storyId: props.story.id, content };
+  emit('submit-comment', payload);
+  emit('submitComment', payload);
 
   newComment.value = '';
   showCommentInput.value = false;
