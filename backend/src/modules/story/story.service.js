@@ -309,6 +309,11 @@ class StoryServiceClass {
             [Op.notIn]: ['deleted']
             }
        },
+      include: [{
+        model: User,
+        as: 'author',
+        attributes: ['id', 'username', 'avatarUrl']
+      }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset)
@@ -335,7 +340,12 @@ class StoryServiceClass {
         viewCount: realViewCounts[index],
         visibility: story.visibility,
         location: parseStoryLocationValue(story.location),
-        locationName: story.locationName
+        locationName: story.locationName,
+        author: {
+          id: story.userId,
+          username: story.author?.username || '匿名用户',
+          avatar: story.author?.avatarUrl || null
+        }
       })),
       pagination: {
         total: count,

@@ -385,6 +385,27 @@ export const AuthService = {
 
     await user.update(updateData);
 
+    // 如果头像变更，清除该用户所有故事的 story:raw 缓存
+    if (avatarUrl !== undefined) {
+      try {
+        const { Story } = await import('../story/story.model.js');
+        const userStories = await Story.findAll({
+          where: { userId: user.id },
+          attributes: ['id']
+        });
+        if (userStories.length > 0) {
+          const redis = redisClient.getClient();
+          const pipeline = redis.pipeline();
+          for (const s of userStories) {
+            pipeline.del(`story:raw:${s.id}`);
+          }
+          await pipeline.exec();
+        }
+      } catch (cacheErr) {
+        console.error('清除故事缓存失败:', cacheErr);
+      }
+    }
+
     await clearUserCache(user.id);
 
     return {

@@ -3750,6 +3750,17 @@ async function uploadAvatar(file) {
     const updatedUser = response?.data ?? response;
     userStore.updateUser(updatedUser);
 
+    // 同步更新故事列表中的头像
+    const newAvatar = updatedUser.avatar || updatedUser.avatarUrl || '';
+    if (newAvatar && postsList.value.length > 0) {
+      postsList.value.forEach(story => {
+        if (story.userId === updatedUser.id || story.authorId === updatedUser.id) {
+          if (story.avatar) story.avatar = newAvatar;
+          if (story.author && story.author.id === updatedUser.id) story.author.avatar = newAvatar;
+        }
+      });
+    }
+
     // 清除预览
     avatarPreview.value = '';
     currentAvatarFile.value = null;
