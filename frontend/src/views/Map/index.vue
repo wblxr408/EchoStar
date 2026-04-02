@@ -77,6 +77,84 @@
       <div class="sidebar-content">
         <!-- 附近故事 -->
         <div v-if="sidebarTab === 'nearby'">
+          <section class="nearby-search-panel">
+            <div class="nearby-search-panel__heading">
+              <div>
+                <p class="nearby-search-panel__kicker">Place Search</p>
+                <h3>搜索附近地点</h3>
+                <p class="nearby-search-panel__summary">
+                  {{ nearbyCenterSummary }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="nearby-search-panel__ghost-btn"
+                @click="handleLocate"
+              >
+                我的定位
+              </button>
+            </div>
+
+            <div class="nearby-search-panel__controls">
+              <input
+                v-model="nearbySearchQuery"
+                type="text"
+                class="nearby-search-panel__input"
+                placeholder="搜索商圈、地标、街道或店铺"
+                @keyup.enter="performNearbyPoiSearch"
+              />
+              <button
+                type="button"
+                class="nearby-search-panel__submit"
+                :disabled="nearbySearching || nearbySearchQuery.trim().length < 2"
+                @click="performNearbyPoiSearch"
+              >
+                {{ nearbySearching ? '搜索中...' : '搜索地点' }}
+              </button>
+            </div>
+
+            <div class="nearby-search-panel__actions">
+              <button
+                v-if="nearbySearchQuery || nearbySearchResults.length > 0 || nearbySearchError"
+                type="button"
+                class="nearby-search-panel__text-btn"
+                @click="clearNearbyPoiSearch"
+              >
+                清空搜索
+              </button>
+              <span class="nearby-search-panel__tip">会优先参考附近结果，但明确地标也能跳出本地</span>
+            </div>
+
+            <p v-if="nearbySearchError" class="nearby-search-panel__feedback nearby-search-panel__feedback--error">
+              {{ nearbySearchError }}
+            </p>
+            <p v-else-if="nearbySearching" class="nearby-search-panel__feedback">
+              正在查找相关地点...
+            </p>
+            <p v-else-if="nearbyHasSearched && nearbySearchResults.length === 0" class="nearby-search-panel__feedback">
+              没找到匹配地点，可以换个关键词，或者直接拖动地图继续找。
+            </p>
+
+            <div v-if="nearbySearchResults.length > 0" class="nearby-search-panel__results">
+              <button
+                v-for="poi in nearbySearchResults"
+                :key="poi.id"
+                type="button"
+                class="nearby-search-panel__result"
+                @click="focusNearbyStoriesOnPoi(poi)"
+              >
+                <div class="nearby-search-panel__result-copy">
+                  <strong>{{ poi.name }}</strong>
+                  <span>{{ poi.address }}</span>
+                </div>
+                <div class="nearby-search-panel__result-meta">
+                  <span>{{ poi.district || '位置已解析' }}</span>
+                  <small v-if="poi.type">{{ poi.type }}</small>
+                </div>
+              </button>
+            </div>
+          </section>
+
           <div v-if="loading" class="loading">加载中...</div>
           <div v-else-if="stories.length === 0" class="empty">
             <p>附近还没有故事</p>
@@ -187,7 +265,6 @@
         'dock-container',
         effectiveMapTheme === 'dark' ? 'dock-dark' : 'dock-light',
         {
-          'show-sidebar': showSidebar,
           'show-publish-sidebar': showPublishSidebar,
           'show-user-sidebar': showUserSidebar,
           'expanded': isDockExpanded,
@@ -678,6 +755,7 @@ import LoginModal from '../Home/components/LoginModal.vue';
 import { formatRelativeTime } from '../../utils/time';
 import { getEmotionEmoji } from '../../utils/emotion';
 import { getAnnouncementTypeIcon } from '../../utils/announcement';
+import { searchPoisWithContext } from '../../utils/poiSearch';
 import { REPORT_TYPES } from '../../utils/report';
 import { uploadAvatar as uploadToOSS, validateImage } from '../../utils/upload';
 
@@ -696,6 +774,15 @@ const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
 const showLoginModal = ref(false);
 const loading = ref(false);
+const nearbySearchQuery = ref('');
+const nearbySearchResults = ref([]);
+const nearbySearching = ref(false);
+const nearbySearchError = ref('');
+const nearbyHasSearched = ref(false);
+const nearbyCenterLabel = ref('');
+const nearbyPinnedCenterLabel = ref(null);
+const currentUserLocationLabel = ref('');
+const currentUserSearchLocality = ref(null);
 const feedStories = ref([]);
 const feedLoading = ref(false);
 const feedLoadingMore = ref(false);
@@ -723,6 +810,13 @@ const effectiveMapTheme = computed(() => {
   }
   return getTimeBasedTheme();
 });
+const nearbyCenterSummary = computed(() => {
+  if (!nearbyCenterLabel.value) {
+    return '会优先参考你附近的结果，遇到明确地标时也会保留全局最佳匹配。';
+  }
+
+  return `当前显示的是 ${nearbyCenterLabel.value} 附近的故事。`;
+});
 const hoveredDockCard = ref('');
 const selectedDockCard = ref('');
 const drawingDockCard = ref('');
@@ -733,6 +827,14 @@ const dockActionPending = ref(false);
 const isDarkMap = computed(() => effectiveMapTheme.value === 'dark');
 let dockHoverClearTimer = null;
 let dockSelectionTimer = null;
+let nearbyPlaceSearchInstance = null;
+let nearbyPlaceSearchPromise = null;
+let nearbySearchTimer = null;
+let nearbyCenterLabelTimer = null;
+let activeNearbySearchToken = 0;
+let activeNearbyCenterLabelToken = 0;
+let activeUserLocationLabelToken = 0;
+let suppressNearbySearchQueryWatch = false;
 let geocoderInstance = null;
 let geocoderPromise = null;
 const reverseGeocodeCache = new Map();
@@ -742,6 +844,7 @@ const DOCK_CARD_PREP_MS = 120;
 const DOCK_CARD_DRAW_MS = 250;
 const DOCK_CARD_RETURN_MS = 300;
 const STORY_MODAL_OPEN_DELAY_MS = 420;
+const POI_SEARCH_RADIUS_METERS = 50000;
 
 // --- 欢迎语相关状态 ---
 const showWelcomeOverlay = ref(true); 
@@ -1997,7 +2100,73 @@ watch(showSidebar, (newValue) => {
   window.dispatchEvent(new CustomEvent('sidebar-toggle', {
     detail: { isOpen: newValue }
   }));
+
+  if (newValue && sidebarTab.value === 'nearby') {
+    ensureNearbyPlaceSearch().catch(() => {});
+  }
 });
+
+watch(sidebarTab, (tab) => {
+  if (showSidebar.value && tab === 'nearby') {
+    ensureNearbyPlaceSearch().catch(() => {});
+  }
+});
+
+watch(nearbySearchQuery, (query) => {
+  if (suppressNearbySearchQueryWatch) {
+    suppressNearbySearchQueryWatch = false;
+    return;
+  }
+
+  clearNearbySearchTimer();
+
+  const keyword = query.trim();
+  if (!keyword) {
+    nearbySearchResults.value = [];
+    nearbySearchError.value = '';
+    nearbyHasSearched.value = false;
+    activeNearbySearchToken += 1;
+    nearbySearching.value = false;
+    return;
+  }
+
+  if (keyword.length < 2) {
+    nearbySearchResults.value = [];
+    nearbySearchError.value = '';
+    nearbyHasSearched.value = false;
+    return;
+  }
+
+  nearbySearchTimer = window.setTimeout(() => {
+    performNearbyPoiSearch();
+  }, 320);
+});
+
+watch(
+  () => [mapStore.center?.latitude, mapStore.center?.longitude],
+  () => {
+    scheduleNearbyCenterLabelRefresh();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => [mapStore.userLocation?.latitude, mapStore.userLocation?.longitude],
+  () => {
+    const userCoords = extractCoordinates(mapStore.userLocation);
+    if (!userCoords) {
+      currentUserLocationLabel.value = '';
+      return;
+    }
+
+    void refreshCurrentUserLocationLabel();
+
+    if (coordinatesRoughlyEqual(mapStore.center, userCoords)) {
+      scheduleNearbyCenterLabelRefresh(currentUserLocationLabel.value || '当前位置', 120);
+    }
+  },
+  { immediate: true }
+);
 
 watch(showPublishSidebar, (newValue) => {
   window.dispatchEvent(new CustomEvent('publish-sidebar-toggle', {
@@ -2183,6 +2352,14 @@ function pickLocationText(candidates, allowCoordinateFallback = true) {
   return allowCoordinateFallback ? coordinateFallback : '';
 }
 
+function isGenericLocationPlaceholder(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  return ['Map Pick', 'Map Center', 'Current Location', 'Nearby Place'].includes(value.trim());
+}
+
 function getStoryLocationText(story, fallback = '未知位置') {
   const label = pickLocationText([
     story?.location?.address,
@@ -2227,10 +2404,170 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
     address,
     latitude,
     longitude,
+    city: firstNonEmptyString(overrides.city),
     district: firstNonEmptyString(overrides.district),
+    adcode: firstNonEmptyString(overrides.adcode),
+    province: firstNonEmptyString(overrides.province),
     type: firstNonEmptyString(overrides.type, 'map-click'),
     nearbyPois: Array.isArray(overrides.nearbyPois) ? overrides.nearbyPois : []
   };
+}
+
+function pickLocationDisplayName(location, fallback = '') {
+  if (!location || typeof location !== 'object') {
+    return fallback;
+  }
+
+  const candidates = [
+    location.name,
+    location.district,
+    location.address
+  ].filter((value) => !isGenericLocationPlaceholder(value));
+
+  return pickLocationText(candidates, false) || fallback;
+}
+
+function coordinatesRoughlyEqual(left, right) {
+  const leftCoords = extractCoordinates(left);
+  const rightCoords = extractCoordinates(right);
+  if (!leftCoords || !rightCoords) {
+    return false;
+  }
+
+  return Math.abs(leftCoords.latitude - rightCoords.latitude) < 0.0008
+    && Math.abs(leftCoords.longitude - rightCoords.longitude) < 0.0008;
+}
+
+function setNearbyPinnedCenterLabel(location, fallback = '') {
+  const coords = extractCoordinates(location);
+  const label = pickLocationDisplayName(location, fallback);
+
+  if (!coords || !label) {
+    nearbyPinnedCenterLabel.value = null;
+    return;
+  }
+
+  nearbyPinnedCenterLabel.value = {
+    key: getCoordinateCacheKey(coords.latitude, coords.longitude),
+    label
+  };
+  nearbyCenterLabel.value = label;
+}
+
+function clearNearbyCenterLabelTimer() {
+  if (nearbyCenterLabelTimer) {
+    window.clearTimeout(nearbyCenterLabelTimer);
+    nearbyCenterLabelTimer = null;
+  }
+}
+
+async function refreshCurrentUserLocationLabel(preferredLabel = '') {
+  const coords = extractCoordinates(mapStore.userLocation);
+  if (!coords) {
+    currentUserLocationLabel.value = '';
+    currentUserSearchLocality.value = null;
+    return;
+  }
+
+  if (preferredLabel) {
+    currentUserLocationLabel.value = preferredLabel;
+  }
+
+  const currentToken = ++activeUserLocationLabelToken;
+
+  try {
+    const resolvedLocation = await reverseGeocodeLocationDetail(coords.latitude, coords.longitude);
+    if (currentToken !== activeUserLocationLabelToken) {
+      return;
+    }
+
+    currentUserLocationLabel.value = pickLocationDisplayName(
+      resolvedLocation,
+      currentUserLocationLabel.value || preferredLabel || '当前位置'
+    );
+    currentUserSearchLocality.value = {
+      city: firstNonEmptyString(resolvedLocation?.city),
+      district: firstNonEmptyString(resolvedLocation?.district),
+      adcode: firstNonEmptyString(resolvedLocation?.adcode),
+      province: firstNonEmptyString(resolvedLocation?.province)
+    };
+  } catch (error) {
+    if (currentToken !== activeUserLocationLabelToken) {
+      return;
+    }
+
+    currentUserLocationLabel.value = currentUserLocationLabel.value || preferredLabel || '当前位置';
+    currentUserSearchLocality.value = null;
+  }
+}
+
+async function resolveNearbyCenterLabel(preferredLabel = '') {
+  const center = extractCoordinates(mapStore.center) || extractCoordinates(mapStore.userLocation);
+  if (!center) {
+    nearbyCenterLabel.value = '';
+    nearbyPinnedCenterLabel.value = null;
+    return;
+  }
+
+  const centerKey = getCoordinateCacheKey(center.latitude, center.longitude);
+  const pinnedLabel = nearbyPinnedCenterLabel.value?.key === centerKey
+    ? nearbyPinnedCenterLabel.value.label
+    : '';
+
+  if (nearbyPinnedCenterLabel.value && nearbyPinnedCenterLabel.value.key !== centerKey) {
+    nearbyPinnedCenterLabel.value = null;
+  }
+
+  const atUserLocation = coordinatesRoughlyEqual(center, mapStore.userLocation);
+  const optimisticLabel = pickLocationText([
+    preferredLabel,
+    pinnedLabel,
+    atUserLocation ? currentUserLocationLabel.value : ''
+  ], false);
+
+  if (optimisticLabel) {
+    nearbyCenterLabel.value = optimisticLabel;
+  }
+
+  const currentToken = ++activeNearbyCenterLabelToken;
+
+  try {
+    const resolvedLocation = await reverseGeocodeLocationDetail(center.latitude, center.longitude);
+    if (currentToken !== activeNearbyCenterLabelToken) {
+      return;
+    }
+
+    nearbyCenterLabel.value = pickLocationDisplayName(
+      {
+        name: pickLocationText([
+          preferredLabel,
+          pinnedLabel,
+          atUserLocation ? currentUserLocationLabel.value : '',
+          resolvedLocation?.name
+        ], false),
+        district: resolvedLocation?.district,
+        address: resolvedLocation?.address
+      },
+      atUserLocation ? currentUserLocationLabel.value || '当前位置' : '地图中心附近'
+    );
+
+    if (atUserLocation && !currentUserLocationLabel.value) {
+      currentUserLocationLabel.value = nearbyCenterLabel.value;
+    }
+  } catch (error) {
+    if (currentToken !== activeNearbyCenterLabelToken) {
+      return;
+    }
+
+    nearbyCenterLabel.value = optimisticLabel || (atUserLocation ? currentUserLocationLabel.value || '当前位置' : '地图中心附近');
+  }
+}
+
+function scheduleNearbyCenterLabelRefresh(preferredLabel = '', delay = 320) {
+  clearNearbyCenterLabelTimer();
+  nearbyCenterLabelTimer = window.setTimeout(() => {
+    void resolveNearbyCenterLabel(preferredLabel);
+  }, delay);
 }
 
 function buildNormalizedStoryLocation(story, coords = null, fallbackLocation = null) {
@@ -2307,6 +2644,145 @@ function getSuggestedLocationDistance(location, originLocation) {
   return Math.pow(coords.latitude - origin.latitude, 2) + Math.pow(coords.longitude - origin.longitude, 2);
 }
 
+function clearNearbySearchTimer() {
+  if (nearbySearchTimer) {
+    window.clearTimeout(nearbySearchTimer);
+    nearbySearchTimer = null;
+  }
+}
+
+function setNearbySearchQuerySilently(value) {
+  suppressNearbySearchQueryWatch = true;
+  nearbySearchQuery.value = value;
+}
+
+function clearNearbyPoiSearch() {
+  clearNearbySearchTimer();
+  activeNearbySearchToken += 1;
+  setNearbySearchQuerySilently('');
+  nearbySearchResults.value = [];
+  nearbySearchError.value = '';
+  nearbyHasSearched.value = false;
+  nearbySearching.value = false;
+}
+
+function scheduleNearbyStoriesReload(delay = 320) {
+  clearTimeout(loadTimer);
+  loadTimer = window.setTimeout(() => {
+    loadStories();
+    loadClusterData();
+  }, delay);
+}
+
+function ensureNearbyPlaceSearch() {
+  if (nearbyPlaceSearchInstance) {
+    return Promise.resolve(nearbyPlaceSearchInstance);
+  }
+
+  if (nearbyPlaceSearchPromise) {
+    return nearbyPlaceSearchPromise;
+  }
+
+  nearbyPlaceSearchPromise = new Promise((resolve, reject) => {
+    if (!window.AMap?.plugin) {
+      nearbyPlaceSearchPromise = null;
+      reject(new Error('AMap is not ready.'));
+      return;
+    }
+
+    window.AMap.plugin(['AMap.PlaceSearch'], () => {
+      if (!window.AMap?.PlaceSearch) {
+        nearbyPlaceSearchPromise = null;
+        reject(new Error('AMap PlaceSearch is unavailable.'));
+        return;
+      }
+
+      nearbyPlaceSearchInstance = new window.AMap.PlaceSearch({
+        pageSize: 10,
+        pageIndex: 1,
+        extensions: 'all'
+      });
+
+      resolve(nearbyPlaceSearchInstance);
+    });
+  });
+
+  return nearbyPlaceSearchPromise;
+}
+
+async function performNearbyPoiSearch() {
+  const keyword = nearbySearchQuery.value.trim();
+  if (keyword.length < 2) {
+    nearbySearchResults.value = [];
+    nearbySearchError.value = '至少输入 2 个字再搜索地点。';
+    nearbyHasSearched.value = false;
+    return;
+  }
+
+  const currentToken = ++activeNearbySearchToken;
+  nearbySearching.value = true;
+  nearbySearchError.value = '';
+  nearbyHasSearched.value = true;
+
+  try {
+    await ensureNearbyPlaceSearch();
+    const anchor = extractCoordinates(mapStore.userLocation) || extractCoordinates(mapStore.center);
+    const sortAnchor = extractCoordinates(mapStore.userLocation) || anchor;
+    const { pois, errorMessage } = await searchPoisWithContext({
+      createPlaceSearch: (options = {}) => new window.AMap.PlaceSearch({
+        pageSize: 10,
+        pageIndex: 1,
+        extensions: 'all',
+        ...options
+      }),
+      keyword,
+      anchor,
+      sortAnchor,
+      locality: currentUserSearchLocality.value,
+      radius: POI_SEARCH_RADIUS_METERS,
+      normalizePoi: normalizeNearbyPoiFromGeocode
+    });
+
+    if (currentToken !== activeNearbySearchToken) {
+      return;
+    }
+
+    nearbySearching.value = false;
+    nearbySearchResults.value = pois;
+    nearbySearchError.value = errorMessage;
+  } catch (error) {
+    if (currentToken !== activeNearbySearchToken) {
+      return;
+    }
+
+    nearbySearching.value = false;
+    nearbySearchResults.value = [];
+    nearbySearchError.value = '地点服务暂时不可用，请确认地图脚本已正确加载。';
+    console.error('[Map] Failed to search nearby POI:', error);
+  }
+}
+
+function focusNearbyStoriesOnPoi(poi) {
+  const coords = extractCoordinates(poi);
+  if (!coords) {
+    return;
+  }
+
+  clearNearbySearchTimer();
+  activeNearbySearchToken += 1;
+  setNearbySearchQuerySilently(firstNonEmptyString(poi?.name, nearbySearchQuery.value));
+  nearbySearchResults.value = [];
+  nearbySearchError.value = '';
+  nearbyHasSearched.value = false;
+  setNearbyPinnedCenterLabel(poi, '已选地点');
+
+  suppressMapReloadUntil = Date.now() + 1200;
+  mapStore.updateCenter(coords.latitude, coords.longitude);
+  mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
+  scheduleNearbyCenterLabelRefresh(nearbyPinnedCenterLabel.value?.label || '', 80);
+  scheduleNearbyStoriesReload();
+}
+
 function ensureGeocoder() {
   if (geocoderInstance) {
     return Promise.resolve(geocoderInstance);
@@ -2366,6 +2842,10 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         regeocode.addressComponent?.district,
         regeocode.addressComponent?.township
       ].filter(Boolean).join(' ');
+      const city = firstNonEmptyString(
+        regeocode.addressComponent?.city,
+        regeocode.addressComponent?.province
+      );
       const resolvedLocation = buildFallbackLocation(latitude, longitude, {
         id: `map-pick-${longitude}-${latitude}`,
         name: pickLocationText([
@@ -2379,7 +2859,10 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
           firstPoi?.name,
           formatMapPickAddress(latitude, longitude)
         ]),
+        city: firstNonEmptyString(firstPoi?.city, city),
         district: firstNonEmptyString(firstPoi?.district, district),
+        adcode: firstNonEmptyString(firstPoi?.adcode, regeocode.addressComponent?.adcode),
+        province: firstNonEmptyString(firstPoi?.province, regeocode.addressComponent?.province),
         type: firstNonEmptyString(firstPoi?.type, 'map-click'),
         nearbyPois: Array.isArray(regeocode.pois) ? regeocode.pois : []
       });
@@ -2417,7 +2900,10 @@ function normalizeNearbyPoiFromGeocode(poi) {
     address: address || poi.name || formatMapPickAddress(latitude, longitude),
     latitude,
     longitude,
+    city: firstNonEmptyString(poi.cityname, poi.pname),
     district,
+    adcode: firstNonEmptyString(poi.adcode),
+    province: firstNonEmptyString(poi.pname),
     type: poi.type || 'nearby-poi',
     distance: toFiniteNumber(poi.distance)
   };
@@ -3042,6 +3528,10 @@ function handleLocate() {
         mapStore.setUserLocation(latitude, longitude);
         mapStore.updateCenter(latitude, longitude);
         mapStore.updateZoom(15); // 自动缩放到街区级别
+        nearbyPinnedCenterLabel.value = null;
+        nearbyCenterLabel.value = currentUserLocationLabel.value || '当前位置';
+        void refreshCurrentUserLocationLabel(nearbyCenterLabel.value);
+        scheduleNearbyCenterLabelRefresh(nearbyCenterLabel.value, 80);
         isDockExpanded.value = false;
       },
       (error) => {
@@ -3825,6 +4315,10 @@ function getUserLocation() {
         const { latitude, longitude } = position.coords;
         mapStore.setUserLocation(latitude, longitude);
         mapStore.updateCenter(latitude, longitude);
+        nearbyPinnedCenterLabel.value = null;
+        nearbyCenterLabel.value = currentUserLocationLabel.value || '当前位置';
+        void refreshCurrentUserLocationLabel(nearbyCenterLabel.value);
+        scheduleNearbyCenterLabelRefresh(nearbyCenterLabel.value, 80);
       },
       (error) => {
         console.error('获取位置失败:', error);
@@ -3872,6 +4366,11 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick);
   window.removeEventListener('resize', scheduleWelcomeTextFit);
+  clearNearbySearchTimer();
+  clearNearbyCenterLabelTimer();
+  activeNearbySearchToken += 1;
+  activeNearbyCenterLabelToken += 1;
+  activeUserLocationLabelToken += 1;
   clearTimeout(loadTimer);
   clearTimeout(storyOpenTimer);
   clearTimeout(welcomeOverlayTimer);
@@ -4072,9 +4571,9 @@ onUnmounted(() => {
   top: 50%;
   bottom: auto;
   right: auto;
-  width: min(980px, calc(100vw - 48px));
+  width: min(860px, calc(100vw - 48px));
   max-height: min(90vh, 960px);
-  border-radius: 36px;
+  border-radius: 32px;
   border: 1px solid rgba(196, 142, 48, 0.36);
   background: linear-gradient(160deg, rgba(18, 23, 37, 0.96) 0%, rgba(31, 42, 64, 0.97) 56%, rgba(17, 25, 42, 0.98) 100%);
   box-shadow:
@@ -4115,8 +4614,8 @@ onUnmounted(() => {
 }
 
 .story-sidebar::before {
-  inset: 12px;
-  border-radius: 28px;
+  inset: 10px;
+  border-radius: 24px;
   border: 1px solid rgba(199, 151, 60, 0.18);
   background:
     radial-gradient(circle at top right, rgba(255, 255, 255, 0.08) 0%, transparent 24%),
@@ -4144,29 +4643,29 @@ onUnmounted(() => {
 .sidebar-header {
   position: relative;
   z-index: 1;
-  padding: 28px 28px 18px;
+  padding: 24px 24px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding-right: 108px;
+  padding-right: 102px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
 }
 
 .sidebar-tabs {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .tab-btn {
-  padding: 10px 16px;
+  padding: 9px 14px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.76);
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -4191,12 +4690,12 @@ onUnmounted(() => {
 
 .story-sidebar .close-btn {
   position: absolute;
-  top: 20px;
-  right: 20px;
+  top: 18px;
+  right: 18px;
   z-index: 2;
-  min-width: 88px;
-  height: 46px;
-  padding: 0 14px;
+  min-width: 82px;
+  height: 42px;
+  padding: 0 12px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   background: rgba(13, 19, 34, 0.82);
@@ -4232,7 +4731,7 @@ onUnmounted(() => {
   overflow-y: auto;
   position: relative;
   z-index: 1;
-  padding: 18px 28px 28px;
+  padding: 16px 24px 24px;
 }
 
 .loading {
@@ -4255,12 +4754,244 @@ onUnmounted(() => {
 }
 
 .story-list {
-  padding-bottom: 80px;
+  display: grid;
+  gap: 14px;
+  padding-bottom: 64px;
+}
+
+.story-list :deep(.story-card),
+.story-list > .featured-story-card {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.story-list :deep(.story-card) {
+  margin-bottom: 0;
+  border-radius: 14px;
+  padding: 16px 16px 14px;
+}
+
+.story-list :deep(.story-header) {
+  margin-bottom: 10px;
+}
+
+.story-list :deep(.user-info) {
+  gap: 10px;
+}
+
+.story-list :deep(.avatar-shell) {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+}
+
+.story-list :deep(.emotion-icon) {
+  font-size: 22px;
+}
+
+.story-list :deep(.story-content) {
+  margin-bottom: 12px;
+}
+
+.story-list :deep(.story-content p) {
+  font-size: 14px;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.story-list :deep(.story-images) {
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.story-list :deep(.story-images img) {
+  border-radius: 10px;
+  aspect-ratio: 4 / 3;
+}
+
+.story-list :deep(.story-footer) {
+  gap: 12px;
+}
+
+.story-list :deep(.location) {
+  font-size: 12px;
+}
+
+.nearby-search-panel {
+  margin-bottom: 18px;
+  padding: 18px;
+  border-radius: 24px;
+  display: grid;
+  gap: 14px;
+  border: 1px solid transparent;
+}
+
+.nearby-search-panel__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nearby-search-panel__kicker {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.nearby-search-panel__heading h3 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.nearby-search-panel__summary {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.nearby-search-panel__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.nearby-search-panel__input,
+.nearby-search-panel__submit,
+.nearby-search-panel__ghost-btn,
+.nearby-search-panel__text-btn,
+.nearby-search-panel__result {
+  font: inherit;
+}
+
+.nearby-search-panel__input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.nearby-search-panel__submit,
+.nearby-search-panel__ghost-btn {
+  height: 48px;
+  padding: 0 18px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.nearby-search-panel__submit:hover:not(:disabled),
+.nearby-search-panel__ghost-btn:hover {
+  transform: translateY(-1px);
+}
+
+.nearby-search-panel__submit:disabled,
+.nearby-search-panel__ghost-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+  box-shadow: none;
+}
+
+.nearby-search-panel__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.nearby-search-panel__text-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nearby-search-panel__tip,
+.nearby-search-panel__feedback,
+.nearby-search-panel__result-copy span,
+.nearby-search-panel__result-meta {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.nearby-search-panel__feedback {
+  margin: 0;
+}
+
+.nearby-search-panel__results {
+  display: grid;
+  gap: 10px;
+}
+
+.nearby-search-panel__result {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.nearby-search-panel__result:hover {
+  transform: translateY(-1px);
+}
+
+.nearby-search-panel__result-copy,
+.nearby-search-panel__result-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.nearby-search-panel__result-copy {
+  min-width: 0;
+}
+
+.nearby-search-panel__result-copy strong,
+.nearby-search-panel__result-copy span {
+  display: block;
+  word-break: break-word;
+}
+
+.nearby-search-panel__result-meta {
+  justify-items: end;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.nearby-search-panel__result-meta small {
+  font-size: 12px;
 }
 
 .load-more-wrap {
   padding: 16px;
   text-align: center;
+  width: 100%;
+  margin: 0;
 }
 
 .load-more-btn {
@@ -4287,9 +5018,8 @@ onUnmounted(() => {
 /* 精选故事卡片 */
 .featured-story-card {
   background: rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  margin-bottom: 16px;
   cursor: pointer;
   transition: all 0.3s;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -4303,7 +5033,7 @@ onUnmounted(() => {
 
 .featured-image {
   position: relative;
-  height: 120px;
+  height: 104px;
 }
 
 .featured-image img {
@@ -4338,19 +5068,19 @@ onUnmounted(() => {
 }
 
 .featured-content {
-  padding: 12px;
+  padding: 10px 11px 11px;
 }
 
 .featured-author {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .featured-author-avatar {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
@@ -4370,19 +5100,19 @@ onUnmounted(() => {
 }
 
 .featured-author-name {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.72);
 }
 
 .featured-text {
-  font-size: 13px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.9);
-  line-height: 1.6;
-  margin: 0 0 10px 0;
+  line-height: 1.55;
+  margin: 0 0 8px 0;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -4391,7 +5121,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.6);
 }
 
@@ -4536,10 +5266,6 @@ onUnmounted(() => {
 }
 
 
-
-.dock-container.show-sidebar {
-  right: calc(380px + 96px);
-}
 
 .dock-container.show-user-sidebar {
   right: calc(320px + 96px);
@@ -7186,6 +7912,140 @@ onUnmounted(() => {
   box-shadow: 0 18px 26px -20px rgba(0, 0, 0, 0.4);
 }
 
+.story-sidebar:not(.dark) .nearby-search-panel {
+  border-color: rgba(196, 142, 48, 0.2);
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.94) 0%, rgba(248, 238, 217, 0.84) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    0 18px 30px -26px rgba(66, 42, 15, 0.2);
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__kicker,
+.story-sidebar:not(.dark) .nearby-search-panel__text-btn {
+  color: #8b561d;
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__summary,
+.story-sidebar:not(.dark) .nearby-search-panel__tip,
+.story-sidebar:not(.dark) .nearby-search-panel__feedback,
+.story-sidebar:not(.dark) .nearby-search-panel__result-copy span,
+.story-sidebar:not(.dark) .nearby-search-panel__result-meta {
+  color: rgba(75, 48, 16, 0.78);
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__heading h3,
+.story-sidebar:not(.dark) .nearby-search-panel__result-copy strong {
+  color: #3c2910;
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__input {
+  border-color: rgba(196, 142, 48, 0.18);
+  background: rgba(255, 252, 246, 0.95);
+  color: #3c2910;
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__input::placeholder {
+  color: rgba(97, 67, 24, 0.5);
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__input:focus {
+  border-color: rgba(139, 86, 29, 0.42);
+  box-shadow: 0 0 0 4px rgba(159, 105, 34, 0.12);
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__submit {
+  background: linear-gradient(135deg, rgba(118, 72, 20, 0.96) 0%, rgba(168, 108, 31, 0.96) 100%);
+  color: #fff8ef;
+  box-shadow: 0 18px 28px -22px rgba(77, 45, 11, 0.52);
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__ghost-btn {
+  border-color: rgba(153, 107, 36, 0.26);
+  background: rgba(255, 251, 244, 0.88);
+  color: #5c3a13;
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__result {
+  border-color: rgba(196, 142, 48, 0.14);
+  background: rgba(255, 251, 244, 0.78);
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__result:hover {
+  border-color: rgba(139, 86, 29, 0.3);
+  box-shadow: 0 18px 28px -24px rgba(66, 42, 15, 0.24);
+}
+
+.story-sidebar:not(.dark) .nearby-search-panel__feedback--error {
+  color: #b3342b;
+}
+
+.story-sidebar.dark .nearby-search-panel {
+  border-color: rgba(198, 219, 255, 0.16);
+  background: linear-gradient(180deg, rgba(16, 24, 41, 0.94) 0%, rgba(19, 32, 57, 0.88) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 30px -26px rgba(0, 0, 0, 0.4);
+}
+
+.story-sidebar.dark .nearby-search-panel__kicker,
+.story-sidebar.dark .nearby-search-panel__text-btn {
+  color: #b9d7ff;
+}
+
+.story-sidebar.dark .nearby-search-panel__summary,
+.story-sidebar.dark .nearby-search-panel__tip,
+.story-sidebar.dark .nearby-search-panel__feedback,
+.story-sidebar.dark .nearby-search-panel__result-copy span,
+.story-sidebar.dark .nearby-search-panel__result-meta {
+  color: rgba(226, 236, 255, 0.74);
+}
+
+.story-sidebar.dark .nearby-search-panel__heading h3,
+.story-sidebar.dark .nearby-search-panel__result-copy strong {
+  color: #eef4ff;
+}
+
+.story-sidebar.dark .nearby-search-panel__input {
+  border-color: rgba(198, 219, 255, 0.14);
+  background: rgba(8, 14, 28, 0.78);
+  color: #eef4ff;
+}
+
+.story-sidebar.dark .nearby-search-panel__input::placeholder {
+  color: rgba(226, 236, 255, 0.42);
+}
+
+.story-sidebar.dark .nearby-search-panel__input:focus {
+  border-color: rgba(150, 190, 255, 0.36);
+  box-shadow: 0 0 0 4px rgba(87, 135, 212, 0.14);
+}
+
+.story-sidebar.dark .nearby-search-panel__submit {
+  background: linear-gradient(135deg, rgba(59, 96, 162, 0.94) 0%, rgba(84, 139, 222, 0.94) 100%);
+  color: #eef4ff;
+  box-shadow: 0 18px 28px -22px rgba(6, 12, 28, 0.56);
+}
+
+.story-sidebar.dark .nearby-search-panel__ghost-btn {
+  border-color: rgba(198, 219, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef4ff;
+}
+
+.story-sidebar.dark .nearby-search-panel__result {
+  border-color: rgba(198, 219, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.story-sidebar.dark .nearby-search-panel__result:hover {
+  border-color: rgba(150, 190, 255, 0.28);
+  box-shadow: 0 18px 28px -24px rgba(0, 0, 0, 0.36);
+}
+
+.story-sidebar.dark .nearby-search-panel__feedback--error {
+  color: #ff9d8f;
+}
+
 .story-sidebar:not(.dark) .close-btn,
 .user-sidebar:not(.dark) .close-btn,
 .user-sub-sidebar:not(.dark) .close-btn {
@@ -7362,6 +8222,35 @@ onUnmounted(() => {
     padding-left: 16px;
     padding-right: 16px;
     padding-bottom: 18px;
+  }
+
+  .nearby-search-panel {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .nearby-search-panel__heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nearby-search-panel__controls {
+    grid-template-columns: 1fr;
+  }
+
+  .nearby-search-panel__submit,
+  .nearby-search-panel__ghost-btn {
+    width: 100%;
+  }
+
+  .nearby-search-panel__result {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nearby-search-panel__result-meta {
+    justify-items: start;
+    text-align: left;
   }
 }
 
