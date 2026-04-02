@@ -3462,25 +3462,6 @@ async function loadFavoritesData(isLoadMore = false) {
       })
       .filter(Boolean);
 
-    // 二次请求：为每个故事获取完整详情（location、author、likeCount 等）
-    const storyIds = basicStories.map((s) => s.id).filter(Boolean);
-    if (storyIds.length > 0) {
-      const detailResults = await Promise.allSettled(
-        storyIds.map((id) => storyApi.getStoryById(id))
-      );
-
-      detailResults.forEach((result, index) => {
-        if (result.status === 'fulfilled' && result.value) {
-          const detailData = result.value?.data ?? result.value;
-          const detail = normalizeUserPanelStory(detailData);
-          if (detail && basicStories[index]) {
-            // 合并详情数据到基本故事
-            Object.assign(basicStories[index], detail, { isFavorited: true });
-          }
-        }
-      });
-    }
-
     if (isLoadMore) {
       favoritesList.value.push(...basicStories);
       favoritesPage.value++;
