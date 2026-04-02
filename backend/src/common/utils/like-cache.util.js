@@ -87,48 +87,73 @@ class LikeCacheUtil {
    * 获取用户是否点赞过
    */
   async isLiked(userId, storyId) {
-    const redis = redisClient.getClient();
-    const baseKey = this.getBaseKey(storyId);
-    const addKey = this.getAddKey(storyId);
-    const delKey = this.getDelKey(storyId);
+    try {
+      const redis = redisClient.getClient();
+      const baseKey = this.getBaseKey(storyId);
+      const addKey = this.getAddKey(storyId);
+      const delKey = this.getDelKey(storyId);
 
-    // 确保 base 已初始化
-    await this.ensureBaseSetInit(storyId);
+      // 确保 base 已初始化
+      await this.ensureBaseSetInit(storyId);
 
-    // Pipeline 批量查询
-    const pipeline = redis.pipeline();
-    pipeline.sismember(baseKey, userId);
-    pipeline.sismember(addKey, userId);
-    pipeline.sismember(delKey, userId);
+      // Pipeline 批量查询
+      const pipeline = redis.pipeline();
+      pipeline.sismember(baseKey, userId);
+      pipeline.sismember(addKey, userId);
+      pipeline.sismember(delKey, userId);
 
-    const results = await pipeline.exec();
-    const [[, inBase], [, inAdd], [, inDel]] = results;
+      const results = await pipeline.exec();
+      const [[, inBase], [, inAdd], [, inDel]] = results;
 
-    return (inBase === 1 || inAdd === 1) && inDel !== 1;
+      return (inBase === 1 || inAdd === 1) && inDel !== 1;
+    } catch (err) {
+      console.error(`❌ Redis isLiked 失败，降级到DB [storyId: ${storyId}]:`, err);
+      const { Like } = await import('../../modules/like/like.model.js');
+      const record = await Like.findOne({ where: { userId, storyId } });
+      return !!record;
+    }
   }
 
   /**
-   * 获取点赞数（三个 Set 大小相加）
+   * 获取点赞数（使用 SUNIONSTORE 计算实际并集大小，避免基数公式错误）
    */
   async getLikeCount(storyId) {
-    const redis = redisClient.getClient();
-    const baseKey = this.getBaseKey(storyId);
-    const addKey = this.getAddKey(storyId);
-    const delKey = this.getDelKey(storyId);
+    try {
+      const redis = redisClient.getClient();
+      const baseKey = this.getBaseKey(storyId);
+      const addKey = this.getAddKey(storyId);
+      const delKey = this.getDelKey(storyId);
 
-    // 确保 base 已初始化
-    await this.ensureBaseSetInit(storyId);
+      // 确保 base 已初始化
+      await this.ensureBaseSetInit(storyId);
 
-    // Pipeline 批量获取 Set 大小
-    const pipeline = redis.pipeline();
-    pipeline.scard(baseKey);
-    pipeline.scard(addKey);
-    pipeline.scard(delKey);
-
-    const results = await pipeline.exec();
-    const [[, baseSize], [, addSize], [, delSize]] = results;
-
-    return Math.max(0, (baseSize || 0) + (addSize || 0) - (delSize || 0));
+      // 使用临时 key 计算 (base ∪ add) \ del 的实际大小
+      const tempKey = `like:temp:count:${storyId}`;
+      let tempCreated = false;
+      try {
+        // 合并 base + add
+        const unionCount = await redis.sunionstore(tempKey, baseKey, addKey);
+        tempCreated = true;
+        // 移除 del 中的用户
+        if (unionCount > 0) {
+          const delMembers = await redis.smembers(delKey);
+          if (delMembers.length > 0) {
+            await redis.srem(tempKey, delMembers);
+          }
+        }
+        const finalCount = await redis.scard(tempKey);
+        return Math.max(0, finalCount || 0);
+      } finally {
+        // 清理临时 key
+        if (tempCreated) {
+          await redis.del(tempKey).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error(`❌ Redis getLikeCount 失败，降级到DB [storyId: ${storyId}]:`, err);
+      const { Like } = await import('../../modules/like/like.model.js');
+      return await Like.count({ where: { storyId } });
+    }
   }
 
   /**
@@ -136,33 +161,43 @@ class LikeCacheUtil {
    * @returns {Object} { isLiked, likeCount }
    */
   async likeStory(userId, storyId) {
-    const redis = redisClient.getClient();
-    const addKey = this.getAddKey(storyId);
-    const delKey = this.getDelKey(storyId);
-    const syncKey = this.KEY_PREFIX.SYNC_STORIES;
+    try {
+      const redis = redisClient.getClient();
+      const addKey = this.getAddKey(storyId);
+      const delKey = this.getDelKey(storyId);
+      const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
-    // 检查是否已点赞
-    const isLiked = await this.isLiked(userId, storyId);
-    if (isLiked) {
-      throw new Error('Story already liked');
+      // 检查是否已点赞
+      const isLiked = await this.isLiked(userId, storyId);
+      if (isLiked) {
+        throw new Error('Story already liked');
+      }
+
+      // Pipeline 原子操作
+      const pipeline = redis.pipeline();
+      // 1. 从取消 Set 移除
+      pipeline.srem(delKey, userId);
+      // 2. 加入新增 Set
+      pipeline.sadd(addKey, userId);
+      // 3. 添加到待同步集合
+      pipeline.zadd(syncKey, Date.now(), storyId);
+      await pipeline.exec();
+
+      const likeCount = await this.getLikeCount(storyId);
+
+      return {
+        isLiked: true,
+        likeCount
+      };
+    } catch (err) {
+      if (err.message === 'Story already liked') throw err;
+      console.error(`❌ Redis likeStory 失败，降级到DB [storyId: ${storyId}]:`, err);
+      const { Like } = await import('../../modules/like/like.model.js');
+      const [, created] = await Like.findOrCreate({ where: { userId, storyId } });
+      if (!created) throw new Error('Story already liked');
+      const likeCount = await Like.count({ where: { storyId } });
+      return { isLiked: true, likeCount };
     }
-
-    // Pipeline 原子操作
-    const pipeline = redis.pipeline();
-    // 1. 从取消 Set 移除
-    pipeline.srem(delKey, userId);
-    // 2. 加入新增 Set
-    pipeline.sadd(addKey, userId);
-    // 3. 添加到待同步集合
-    pipeline.zadd(syncKey, Date.now(), storyId);
-    await pipeline.exec();
-
-    const likeCount = await this.getLikeCount(storyId);
-
-    return {
-      isLiked: true,
-      likeCount
-    };
   }
 
   /**
@@ -170,34 +205,45 @@ class LikeCacheUtil {
    * @returns {Object} { isLiked, likeCount }
    */
   async unlikeStory(userId, storyId) {
-    const redis = redisClient.getClient();
-    const baseKey = this.getBaseKey(storyId);
-    const addKey = this.getAddKey(storyId);
-    const delKey = this.getDelKey(storyId);
-    const syncKey = this.KEY_PREFIX.SYNC_STORIES;
+    try {
+      const redis = redisClient.getClient();
+      const baseKey = this.getBaseKey(storyId);
+      const addKey = this.getAddKey(storyId);
+      const delKey = this.getDelKey(storyId);
+      const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
-    // 检查是否未点赞
-    const isLiked = await this.isLiked(userId, storyId);
-    if (!isLiked) {
-      throw new Error('Like record not found');
+      // 检查是否未点赞
+      const isLiked = await this.isLiked(userId, storyId);
+      if (!isLiked) {
+        throw new Error('Like record not found');
+      }
+
+      // Pipeline 原子操作
+      const pipeline = redis.pipeline();
+      // 1. 从新增 Set 移除
+      pipeline.srem(addKey, userId);
+      // 2. 加入取消 Set
+      pipeline.sadd(delKey, userId);
+      // 3. 添加到待同步集合
+      pipeline.zadd(syncKey, Date.now(), storyId);
+      await pipeline.exec();
+
+      const likeCount = await this.getLikeCount(storyId);
+
+      return {
+        isLiked: false,
+        likeCount
+      };
+    } catch (err) {
+      if (err.message === 'Like record not found') throw err;
+      console.error(`❌ Redis unlikeStory 失败，降级到DB [storyId: ${storyId}]:`, err);
+      const { Like } = await import('../../modules/like/like.model.js');
+      const record = await Like.findOne({ where: { userId, storyId } });
+      if (!record) throw new Error('Like record not found');
+      await record.destroy();
+      const likeCount = await Like.count({ where: { storyId } });
+      return { isLiked: false, likeCount };
     }
-
-    // Pipeline 原子操作
-    const pipeline = redis.pipeline();
-    // 1. 从新增 Set 移除
-    pipeline.srem(addKey, userId);
-    // 2. 加入取消 Set
-    pipeline.sadd(delKey, userId);
-    // 3. 添加到待同步集合
-    pipeline.zadd(syncKey, Date.now(), storyId);
-    await pipeline.exec();
-
-    const likeCount = await this.getLikeCount(storyId);
-
-    return {
-      isLiked: false,
-      likeCount
-    };
   }
 
   /**
@@ -211,43 +257,54 @@ class LikeCacheUtil {
       return storyIds.map(storyId => ({ storyId, isLiked: false }));
     }
 
-    const redis = redisClient.getClient();
-    const results = [];
+    try {
+      const redis = redisClient.getClient();
+      const results = [];
 
-    // 批量获取每个故事的点赞状态
-    const pipeline = redis.pipeline();
+      // 批量获取每个故事的点赞状态
+      const pipeline = redis.pipeline();
 
-    for (const storyId of storyIds) {
-      const baseKey = this.getBaseKey(storyId);
-      const addKey = this.getAddKey(storyId);
-      const delKey = this.getDelKey(storyId);
+      for (const storyId of storyIds) {
+        const baseKey = this.getBaseKey(storyId);
+        const addKey = this.getAddKey(storyId);
+        const delKey = this.getDelKey(storyId);
 
-      // 确保 base 已初始化（串行执行，因为需要检查 exists）
-      await this.ensureBaseSetInit(storyId);
+        // 确保 base 已初始化（串行执行，因为需要检查 exists）
+        await this.ensureBaseSetInit(storyId);
 
-      pipeline.sismember(baseKey, userId);
-      pipeline.sismember(addKey, userId);
-      pipeline.sismember(delKey, userId);
+        pipeline.sismember(baseKey, userId);
+        pipeline.sismember(addKey, userId);
+        pipeline.sismember(delKey, userId);
+      }
+
+      const pipelineResults = await pipeline.exec();
+
+      // 每个故事对应3个结果
+      for (let i = 0; i < storyIds.length; i++) {
+        const storyId = storyIds[i];
+        const baseIdx = i * 3;
+        const addIdx = i * 3 + 1;
+        const delIdx = i * 3 + 2;
+
+        const inBase = pipelineResults[baseIdx][1] === 1;
+        const inAdd = pipelineResults[addIdx][1] === 1;
+        const inDel = pipelineResults[delIdx][1] === 1;
+
+        const isLiked = (inBase || inAdd) && !inDel;
+        results.push({ storyId, isLiked });
+      }
+
+      return results;
+    } catch (err) {
+      console.error(`❌ Redis checkMultipleLiked 失败，降级到DB [userId: ${userId}]:`, err);
+      const { Like } = await import('../../modules/like/like.model.js');
+      const likes = await Like.findAll({
+        where: { userId, storyId: storyIds },
+        attributes: ['storyId']
+      });
+      const likedIds = new Set(likes.map(l => String(l.storyId)));
+      return storyIds.map(storyId => ({ storyId, isLiked: likedIds.has(String(storyId)) }));
     }
-
-    const pipelineResults = await pipeline.exec();
-
-    // 每个故事对应3个结果
-    for (let i = 0; i < storyIds.length; i++) {
-      const storyId = storyIds[i];
-      const baseIdx = i * 3;
-      const addIdx = i * 3 + 1;
-      const delIdx = i * 3 + 2;
-
-      const inBase = pipelineResults[baseIdx][1] === 1;
-      const inAdd = pipelineResults[addIdx][1] === 1;
-      const inDel = pipelineResults[delIdx][1] === 1;
-
-      const isLiked = (inBase || inAdd) && !inDel;
-      results.push({ storyId, isLiked });
-    }
-
-    return results;
   }
 
   /**

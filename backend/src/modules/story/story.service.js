@@ -223,7 +223,13 @@ class StoryServiceClass {
     const { Comment } = await import('../comment/comment.model.js');
     const [likeCount, commentCount] = await Promise.all([
       likeCacheUtil.getLikeCount(storyId),
-      commentCacheUtil.getCommentCount(storyId).then(r => r >= 0 ? r : Comment.count({ where: { storyId, status: 'active' } }))
+      commentCacheUtil.getCommentCount(storyId).then(async (r) => {
+        if (r >= 0) return r;
+        // 缓存未命中，从DB查询并回写缓存
+        const count = await Comment.count({ where: { storyId, status: 'active' } });
+        await commentCacheUtil.setCommentCount(storyId, count);
+        return count;
+      })
     ]);
 
     // 格式化返回数据

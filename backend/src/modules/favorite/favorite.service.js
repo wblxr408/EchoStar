@@ -32,6 +32,40 @@ class FavoriteServiceClass {
   }
 
   /**
+   * 生成包含 storyId + userId 的复合缓存 key
+   */
+  _getCheckCacheKey(storyId, userId) {
+    return `${this.CACHE_PREFIX.IS_FAVORITED}:${storyId}:${userId}`;
+  }
+
+  /**
+   * 清除故事相关的所有收藏缓存
+   */
+  async _clearAllStoryFavoriteCache(storyId, userId) {
+    const redis = redisClient.getClient();
+    try {
+      const pipeline = redis.pipeline();
+      // 清除该故事的收藏计数缓存
+      pipeline.del(`${this.CACHE_PREFIX.FAVORITE_COUNT}:${storyId}`);
+      // 清除该故事的收藏列表缓存
+      pipeline.del(`${this.CACHE_PREFIX.STORY_FAVORITES}:${storyId}`);
+      // 如果有 userId，清除该用户对特定故事的收藏状态缓存
+      if (userId) {
+        pipeline.del(this._getCheckCacheKey(storyId, userId));
+      }
+      // 清除该用户的收藏列表缓存（使用 SCAN 模式删除）
+      await pipeline.exec();
+      // 清除用户收藏列表缓存（key 格式：favorite:user:list:userId）
+      if (userId) {
+        await redis.del(`${this.CACHE_PREFIX.USER_FAVORITES}:${userId}`);
+      }
+      console.log(`✅ 清除故事收藏相关缓存: storyId=${storyId}, userId=${userId || 'all'}`);
+    } catch (err) {
+      console.error(`❌ 清除故事收藏缓存失败 [storyId: ${storyId}]:`, err);
+    }
+  }
+
+  /**
    * 自动包装所有需要缓存的方法
    */
   _wrapCacheMethods() {
@@ -45,16 +79,8 @@ class FavoriteServiceClass {
       this.CACHE_TTL.EMPTY
     );
 
-    // 2. 检查是否已收藏 - 加缓存
-    this.checkIsFavorited = wrapWithCache(
-      this,
-      'checkIsFavorited',
-      this.checkIsFavorited.bind(this),
-      this.CACHE_PREFIX.IS_FAVORITED,
-      this.CACHE_TTL.CHECK,
-      this.CACHE_TTL.EMPTY,
-      0 // 用 storyId 作为缓存 key
-    );
+    // 2. 检查是否已收藏 - 加缓存（使用复合 key: storyId + userId）
+    this.checkIsFavorited = this._wrapCheckIsFavorited();
 
     // 3. 故事收藏列表 - 加缓存
     this.getFavoritesByStoryId = wrapWithCache(
@@ -76,32 +102,82 @@ class FavoriteServiceClass {
       this.CACHE_TTL.EMPTY
     );
 
-    // 5. 切换收藏 - 执行后清缓存
-    this.toggleFavorite = wrapWithClearCache(
-      this,
-      'toggleFavorite',
+    // 5. 切换收藏 - 执行后清所有相关缓存
+    this.toggleFavorite = this._wrapWithClearAllCache(
       this.toggleFavorite.bind(this),
-      this.CACHE_PREFIX.STORY_FAVORITES,
       1 // storyId 在参数第 1 位
     );
 
-    // 6. 创建收藏 - 执行后清缓存
-    this.createFavorite = wrapWithClearCache(
-      this,
-      'createFavorite',
+    // 6. 创建收藏 - 执行后清所有相关缓存
+    this.createFavorite = this._wrapWithClearAllCache(
       this.createFavorite.bind(this),
-      this.CACHE_PREFIX.STORY_FAVORITES,
       1
     );
 
-    // 7. 删除收藏 - 执行后清缓存
-    this.deleteFavorite = wrapWithClearCache(
-      this,
-      'deleteFavorite',
+    // 7. 删除收藏 - 执行后清所有相关缓存
+    this.deleteFavorite = this._wrapWithClearAllCache(
       this.deleteFavorite.bind(this),
-      this.CACHE_PREFIX.STORY_FAVORITES,
       0
     );
+  }
+
+  /**
+   * 自定义 checkIsFavorited 包装器（使用复合 key: storyId + userId）
+   */
+  _wrapCheckIsFavorited() {
+    const self = this;
+    const originalMethod = self.checkIsFavorited.bind(self);
+
+    return async function (storyId, userId) {
+      if (!userId) {
+        return { storyId, isFavorited: false };
+      }
+
+      const redis = redisClient.getClient();
+      const cacheKey = self._getCheckCacheKey(storyId, userId);
+
+      try {
+        const cachedValue = await redis.get(cacheKey);
+        if (cachedValue !== null) {
+          if (cachedValue === '__EMPTY__') {
+            return { storyId, isFavorited: false };
+          }
+          if (cachedValue === '__UPDATING__') {
+            return { _updating: true };
+          }
+          const parsed = JSON.parse(cachedValue);
+          return parsed;
+        }
+      } catch (err) {
+        console.error(`❌ 查收藏状态缓存失败 [${cacheKey}]:`, err);
+      }
+
+      const dbResult = await originalMethod(storyId, userId);
+
+      try {
+        const cacheValue = JSON.stringify(dbResult);
+        await redis.setex(cacheKey, self.CACHE_TTL.CHECK, cacheValue);
+      } catch (err) {
+        console.error(`❌ 写收藏状态缓存失败 [${cacheKey}]:`, err);
+      }
+
+      return dbResult;
+    };
+  }
+
+  /**
+   * 自定义清除缓存包装器（清除故事相关的所有收藏缓存）
+   */
+  _wrapWithClearAllCache(originalMethod, storyIdArgIndex) {
+    const self = this;
+
+    return async function (...args) {
+      const result = await originalMethod(...args);
+      const storyId = args[storyIdArgIndex];
+      const userId = args.find((arg, idx) => idx !== storyIdArgIndex && typeof arg === 'number');
+      await self._clearAllStoryFavoriteCache(storyId, userId);
+      return result;
+    };
   }
 
   /**
