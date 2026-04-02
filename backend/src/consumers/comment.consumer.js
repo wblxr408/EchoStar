@@ -6,42 +6,6 @@ import { NotificationService } from '../modules/notification/notification.servic
 import logger from '../common/utils/logger.js';
 
 /**
- * 简单的 TPS 限流器
- * 每秒最多处理 maxTps 条消息
- */
-class RateLimiter {
-  constructor(maxTps = 100) {
-    this.maxTps = maxTps;
-    this.currentTps = 0;
-    this.resetInterval = setInterval(() => {
-      this.currentTps = 0;
-    }, 1000);
-  }
-
-  /**
-   * 等待令牌
-   */
-  async waitForToken() {
-    while (this.currentTps >= this.maxTps) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    this.currentTps++;
-  }
-
-  /**
-   * 关闭限流器
-   */
-  shutdown() {
-    clearInterval(this.resetInterval);
-  }
-}
-
-/**
- * 消息处理失败记录
- */
-const failedMessages = [];
-
-/**
  * 消息去重集合
  */
 const processedMessages = new Set();
@@ -60,13 +24,14 @@ setInterval(() => {
 
 /**
  * 评论操作消费者
- * 顺序消费，执行数据库写操作 + 更新评论数缓存
+ * 使用 RocketMQ 5.x SimpleConsumer
  */
 class CommentConsumer {
   constructor() {
     this.consumer = null;
     this.initialized = false;
-    this.rateLimiter = new RateLimiter(100);  // 限制 TPS 为 100
+    this.polling = false;
+    this.shouldStop = false;
   }
 
   /**
@@ -78,130 +43,127 @@ class CommentConsumer {
     }
 
     try {
-      let RocketMQConsumer;
-      try {
-        const rocketmqModule = await import('rocketmq-client');
-        RocketMQConsumer = rocketmqModule.Consumer;
-      } catch (err) {
-        console.warn('⚠️  rocketmq-client 未安装，使用模拟模式');
-        RocketMQConsumer = this.createMockConsumer();
-      }
+      const rocketmqModule = await import('rocketmq-client-nodejs');
+      const { SimpleConsumer } = rocketmqModule;
 
-      this.consumer = new RocketMQConsumer({
-        nameServer: config.nameServer,
-        groupName: config.consumerGroup,
-        consumeThreadNums: config.consumeThreadNums
+      this.consumer = new SimpleConsumer({
+        consumerGroup: config.commentConsumerGroup,
+        endpoints: config.endpoints,
+        subscriptions: new Map([[config.topic, '*']])
       });
 
-      this.consumer.subscribe(config.topic, '*', async (msg) => {
-        return await this.handleMessage(msg);
-      });
-
-      await this.consumer.start();
+      await this.consumer.startup();
       this.initialized = true;
       console.log('✅ Comment Consumer 已启动');
+
+      // 开始轮询消息
+      this.startPolling();
     } catch (error) {
-      console.error('❌ Comment Consumer 启动失败:', error);
+      console.error('❌ Comment Consumer 启动失败:', error.message);
+      logger.error('Comment Consumer 启动失败', error);
     }
   }
 
   /**
-   * 创建模拟 Consumer
+   * 开始轮询消息
    */
-  createMockConsumer() {
-    return class MockConsumer {
-      constructor() {}
-      async start() {
-        console.log('📭 模拟模式：Comment Consumer 已启动');
+  async startPolling() {
+    if (this.polling || this.shouldStop) {
+      return;
+    }
+
+    this.polling = true;
+    this.shouldStop = false;
+
+    while (!this.shouldStop && this.initialized) {
+      try {
+        const messages = await this.consumer.receive(
+          config.maxMessagesPerPoll,
+          config.awaitDuration
+        );
+
+        for (const message of messages) {
+          await this.handleMessage(message);
+        }
+      } catch (error) {
+        if (!this.shouldStop) {
+          logger.error('Comment Consumer 轮询失败', error);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
-      async shutdown() {
-        console.log('📭 模拟模式：Comment Consumer 已关闭');
-      }
-      // eslint-disable-next-line no-unused-vars
-      subscribe(topic, tag, _handler) {
-        console.log(`📭 模拟模式：订阅 Topic=${topic}, Tag=${tag}`);
-      }
-    };
+    }
+
+    this.polling = false;
+  }
+
+  /**
+   * 停止轮询
+   */
+  stopPolling() {
+    this.shouldStop = true;
   }
 
   /**
    * 消息处理逻辑
    */
-  async handleMessage(msg) {
-    // TPS 限流：等待令牌
-    await this.rateLimiter.waitForToken();
-
-    const msgId = msg.msgId;
-    const body = JSON.parse(msg.body);
-    const { module, operation, shardKey, timestamp, payload } = body;
-
-    if (module !== MessageModule.COMMENT) {
-      console.log(`⚠️  忽略非 comment 模块消息: ${module}`);
-      return;
-    }
-
-    const dedupKey = `${shardKey}-${timestamp}`;
-    if (processedMessages.has(dedupKey)) {
-      console.log(`🔄 消息已处理，跳过: ${dedupKey}`);
-      return;
-    }
-    processedMessages.add(dedupKey);
-
-    logger.info(`📨 处理消息: ${module}:${operation}`, { shardKey, msgId });
-
+  async handleMessage(message) {
     try {
-      switch (operation) {
-        case CommentOperation.CREATE:
-          await this.handleCreate(payload);
-          break;
-        case CommentOperation.DELETE:
-          await this.handleDelete(payload);
-          break;
-        default:
-          console.warn(`⚠️  未知操作类型: ${operation}`);
+      const msgId = message.messageId;
+      const body = message.getBody().toString();
+      const { module, operation, shardKey, timestamp, payload } = JSON.parse(body);
+
+      if (module !== MessageModule.COMMENT) {
+        await this.consumer.ack(message);
+        return;
       }
 
-      logger.info(`✅ 消息处理成功: ${module}:${operation}`, { shardKey });
-      return;
+      const dedupKey = `${shardKey}-${timestamp}`;
+      if (processedMessages.has(dedupKey)) {
+        logger.info(`🔄 消息已处理，跳过: ${dedupKey}`);
+        await this.consumer.ack(message);
+        return;
+      }
+      processedMessages.add(dedupKey);
+
+      logger.info(`📨 处理消息: ${module}:${operation}`, { shardKey, msgId });
+
+      try {
+        switch (operation) {
+          case CommentOperation.CREATE:
+            await this.handleCreate(payload);
+            break;
+          case CommentOperation.DELETE:
+            await this.handleDelete(payload);
+            break;
+          default:
+            console.warn(`⚠️  未知操作类型: ${operation}`);
+        }
+
+        logger.info(`✅ 消息处理成功: ${module}:${operation}`, { shardKey });
+        await this.consumer.ack(message);
+      } catch (error) {
+        logger.error(`❌ 消息处理失败: ${module}:${operation}`, error);
+        throw error;
+      }
     } catch (error) {
-      logger.error(`❌ 消息处理失败: ${module}:${operation}`, error);
-
-      failedMessages.push({
-        msgId,
-        module,
-        operation,
-        shardKey,
-        payload,
-        error: error.message,
-        timestamp: Date.now()
-      });
-
-      if (failedMessages.length > 1000) {
-        failedMessages.shift();
-      }
-
-      throw error;
+      logger.error('❌ 消息解析失败', error);
     }
   }
 
   /**
    * 处理创建评论
-   * 写数据库 + 增加评论数缓存 + 发送通知
    */
   async handleCreate(payload) {
     const { userId, storyId, content } = payload;
 
-    // 创建评论
     const comment = await Comment.create({
       userId,
       storyId,
       content
     });
 
-    // 增加评论数缓存
     await commentCacheUtil.incrementCommentCount(storyId);
 
-    // 发送评论通知
     const { Story } = await import('../modules/story/story.model.js');
     const story = await Story.findByPk(storyId);
     if (story && story.userId !== userId) {
@@ -215,7 +177,6 @@ class CommentConsumer {
 
   /**
    * 处理删除评论
-   * 写数据库 + 减少评论数缓存
    */
   async handleDelete(payload) {
     const { commentId, userId } = payload;
@@ -229,33 +190,28 @@ class CommentConsumer {
       throw new Error(`无权删除评论: ${commentId}`);
     }
 
-    // 软删除
     await comment.update({ status: 'deleted' });
-
-    // 减少评论数缓存
     await commentCacheUtil.decrementCommentCount(comment.storyId);
 
     console.log(`✅ 删除评论成功: commentId=${commentId}, storyId=${comment.storyId}`);
   }
 
   /**
-   * 获取失败消息列表
-   */
-  getFailedMessages() {
-    return failedMessages;
-  }
-
-  /**
    * 关闭 Consumer
    */
   async shutdown() {
+    this.shouldStop = true;
+    this.stopPolling();
+
+    while (this.polling) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
     if (this.consumer && this.initialized) {
       await this.consumer.shutdown();
       this.initialized = false;
       console.log('✅ Comment Consumer 已关闭');
     }
-    // 关闭限流器
-    this.rateLimiter.shutdown();
   }
 }
 

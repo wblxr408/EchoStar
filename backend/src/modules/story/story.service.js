@@ -6,7 +6,7 @@ import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.u
 import { rocketmqClient, StoryOperation, MessageModule } from '../../common/utils/rocketmq.js';
 import { snowflake } from '../../common/utils/snowflake.js';
 import { Op } from 'sequelize';
-import { likeCacheUtil } from '../like/like-cache.util.js';
+import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
 
 function parseStoryLocationValue(locationValue) {
   if (!locationValue) {

@@ -1,17 +1,18 @@
 import 'dotenv/config';
 
 /**
- * RocketMQ 配置
+ * RocketMQ 5.x 配置
  */
 export default {
-  // NameServer 地址，多个用分号分隔
-  nameServer: process.env.ROCKETMQ_NAME_SERVER || 'localhost:9876',
+  // Proxy 地址（RocketMQ 5.x 通过 Proxy 连接）
+  endpoints: process.env.ROCKETMQ_ENDPOINTS || '127.0.0.1:8081',
 
   // Producer 组名
   producerGroup: process.env.ROCKETMQ_PRODUCER_GROUP || 'echostar-story-producer',
 
   // Consumer 组名
-  consumerGroup: process.env.ROCKETMQ_CONSUMER_GROUP || 'echostar-story-consumer',
+  storyConsumerGroup: process.env.ROCKETMQ_STORY_CONSUMER_GROUP || 'echostar-story-consumer',
+  commentConsumerGroup: process.env.ROCKETMQ_COMMENT_CONSUMER_GROUP || 'echostar-comment-consumer',
 
   // Topic
   topic: process.env.ROCKETMQ_TOPIC || 'story-operation',
@@ -19,12 +20,9 @@ export default {
   // 消息超时时间（毫秒）
   timeout: parseInt(process.env.ROCKETMQ_TIMEOUT) || 3000,
 
-  // 重试次数
-  retryTimes: parseInt(process.env.ROCKETMQ_RETRY_TIMES) || 3,
+  // 每次拉取消息数量（新版使用）
+  maxMessagesPerPoll: parseInt(process.env.ROCKETMQ_MAX_MESSAGES_PER_POLL) || 32,
 
-  // 消费线程数
-  consumeThreadNums: parseInt(process.env.ROCKETMQ_CONSUME_THREAD_NUMS) || 4,
-
-  // 每次拉取消息数量
-  pullBatchSize: parseInt(process.env.ROCKETMQ_PULL_BATCH_SIZE) || 32
+  // 消费等待时间（毫秒，最少 10000）
+  awaitDuration: parseInt(process.env.ROCKETMQ_AWAIT_DURATION) || 30000
 };

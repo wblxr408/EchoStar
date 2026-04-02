@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm search:*)",
+      "Bash(npm view:*)",
+      "WebSearch",
+      "Bash(netstat -ano)",
+      "Bash(findstr 8081)",
+      "Bash(where mqnamesrv:*)"
+    ]
+  }
+}
