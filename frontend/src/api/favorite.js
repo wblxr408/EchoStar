@@ -1,73 +1,64 @@
 import api from './index';
 import { favoriteApiProxy } from './mockProxy';
 
+function normalizeStoryId(storyId) {
+  return typeof storyId === 'bigint'
+    ? storyId.toString()
+    : String(storyId).trim();
+}
+
 /**
  * 收藏相关 API
  */
 export const favoriteApi = {
-  /**
-   * 收藏/取消收藏（自动切换）
-   */
   toggle(storyId) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (favoriteApiProxy) {
-      return favoriteApiProxy.toggle(storyId);
+      return favoriteApiProxy.toggle(normalizedStoryId);
     }
-    return api.post('/v1/favorites', { storyId });
+    return api.post('/v1/favorites', { storyId: normalizedStoryId });
   },
 
-  /**
-   * 创建收藏（明确收藏，不能取消）
-   */
   create(storyId) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (favoriteApiProxy) {
-      return favoriteApiProxy.create(storyId);
+      return favoriteApiProxy.create(normalizedStoryId);
     }
-    return api.post('/v1/favorites/create', { storyId });
+    return api.post('/v1/favorites/create', { storyId: normalizedStoryId });
   },
 
-  /**
-   * 取消收藏
-   */
   remove(storyId) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (favoriteApiProxy) {
-      return favoriteApiProxy.remove(storyId);
+      return favoriteApiProxy.remove(normalizedStoryId);
     }
-    return api.delete(`/v1/favorites/${storyId}`);
+    return api.delete(`/v1/favorites/${normalizedStoryId}`);
   },
 
-  /**
-   * 获取故事收藏列表
-   */
   getStoryFavorites(storyId, params = {}) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (favoriteApiProxy) {
-      return favoriteApiProxy.getStoryFavorites(storyId, params);
+      return favoriteApiProxy.getStoryFavorites(normalizedStoryId, params);
     }
-    return api.get(`/v1/favorites/story/${storyId}`, { params });
+    return api.get(`/v1/favorites/story/${normalizedStoryId}`, { params });
   },
 
-  /**
-   * 检查是否已收藏
-   */
   check(storyId) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (favoriteApiProxy) {
-      return favoriteApiProxy.check(storyId);
+      return favoriteApiProxy.check(normalizedStoryId);
     }
-    return api.get(`/v1/favorites/${storyId}/check`);
+    return api.get(`/v1/favorites/${normalizedStoryId}/check`);
   },
 
-  /**
-   * 统计收藏数量
-   */
   getCount(storyId) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (favoriteApiProxy) {
-      return favoriteApiProxy.getCount(storyId);
+      return favoriteApiProxy.getCount(normalizedStoryId);
     }
-    return api.get(`/v1/favorites/${storyId}/count`);
+    return api.get(`/v1/favorites/${normalizedStoryId}/count`);
   },
 
-  /**
-   * 获取我的收藏列表
-   */
   getMyFavorites(params = {}) {
     if (favoriteApiProxy) {
       return favoriteApiProxy.getMyFavorites(params);
@@ -75,13 +66,13 @@ export const favoriteApi = {
     return api.get('/v1/favorites/me', { params });
   },
 
-  /**
-   * 批量检查多个故事的收藏状态
-   */
   checkMultiple(storyIds) {
+    const normalizedStoryIds = Array.isArray(storyIds)
+      ? storyIds.map((storyId) => normalizeStoryId(storyId))
+      : [];
     if (favoriteApiProxy) {
-      return favoriteApiProxy.checkMultiple(storyIds);
+      return favoriteApiProxy.checkMultiple(normalizedStoryIds);
     }
-    return api.post('/v1/favorites/check-multiple', { storyIds });
+    return api.post('/v1/favorites/check-multiple', { storyIds: normalizedStoryIds });
   }
 };

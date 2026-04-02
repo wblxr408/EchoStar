@@ -1289,17 +1289,36 @@ function closeStoryReportPanel() {
   storyReportError.value = '';
 }
 
+function normalizeStoryIdKey(storyId) {
+  if (storyId === undefined || storyId === null) {
+    return null;
+  }
+
+  return typeof storyId === 'bigint'
+    ? storyId.toString()
+    : String(storyId).trim();
+}
+
 function mutateStoryReference(target, storyId, mutate) {
   if (!target || typeof target !== 'object') {
     return false;
   }
 
-  if (target.id === storyId) {
+  const normalizedStoryId = normalizeStoryIdKey(storyId);
+  if (!normalizedStoryId) {
+    return false;
+  }
+
+  if (normalizeStoryIdKey(target.id) === normalizedStoryId) {
     mutate(target);
     return true;
   }
 
-  if (target.story && typeof target.story === 'object' && target.story.id === storyId) {
+  if (
+    target.story
+    && typeof target.story === 'object'
+    && normalizeStoryIdKey(target.story.id) === normalizedStoryId
+  ) {
     mutate(target.story);
     return true;
   }
@@ -1312,6 +1331,7 @@ function syncStoryAcrossCollections(storyId, mutate) {
     stories,
     feedStories,
     featuredStories,
+    favoritesList,
     likesList,
     postsList
   ];
@@ -1369,7 +1389,10 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
 
   try {
     const [detailResult, commentsResult, likeResult, favoriteResult, favCountResult] = await Promise.allSettled(tasks);
-    if (requestToken !== activeStoryRequestToken || selectedStory.value?.id !== storyId) {
+    if (
+      requestToken !== activeStoryRequestToken
+      || normalizeStoryIdKey(selectedStory.value?.id) !== normalizeStoryIdKey(storyId)
+    ) {
       return;
     }
 
@@ -1473,7 +1496,10 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
   } catch (error) {
     console.error('加载故事详情失败:', error);
   } finally {
-    if (requestToken === activeStoryRequestToken && selectedStory.value?.id === storyId) {
+    if (
+      requestToken === activeStoryRequestToken
+      && normalizeStoryIdKey(selectedStory.value?.id) === normalizeStoryIdKey(storyId)
+    ) {
       storyCommentsLoading.value = false;
     }
   }
@@ -3540,7 +3566,9 @@ async function handleUnlike(story) {
     await likeApi.remove(story.id);
 
     // 从列表中移除
-    const index = likesList.value.findIndex(item => item.id === story.id);
+    const index = likesList.value.findIndex(
+      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id)
+    );
     if (index > -1) {
       likesList.value.splice(index, 1);
     }
@@ -3562,7 +3590,9 @@ async function handleDeleteStory(story) {
     await storyApi.deleteStory(story.id);
 
     // 从列表中移除
-    const index = postsList.value.findIndex(item => item.id === story.id);
+    const index = postsList.value.findIndex(
+      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id)
+    );
     if (index > -1) {
       postsList.value.splice(index, 1);
     }
@@ -4350,9 +4380,15 @@ function normalizeStoryForMap(story, fallbackLocation = null) {
   const author = resolveStoryAuthor(story);
   const nextLikeCount = Number(story.likeCount ?? story.likes ?? 0);
   const normalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+  const normalizedStoryId = normalizeStoryIdKey(story.id ?? story.storyId);
+
+  if (!normalizedStoryId) {
+    return null;
+  }
 
   return {
     ...story,
+    id: normalizedStoryId,
     images: Array.isArray(story.images) ? story.images : [],
     likes: normalizedLikeCount,
     likeCount: normalizedLikeCount,
@@ -4386,6 +4422,10 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
   const nextNormalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
   const nextFavoriteCount = Number(nextBaseStory.favoriteCount ?? 0);
   const nextNormalizedFavoriteCount = Number.isFinite(nextFavoriteCount) ? nextFavoriteCount : 0;
+  const normalizedStoryId = normalizeStoryIdKey(nextBaseStory.id ?? item.storyId ?? item.id);
+  if (!normalizedStoryId) {
+    return null;
+  }
   const nextLocationName = pickLocationText([
     nextBaseStory.locationName,
     nextBaseStory.location?.name,
@@ -4394,7 +4434,7 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
 
   return {
     ...nextBaseStory,
-    id: nextBaseStory.id ?? item.storyId ?? item.id,
+    id: normalizedStoryId,
     createdAt: nextBaseStory.createdAt || item.createdAt,
     images: Array.isArray(nextBaseStory.images) ? nextBaseStory.images : [],
     likes: nextNormalizedLikeCount,

@@ -1,23 +1,24 @@
 import api from './index';
 import { commentApiProxy } from './mockProxy';
 
+function normalizeStoryId(storyId) {
+  return typeof storyId === 'bigint'
+    ? storyId.toString()
+    : String(storyId).trim();
+}
+
 /**
  * 评论相关 API
  */
 export const commentApi = {
-  /**
-   * 创建评论
-   */
   create(storyId, content) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (commentApiProxy) {
-      return commentApiProxy.create(storyId, content);
+      return commentApiProxy.create(normalizedStoryId, content);
     }
-    return api.post('/v1/comments', { storyId, content });
+    return api.post('/v1/comments', { storyId: normalizedStoryId, content });
   },
 
-  /**
-   * 搜索评论
-   */
   search(keyword, params = {}) {
     if (commentApiProxy) {
       return commentApiProxy.search(keyword, params);
@@ -25,9 +26,6 @@ export const commentApi = {
     return api.get('/v1/comments/search', { params: { keyword, ...params } });
   },
 
-  /**
-   * 获取我的评论列表
-   */
   getMyComments(params = {}) {
     if (commentApiProxy) {
       return commentApiProxy.getMyComments(params);
@@ -35,29 +33,22 @@ export const commentApi = {
     return api.get('/v1/comments/me', { params });
   },
 
-  /**
-   * 获取故事评论列表
-   */
   getStoryComments(storyId, params = {}) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (commentApiProxy) {
-      return commentApiProxy.getStoryComments(storyId, params);
+      return commentApiProxy.getStoryComments(normalizedStoryId, params);
     }
-    return api.get(`/v1/comments/story/${storyId}`, { params });
+    return api.get(`/v1/comments/story/${normalizedStoryId}`, { params });
   },
 
-  /**
-   * 统计评论数量
-   */
   getCount(storyId) {
+    const normalizedStoryId = normalizeStoryId(storyId);
     if (commentApiProxy) {
-      return commentApiProxy.getCount(storyId);
+      return commentApiProxy.getCount(normalizedStoryId);
     }
-    return api.get(`/v1/comments/${storyId}/count`);
+    return api.get(`/v1/comments/${normalizedStoryId}/count`);
   },
 
-  /**
-   * 删除评论
-   */
   delete(id) {
     if (commentApiProxy) {
       return commentApiProxy.delete(id);
