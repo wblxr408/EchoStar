@@ -39,17 +39,21 @@ class LikeServiceClass {
    * 点赞/取消点赞（切换）
    */
   async toggleLike(userId, storyId) {
+    console.log(`[LikeService] toggleLike 开始 userId=${userId} storyId=${storyId}`);
+
     const story = await Story.findByPk(storyId);
     if (!story) {
       throw new Error('Story not found');
     }
 
     const isLiked = await likeCacheUtil.isLiked(userId, storyId);
+    console.log(`[LikeService] 当前点赞状态: isLiked=${isLiked}`);
 
     if (isLiked) {
       // 取消点赞
       await likeCacheUtil.unlikeStory(userId, storyId);
       const likeCount = await likeCacheUtil.getLikeCount(storyId);
+      console.log(`[LikeService] 取消点赞成功 likeCount=${likeCount}`);
       return {
         isLiked: false,
         likeCount,
@@ -67,6 +71,7 @@ class LikeServiceClass {
       }
 
       const likeCount = await likeCacheUtil.getLikeCount(storyId);
+      console.log(`[LikeService] 点赞成功 likeCount=${likeCount}`);
       return {
         isLiked: true,
         likeCount,
