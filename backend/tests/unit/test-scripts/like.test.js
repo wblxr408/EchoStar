@@ -17,6 +17,7 @@ const __dirname = dirname(__filename);
 
 // 测试配置
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
+const TEST_RESULTS_DIR = process.env.TEST_RESULTS_DIR || join(__dirname, '..', 'test-results');
 const TEST_PREFIX = 'like_test_';
 const SHOULD_RESET = process.argv.includes('--reset');
 let accessToken = null;
@@ -166,7 +167,7 @@ async function saveRequestRecords() {
   const __dirname = path.dirname(__filename);
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
-  const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
+  const reportDir = path.join(TEST_RESULTS_DIR, 'request-records');
   const reportPath = path.join(reportDir, `like.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) {
@@ -190,7 +191,7 @@ async function saveTestReport() {
   const __dirname = path.dirname(__filename);
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
-  const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
+  const reportDir = path.join(TEST_RESULTS_DIR, 'test-reports');
   const reportPath = path.join(reportDir, `like.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) {
@@ -367,6 +368,11 @@ async function testToggleLike() {
   assert(res2.status === 200, '第二次点赞触发取消');
   assert(res2.data?.data?.isLiked === false, '返回未点赞状态');
 
+  // 1.2.1 验证：通过 check 端点确认取消点赞生效
+  const res2Check = await sendRequest('GET', `${BASE_URL}/api/likes/${testStoryId}/check`, {}, {}, '验证测试：取消点赞后通过 check 端点确认 isLiked=false');
+  assert(res2Check.status === 200, '取消点赞后 check 请求成功');
+  assert(res2Check.data?.data?.isLiked === false, '取消点赞后 check 确认未点赞');
+
   // 1.3 第三次点赞（重新点赞）
   const res3 = await sendRequest('POST', `${BASE_URL}/api/likes`, {
     storyId: testStoryId
@@ -441,6 +447,11 @@ async function testDeleteLike() {
   // 3.1 正常取消点赞
   const res1 = await sendRequest('DELETE', `${BASE_URL}/api/likes/${secondStoryId}`, {}, '正常测试：取消点赞');
   assert(res1.status === 200, '取消点赞成功');
+
+  // 3.1.1 验证：通过 check 端点确认取消点赞生效
+  const res1Check = await sendRequest('GET', `${BASE_URL}/api/likes/${secondStoryId}/check`, {}, {}, '验证测试：DELETE 取消点赞后通过 check 端点确认 isLiked=false');
+  assert(res1Check.status === 200, 'DELETE 取消点赞后 check 请求成功');
+  assert(res1Check.data?.data?.isLiked === false, 'DELETE 取消点赞后 check 确认未点赞');
 
   // 3.2 重复取消点赞
   const res2 = await sendRequest('DELETE', `${BASE_URL}/api/likes/${secondStoryId}`, {}, '边界测试：重复取消点赞');

@@ -27,6 +27,7 @@ const __dirname = dirname(__filename);
 
 // 测试配置
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
+const TEST_RESULTS_DIR = process.env.TEST_RESULTS_DIR || join(__dirname, '..', 'test-results');
 const TEST_PREFIX = 'map_test_';
 const SHOULD_RESET = process.argv.includes('--reset');
 
@@ -557,7 +558,7 @@ async function saveRequestRecords() {
   const path = await import('path');
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
-  const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
+  const reportDir = path.join(TEST_RESULTS_DIR, 'request-records');
   const reportPath = path.join(reportDir, `map.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
@@ -571,7 +572,7 @@ async function saveTestReport() {
   const path = await import('path');
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
-  const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
+  const reportDir = path.join(TEST_RESULTS_DIR, 'test-reports');
   const reportPath = path.join(reportDir, `map.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });

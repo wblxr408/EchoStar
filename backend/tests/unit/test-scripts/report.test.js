@@ -17,6 +17,7 @@ const __dirname = dirname(__filename);
 
 // 测试配置
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
+const TEST_RESULTS_DIR = process.env.TEST_RESULTS_DIR || join(__dirname, '..', 'test-results');
 const TEST_PREFIX = 'report_test_';
 const SHOULD_RESET = process.argv.includes('--reset');
 let accessToken = null;
@@ -158,7 +159,7 @@ async function saveRequestRecords() {
   const __dirname = path.dirname(__filename);
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
-  const reportDir = path.join(__dirname, '..', 'test-results', 'request-records');
+  const reportDir = path.join(TEST_RESULTS_DIR, 'request-records');
   const reportPath = path.join(reportDir, `report.request-${now}.md`);
   
   if (!fs.existsSync(reportDir)) {
@@ -182,7 +183,7 @@ async function saveTestReport() {
   const __dirname = path.dirname(__filename);
   
   const now = new Date().toISOString().replace(/[:.]/g, '-');
-  const reportDir = path.join(__dirname, '..', 'test-results', 'test-reports');
+  const reportDir = path.join(TEST_RESULTS_DIR, 'test-reports');
   const reportPath = path.join(reportDir, `report.test.report-${now}.txt`);
   
   if (!fs.existsSync(reportDir)) {
