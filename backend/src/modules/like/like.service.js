@@ -3,6 +3,7 @@ import { User } from '../auth/auth.model.js';
 import { StoryService } from '../story/story.service.js';
 import { NotificationService } from '../notification/notification.service.js';
 import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
+import { favoriteServiceInstance } from '../favorite/favorite.service.js';
 
 function parseStoryLocationValue(locationValue) {
   if (!locationValue) {
@@ -174,14 +175,19 @@ class LikeServiceClass {
       offset: parseInt(offset, 10)
     });
 
-    // 获取每个故事的点赞数（并行执行）
+    // 获取每个故事的点赞数和收藏数（并行执行）
     const storyIds = rows.map((like) => like.storyId).filter(Boolean);
-    const countPromises = storyIds.map(storyId => likeCacheUtil.getLikeCount(storyId));
+    const countPromises = [
+      ...storyIds.map(storyId => likeCacheUtil.getLikeCount(storyId)),
+      ...storyIds.map(storyId => favoriteServiceInstance.getFavoriteCount(storyId))
+    ];
     const counts = await Promise.all(countPromises);
 
     const likeCounts = {};
+    const favoriteCounts = {};
     storyIds.forEach((storyId, i) => {
       likeCounts[storyId] = counts[i];
+      favoriteCounts[storyId] = counts[storyIds.length + i];
     });
 
     return {
@@ -197,6 +203,7 @@ class LikeServiceClass {
           location: parseStoryLocationValue(like.story?.location),
           locationName: like.story?.locationName,
           likeCount: likeCounts[like.storyId] || 0,
+          favoriteCount: favoriteCounts[like.storyId]?.favoriteCount || 0,
           author: like.story?.author
             ? {
                 id: like.story.author.id,
