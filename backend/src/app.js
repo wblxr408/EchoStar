@@ -21,6 +21,11 @@ import reportRoutes from './routes/report.routes.js';
 import { syncStoryViewCount } from './jobs/sync-story-view-count.js';
 import { syncLikeToDatabase } from './jobs/sync-like-to-db.js';
 
+// 导入 RocketMQ
+import { rocketmqClient } from './common/utils/rocketmq.js';
+import { storyConsumer } from './consumers/story.consumer.js';
+import { commentConsumer } from './consumers/comment.consumer.js';
+
 /**
  * 创建 Express 应用
  */
@@ -87,6 +92,20 @@ export function createApp() {
 
   // 错误处理
   app.use(errorHandler);
+
+  // ======================
+  // RocketMQ 初始化
+  // ======================
+  // 初始化 Producer 和 Consumer（异步启动，不阻塞应用）
+  rocketmqClient.init().catch(err => {
+    console.error('❌ RocketMQ 初始化失败:', err);
+  });
+  storyConsumer.init().catch(err => {
+    console.error('❌ Story Consumer 初始化失败:', err);
+  });
+  commentConsumer.init().catch(err => {
+    console.error('❌ Comment Consumer 初始化失败:', err);
+  });
 
   // ======================
   // 定时任务

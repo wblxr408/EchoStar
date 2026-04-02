@@ -1,12 +1,12 @@
 import { Story } from './story.model.js';
 import { User } from '../auth/auth.model.js';
-import { Like } from '../like/like.model.js';
-import { Comment } from '../comment/comment.model.js';
 import { generateStoryUploadToken } from '../../common/utils/oss.js';
-import { wrapWithCache, wrapWithClearCache, redisClient } from '../../common/utils/redis.js';
+import { wrapWithCache, redisClient, setUpdatingMarker } from '../../common/utils/redis.js';
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
-import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
+import { rocketmqClient, StoryOperation, MessageModule } from '../../common/utils/rocketmq.js';
+import { snowflake } from '../../common/utils/snowflake.js';
 import { Op } from 'sequelize';
+import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
 
 function parseStoryLocationValue(locationValue) {
   if (!locationValue) {
@@ -59,6 +59,7 @@ class StoryServiceClass {
 
   /**
    * 发布故事
+   * 发送 MQ 消息异步写入数据库
    */
   async createStory(userId, data) {
     const { content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility = 'public', visibilityStartTime, visibilityEndTime } = data;
@@ -67,10 +68,10 @@ class StoryServiceClass {
     if (!['public', 'shadowban'].includes(visibility)) {
       throw new Error('可见性只能为 public 或 shadowban');
     }
+
     const safeImages = images || [];
 
     // 处理可见时间段的默认值逻辑
-    // 如果是 public，且没有传可见时间段，则默认为全天可见 (00:00 - 23:59)
     let finalStartTime = visibilityStartTime;
     let finalEndTime = visibilityEndTime;
 
@@ -80,45 +81,47 @@ class StoryServiceClass {
         finalEndTime = '23:59';
       }
     } else {
-      // 如果不是 public，则清除时间段
       finalStartTime = null;
       finalEndTime = null;
     }
 
-    // 创建故事
-    const story = await Story.create({
-      userId,
-      content,
-      images:safeImages,  // JSONB 类型，Sequelize 自动处理
-      // 修改后的代码：
-      location: {
-        type: 'Point',
-        coordinates: [location.lng, location.lat]  // ✅ 改为读取 lng 和 lat (记得依然是经度在前)
+    // 生成雪花ID
+    const storyId = snowflake.nextId();
+
+    // 设置更新中标记（TTL 5秒）
+    await setUpdatingMarker(`story:raw:${storyId}`, 5);
+
+    // 发送 MQ 消息，让消费者异步写入数据库
+    rocketmqClient.sendOrderly(
+      MessageModule.STORY,
+      StoryOperation.CREATE,
+      {
+        storyId,  // 预先生成的真实 ID
+        userId,
+        content,
+        images: safeImages,
+        location,
+        locationName,
+        emotionTag,
+        isTimeCapsule,
+        unlockAt,
+        visibility,
+        visibilityStartTime,
+        visibilityEndTime
       },
-      locationName,  // ✅ 新增：地点名称
-      emotionTag,
-      isTimeCapsule: isTimeCapsule || false,
-      unlockAt: isTimeCapsule ? new Date(unlockAt) : null,
-      visibility,  // 允许用户指定可见性
-      visibilityStartTime: visibilityStartTime || null,
-      visibilityEndTime: visibilityEndTime || null
+      storyId
+    ).catch(err => {
+      console.error(`❌ 发送 CREATE 消息失败:`, err);
     });
 
-    // 清除可能存在的旧占位值（防止缓存穿透导致新创建的故事查询失败）
-    try {
-      const redis = redisClient.getClient();
-      await redis.del(`story:raw:${story.id}`);
-    } catch (err) {
-      console.error(`❌ 清除缓存失败 [story:raw:${story.id}]:`, err);
-    }
-
+    // 立即返回真实的 ID
     return {
-      id: story.id,
-      content: story.content,
-      images: story.images,
-      createdAt: story.createdAt,
-      visibilityStartTime: story.visibilityStartTime,
-      visibilityEndTime: story.visibilityEndTime
+      id: storyId,
+      content,
+      images: safeImages,
+      createdAt: new Date().toISOString(),
+      visibilityStartTime: finalStartTime,
+      visibilityEndTime: finalEndTime
     };
   }
 
@@ -181,6 +184,15 @@ class StoryServiceClass {
     // 调用带缓存的纯查询函数
     const rawData = await this.fetchStoryRaw(storyId);
 
+    // 检查是否正在更新
+    if (rawData && rawData._updating) {
+      return {
+        id: storyId,
+        _updating: true,
+        message: '故事正在更新中，请稍后再试'
+      };
+    }
+
     if (!rawData) {
       throw new Error('故事不存在');
     }
@@ -207,9 +219,11 @@ class StoryServiceClass {
     // ======================
     // 获取点赞数和评论数
     // ======================
+    const { commentCacheUtil } = await import('../../common/utils/comment-cache.util.js');
+    const { Comment } = await import('../comment/comment.model.js');
     const [likeCount, commentCount] = await Promise.all([
-      Like.count({ where: { storyId } }),
-      Comment.count({ where: { storyId, status: 'active' } })
+      likeCacheUtil.getLikeCount(storyId),
+      commentCacheUtil.getCommentCount(storyId).then(r => r >= 0 ? r : Comment.count({ where: { storyId, status: 'active' } }))
     ]);
 
     // 格式化返回数据
@@ -238,31 +252,42 @@ class StoryServiceClass {
 
   /**
    * 删除故事
-   * 注意：缓存清除通过 wrapWithClearCache 在类外部手动应用
+   * 发送 MQ 消息异步写入数据库 + 清除缓存
    */
   async deleteStory(storyId, userId) {
-    const story = await Story.findByPk(storyId);
+    // 使用缓存查询（更快）
+    const story = await this.fetchStoryRaw(storyId);
 
-    if (!story) {
-      throw new Error('故事不存在');
+    // 处理正在更新状态
+    if (story && story._updating) {
+      // 正在更新中，尝试查询数据库获取权限信息
+      const dbStory = await Story.findByPk(storyId);
+      if (!dbStory) {
+        throw new Error('故事正在处理中，请稍后再试');
+      }
+      if (dbStory.userId !== userId) {
+        throw new Error('无权删除此故事');
+      }
+    } else if (!story) {
+      throw new Error('故事不存在或已被删除');
+    } else {
+      // 正常状态，检查权限
+      if (story.author.id !== userId) {
+        throw new Error('无权删除此故事');
+      }
     }
 
-    if (story.userId !== userId) {
-      throw new Error('无权删除此故事');
-    }
-
-    // 检查是否已删除
-    if (story.visibility === 'deleted') {
-      throw new Error('故事已被删除');
-    }
-
-    await story.update({ visibility: 'deleted' });
-
-    // 清理点赞缓存
-    likeCacheUtil.clearStoryCache(storyId).catch((err) => {
-      console.error(`❌ 清理故事点赞缓存失败 [storyId: ${storyId}]:`, err);
+    // 发送 MQ 消息，让消费者异步处理
+    rocketmqClient.sendOrderly(
+      MessageModule.STORY,
+      StoryOperation.DELETE,
+      { storyId, userId },
+      storyId
+    ).catch(err => {
+      console.error(`❌ 发送 DELETE 消息失败 [storyId: ${storyId}]:`, err);
     });
 
+    // 立即返回
     return { success: true, message: '删除成功' };
   }
 
@@ -348,40 +373,74 @@ class StoryServiceClass {
     };
   }
   //修改故事内容（只允许修改 content 和 emotionTag）
+  // 发送 MQ 消息异步写入数据库 + 清除缓存
   async modifyStory(storyId, userId, content, emotionTag) {
-    const story = await Story.findByPk(storyId);
+    // 使用缓存查询（更快）
+    const story = await this.fetchStoryRaw(storyId);
 
-    if (!story) {
+    // 处理正在更新状态
+    if (story && story._updating) {
+      // 正在更新中，尝试查询数据库获取权限信息
+      const dbStory = await Story.findByPk(storyId);
+      if (!dbStory) {
+        throw new Error('故事正在处理中，请稍后再试');
+      }
+      if (dbStory.userId !== userId) {
+        throw new Error('无权修改此故事');
+      }
+    } else if (!story) {
       throw new Error('故事不存在');
+    } else {
+      // 正常状态，检查权限
+      if (story.author.id !== userId) {
+        throw new Error('无权修改此故事');
+      }
     }
 
-    if (story.userId !== userId) {
-      throw new Error('无权修改此故事');
-    }
+    // 设置更新中标记（TTL 5秒）
+    await setUpdatingMarker(`story:raw:${storyId}`, 5);
 
-    // 只修改 content 和 emotionTag
-    await story.update({
-      content,
-      emotionTag
+    // 发送 MQ 消息，让消费者异步处理
+    rocketmqClient.sendOrderly(
+      MessageModule.STORY,
+      StoryOperation.MODIFY,
+      { storyId, content, emotionTag },
+      storyId
+    ).catch(err => {
+      console.error(`❌ 发送 MODIFY 消息失败 [storyId: ${storyId}]:`, err);
     });
 
+    // 立即返回
     return {
-      id: story.id,
-      content: story.content,
-      emotionTag: story.emotionTag
+      id: storyId,
+      content,
+      emotionTag
     };
   }
 
   //修改故事可见性
+  // 发送 MQ 消息异步写入数据库 + 清除缓存
   async updateVisibility(storyId, userId, visibility) {
-    const story = await Story.findByPk(storyId);
+    // 使用缓存查询（更快）
+    const story = await this.fetchStoryRaw(storyId);
 
-    if (!story) {
+    // 处理正在更新状态
+    if (story && story._updating) {
+      // 正在更新中，尝试查询数据库获取权限信息
+      const dbStory = await Story.findByPk(storyId);
+      if (!dbStory) {
+        throw new Error('故事正在处理中，请稍后再试');
+      }
+      if (dbStory.userId !== userId) {
+        throw new Error('无权修改此故事');
+      }
+    } else if (!story) {
       throw new Error('故事不存在');
-    }
-
-    if (story.userId !== userId) {
-      throw new Error('无权修改此故事');
+    } else {
+      // 正常状态，检查权限
+      if (story.author.id !== userId) {
+        throw new Error('无权修改此故事');
+      }
     }
 
     // 验证 visibility 只能是 public 或 shadowban
@@ -389,13 +448,23 @@ class StoryServiceClass {
       throw new Error('可见性只能为 public 或 shadowban');
     }
 
-    await story.update({
-      visibility
+    // 设置更新中标记（TTL 5秒）
+    await setUpdatingMarker(`story:raw:${storyId}`, 5);
+
+    // 发送 MQ 消息，让消费者异步处理
+    rocketmqClient.sendOrderly(
+      MessageModule.STORY,
+      StoryOperation.UPDATE_VISIBILITY,
+      { storyId, visibility },
+      storyId
+    ).catch(err => {
+      console.error(`❌ 发送 UPDATE_VISIBILITY 消息失败 [storyId: ${storyId}]:`, err);
     });
 
+    // 立即返回
     return {
-      id: story.id,
-      visibility: story.visibility
+      id: storyId,
+      visibility
     };
   }
 
@@ -560,37 +629,7 @@ export const storyServiceInstance = (() => {
     0
   );
 
-  // 应用清除缓存包装器：deleteStory
-  instance.deleteStory = wrapWithClearCache(
-    instance,
-    'deleteStory',
-    instance.deleteStory,
-    'story:raw',
-    0
-  );
-
-  // 应用清除缓存包装器：unlockTimeCapsule
-  instance.unlockTimeCapsule = wrapWithClearCache(
-    instance,
-    'unlockTimeCapsule',
-    instance.unlockTimeCapsule,
-    'story:raw',
-    0
-  );
-  instance.modifyStory = wrapWithClearCache(
-    instance,
-    'modifyStory',
-    instance.modifyStory,
-    'story:raw',
-    0
-  );
-  instance.updateVisibility = wrapWithClearCache(
-    instance,
-    'updateVisibility',
-    instance.updateVisibility,
-    'story:raw',
-    0
-  );
+  // 注：缓存清除已迁移到 RocketMQ 消费者异步处理，不再使用 wrapWithClearCache
 
   return instance;
 })();

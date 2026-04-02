@@ -239,6 +239,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import ImageUploader from './ImageUploader.vue';
 import EmotionSelector from './EmotionSelector.vue';
+import { searchPoisWithContext } from '../utils/poiSearch';
 
 const props = defineProps({
   visible: {
@@ -300,6 +301,7 @@ const themeClass = computed(() => `theme-${props.mapTheme === 'dark' ? 'dark' : 
 const TIME_PRESETS = {
   latenight: { start: '23:00', end: '05:00' }
 };
+const POI_SEARCH_RADIUS_METERS = 50000;
 
 function setTimeWindowPreset(preset) {
   form.value.visibilityPreset = preset;
@@ -383,6 +385,12 @@ const minUnlockTime = computed(() => {
 
 const userPresetLocation = computed(() => {
   return normalizePresetLocation(props.userLocation, '当前地理位置');
+});
+
+const poiSearchAnchor = computed(() => {
+  return normalizePresetLocation(props.pickedMapLocation, '已选地点')
+    || normalizePresetLocation(props.mapCenter, '地图中心')
+    || normalizePresetLocation(props.userLocation, '当前地理位置');
 });
 
 watch(
@@ -538,14 +546,19 @@ function normalizePresetLocation(source, name) {
     return null;
   }
 
+  const displayName = String(source.name || source.address || source.district || name).trim() || name;
+
   return {
-    id: `${name}-${longitude}-${latitude}`,
-    name,
-    address: formatCoordinateAddress(latitude, longitude),
+    id: `${displayName}-${longitude}-${latitude}`,
+    name: displayName,
+    address: String(source.address || formatCoordinateAddress(latitude, longitude)).trim(),
     latitude,
     longitude,
-    district: '',
-    type: ''
+    city: String(source.city || '').trim(),
+    district: String(source.district || '').trim(),
+    adcode: String(source.adcode || '').trim(),
+    province: String(source.province || '').trim(),
+    type: String(source.type || '').trim()
   };
 }
 
@@ -573,8 +586,12 @@ function normalizePoi(poi) {
     address: address || poi.name || '未知地点',
     latitude,
     longitude,
+    city: String(poi.cityname || poi.pname || '').trim(),
     district,
-    type: poi.type || ''
+    adcode: String(poi.adcode || '').trim(),
+    province: String(poi.pname || '').trim(),
+    type: poi.type || '',
+    distance: toFiniteNumber(poi.distance)
   };
 }
 
@@ -595,7 +612,7 @@ function ensurePlaceSearch() {
       }
 
       placeSearchInstance = new window.AMap.PlaceSearch({
-        pageSize: 8,
+        pageSize: 10,
         pageIndex: 1,
         extensions: 'all'
       });
@@ -683,43 +700,28 @@ async function performPoiSearch() {
   hasSearched.value = true;
 
   try {
-    const placeSearch = await ensurePlaceSearch();
-
-    placeSearch.search(keyword, (status, result) => {
-      if (currentToken !== activeSearchToken) {
-        return;
-      }
-
-      searching.value = false;
-
-      if (status !== 'complete') {
-        searchResults.value = [];
-        if (status === 'no_data') {
-          searchError.value = '';
-          return;
-        }
-
-        const info = result?.info || result?.message || '';
-        searchError.value = info
-          ? `地点搜索失败：${info}`
-          : `地点搜索失败：${status}`;
-        console.error('[PublishForm] PlaceSearch failed:', {
-          keyword,
-          status,
-          result
-        });
-        return;
-      }
-
-      const pois = Array.isArray(result?.poiList?.pois)
-        ? result.poiList.pois.map(normalizePoi).filter(Boolean)
-        : [];
-
-      searchResults.value = pois;
-      if (pois.length === 0) {
-        searchError.value = '';
-      }
+    await ensurePlaceSearch();
+    const { pois, errorMessage } = await searchPoisWithContext({
+      createPlaceSearch: (options = {}) => new window.AMap.PlaceSearch({
+        pageSize: 10,
+        pageIndex: 1,
+        extensions: 'all',
+        ...options
+      }),
+      keyword,
+      anchor: poiSearchAnchor.value,
+      locality: poiSearchAnchor.value,
+      radius: POI_SEARCH_RADIUS_METERS,
+      normalizePoi
     });
+
+    if (currentToken !== activeSearchToken) {
+      return;
+    }
+
+    searching.value = false;
+    searchResults.value = pois;
+    searchError.value = errorMessage;
   } catch (error) {
     if (currentToken !== activeSearchToken) {
       return;

@@ -43,6 +43,42 @@ class RedisClient {
 export const redisClient = new RedisClient();
 
 const EMPTY_PLACEHOLDER = "__EMPTY__";
+const UPDATING_PLACEHOLDER = "__UPDATING__";
+
+// 导出常量供外部使用
+export { EMPTY_PLACEHOLDER, UPDATING_PLACEHOLDER };
+
+/**
+ * 设置更新中标记
+ * @param {string} cacheKey - 缓存键
+ * @param {number} ttl - 过期时间（秒），默认 5 秒
+ */
+export async function setUpdatingMarker(cacheKey, ttl = 5) {
+  const redis = redisClient.getClient();
+  try {
+    await redis.setex(cacheKey, ttl, UPDATING_PLACEHOLDER);
+    console.log(`🔄 设置更新中标记：${cacheKey}`);
+  } catch (err) {
+    console.error(`❌ 设置更新中标记失败 [${cacheKey}]:`, err);
+  }
+}
+
+/**
+ * 清除更新中标记（如果存在）
+ * @param {string} cacheKey - 缓存键
+ */
+export async function clearUpdatingMarker(cacheKey) {
+  const redis = redisClient.getClient();
+  try {
+    const value = await redis.get(cacheKey);
+    if (value === UPDATING_PLACEHOLDER) {
+      await redis.del(cacheKey);
+      console.log(`✅ 清除更新中标记：${cacheKey}`);
+    }
+  } catch (err) {
+    console.error(`❌ 清除更新中标记失败 [${cacheKey}]:`, err);
+  }
+}
 
 /**
  * 缓存包装器（手动调用，无需装饰器语法）
@@ -80,6 +116,11 @@ export function wrapWithCache(
         if (cachedValue === EMPTY_PLACEHOLDER) {
           console.log(`✅ 命中防穿透占位值：${cacheKey}`);
           return null;
+        }
+        if (cachedValue === UPDATING_PLACEHOLDER) {
+          console.log(`🔄 命中更新中标记：${cacheKey}`);
+          // 返回特殊对象，调用方可以识别
+          return { _updating: true };
         }
         const parsedData = JSON.parse(cachedValue);
         console.log(`✅ 命中正常缓存：${cacheKey}`);

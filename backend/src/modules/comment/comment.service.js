@@ -1,48 +1,53 @@
 import { Comment } from './comment.model.js';
 import { User } from '../auth/auth.model.js';
-import { Story } from '../story/story.model.js';
 import { Op } from 'sequelize';
-import { NotificationService } from '../notification/notification.service.js';
+import { rocketmqClient, CommentOperation, MessageModule } from '../../common/utils/rocketmq.js';
+import { snowflake } from '../../common/utils/snowflake.js';
+import { Story } from '../story/story.model.js';
 
 /**
- * Comment Service - 评论业务逻辑
+ * Comment Service - 评论业务逻辑（使用 RocketMQ 异步写）
  */
 class CommentServiceClass {
   /**
    * 创建评论
+   * 发送 MQ 消息异步写入数据库
    */
   async createComment(userId, data) {
     const { storyId, content } = data;
 
-    // 验证故事是否存在
-    const story = await Story.findByPk(storyId);
-    if (!story) {
+    // 使用缓存查询验证故事是否存在
+    const { StoryService } = await import('../story/story.service.js');
+    const rawData = await StoryService.fetchStoryRaw(storyId);
+
+    if (!rawData) {
       throw new Error('故事不存在');
     }
 
-    // 创建评论
-    const comment = await Comment.create({
-      userId,
-      storyId,
-      content
+    // 生成雪花ID
+    const commentId = snowflake.nextId();
+
+    // 发送 MQ 消息，让消费者异步处理
+    rocketmqClient.sendOrderly(
+      MessageModule.COMMENT,
+      CommentOperation.CREATE,
+      { commentId, userId, storyId, content },
+      storyId  // 使用 storyId 保证同一故事的评论顺序
+    ).catch(err => {
+      console.error(`❌ 发送 CREATE 消息失败:`, err);
     });
 
-    // 发送评论通知（评论者不是故事作者时才发送）
-    if (story.userId !== userId) {
-      NotificationService.createNotification('comment', story.userId, userId, storyId, content).catch(err => {
-        console.error('❌ 发送评论通知失败:', err);
-      });
-    }
-
+    // 立即返回
     return {
-      id: comment.id,
-      content: comment.content,
-      createdAt: comment.createdAt
+      id: commentId,
+      content,
+      createdAt: new Date().toISOString()
     };
   }
 
   /**
    * 获取故事评论列表
+   * 直接查询数据库（列表数据不需要缓存）
    */
   async getCommentsByStoryId(storyId, { page = 1, limit = 10 } = {}) {
     const offset = (page - 1) * limit;
@@ -84,10 +89,11 @@ class CommentServiceClass {
 
   /**
    * 删除评论
+   * 发送 MQ 消息异步写入数据库
    */
   async deleteComment(commentId, userId) {
+    // 权限检查
     const comment = await Comment.findByPk(commentId);
-
     if (!comment) {
       throw new Error('评论不存在');
     }
@@ -96,22 +102,43 @@ class CommentServiceClass {
       throw new Error('无权删除此评论');
     }
 
-    // 软删除
-    await comment.update({ status: 'deleted' });
+    // 发送 MQ 消息，让消费者异步处理
+    rocketmqClient.sendOrderly(
+      MessageModule.COMMENT,
+      CommentOperation.DELETE,
+      { commentId, userId },
+      comment.storyId
+    ).catch(err => {
+      console.error(`❌ 发送 DELETE 消息失败:`, err);
+    });
 
+    // 立即返回
     return { success: true, message: '删除成功' };
   }
 
   /**
    * 统计评论数量
+   * 优先从缓存获取
    */
   async getCommentCount(storyId) {
+    const { commentCacheUtil } = await import('../../common/utils/comment-cache.util.js');
+
+    // 尝试从缓存获取
+    const cachedCount = await commentCacheUtil.getCommentCount(storyId);
+    if (cachedCount >= 0) {
+      return { storyId, commentCount: cachedCount };
+    }
+
+    // 缓存未命中，从数据库查询
     const count = await Comment.count({
       where: {
         storyId,
         status: 'active'
       }
     });
+
+    // 写入缓存
+    await commentCacheUtil.setCommentCount(storyId, count);
 
     return { storyId, commentCount: count };
   }

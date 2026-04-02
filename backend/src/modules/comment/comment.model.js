@@ -5,12 +5,14 @@ import { Story } from '../story/story.model.js';
 
 /**
  * Comment 模型
+ * id 使用雪花ID（BIGINT）
  */
 export const Comment = sequelize.define('Comment', {
   id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     primaryKey: true,
-    autoIncrement: true
+    allowNull: false,
+    field: 'id'
   },
   userId: {
     type: DataTypes.INTEGER,
@@ -24,7 +26,7 @@ export const Comment = sequelize.define('Comment', {
     onDelete: 'NO ACTION'  // 用户被删除时不删除评论
   },
   storyId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     allowNull: false,
     field: 'story_id',
     references: {

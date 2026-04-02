@@ -144,39 +144,62 @@
           <span class="tarot-corner corner-top-right"></span>
           <span class="tarot-corner corner-bottom-left"></span>
 
-          <h3>举报内容</h3>
-          <p class="report-desc">请选择举报原因并补充说明，帮助我们更快处理这条故事。</p>
+          <div class="report-modal-scroll">
+            <header class="report-card-headline">
+              <p class="report-kicker">Report</p>
+              <h3>举报内容</h3>
+              <p class="report-desc">请选择最接近的举报原因，并补充一点说明。</p>
+            </header>
 
-          <div class="report-reasons">
-            <label v-for="reason in reportReasons" :key="reason.key" class="reason-option">
-              <input
-                v-model="selectedReportReason"
-                type="radio"
-                :value="reason.key"
-                name="reportReason"
+            <section class="report-panel">
+              <div class="report-panel-head">
+                <span class="report-panel-label">第一步</span>
+                <strong>选择举报原因</strong>
+              </div>
+              <div class="report-reasons">
+                <label v-for="reason in reportReasons" :key="reason.key" class="reason-option">
+                  <input
+                    v-model="selectedReportReason"
+                    type="radio"
+                    :value="reason.key"
+                    name="reportReason"
+                  >
+                  <span>{{ reason.label }}</span>
+                </label>
+              </div>
+              <p class="report-helper">选择越准确，越有助于更快处理。</p>
+            </section>
+
+            <section class="report-panel">
+              <div class="report-panel-head">
+                <span class="report-panel-label">第二步</span>
+                <strong>补充说明</strong>
+              </div>
+              <textarea
+                v-model="reportDescription"
+                rows="5"
+                maxlength="500"
+                class="report-textarea"
+                placeholder="请详细描述举报原因，不少于 10 个字..."
+              ></textarea>
+              <div class="report-footnote">
+                <span>至少 10 个字，最多 500 个字</span>
+                <strong>{{ reportDescription.length }}/500</strong>
+              </div>
+              <p v-if="reportError" class="report-error">{{ reportError }}</p>
+            </section>
+
+            <div class="report-actions">
+              <button type="button" class="btn-cancel" @click="closeReportModal">取消</button>
+              <button
+                type="button"
+                class="btn-submit"
+                :disabled="!selectedReportReason || reportDescription.trim().length < 10"
+                @click="submitReport"
               >
-              <span>{{ reason.label }}</span>
-            </label>
-          </div>
-
-          <textarea
-            v-model="reportDescription"
-            rows="4"
-            class="report-textarea"
-            placeholder="请详细描述举报原因，不少于 10 个字..."
-          ></textarea>
-          <p v-if="reportError" class="report-error">{{ reportError }}</p>
-
-          <div class="report-actions">
-            <button type="button" class="btn-cancel" @click="closeReportModal">取消</button>
-            <button
-              type="button"
-              class="btn-submit"
-              :disabled="!selectedReportReason || reportDescription.trim().length < 10"
-              @click="submitReport"
-            >
-              提交举报
-            </button>
+                提交举报
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -989,7 +1012,7 @@ async function submitReport() {
   position: relative;
   width: min(520px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
-  padding: 28px;
+  padding: 30px 30px 22px;
   border-radius: 30px;
   border: 1px solid var(--story-detail-border);
   background: var(--story-detail-surface);
@@ -998,38 +1021,105 @@ async function submitReport() {
     0 0 0 1px rgba(255, 255, 255, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
   color: var(--story-detail-text);
-  overflow-y: auto;
+  overflow: hidden;
+  isolation: isolate;
 }
 
 .report-suit {
   z-index: 2;
 }
 
-.report-modal-content h3 {
+.report-modal-scroll {
   position: relative;
   z-index: 1;
-  margin: 0 0 10px;
+  display: grid;
+  gap: 16px;
+  max-height: calc(100vh - 108px);
+  padding: 36px 4px 8px;
+  overflow-y: auto;
+}
+
+.report-card-headline,
+.report-panel {
+  position: relative;
+  border-radius: 24px;
+  border: 1px solid var(--story-detail-frame);
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.9) 0%, rgba(255, 248, 237, 0.72) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.44),
+    0 18px 30px -26px rgba(66, 42, 15, 0.28);
+}
+
+.report-card-headline {
+  padding: 24px 22px 20px;
+  text-align: center;
+}
+
+.report-kicker {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--story-detail-accent);
+}
+
+.report-card-headline h3 {
+  margin: 0;
   font-family: 'Georgia', 'Times New Roman', serif;
   font-size: clamp(26px, 4vw, 34px);
   line-height: 1.1;
 }
 
 .report-desc {
-  position: relative;
-  z-index: 1;
-  margin: 0 0 18px;
+  margin: 12px auto 0;
+  max-width: 30em;
   font-size: 14px;
   line-height: 1.7;
   color: var(--story-detail-muted);
 }
 
+.report-panel {
+  padding: 18px;
+}
+
+.report-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.report-panel-head strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--story-detail-text);
+}
+
+.report-panel-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--story-detail-accent);
+}
+
+.report-helper {
+  margin: 0;
+}
+
+.report-helper {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--story-detail-muted);
+}
+
 .report-reasons {
-  position: relative;
-  z-index: 1;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 12px;
 }
 
 .reason-option {
@@ -1044,28 +1134,64 @@ async function submitReport() {
 
 .reason-option span {
   display: block;
-  min-height: 56px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--story-detail-frame);
-  background: var(--story-detail-panel-strong);
-  font-size: 13px;
+  min-height: 64px;
+  padding: 15px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(153, 107, 36, 0.28);
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.98) 0%, rgba(245, 234, 213, 0.92) 100%);
+  color: var(--story-detail-text);
+  font-size: 14px;
+  font-weight: 700;
   line-height: 1.45;
   cursor: pointer;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  box-shadow:
+    0 16px 26px -24px rgba(76, 49, 17, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease, background 0.18s ease;
 }
 
 .reason-option span:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  border-color: rgba(139, 86, 29, 0.5);
+  box-shadow:
+    0 22px 32px -24px rgba(76, 49, 17, 0.5),
+    0 0 0 1px rgba(255, 247, 231, 0.56);
+}
+
+.reason-option input:focus-visible + span {
+  border-color: var(--story-detail-accent);
+  box-shadow: 0 0 0 3px var(--story-detail-accent-soft);
 }
 
 .reason-option input:checked + span {
   border-color: var(--story-detail-accent);
-  box-shadow: 0 0 0 2px var(--story-detail-accent-soft);
+  background: linear-gradient(180deg, rgba(255, 248, 236, 1) 0%, rgba(244, 221, 179, 0.96) 100%);
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 3px rgba(159, 105, 34, 0.18),
+    0 24px 36px -26px rgba(76, 49, 17, 0.52);
+}
+
+.report-footnote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--story-detail-muted);
+}
+
+.report-footnote strong {
+  font-size: 13px;
+  color: var(--story-detail-accent);
 }
 
 .report-error {
   margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(179, 52, 43, 0.08);
   font-size: 13px;
   color: #b3342b;
 }
@@ -1073,6 +1199,41 @@ async function submitReport() {
 .report-actions .btn-cancel,
 .report-actions .btn-submit {
   flex: 1;
+  min-height: 50px;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+
+.report-actions .btn-cancel {
+  border-color: rgba(153, 107, 36, 0.24);
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.96) 0%, rgba(247, 238, 221, 0.92) 100%);
+  color: #5b3a13;
+  box-shadow:
+    0 16px 26px -24px rgba(76, 49, 17, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.report-actions .btn-submit {
+  background: linear-gradient(135deg, rgba(118, 72, 20, 0.98) 0%, rgba(168, 108, 31, 0.98) 100%);
+  box-shadow:
+    0 22px 34px -24px rgba(77, 45, 11, 0.82),
+    0 0 0 1px rgba(255, 235, 201, 0.18);
+}
+
+.report-actions .btn-cancel:hover,
+.report-actions .btn-submit:hover {
+  transform: translateY(-2px);
+}
+
+.report-actions .btn-cancel:hover {
+  border-color: rgba(139, 86, 29, 0.4);
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(245, 231, 205, 0.94) 100%);
+}
+
+.report-actions .btn-submit:hover {
+  box-shadow:
+    0 28px 38px -24px rgba(77, 45, 11, 0.88),
+    0 0 0 1px rgba(255, 235, 201, 0.22);
 }
 
 @media (max-width: 640px) {
@@ -1088,6 +1249,30 @@ async function submitReport() {
   .story-content-wrapper,
   .report-modal-content {
     padding: 24px 20px 22px;
+  }
+
+  .report-modal-scroll {
+    max-height: calc(100vh - 88px);
+    padding-top: 34px;
+    padding-right: 2px;
+  }
+
+  .report-card-headline,
+  .report-panel {
+    border-radius: 20px;
+  }
+
+  .report-card-headline {
+    padding: 22px 18px 18px;
+  }
+
+  .report-panel {
+    padding: 16px;
+  }
+
+  .report-panel-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .story-badges {

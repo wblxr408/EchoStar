@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm search:*)",
+      "Bash(npm view:*)",
+      "WebSearch",
+      "Bash(netstat -ano)",
+      "Bash(findstr 8081)",
+      "Bash(where mqnamesrv:*)",
+      "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\('echostar-api.yaml'\\)\\)\")",
+      "Bash(npx js-yaml:*)"
+    ]
+  }
+}
