@@ -85,8 +85,7 @@
             <span>{{ poi.address }}</span>
           </div>
           <div class="result-meta">
-            <span>{{ poi.district || '位置已解析' }}</span>
-            <small v-if="poi.type">{{ poi.type }}</small>
+            <span>{{ formatPoiDistrictLabel(poi) }}</span>
           </div>
         </button>
       </div>
@@ -427,7 +426,9 @@ watch(
       return;
     }
 
-    const normalizedLocations = locations.map((item) => ({ ...item }));
+    const normalizedLocations = locations
+      .map((item) => normalizePresetLocation(item, item?.name || '已选地点'))
+      .filter(Boolean);
     const nearestLocation = normalizedLocations[0] || null;
 
     searchResults.value = normalizedLocations;
@@ -535,6 +536,51 @@ function toFiniteNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function pickFirstString(...values) {
+  for (const value of values.flat()) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+}
+
+function buildDistrictLabel(source) {
+  if (!source || typeof source !== 'object') {
+    return '';
+  }
+
+  const city = pickFirstString(source.city);
+  const district = pickFirstString(source.district);
+  const province = pickFirstString(source.province);
+
+  if (city && district) {
+    return district.includes(city) ? district : `${city} ${district}`;
+  }
+
+  return district || city || province || '';
+}
+
+function buildLocationAddress(source, latitude, longitude) {
+  const districtLabel = buildDistrictLabel(source);
+  const rawAddress = pickFirstString(
+    source?.address,
+    source?.formattedAddress,
+    source?.name
+  );
+
+  if (rawAddress) {
+    if (districtLabel && !rawAddress.includes(districtLabel)) {
+      return `${districtLabel} ${rawAddress}`;
+    }
+
+    return rawAddress;
+  }
+
+  return districtLabel || formatCoordinateAddress(latitude, longitude);
+}
+
 function normalizePresetLocation(source, name) {
   if (!source || typeof source !== 'object') {
     return null;
@@ -546,16 +592,23 @@ function normalizePresetLocation(source, name) {
     return null;
   }
 
-  const displayName = String(source.name || source.address || source.district || name).trim() || name;
+  const district = buildDistrictLabel(source);
+  const displayName = String(
+    source.name
+      || source.address
+      || source.formattedAddress
+      || district
+      || name
+  ).trim() || name;
 
   return {
     id: `${displayName}-${longitude}-${latitude}`,
     name: displayName,
-    address: String(source.address || formatCoordinateAddress(latitude, longitude)).trim(),
+    address: buildLocationAddress(source, latitude, longitude),
     latitude,
     longitude,
     city: String(source.city || '').trim(),
-    district: String(source.district || '').trim(),
+    district,
     adcode: String(source.adcode || '').trim(),
     province: String(source.province || '').trim(),
     type: String(source.type || '').trim()
@@ -564,6 +617,14 @@ function normalizePresetLocation(source, name) {
 
 function formatCoordinateAddress(latitude, longitude) {
   return `经度 ${longitude.toFixed(6)}，纬度 ${latitude.toFixed(6)}`;
+}
+
+function formatPoiDistrictLabel(poi) {
+  if (!poi || typeof poi !== 'object') {
+    return '已解析位置';
+  }
+
+  return buildDistrictLabel(poi) || '已解析位置';
 }
 
 function normalizePoi(poi) {
@@ -577,8 +638,15 @@ function normalizePoi(poi) {
     return null;
   }
 
+  const city = String(poi.cityname || poi.pname || '').trim();
   const district = [poi.cityname, poi.adname].filter(Boolean).join(' ');
-  const address = [district, poi.address].filter(Boolean).join(' ');
+  const province = String(poi.pname || '').trim();
+  const address = buildLocationAddress({
+    city,
+    district,
+    province,
+    address: String(poi.address || '').trim()
+  }, latitude, longitude);
 
   return {
     id: poi.id || `${longitude}-${latitude}-${poi.name || 'poi'}`,
@@ -586,10 +654,10 @@ function normalizePoi(poi) {
     address: address || poi.name || '未知地点',
     latitude,
     longitude,
-    city: String(poi.cityname || poi.pname || '').trim(),
+    city,
     district,
     adcode: String(poi.adcode || '').trim(),
-    province: String(poi.pname || '').trim(),
+    province,
     type: poi.type || '',
     distance: toFiniteNumber(poi.distance)
   };
@@ -675,13 +743,20 @@ async function resolveNearestLocationFromCoords(sourceLocation) {
       return nearestPoi;
     }
 
-    return {
+    return normalizePresetLocation({
       ...fallbackLocation,
       name: regeocode.formattedAddress || fallbackLocation.name,
-      address: regeocode.formattedAddress || fallbackLocation.address
-    };
+      address: regeocode.formattedAddress || fallbackLocation.address,
+      city: pickFirstString(regeocode.addressComponent?.city, fallbackLocation.city),
+      district: pickFirstString(
+        [regeocode.addressComponent?.city, regeocode.addressComponent?.district].filter(Boolean).join(' '),
+        fallbackLocation.district
+      ),
+      adcode: pickFirstString(regeocode.addressComponent?.adcode, fallbackLocation.adcode),
+      province: pickFirstString(regeocode.addressComponent?.province, fallbackLocation.province)
+    }, fallbackLocation.name || '已选地点');
   } catch (error) {
-    return fallbackLocation;
+    return normalizePresetLocation(fallbackLocation, fallbackLocation.name || '已选地点');
   }
 }
 

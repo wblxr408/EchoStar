@@ -148,8 +148,7 @@
                   <span>{{ poi.address }}</span>
                 </div>
                 <div class="nearby-search-panel__result-meta">
-                  <span>{{ poi.district || '位置已解析' }}</span>
-                  <small v-if="poi.type">{{ poi.type }}</small>
+                  <span>{{ formatPoiDistrictLabel(poi) }}</span>
                 </div>
               </button>
             </div>
@@ -2622,6 +2621,49 @@ function firstNonEmptyString(...values) {
   return '';
 }
 
+function buildLocationDistrictLabel(source) {
+  if (!source || typeof source !== 'object') {
+    return '';
+  }
+
+  const city = firstNonEmptyString(source.city);
+  const district = firstNonEmptyString(source.district);
+  const province = firstNonEmptyString(source.province);
+
+  if (city && district) {
+    return district.includes(city) ? district : `${city} ${district}`;
+  }
+
+  return district || city || province || '';
+}
+
+function buildLocationAddressLabel(source, latitude, longitude) {
+  const districtLabel = buildLocationDistrictLabel(source);
+  const rawAddress = firstNonEmptyString(
+    source?.address,
+    source?.formattedAddress,
+    source?.name
+  );
+
+  if (rawAddress) {
+    if (districtLabel && !rawAddress.includes(districtLabel)) {
+      return `${districtLabel} ${rawAddress}`;
+    }
+
+    return rawAddress;
+  }
+
+  return districtLabel || formatMapPickAddress(latitude, longitude);
+}
+
+function formatPoiDistrictLabel(poi) {
+  if (!poi || typeof poi !== 'object') {
+    return '已解析位置';
+  }
+
+  return buildLocationDistrictLabel(poi) || '已解析位置';
+}
+
 function resolveStoryAuthor(source, fallbackAuthor = null) {
   if (!source || typeof source !== 'object') {
     return {
@@ -2755,16 +2797,25 @@ function getCoordinateCacheKey(latitude, longitude) {
 }
 
 function buildFallbackLocation(latitude, longitude, overrides = {}) {
+  const city = firstNonEmptyString(overrides.city);
+  const district = buildLocationDistrictLabel({
+    city,
+    district: firstNonEmptyString(overrides.district),
+    province: firstNonEmptyString(overrides.province)
+  });
+  const province = firstNonEmptyString(overrides.province);
   const name = pickLocationText([
     overrides.name,
     overrides.address,
     'Map Pick'
   ]);
-  const address = pickLocationText([
-    overrides.address,
-    overrides.name,
-    formatMapPickAddress(latitude, longitude)
-  ]);
+  const address = buildLocationAddressLabel({
+    ...overrides,
+    city,
+    district,
+    province,
+    name
+  }, latitude, longitude);
 
   return {
     id: overrides.id || `map-pick-${longitude}-${latitude}`,
@@ -2772,10 +2823,10 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
     address,
     latitude,
     longitude,
-    city: firstNonEmptyString(overrides.city),
-    district: firstNonEmptyString(overrides.district),
+    city,
+    district,
     adcode: firstNonEmptyString(overrides.adcode),
-    province: firstNonEmptyString(overrides.province),
+    province,
     type: firstNonEmptyString(overrides.type, 'map-click'),
     nearbyPois: Array.isArray(overrides.nearbyPois) ? overrides.nearbyPois : []
   };
@@ -3202,9 +3253,6 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
       });
 
       const regeocode = result?.regeocode || {};
-      const firstPoi = Array.isArray(regeocode.pois)
-        ? normalizeNearbyPoiFromGeocode(regeocode.pois[0])
-        : null;
       const district = [
         regeocode.addressComponent?.city,
         regeocode.addressComponent?.district,
@@ -3214,6 +3262,16 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         regeocode.addressComponent?.city,
         regeocode.addressComponent?.province
       );
+      const province = firstNonEmptyString(regeocode.addressComponent?.province);
+      const locality = {
+        city,
+        district,
+        adcode: firstNonEmptyString(regeocode.addressComponent?.adcode),
+        province
+      };
+      const firstPoi = Array.isArray(regeocode.pois)
+        ? normalizeNearbyPoiFromGeocode(regeocode.pois[0], locality)
+        : null;
       const resolvedLocation = buildFallbackLocation(latitude, longitude, {
         id: `map-pick-${longitude}-${latitude}`,
         name: pickLocationText([
@@ -3230,7 +3288,7 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         city: firstNonEmptyString(firstPoi?.city, city),
         district: firstNonEmptyString(firstPoi?.district, district),
         adcode: firstNonEmptyString(firstPoi?.adcode, regeocode.addressComponent?.adcode),
-        province: firstNonEmptyString(firstPoi?.province, regeocode.addressComponent?.province),
+        province: firstNonEmptyString(firstPoi?.province, province),
         type: firstNonEmptyString(firstPoi?.type, 'map-click'),
         nearbyPois: Array.isArray(regeocode.pois) ? regeocode.pois : []
       });
@@ -3248,7 +3306,7 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
   return pendingTask;
 }
 
-function normalizeNearbyPoiFromGeocode(poi) {
+function normalizeNearbyPoiFromGeocode(poi, locality = null) {
   if (!poi) {
     return null;
   }
@@ -3259,8 +3317,30 @@ function normalizeNearbyPoiFromGeocode(poi) {
     return null;
   }
 
-  const district = [poi.cityname, poi.adname].filter(Boolean).join(' ');
-  const address = [district, poi.address].filter(Boolean).join(' ');
+  const city = firstNonEmptyString(
+    poi.cityname,
+    poi.city,
+    locality?.city,
+    locality?.province
+  );
+  const province = firstNonEmptyString(
+    poi.pname,
+    poi.province,
+    locality?.province
+  );
+  const district = buildLocationDistrictLabel({
+    city,
+    district: firstNonEmptyString(poi.adname, poi.district, locality?.district),
+    province
+  });
+  const address = buildLocationAddressLabel({
+    city,
+    district,
+    province,
+    address: firstNonEmptyString(poi.address),
+    formattedAddress: firstNonEmptyString(poi.formattedAddress),
+    name: poi.name || 'Nearby Place'
+  }, latitude, longitude);
 
   return {
     id: poi.id || `nearby-${longitude}-${latitude}-${poi.name || 'poi'}`,
@@ -3268,10 +3348,10 @@ function normalizeNearbyPoiFromGeocode(poi) {
     address: address || poi.name || formatMapPickAddress(latitude, longitude),
     latitude,
     longitude,
-    city: firstNonEmptyString(poi.cityname, poi.pname),
+    city,
     district,
-    adcode: firstNonEmptyString(poi.adcode),
-    province: firstNonEmptyString(poi.pname),
+    adcode: firstNonEmptyString(poi.adcode, locality?.adcode),
+    province,
     type: poi.type || 'nearby-poi',
     distance: toFiniteNumber(poi.distance)
   };
@@ -3283,7 +3363,7 @@ function buildSuggestedLocations(rawLocation, nearbyPois = []) {
   }
 
   const normalizedPois = nearbyPois
-    .map(normalizeNearbyPoiFromGeocode)
+    .map((poi) => normalizeNearbyPoiFromGeocode(poi, rawLocation))
     .filter(Boolean)
     .filter((poi, index, list) => list.findIndex((item) => item.id === poi.id) === index)
     .sort((left, right) => getSuggestedLocationDistance(left, rawLocation) - getSuggestedLocationDistance(right, rawLocation))
