@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
@@ -771,11 +771,14 @@
     />
 
     <!-- 消息/公告面板呼出按钮 -->
-    <button
-      class="msg-trigger-btn"
-      :class="{ 'dark': effectiveMapTheme === 'dark' }"
-      @click.stop="openMsgPanel"
-    >我的通知</button>
+    <div class="msg-trigger-wrapper">
+      <button
+        class="msg-trigger-btn"
+        :class="{ 'dark': effectiveMapTheme === 'dark' }"
+        @click.stop="openMsgPanel"
+      >我的通知</button>
+      <span v-if="hasNotificationBadge" class="msg-badge-dot"></span>
+    </div>
 
     <!-- 登录模态框 -->
     <!-- 通知栏 -->
@@ -796,21 +799,32 @@
               class="notification-tab-btn"
               :class="{ active: notificationTab === 'messages' }"
               @click="switchNotificationTab('messages')"
-            >消息</button>
+            >
+              消息
+              <span v-if="notificationUnreadCount > 0" class="tab-badge">{{ notificationUnreadCount > 99 ? '99+' : notificationUnreadCount }}</span>
+            </button>
             <button
               class="notification-tab-btn"
               :class="{ active: notificationTab === 'announcements' }"
               @click="switchNotificationTab('announcements')"
-            >公告</button>
+            >
+              公告
+              <span v-if="hasUnreadAnnouncements" class="tab-dot"></span>
+            </button>
           </div>
           <div class="notification-actions">
-            <button
-              v-if="notificationTab === 'messages' && notificationUnreadCount > 0"
-              class="mark-read-btn"
-              @click="markAllNotificationsRead"
-            >
-              全部已读
-            </button>
+            <template v-if="notificationTab === 'messages'">
+              <button
+                v-if="notificationUnreadCount > 0"
+                class="mark-read-btn"
+                @click="markAllNotificationsRead"
+              >全部已读</button>
+              <button
+                v-if="notifications.length > 0"
+                class="clear-all-btn"
+                @click="clearAllNotifications"
+              >清空全部</button>
+            </template>
             <button class="close-btn" @click="closeNotificationPanel"><span>×</span></button>
           </div>
         </div>
@@ -4976,23 +4990,33 @@ function openMsgPanel() {
   }
 }
 
-// 切换通知面板标签
+// 切换通知面板标签（点击即视为已读该栏）
 function switchNotificationTab(tab) {
   notificationTab.value = tab;
   if (tab === 'messages') {
+    // 点击消息tab → 消息标记已读
+    if (notificationUnreadCount.value > 0) {
+      notificationApi.markAllRead().catch(() => {});
+      notificationUnreadCount.value = 0;
+      notifications.value = notifications.value.map(n => ({ ...n, isRead: true }));
+    }
     loadNotifications();
   } else {
     loadAnnouncements();
   }
 }
 
-// 加载公告数据
+// 加载公告数据（加载后若当前在公告tab则自动标记已读）
 async function loadAnnouncements() {
   announcementsLoading.value = true;
   try {
     const res = await mapApi.getAnnouncements();
     const data = res?.data ?? res;
     announcements.value = data?.announcements || [];
+    // 若当前正在查看公告tab，加载完成后标记已读
+    if (notificationTab.value === 'announcements') {
+      markAnnouncementsAsRead();
+    }
   } catch (error) {
     console.error('加载公告失败:', error);
   } finally {
@@ -5008,6 +5032,56 @@ async function markAllNotificationsRead() {
     notifications.value = notifications.value.map(n => ({ ...n, isRead: true }));
   } catch (error) {
     console.error('标记已读失败:', error);
+  }
+}
+
+// 清空所有通知
+async function clearAllNotifications() {
+  if (!confirm('确定要清空所有通知吗？此操作不可恢复。')) return;
+  try {
+    await notificationApi.clearAll();
+    notifications.value = [];
+    notificationUnreadCount.value = 0;
+  } catch (error) {
+    console.error('清空通知失败:', error);
+  }
+}
+
+// ========== 红点状态管理 ==========
+
+// 消息未读数（后端返回）
+// 公告已读状态：记录用户"已看过的公告ID列表"（用数组确保Vue响应式）
+const readAnnouncementIds = ref([]);
+
+// 标记所有公告为已读
+function markAnnouncementsAsRead() {
+  announcements.value.forEach(a => {
+    if (!readAnnouncementIds.value.includes(a.id)) {
+      readAnnouncementIds.value.push(a.id);
+    }
+  });
+}
+
+// 消息是否有未读
+const hasUnreadMessages = computed(() => notificationUnreadCount.value > 0);
+
+// 公告是否有未读（存在未在 readAnnouncementIds 中的公告）
+const hasUnreadAnnouncements = computed(() => {
+  return announcements.value.some(a => !readAnnouncementIds.value.includes(a.id));
+});
+
+// msg按钮是否显示红点（消息未读 OR 公告未读）
+const hasNotificationBadge = computed(() => hasUnreadMessages.value || hasUnreadAnnouncements.value);
+
+// 后台预加载：仅获取未读通知数（不加载列表，轻量）
+async function prefetchUnreadCount() {
+  if (!userStore.isLoggedIn || userStore.isGuest) return;
+  try {
+    const res = await notificationApi.getUnreadCount();
+    const data = res?.data ?? res;
+    notificationUnreadCount.value = data?.unreadCount || 0;
+  } catch (error) {
+    // 静默失败
   }
 }
 
@@ -5032,16 +5106,27 @@ onMounted(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
 
-  // --- 通知栏：仅首次进入时显示 --- 
-  const hasSeenNotification = localStorage.getItem('echostar_seen_notification');
-  if (!hasSeenNotification && userStore.isLoggedIn && !userStore.isGuest) {
-    notificationTab.value = 'announcements';
-    loadAnnouncements().then(() => {
-      if (announcements.value.length > 0) {
+  // --- 通知栏：有未读消息或新公告时自动弹出 ---
+  if (userStore.isLoggedIn && !userStore.isGuest) {
+    // 并行加载通知和公告，任一有新内容则弹出
+    const loadTasks = [loadNotifications(), loadAnnouncements()];
+    Promise.all(loadTasks).then(() => {
+      const hasUnread = notificationUnreadCount.value > 0 || hasUnreadAnnouncements.value;
+      if (hasUnread) {
+        // 优先展示有新内容的tab，并标记已读
+        if (notificationUnreadCount.value > 0) {
+          notificationTab.value = 'messages';
+          if (notificationUnreadCount.value > 0) {
+            notificationApi.markAllRead().catch(() => {});
+            notificationUnreadCount.value = 0;
+          }
+        } else {
+          notificationTab.value = 'announcements';
+          markAnnouncementsAsRead();
+        }
         showNotificationPanel.value = true;
       }
     });
-    localStorage.setItem('echostar_seen_notification', 'true');
   }
 });
 
@@ -9115,6 +9200,37 @@ onUnmounted(() => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
+}
+
+/* 消息tab 红点角标 */
+.notification-tab-btn .tab-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  background: #f44336;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  box-shadow: 0 1px 4px rgba(244, 67, 54, 0.4);
+}
+
+/* 公告tab 红点 */
+.notification-tab-btn .tab-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f44336;
+  box-shadow: 0 0 4px rgba(244, 67, 54, 0.6);
 }
 
 .notification-tab-btn.active {
@@ -9169,6 +9285,32 @@ onUnmounted(() => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.18s ease;
+}
+
+.notification-actions .clear-all-btn {
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(220, 80, 60, 0.22);
+  background: rgba(244, 67, 54, 0.08);
+  color: #c0392b;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.notification-actions .clear-all-btn:hover {
+  background: rgba(244, 67, 54, 0.18);
+}
+
+.notification-panel.dark .notification-actions .clear-all-btn {
+  border-color: rgba(244, 67, 54, 0.3);
+  background: rgba(244, 67, 54, 0.1);
+  color: #f5a8a2;
+}
+
+.notification-panel.dark .notification-actions .clear-all-btn:hover {
+  background: rgba(244, 67, 54, 0.22);
 }
 
 .notification-panel.dark .notification-actions .mark-read-btn {
@@ -9432,14 +9574,19 @@ onUnmounted(() => {
 }
 
 /* --- 消息呼出按钮 --- */
-.msg-trigger-btn {
-  writing-mode: vertical-lr;
-  text-orientation: upright;
-  letter-spacing: 0;
+.msg-trigger-wrapper {
   position: fixed;
   right: 0;
   top: 25%;
   transform: translateY(-50%);
+  z-index: 10003;
+}
+
+.msg-trigger-btn {
+  writing-mode: vertical-lr;
+  text-orientation: upright;
+  letter-spacing: 0;
+  position: relative;
   width: 30px;
   height: 200px;
   border: none;
@@ -9476,6 +9623,31 @@ onUnmounted(() => {
 .msg-trigger-btn.dark:hover {
   width: 38px;
   background: linear-gradient(180deg, rgba(22, 34, 58, 0.96) 0%, rgba(35, 55, 90, 0.96) 100%);
+}
+
+/* msg按钮红点 */
+.msg-badge-dot {
+  position: absolute;
+  top: 8px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f44336;
+  border: 2px solid #fff8ee;
+  box-shadow: 0 0 6px rgba(244, 67, 54, 0.7);
+  animation: badge-pulse 2s ease-in-out infinite;
+  z-index: 1;
+}
+
+.msg-trigger-btn.dark + .msg-badge-dot,
+.msg-wrapper .msg-badge-dot {
+  border-color: #1a2845;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.75; }
 }
 
 /* 通知栏过渡动画 */

@@ -893,6 +893,11 @@ async function confirmBan() {
       banReason: banReason.value,
       bannedAt: new Date()
     });
+    // 同步更新标签计数
+    userTabs.value = [
+      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
+      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
+    ];
   } catch (error) {
     console.error('封禁失败:', error);
     alert(error.message || '操作失败');
@@ -908,8 +913,19 @@ async function handleUnbanUser(userId) {
     const user = bannedUsers.value.find(u => u.id === userId);
     if (user) {
       bannedUsers.value = bannedUsers.value.filter(u => u.id !== userId);
-      normalUsers.value.push({ ...user, banReason: undefined, bannedAt: undefined });
+      normalUsers.value.push({
+        ...user,
+        storyCount: user.storyCount || 0,
+        createdAt: user.createdAt || new Date(),
+        banReason: undefined,
+        bannedAt: undefined
+      });
     }
+    // 同步更新标签计数
+    userTabs.value = [
+      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
+      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
+    ];
   } catch (error) {
     console.error('解封失败:', error);
     alert(error.message || '操作失败');
