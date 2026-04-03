@@ -7,6 +7,9 @@
         <span class="admin-badge">管理员</span>
       </div>
       <div class="header-right">
+        <button class="btn-announcement" @click="showAnnouncementModal = true">
+          <span>📢</span> 发布公告
+        </button>
         <button class="btn-logout" @click="handleLogout">
           <span>🚪</span> 退出登录
         </button>
@@ -467,6 +470,62 @@
         </div>
       </div>
     </div>
+    <!-- 发布公告模态框 -->
+    <transition name="ann-modal-fade">
+      <div
+        v-if="showAnnouncementModal"
+        class="ann-modal-backdrop"
+        @click.self="cancelAnnouncement"
+      >
+        <div class="ann-modal" @click.stop>
+          <div class="ann-modal-header">
+            <h3>发布公告</h3>
+            <button class="ann-close-btn" @click="cancelAnnouncement">&times;</button>
+          </div>
+          <div class="ann-modal-body">
+            <div class="ann-form-group">
+              <label>公告类型</label>
+              <select v-model="announcementForm.type" class="ann-select">
+                <option value="info">📢 通知</option>
+                <option value="warning">⚠️ 警告</option>
+                <option value="feature">✨ 更新</option>
+                <option value="emotion">💝 互动</option>
+              </select>
+            </div>
+            <div class="ann-form-group">
+              <label>标题</label>
+              <input
+                v-model="announcementForm.title"
+                type="text"
+                class="ann-input"
+                placeholder="请输入公告标题"
+                maxlength="100"
+              />
+            </div>
+            <div class="ann-form-group">
+              <label>内容</label>
+              <textarea
+                v-model="announcementForm.content"
+                class="ann-textarea"
+                placeholder="请输入公告内容"
+                rows="5"
+                maxlength="1000"
+              ></textarea>
+            </div>
+          </div>
+          <div class="ann-modal-footer">
+            <button class="ann-btn ann-btn-cancel" @click="cancelAnnouncement">取消</button>
+            <button
+              class="ann-btn ann-btn-submit"
+              :disabled="announcementSubmitting || !announcementForm.title.trim() || !announcementForm.content.trim()"
+              @click="submitAnnouncement"
+            >
+              {{ announcementSubmitting ? '发布中...' : '发布' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -477,6 +536,7 @@ import { useUserStore } from '@/stores/user';
 import { adminApi } from '@/api/admin';
 import { reportApi } from '@/api/report';
 import { storyApi } from '@/api/story';
+import { mapApi } from '@/api/map';
 import { formatShortTime } from '@/utils/time';
 
 const router = useRouter();
@@ -833,6 +893,11 @@ async function confirmBan() {
       banReason: banReason.value,
       bannedAt: new Date()
     });
+    // 同步更新标签计数
+    userTabs.value = [
+      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
+      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
+    ];
   } catch (error) {
     console.error('封禁失败:', error);
     alert(error.message || '操作失败');
@@ -848,8 +913,19 @@ async function handleUnbanUser(userId) {
     const user = bannedUsers.value.find(u => u.id === userId);
     if (user) {
       bannedUsers.value = bannedUsers.value.filter(u => u.id !== userId);
-      normalUsers.value.push({ ...user, banReason: undefined, bannedAt: undefined });
+      normalUsers.value.push({
+        ...user,
+        storyCount: user.storyCount || 0,
+        createdAt: user.createdAt || new Date(),
+        banReason: undefined,
+        bannedAt: undefined
+      });
     }
+    // 同步更新标签计数
+    userTabs.value = [
+      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
+      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
+    ];
   } catch (error) {
     console.error('解封失败:', error);
     alert(error.message || '操作失败');
@@ -1008,6 +1084,32 @@ onUnmounted(() => {
 });
 
 // 退出登录
+// ============ 发布公告 ============
+const showAnnouncementModal = ref(false);
+const announcementForm = ref({ title: '', content: '', type: 'info' });
+const announcementSubmitting = ref(false);
+
+async function submitAnnouncement() {
+  if (!announcementForm.value.title.trim() || !announcementForm.value.content.trim()) return;
+  announcementSubmitting.value = true;
+  try {
+    await mapApi.createAnnouncement(announcementForm.value);
+    showAnnouncementModal.value = false;
+    announcementForm.value = { title: '', content: '', type: 'info' };
+    alert('公告发布成功');
+  } catch (error) {
+    console.error('发布公告失败:', error);
+    alert('发布公告失败');
+  } finally {
+    announcementSubmitting.value = false;
+  }
+}
+
+function cancelAnnouncement() {
+  showAnnouncementModal.value = false;
+  announcementForm.value = { title: '', content: '', type: 'info' };
+}
+
 function handleLogout() {
   userStore.logout();
   router.push('/');
@@ -2014,5 +2116,183 @@ function handleLogout() {
 
 .detail-btn.restore:hover {
   background: #c8e6c9;
+}
+
+/* --- 发布公告按钮 --- */
+.btn-announcement {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(239, 239, 241, 0.15) 0%, rgba(140, 197, 255, 0.15) 100%);
+  color: #f5f5f5;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-announcement:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.28) 0%, rgba(118, 75, 162, 0.28) 100%);
+  border-color: rgba(102, 126, 234, 0.5);
+}
+
+/* --- 发布公告模态框 --- */
+.ann-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.ann-modal {
+  width: 460px;
+  max-width: calc(100vw - 40px);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.ann-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid #eee;
+}
+
+.ann-modal-header h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #333;
+}
+
+.ann-close-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #999;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.ann-close-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.ann-modal-body {
+  padding: 22px;
+}
+
+.ann-form-group {
+  margin-bottom: 16px;
+}
+
+.ann-form-group:last-child {
+  margin-bottom: 0;
+}
+
+.ann-form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+}
+
+.ann-input,
+.ann-textarea,
+.ann-select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.ann-input:focus,
+.ann-textarea:focus,
+.ann-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
+}
+
+.ann-textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+.ann-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px;
+  border-top: 1px solid #eee;
+}
+
+.ann-btn {
+  padding: 9px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.ann-btn-cancel {
+  background: #f5f5f5;
+  color: #555;
+}
+
+.ann-btn-cancel:hover {
+  background: #eaeaea;
+}
+
+.ann-btn-submit {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.ann-btn-submit:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.ann-btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 模态框过渡动画 */
+.ann-modal-fade-enter-active,
+.ann-modal-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.ann-modal-fade-enter-from,
+.ann-modal-fade-leave-to {
+  opacity: 0;
 }
 </style>

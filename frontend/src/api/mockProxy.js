@@ -491,6 +491,51 @@ export const mockMapApi = {
         }
       ]
     };
+  },
+
+  async getAnnouncements() {
+    await delay();
+    return {
+      code: 0,
+      data: {
+        announcements: [
+          {
+            id: '1',
+            type: 'info',
+            title: '欢迎使用 EchoStar',
+            content: '欢迎来到心灵栖息之所，在这里分享你的故事吧。',
+            createdAt: new Date(Date.now() - 86400000).toISOString()
+          },
+          {
+            id: '2',
+            type: 'feature',
+            title: '新功能上线：情感标签',
+            content: '发布故事时可以选择情感标签，让更多人找到你的心声。',
+            createdAt: new Date(Date.now() - 172800000).toISOString()
+          },
+          {
+            id: '3',
+            type: 'warning',
+            title: '社区公约提醒',
+            content: '请友善互动，尊重每一位创作者的感受。',
+            createdAt: new Date(Date.now() - 604800000).toISOString()
+          }
+        ]
+      }
+    };
+  },
+
+  async createAnnouncement(data) {
+    await delay();
+    return {
+      code: 0,
+      message: '公告发布成功',
+      data: {
+        id: Date.now(),
+        ...data,
+        createdAt: new Date().toISOString()
+      }
+    };
   }
 };
 
