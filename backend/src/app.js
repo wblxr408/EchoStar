@@ -16,6 +16,7 @@ import likeRoutes from './routes/like.routes.js';
 import favoriteRoutes from './routes/favorite.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import reportRoutes from './routes/report.routes.js';
+import announcementRoutes from './routes/announcement.routes.js';
 
 // 导入定时任务
 import { syncStoryViewCount } from './jobs/sync-story-view-count.js';
@@ -75,6 +76,7 @@ export function createApp() {
   app.use('/api/v1/favorites', favoriteRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
   app.use('/api/v1/reports', reportRoutes);
+  app.use('/api/v1/announcements', announcementRoutes);
 
   // 兼容旧版 API 路由 (不带 v1 前缀)
   app.use('/api/auth', authRoutes);
@@ -86,6 +88,7 @@ export function createApp() {
   app.use('/api/favorites', favoriteRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/reports', reportRoutes);
+  app.use('/api/announcements', announcementRoutes);
 
   // 404 处理
   app.use(notFoundHandler);

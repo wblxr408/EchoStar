@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
@@ -65,11 +65,6 @@
             :class="{ 'active': sidebarTab === 'recommend' }"
             @click="sidebarTab = 'recommend'; loadRecommendationFeed()"
           >为你推荐</button>
-          <button
-            class="tab-btn"
-            :class="{ 'active': sidebarTab === 'announcement' }"
-            @click="sidebarTab = 'announcement'"
-          >公告</button>
         </div>
         <button class="close-btn" @click.stop="closeStoryPanel"><span>×</span></button>
       </div>
@@ -231,28 +226,6 @@
           </div>
         </div>
 
-        <!-- 公告 -->
-        <div v-if="sidebarTab === 'announcement'">
-          <div v-if="announcements.length === 0" class="empty">
-            <p>暂无公告</p>
-            <p class="hint">关注这里获取最新动态</p>
-          </div>
-          <div v-else class="announcement-list">
-            <div 
-              v-for="ann in announcements" 
-              :key="ann.id" 
-              class="announcement-card"
-              :class="ann.type"
-            >
-              <div class="ann-header">
-                <span class="ann-type-badge">{{ getAnnouncementTypeIcon(ann.type) }}</span>
-                <span class="ann-time">{{ formatRelativeTime(ann.createdAt) }}</span>
-              </div>
-              <h4 class="ann-title">{{ ann.title }}</h4>
-              <p class="ann-content">{{ ann.content }}</p>
-            </div>
-          </div>
-        </div>
       </div>
         </div>
       </div>
@@ -797,20 +770,42 @@
       @report="handleStoryReport"
     />
 
+    <!-- 消息/公告面板呼出按钮 -->
+    <button
+      class="msg-trigger-btn"
+      :class="{ 'dark': effectiveMapTheme === 'dark' }"
+      @click.stop="openMsgPanel"
+    >我的通知</button>
+
     <!-- 登录模态框 -->
     <!-- 通知栏 -->
     <transition name="notification-fade">
       <div
         v-if="showNotificationPanel"
+        class="notification-backdrop"
+        @click.self="closeNotificationPanel"
+      >
+      <div
         class="notification-panel"
         :class="{ dark: effectiveMapTheme === 'dark' }"
         @click.stop
       >
         <div class="notification-header">
-          <h4>通知</h4>
+          <div class="notification-tabs">
+            <button
+              class="notification-tab-btn"
+              :class="{ active: notificationTab === 'messages' }"
+              @click="switchNotificationTab('messages')"
+            >消息</button>
+            <button
+              class="notification-tab-btn"
+              :class="{ active: notificationTab === 'announcements' }"
+              @click="switchNotificationTab('announcements')"
+            >公告</button>
+          </div>
           <div class="notification-actions">
             <button
-              v-if="notificationUnreadCount > 0"
+              v-if="notificationTab === 'messages' && notificationUnreadCount > 0"
               class="mark-read-btn"
               @click="markAllNotificationsRead"
             >
@@ -820,33 +815,63 @@
           </div>
         </div>
         <div class="notification-content">
-          <div v-if="notificationsLoading" class="notification-loading">
-            <span class="loading-spinner">⌛</span>
-            <span>加载中...</span>
-          </div>
-          <div v-else-if="notifications.length === 0" class="notification-empty">
-            <span class="empty-icon">📭</span>
-            <span>暂无通知</span>
-          </div>
-          <div v-else class="notification-list">
-            <div
-              v-for="notice in notifications"
-              :key="notice.id"
-              class="notification-item"
-              :class="{ unread: !notice.isRead }"
-            >
-              <div class="notice-avatar">
-                <img v-if="notice.fromUser?.avatar" :src="notice.fromUser.avatar" alt="" />
-                <span v-else>{{ (notice.fromUser?.username || notice.fromUserName || '匿')[0] }}</span>
-              </div>
-              <div class="notice-body">
-                <p class="notice-content">{{ notice.content }}</p>
-                <span class="notice-time">{{ formatRelativeTime(notice.createdAt) }}</span>
-              </div>
-              <span v-if="!notice.isRead" class="unread-dot"></span>
+          <!-- 消息标签内容 -->
+          <template v-if="notificationTab === 'messages'">
+            <div v-if="notificationsLoading" class="notification-loading">
+              <span class="loading-spinner">⌛</span>
+              <span>加载中...</span>
             </div>
-          </div>
+            <div v-else-if="notifications.length === 0" class="notification-empty">
+              <span class="empty-icon">📭</span>
+              <span>暂无通知</span>
+            </div>
+            <div v-else class="notification-list">
+              <div
+                v-for="notice in notifications"
+                :key="notice.id"
+                class="notification-item"
+                :class="{ unread: !notice.isRead }"
+              >
+                <div class="notice-avatar">
+                  <img v-if="notice.fromUser?.avatar" :src="notice.fromUser.avatar" alt="" />
+                  <span v-else>{{ (notice.fromUser?.username || notice.fromUserName || '匿')[0] }}</span>
+                </div>
+                <div class="notice-body">
+                  <p class="notice-content">{{ notice.content }}</p>
+                  <span class="notice-time">{{ formatRelativeTime(notice.createdAt) }}</span>
+                </div>
+                <span v-if="!notice.isRead" class="unread-dot"></span>
+              </div>
+            </div>
+          </template>
+          <!-- 公告标签内容 -->
+          <template v-if="notificationTab === 'announcements'">
+            <div v-if="announcementsLoading" class="notification-loading">
+              <span class="loading-spinner">⌛</span>
+              <span>加载中...</span>
+            </div>
+            <div v-else-if="announcements.length === 0" class="notification-empty">
+              <span class="empty-icon">📢</span>
+              <span>暂无公告</span>
+            </div>
+            <div v-else class="announcement-panel-list">
+              <div
+                v-for="ann in announcements"
+                :key="ann.id"
+                class="np-announcement-card"
+                :class="ann.type"
+              >
+                <div class="np-ann-header">
+                  <span class="np-ann-type-badge">{{ getAnnouncementTypeIcon(ann.type) }}</span>
+                  <span class="np-ann-time">{{ formatRelativeTime(ann.createdAt) }}</span>
+                </div>
+                <h4 class="np-ann-title">{{ ann.title }}</h4>
+                <p class="np-ann-content">{{ ann.content }}</p>
+              </div>
+            </div>
+          </template>
         </div>
+      </div>
       </div>
     </transition>
 
@@ -893,9 +918,11 @@ const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
 const showLoginModal = ref(false);
 const showNotificationPanel = ref(false);
+const notificationTab = ref('messages');
 const notifications = ref([]);
 const notificationsLoading = ref(false);
 const notificationUnreadCount = ref(0);
+const announcementsLoading = ref(false);
 const loading = ref(false);
 const nearbySearchQuery = ref('');
 const nearbySearchResults = ref([]);
@@ -4939,6 +4966,40 @@ function closeNotificationPanel() {
   showNotificationPanel.value = false;
 }
 
+// 打开消息面板
+function openMsgPanel() {
+  showNotificationPanel.value = true;
+  if (notificationTab.value === 'messages') {
+    loadNotifications();
+  } else {
+    loadAnnouncements();
+  }
+}
+
+// 切换通知面板标签
+function switchNotificationTab(tab) {
+  notificationTab.value = tab;
+  if (tab === 'messages') {
+    loadNotifications();
+  } else {
+    loadAnnouncements();
+  }
+}
+
+// 加载公告数据
+async function loadAnnouncements() {
+  announcementsLoading.value = true;
+  try {
+    const res = await mapApi.getAnnouncements();
+    const data = res?.data ?? res;
+    announcements.value = data?.announcements || [];
+  } catch (error) {
+    console.error('加载公告失败:', error);
+  } finally {
+    announcementsLoading.value = false;
+  }
+}
+
 // 标记所有通知已读
 async function markAllNotificationsRead() {
   try {
@@ -4971,11 +5032,12 @@ onMounted(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
 
-  // --- 通知栏：仅首次进入时显示 ---
+  // --- 通知栏：仅首次进入时显示 --- 
   const hasSeenNotification = localStorage.getItem('echostar_seen_notification');
   if (!hasSeenNotification && userStore.isLoggedIn && !userStore.isGuest) {
-    loadNotifications().then(() => {
-      if (notifications.value.length > 0 || notificationUnreadCount.value > 0) {
+    notificationTab.value = 'announcements';
+    loadAnnouncements().then(() => {
+      if (announcements.value.length > 0) {
         showNotificationPanel.value = true;
       }
     });
@@ -8990,6 +9052,15 @@ onUnmounted(() => {
 }
 
 /* --- 通知栏样式 --- */
+.notification-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10001;
+}
+
 .notification-panel {
   position: fixed;
   top: 80px;
@@ -9006,7 +9077,7 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
   color: #3c2910;
   overflow: hidden;
-  z-index: 10001;
+  z-index: 10002;
 }
 
 .notification-panel.dark {
@@ -9029,9 +9100,50 @@ onUnmounted(() => {
   background: linear-gradient(180deg, rgba(255, 252, 245, 0.42) 0%, rgba(255, 245, 227, 0.14) 100%);
 }
 
+.notification-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.notification-tab-btn {
+  padding: 5px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(60, 41, 16, 0.55);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.notification-tab-btn.active {
+  border-color: rgba(199, 151, 60, 0.28);
+  background: rgba(255, 255, 255, 0.45);
+  color: #3c2910;
+}
+
+.notification-tab-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.22);
+}
+
 .notification-panel.dark .notification-header {
   border-bottom-color: rgba(198, 219, 255, 0.12);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.notification-panel.dark .notification-tab-btn {
+  color: rgba(200, 210, 230, 0.55);
+}
+
+.notification-panel.dark .notification-tab-btn.active {
+  border-color: rgba(141, 176, 235, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
+}
+
+.notification-panel.dark .notification-tab-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .notification-header h4 {
@@ -9229,6 +9341,141 @@ onUnmounted(() => {
 
 .notification-panel.dark .unread-dot {
   background: #8e6cff;
+}
+
+/* 公告面板内卡片样式 */
+.announcement-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.np-announcement-card {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 111, 46, 0.14);
+  background: rgba(255, 255, 255, 0.48);
+  transition: all 0.18s ease;
+  border-left: 3px solid #667eea;
+}
+
+.np-announcement-card:hover {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.np-announcement-card.emotion {
+  border-left-color: #e74c3c;
+}
+
+.np-announcement-card.feature {
+  border-left-color: #f39c12;
+}
+
+.np-announcement-card.warning {
+  border-left-color: #f39c12;
+}
+
+.np-ann-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.np-ann-type-badge {
+  font-size: 16px;
+}
+
+.np-ann-time {
+  font-size: 12px;
+  color: rgba(60, 41, 16, 0.5);
+}
+
+.np-ann-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
+
+.np-ann-content {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+
+.notification-panel.dark .np-announcement-card {
+  border-color: rgba(141, 176, 235, 0.12);
+  border-left-color: #667eea;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.notification-panel.dark .np-announcement-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.notification-panel.dark .np-announcement-card.emotion {
+  border-left-color: #e74c3c;
+}
+
+.notification-panel.dark .np-announcement-card.feature {
+  border-left-color: #f39c12;
+}
+
+.notification-panel.dark .np-announcement-card.warning {
+  border-left-color: #f39c12;
+}
+
+.notification-panel.dark .np-ann-time {
+  color: rgba(200, 210, 230, 0.5);
+}
+
+/* --- 消息呼出按钮 --- */
+.msg-trigger-btn {
+  writing-mode: vertical-lr;
+  text-orientation: upright;
+  letter-spacing: 0;
+  position: fixed;
+  right: 0;
+  top: 25%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 200px;
+  border: none;
+  border-radius: 10px 0 0 10px;
+  background: linear-gradient(180deg, rgba(250, 239, 217, 0.92) 0%, rgba(229, 201, 150, 0.92) 100%);
+  border: 1px solid rgba(199, 151, 60, 0.24);
+  border-right: none;
+  color: #8b561d;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  z-index: 10003;
+  text-orientation: mixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: -4px 0 16px -6px rgba(4, 8, 18, 0.18);
+}
+
+.msg-trigger-btn:hover {
+  width: 38px;
+  background: linear-gradient(180deg, rgba(255, 250, 240, 0.96) 0%, rgba(240, 223, 191, 0.96) 100%);
+}
+
+.msg-trigger-btn.dark {
+  background: linear-gradient(180deg, rgba(15, 22, 40, 0.92) 0%, rgba(29, 46, 78, 0.92) 100%);
+  border-color: rgba(141, 176, 235, 0.18);
+  color: #a8c4ff;
+  box-shadow: -4px 0 16px -6px rgba(3, 6, 15, 0.32);
+}
+
+.msg-trigger-btn.dark:hover {
+  width: 38px;
+  background: linear-gradient(180deg, rgba(22, 34, 58, 0.96) 0%, rgba(35, 55, 90, 0.96) 100%);
 }
 
 /* 通知栏过渡动画 */
