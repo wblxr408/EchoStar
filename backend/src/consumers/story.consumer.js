@@ -3,6 +3,7 @@ import { redisClient, clearUpdatingMarker } from '../common/utils/redis.js';
 import { MessageModule, StoryOperation } from '../common/utils/rocketmq.js';
 import { Story } from '../modules/story/story.model.js';
 import { likeCacheUtil } from '../common/utils/like-cache.util.js';
+import { commentCacheUtil } from '../common/utils/comment-cache.util.js';
 import logger from '../common/utils/logger.js';
 
 /**
@@ -205,6 +206,7 @@ class StoryConsumer {
     await redis.del(`story:raw:${storyId}`);
 
     await likeCacheUtil.clearStoryCache(storyId);
+    await commentCacheUtil.deleteCommentCache(storyId);
   }
 
   /**

@@ -75,10 +75,11 @@ class Snowflake {
     this.lastTimestamp = timestamp;
 
     // 组装ID
-    const id = BigInt((timestamp - this.epoch) << this.timestampShift)
-      | BigInt(this.datacenterId << this.datacenterIdShift)
-      | BigInt(this.workerId << this.workerIdShift)
-      | BigInt(this.sequence);
+    const timestampPart = (BigInt(timestamp - this.epoch) << BigInt(this.timestampShift));
+    const datacenterPart = (BigInt(this.datacenterId) << BigInt(this.datacenterIdShift));
+    const workerPart = (BigInt(this.workerId) << BigInt(this.workerIdShift));
+    const sequencePart = BigInt(this.sequence);
+    const id = timestampPart | datacenterPart | workerPart | sequencePart;
 
     return id.toString();
   }

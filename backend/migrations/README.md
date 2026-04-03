@@ -12,6 +12,7 @@
 # 在 PostgreSQL 中执行迁移脚本（按顺序执行）
 psql -U postgres -d echostar -f migrations/001-convert-story-id-to-snowflake.sql
 psql -U postgres -d echostar -f migrations/002-convert-comment-id-to-snowflake.sql
+psql -U postgres -d echostar -f migrations/003-convert-report-target-id-to-bigint.sql
 ```
 
 **注意**：执行前请备份数据库！

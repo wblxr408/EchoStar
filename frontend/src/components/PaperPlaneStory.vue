@@ -74,6 +74,19 @@
                 <strong class="action-count">{{ likeCount }}</strong>
               </span>
             </button>
+            <button
+              type="button"
+              class="action-btn favorite"
+              :class="{ favorited: isFavorited, pending: favoritePending }"
+              :disabled="favoritePending"
+              @click="handleFavorite"
+            >
+              <span class="icon">★</span>
+              <span class="action-copy">
+                <span class="action-label">收藏</span>
+                <strong class="action-count">{{ favoriteCount }}</strong>
+              </span>
+            </button>
             <button type="button" class="action-btn comment" @click="showCommentInput = true">
               <span class="icon">✎</span>
               <span class="action-copy">
@@ -233,13 +246,19 @@ const props = defineProps({
   likePending: {
     type: Boolean,
     default: false
+  },
+  favoritePending: {
+    type: Boolean,
+    default: false
   }
 });
 
-const emit = defineEmits(['close', 'preview-image', 'like', 'comment', 'report']);
+const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report']);
 
 const isLiked = ref(false);
 const likeCount = ref(0);
+const isFavorited = ref(false);
+const favoriteCount = ref(0);
 const commentCount = ref(0);
 const showCommentInput = ref(false);
 const newComment = ref('');
@@ -281,6 +300,11 @@ function resolveLikeCount(story) {
   return Number.isFinite(nextCount) ? nextCount : 0;
 }
 
+function resolveFavoriteCount(story) {
+  const nextCount = Number(story?.favoriteCount ?? 0);
+  return Number.isFinite(nextCount) ? nextCount : 0;
+}
+
 function resolveCommentCount(story, nextComments) {
   const nextCount = Number(story?.commentCount);
   if (Number.isFinite(nextCount)) {
@@ -295,6 +319,8 @@ watch(
     const nextComments = Array.isArray(story?.comments) ? story.comments : [];
     isLiked.value = Boolean(story?.isLiked);
     likeCount.value = resolveLikeCount(story);
+    isFavorited.value = Boolean(story?.isFavorited);
+    favoriteCount.value = resolveFavoriteCount(story);
     comments.value = nextComments;
     commentCount.value = resolveCommentCount(story, nextComments);
   },
@@ -336,6 +362,19 @@ function handleLike() {
   emit('like', { storyId: props.story.id });
 }
 
+function handleFavorite() {
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再收藏');
+    return;
+  }
+
+  if (props.favoritePending) {
+    return;
+  }
+
+  emit('favorite', { storyId: props.story.id });
+}
+
 function submitComment() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
     alert('请先登录后再评论');
@@ -347,17 +386,9 @@ function submitComment() {
     return;
   }
 
-  const comment = {
-    id: Date.now(),
-    author: userStore.user?.username || userStore.user?.name || '我',
-    avatar: userStore.user?.avatar || '',
-    content,
-    createdAt: new Date().toISOString()
-  };
-
-  comments.value = [comment, ...comments.value];
-  commentCount.value = comments.value.length;
-  emit('comment', { storyId: props.story.id, comment });
+  const payload = { storyId: props.story.id, content };
+  emit('submit-comment', payload);
+  emit('submitComment', payload);
 
   newComment.value = '';
   showCommentInput.value = false;
@@ -762,7 +793,7 @@ async function submitReport() {
 
 .story-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-top: 18px;
 }
@@ -796,6 +827,14 @@ async function submitReport() {
 }
 
 .action-btn.liked {
+  border-color: var(--story-detail-accent);
+  background: var(--story-detail-panel-strong);
+  box-shadow:
+    0 0 0 2px var(--story-detail-accent-soft),
+    0 20px 30px -24px rgba(0, 0, 0, 0.42);
+}
+
+.action-btn.favorited {
   border-color: var(--story-detail-accent);
   background: var(--story-detail-panel-strong);
   box-shadow:

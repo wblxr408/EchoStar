@@ -21,7 +21,7 @@ export const Report = sequelize.define('Report', {
     comment: '举报目标类型'
   },
   targetId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     allowNull: false,
     comment: '举报目标ID'
   },

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
@@ -592,6 +592,10 @@
             <span class="btn-icon">❤️</span>
             <span class="btn-text">我的点赞</span>
           </button>
+          <button class="user-action-btn my-favorites-btn" :class="{ active: showFavoritesPanel }" @click.stop="handleMyFavorites">
+            <span class="btn-icon">⭐</span>
+            <span class="btn-text">我的收藏</span>
+          </button>
           <button class="user-action-btn my-posts-btn" :class="{ active: showPostsPanel }" @click.stop="handleMyPosts">
             <span class="btn-icon">📝</span>
             <span class="btn-text">我的发布</span>
@@ -647,7 +651,8 @@
             </div>
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
-              <span class="item-likes">❤️ {{ story.likes }}</span>
+              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
           <div v-if="likesLoadingMore" class="panel-loading-more">
@@ -702,7 +707,8 @@
             </div>
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
-              <span class="item-likes">❤️ {{ story.likes }}</span>
+              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
           <div v-if="postsLoadingMore" class="panel-loading-more">
@@ -716,6 +722,62 @@
       </div>
     </div>
 
+    <!-- 我的收藏子侧边栏 -->
+    <div
+      class="user-sub-sidebar favorites-panel"
+      :class="{ 'show-panel': showFavoritesPanel, dark: effectiveMapTheme === 'dark' }"
+      @click.stop
+    >
+      <div class="sub-sidebar-header">
+        <h4>我的收藏</h4>
+        <button class="close-btn" @click.stop="showFavoritesPanel = false"><span>×</span></button>
+      </div>
+      <div class="sub-sidebar-content" @scroll="handleFavoritesScroll">
+        <div v-if="favoritesLoading && favoritesList.length === 0" class="panel-loading">
+          <span class="loading-spinner">⌛</span>
+          <span>加载中...</span>
+        </div>
+        <div v-else-if="favoritesList.length === 0" class="panel-empty">
+          <span class="empty-icon">⭐</span>
+          <span>还没有收藏任何故事</span>
+        </div>
+        <div v-else class="panel-list">
+          <div v-for="story in favoritesList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+            <div class="item-header">
+              <img :src="story.avatar" class="item-avatar" alt="头像" />
+              <div class="item-meta">
+                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
+                <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+              </div>
+              <button
+                class="item-action-btn unfavorite-btn"
+                :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
+                @click.stop="handleToggleFavoriteFromList(story)"
+              >
+                <span>{{ story.isFavorited !== false ? '★' : '☆' }}</span>
+              </button>
+            </div>
+            <p class="item-content">{{ story.content }}</p>
+            <div v-if="story.images?.length" class="item-images">
+              <img :src="story.images[0]" alt="配图" />
+            </div>
+            <div class="item-footer">
+              <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
+              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
+            </div>
+          </div>
+          <div v-if="favoritesLoadingMore" class="panel-loading-more">
+            <span class="loading-spinner">⌛</span>
+            <span>加载更多...</span>
+          </div>
+          <div v-if="!favoritesHasMore && favoritesList.length > 0" class="panel-no-more">
+            <span>没有更多了</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 项目标题 -->
     <div class="project-title"></div>
 
@@ -723,16 +785,71 @@
       v-if="selectedStory"
       :story="selectedStory"
       :like-pending="storyLikePending"
+      :favorite-pending="storyFavoritePending"
       :start-position="storyStartPosition"
       :direct-open="storyDirectOpen"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
       @like="toggleStoryLike"
+      @favorite="toggleStoryFavorite"
       @comment="handleStoryComment"
+      @submit-comment="handleSubmitCommentFromStory"
       @report="handleStoryReport"
     />
 
     <!-- 登录模态框 -->
+    <!-- 通知栏 -->
+    <transition name="notification-fade">
+      <div
+        v-if="showNotificationPanel"
+        class="notification-panel"
+        :class="{ dark: effectiveMapTheme === 'dark' }"
+        @click.stop
+      >
+        <div class="notification-header">
+          <h4>通知</h4>
+          <div class="notification-actions">
+            <button
+              v-if="notificationUnreadCount > 0"
+              class="mark-read-btn"
+              @click="markAllNotificationsRead"
+            >
+              全部已读
+            </button>
+            <button class="close-btn" @click="closeNotificationPanel"><span>×</span></button>
+          </div>
+        </div>
+        <div class="notification-content">
+          <div v-if="notificationsLoading" class="notification-loading">
+            <span class="loading-spinner">⌛</span>
+            <span>加载中...</span>
+          </div>
+          <div v-else-if="notifications.length === 0" class="notification-empty">
+            <span class="empty-icon">📭</span>
+            <span>暂无通知</span>
+          </div>
+          <div v-else class="notification-list">
+            <div
+              v-for="notice in notifications"
+              :key="notice.id"
+              class="notification-item"
+              :class="{ unread: !notice.isRead }"
+            >
+              <div class="notice-avatar">
+                <img v-if="notice.fromUser?.avatar" :src="notice.fromUser.avatar" alt="" />
+                <span v-else>{{ (notice.fromUser?.username || notice.fromUserName || '匿')[0] }}</span>
+              </div>
+              <div class="notice-body">
+                <p class="notice-content">{{ notice.content }}</p>
+                <span class="notice-time">{{ formatRelativeTime(notice.createdAt) }}</span>
+              </div>
+              <span v-if="!notice.isRead" class="unread-dot"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <LoginModal v-if="showLoginModal" @close="showLoginModal = false" />
   </div>
 </template>
@@ -746,8 +863,10 @@ import { mapApi } from '../../api/map';
 import { likeApi } from '../../api/like';
 import { commentApi } from '../../api/comment';
 import { storyApi } from '../../api/story';
+import { favoriteApi } from '../../api/favorite';
 import { authApi } from '../../api/auth';
 import { reportApi } from '../../api/report';
+import { notificationApi } from '../../api/notification';
 import AMap from '../../components/AMap.vue';
 import StoryCard from '../../components/StoryCard.vue';
 import PublishForm from '../../components/PublishForm.vue';
@@ -773,6 +892,10 @@ const pickedPublishLocation = ref(null);
 const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
 const showLoginModal = ref(false);
+const showNotificationPanel = ref(false);
+const notifications = ref([]);
+const notificationsLoading = ref(false);
+const notificationUnreadCount = ref(0);
 const loading = ref(false);
 const nearbySearchQuery = ref('');
 const nearbySearchResults = ref([]);
@@ -986,21 +1109,28 @@ watch(() => passwordForm.value.confirmPassword, (val) => {
   }
 });
 
-// 我的点赞/发布面板相关
+// 我的点赞/发布/收藏面板相关
 const showLikesPanel = ref(false);
 const showPostsPanel = ref(false);
+const showFavoritesPanel = ref(false);
 const likesList = ref([]);
 const postsList = ref([]);
+const favoritesList = ref([]);
 const likesLoading = ref(false);
 const postsLoading = ref(false);
+const favoritesLoading = ref(false);
 const likesLoadingMore = ref(false);
 const postsLoadingMore = ref(false);
+const favoritesLoadingMore = ref(false);
 const likesPage = ref(1);
 const postsPage = ref(1);
+const favoritesPage = ref(1);
 const likesHasMore = ref(true);
 const postsHasMore = ref(true);
+const favoritesHasMore = ref(true);
 const likesPageSize = 10;
 const postsPageSize = 10;
+const favoritesPageSize = 10;
 
 // 侧边栏标签
 const sidebarTab = ref('nearby');
@@ -1019,6 +1149,9 @@ const storyCommentsLoading = ref(false);
 const storyLikeCount = ref(0);
 const storyIsLiked = ref(false);
 const storyLikePending = ref(false);
+const storyIsFavorited = ref(false);
+const storyFavoriteCount = ref(0);
+const storyFavoritePending = ref(false);
 const storyReportPanelOpen = ref(false);
 const selectedStoryReportReason = ref('');
 const storyReportDescription = ref('');
@@ -1087,6 +1220,7 @@ watch(
 
     storyLikeCount.value = Number(selectedStory.value.likeCount ?? selectedStory.value.likes ?? 0);
     storyIsLiked.value = Boolean(selectedStory.value.isLiked);
+    storyIsFavorited.value = Boolean(selectedStory.value.isFavorited);
     storyComments.value = normalizeStoryComments(selectedStory.value.comments);
     void hydrateSelectedStoryDetail(selectedStory.value, requestToken);
   }
@@ -1101,6 +1235,9 @@ function resetStoryOverlayState() {
   storyLikeCount.value = 0;
   storyIsLiked.value = false;
   storyLikePending.value = false;
+  storyIsFavorited.value = false;
+  storyFavoriteCount.value = 0;
+  storyFavoritePending.value = false;
   storyReportPanelOpen.value = false;
   selectedStoryReportReason.value = '';
   storyReportDescription.value = '';
@@ -1152,17 +1289,36 @@ function closeStoryReportPanel() {
   storyReportError.value = '';
 }
 
+function normalizeStoryIdKey(storyId) {
+  if (storyId === undefined || storyId === null) {
+    return null;
+  }
+
+  return typeof storyId === 'bigint'
+    ? storyId.toString()
+    : String(storyId).trim();
+}
+
 function mutateStoryReference(target, storyId, mutate) {
   if (!target || typeof target !== 'object') {
     return false;
   }
 
-  if (target.id === storyId) {
+  const normalizedStoryId = normalizeStoryIdKey(storyId);
+  if (!normalizedStoryId) {
+    return false;
+  }
+
+  if (normalizeStoryIdKey(target.id) === normalizedStoryId) {
     mutate(target);
     return true;
   }
 
-  if (target.story && typeof target.story === 'object' && target.story.id === storyId) {
+  if (
+    target.story
+    && typeof target.story === 'object'
+    && normalizeStoryIdKey(target.story.id) === normalizedStoryId
+  ) {
     mutate(target.story);
     return true;
   }
@@ -1175,6 +1331,7 @@ function syncStoryAcrossCollections(storyId, mutate) {
     stories,
     feedStories,
     featuredStories,
+    favoritesList,
     likesList,
     postsList
   ];
@@ -1222,9 +1379,20 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
     tasks.push(Promise.resolve(null));
   }
 
+  if (userStore.isLoggedIn && !userStore.isGuest) {
+    tasks.push(favoriteApi.check(storyId));
+  } else {
+    tasks.push(Promise.resolve(null));
+  }
+
+  tasks.push(favoriteApi.getCount(storyId));
+
   try {
-    const [detailResult, commentsResult, likeResult] = await Promise.allSettled(tasks);
-    if (requestToken !== activeStoryRequestToken || selectedStory.value?.id !== storyId) {
+    const [detailResult, commentsResult, likeResult, favoriteResult, favCountResult] = await Promise.allSettled(tasks);
+    if (
+      requestToken !== activeStoryRequestToken
+      || normalizeStoryIdKey(selectedStory.value?.id) !== normalizeStoryIdKey(storyId)
+    ) {
       return;
     }
 
@@ -1308,10 +1476,30 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
         item.isLiked = storyIsLiked.value;
       });
     }
+
+    if (favoriteResult.status === 'fulfilled' && favoriteResult.value) {
+      const favoriteData = favoriteResult.value?.data ?? favoriteResult.value;
+      storyIsFavorited.value = Boolean(favoriteData?.isFavorited);
+      syncStoryAcrossCollections(storyId, (item) => {
+        item.isFavorited = storyIsFavorited.value;
+      });
+    }
+
+    if (favCountResult.status === 'fulfilled' && favCountResult.value) {
+      const favCountData = favCountResult.value?.data ?? favCountResult.value;
+      const count = Number(favCountData?.favoriteCount ?? 0);
+      storyFavoriteCount.value = Number.isFinite(count) ? count : 0;
+      syncStoryAcrossCollections(storyId, (item) => {
+        item.favoriteCount = storyFavoriteCount.value;
+      });
+    }
   } catch (error) {
     console.error('加载故事详情失败:', error);
   } finally {
-    if (requestToken === activeStoryRequestToken && selectedStory.value?.id === storyId) {
+    if (
+      requestToken === activeStoryRequestToken
+      && normalizeStoryIdKey(selectedStory.value?.id) === normalizeStoryIdKey(storyId)
+    ) {
       storyCommentsLoading.value = false;
     }
   }
@@ -1413,6 +1601,51 @@ async function toggleStoryLike() {
   }
 }
 
+async function toggleStoryFavorite() {
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再收藏');
+    return;
+  }
+  if (storyFavoritePending.value) return;
+
+  const storyId = selectedStory.value.id;
+  const previousFavorited = storyIsFavorited.value;
+  const previousFavoriteCount = storyFavoriteCount.value;
+
+  storyFavoritePending.value = true;
+  storyIsFavorited.value = !previousFavorited;
+  handleStoryFavorite({ storyId, favorited: !previousFavorited, favoriteCount: previousFavoriteCount + (!previousFavorited ? 1 : -1) });
+
+  try {
+    const response = await favoriteApi.toggle(storyId);
+    const result = response?.data ?? response;
+    const resolvedFavorited = typeof result?.isFavorited === 'boolean' ? result.isFavorited : !previousFavorited;
+    storyIsFavorited.value = resolvedFavorited;
+    handleStoryFavorite({ storyId, favorited: resolvedFavorited, favoriteCount: previousFavoriteCount + (resolvedFavorited ? 1 : -1) });
+
+    // 从后端刷新实际收藏数量
+    try {
+      const countResp = await favoriteApi.getCount(storyId);
+      const countData = countResp?.data ?? countResp;
+      const count = Number(countData?.favoriteCount ?? 0);
+      if (Number.isFinite(count)) {
+        storyFavoriteCount.value = count;
+        syncStoryAcrossCollections(storyId, (item) => {
+          item.favoriteCount = count;
+        });
+      }
+    } catch (_e) { /* count refresh failure is non-critical */ }
+  } catch (error) {
+    console.error('收藏操作失败:', error);
+    storyIsFavorited.value = previousFavorited;
+    storyFavoriteCount.value = previousFavoriteCount;
+    handleStoryFavorite({ storyId, favorited: previousFavorited, favoriteCount: previousFavoriteCount });
+    alert(error.message || '收藏操作失败，请重试');
+  } finally {
+    storyFavoritePending.value = false;
+  }
+}
+
 async function submitStoryComment() {
   const storyId = selectedStory.value?.id;
   const content = storyCommentDraft.value.trim();
@@ -1447,6 +1680,43 @@ async function submitStoryComment() {
     handleStoryComment({ storyId, comment: newComment });
     storyCommentDraft.value = '';
     storyCommentComposerOpen.value = false;
+  } catch (error) {
+    console.error('评论失败:', error);
+    alert(error.message || '评论失败，请重试');
+  } finally {
+    storyCommentSubmitting.value = false;
+  }
+}
+
+async function handleSubmitCommentFromStory({ storyId, content }) {
+  if (!storyId || !content) {
+    return;
+  }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    alert('请先登录后再评论');
+    return;
+  }
+
+  if (storyCommentSubmitting.value) {
+    return;
+  }
+
+  storyCommentSubmitting.value = true;
+  try {
+    const response = await commentApi.create(storyId, content);
+    const data = response?.data ?? response;
+    const newComment = normalizeStoryComment({
+      ...(data?.data ?? data),
+      content,
+      user: {
+        username: userStore.user?.username,
+        avatar: userStore.user?.avatar
+      }
+    });
+
+    storyComments.value = [newComment, ...storyComments.value];
+    handleStoryComment({ storyId, comment: newComment });
   } catch (error) {
     console.error('评论失败:', error);
     alert(error.message || '评论失败，请重试');
@@ -2178,6 +2448,7 @@ watch(showUserSidebar, (newValue) => {
   if (!newValue) {
     showLikesPanel.value = false;
     showPostsPanel.value = false;
+    showFavoritesPanel.value = false;
   }
 });
 
@@ -2189,6 +2460,7 @@ function closeUserPanel() {
   showUserSidebar.value = false;
   showLikesPanel.value = false;
   showPostsPanel.value = false;
+  showFavoritesPanel.value = false;
 }
 
 function closePublishPanel() {
@@ -3023,29 +3295,32 @@ function handleUserClick() {
 
 // 处理我的点赞按钮点击
 function handleMyLikes() {
-  // 如果发布面板是打开的，先关闭它
-  if (showPostsPanel.value) {
-    showPostsPanel.value = false;
-  }
-  // 切换点赞面板
+  if (showPostsPanel.value) showPostsPanel.value = false;
+  if (showFavoritesPanel.value) showFavoritesPanel.value = false;
   showLikesPanel.value = !showLikesPanel.value;
 
-  // 如果是打开状态，刷新列表数据
   if (showLikesPanel.value) {
     loadLikesData();
   }
 }
 
+// 处理我的收藏按钮点击
+function handleMyFavorites() {
+  if (showLikesPanel.value) showLikesPanel.value = false;
+  if (showPostsPanel.value) showPostsPanel.value = false;
+  showFavoritesPanel.value = !showFavoritesPanel.value;
+
+  if (showFavoritesPanel.value) {
+    loadFavoritesData();
+  }
+}
+
 // 处理我的发布按钮点击
 function handleMyPosts() {
-  // 如果点赞面板是打开的，先关闭它
-  if (showLikesPanel.value) {
-    showLikesPanel.value = false;
-  }
-  // 切换发布面板
+  if (showLikesPanel.value) showLikesPanel.value = false;
+  if (showFavoritesPanel.value) showFavoritesPanel.value = false;
   showPostsPanel.value = !showPostsPanel.value;
 
-  // 如果是打开状态且列表为空，加载数据
   if (showPostsPanel.value && postsList.value.length === 0) {
     loadPostsData();
   }
@@ -3081,7 +3356,13 @@ async function loadLikesData(isLoadMore = false) {
             ? data
             : [];
     const stories = rawStories
-      .map((item) => normalizeUserPanelStory(item))
+      .map((item) => {
+        const story = normalizeUserPanelStory(item);
+        if (story) {
+          story.isLiked = true;
+        }
+        return story;
+      })
       .filter(Boolean);
 
     if (isLoadMore) {
@@ -3173,43 +3454,120 @@ function handleLikesScroll(event) {
 // 处理发布列表滚动
 function handlePostsScroll(event) {
   const { scrollTop, scrollHeight, clientHeight } = event.target;
-  // 距离底部 50px 时加载更多
   if (scrollHeight - scrollTop - clientHeight < 50) {
     loadPostsData(true);
   }
 }
 
-// 处理故事点击（从我的发布/我的点赞列表点击）
-function handleStoryClick(story) {
-  openStoryFromCollection(story);
-  return;
-  // 关闭子面板和用户侧边栏
-  showLikesPanel.value = false;
-  showPostsPanel.value = false;
-  showUserSidebar.value = false;
-
-  // 获取故事位置对应的屏幕坐标
-  let startPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-
-  // 如果故事有位置信息，将地图中心移动到该位置，并计算屏幕坐标
-  if (story.location?.latitude && story.location?.longitude) {
-    mapStore.updateCenter(story.location.latitude, story.location.longitude);
-    mapStore.updateZoom(16);
-
-    // 尝试获取屏幕坐标（地图会移动到该位置，所以用屏幕中心）
-    // 等地图移动完成后，屏幕中心就是故事位置
-    startPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-  } else if (story.location?.lng && story.location?.lat) {
-    mapStore.updateCenter(story.location.lat, story.location.lng);
-    mapStore.updateZoom(16);
-    startPosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+// 加载收藏数据（通过二次请求获取完整故事信息）
+async function loadFavoritesData(isLoadMore = false) {
+  if (isLoadMore) {
+    if (favoritesLoadingMore.value || !favoritesHasMore.value) return;
+    favoritesLoadingMore.value = true;
+  } else {
+    if (favoritesLoading.value) return;
+    favoritesLoading.value = true;
+    favoritesPage.value = 1;
+    favoritesHasMore.value = true;
   }
 
-  // 直接打开故事详情弹窗
-  openStoryModal(story, STORY_MODAL_OPEN_DELAY_MS, {
-    directOpen: true,
-    startPosition
-  });
+  try {
+    const result = await favoriteApi.getMyFavorites({
+      page: isLoadMore ? favoritesPage.value + 1 : 1,
+      limit: favoritesPageSize
+    });
+
+    const data = result.data || result;
+    const rawFavorites = Array.isArray(data?.favorites)
+      ? data.favorites
+      : Array.isArray(data?.items)
+        ? data.items
+        : [];
+
+    // 从收藏列表中提取基本故事数据
+    const basicStories = rawFavorites
+      .map((item) => {
+        const storyData = item.story || item;
+        const story = normalizeUserPanelStory(storyData);
+        if (story) story.isFavorited = true;
+        return story;
+      })
+      .filter(Boolean);
+
+    if (isLoadMore) {
+      favoritesList.value.push(...basicStories);
+      favoritesPage.value++;
+    } else {
+      favoritesList.value = basicStories;
+    }
+
+    void hydrateStoryLocations(basicStories);
+
+    if (basicStories.length < favoritesPageSize) {
+      favoritesHasMore.value = false;
+    }
+  } catch (error) {
+    console.error('加载收藏数据失败:', error);
+  } finally {
+    favoritesLoading.value = false;
+    favoritesLoadingMore.value = false;
+  }
+}
+
+// 处理收藏列表滚动
+function handleFavoritesScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  if (scrollHeight - scrollTop - clientHeight < 50) {
+    loadFavoritesData(true);
+  }
+}
+
+// 在收藏列表中切换收藏状态（取消收藏/重新收藏）
+async function handleToggleFavoriteFromList(story) {
+  const isCurrentlyFavorited = story.isFavorited !== false;
+
+  try {
+    if (isCurrentlyFavorited) {
+      if (!confirm('确定要取消收藏吗？')) return;
+      await favoriteApi.remove(story.id);
+      handleStoryFavorite({
+        storyId: story.id,
+        favorited: false,
+        favoriteCount: Math.max(0, Number(story.favoriteCount ?? 0) - 1)
+      });
+    } else {
+      await favoriteApi.create(story.id);
+      handleStoryFavorite({
+        storyId: story.id,
+        favorited: true,
+        favoriteCount: Number(story.favoriteCount ?? 0) + 1
+      });
+    }
+
+    // 刷新收藏数量
+    try {
+      const countResp = await favoriteApi.getCount(story.id);
+      const countData = countResp?.data ?? countResp;
+      const count = Number(countData?.favoriteCount ?? 0);
+      if (Number.isFinite(count)) {
+        story.favoriteCount = count;
+        syncStoryAcrossCollections(story.id, (item) => {
+          item.favoriteCount = count;
+        });
+      }
+    } catch (_e) { /* count refresh is non-critical */ }
+  } catch (error) {
+    console.error('收藏操作失败:', error);
+    alert(error.message || '操作失败，请重试');
+  }
+}
+
+// 处理故事点击（从我的发布/我的点赞/我的收藏列表点击）
+function handleStoryClick(story) {
+  showFavoritesPanel.value = false;
+  showLikesPanel.value = false;
+  showPostsPanel.value = false;
+  openStoryFromCollection(story);
 }
 
 async function handleUnlike(story) {
@@ -3222,7 +3580,9 @@ async function handleUnlike(story) {
     await likeApi.remove(story.id);
 
     // 从列表中移除
-    const index = likesList.value.findIndex(item => item.id === story.id);
+    const index = likesList.value.findIndex(
+      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id)
+    );
     if (index > -1) {
       likesList.value.splice(index, 1);
     }
@@ -3244,7 +3604,9 @@ async function handleDeleteStory(story) {
     await storyApi.deleteStory(story.id);
 
     // 从列表中移除
-    const index = postsList.value.findIndex(item => item.id === story.id);
+    const index = postsList.value.findIndex(
+      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id)
+    );
     if (index > -1) {
       postsList.value.splice(index, 1);
     }
@@ -3415,6 +3777,17 @@ async function uploadAvatar(file) {
     });
     const updatedUser = response?.data ?? response;
     userStore.updateUser(updatedUser);
+
+    // 同步更新故事列表中的头像
+    const newAvatar = updatedUser.avatar || updatedUser.avatarUrl || '';
+    if (newAvatar && postsList.value.length > 0) {
+      postsList.value.forEach(story => {
+        if (story.userId === updatedUser.id || story.authorId === updatedUser.id) {
+          if (story.avatar) story.avatar = newAvatar;
+          if (story.author && story.author.id === updatedUser.id) story.author.avatar = newAvatar;
+        }
+      });
+    }
 
     // 清除预览
     avatarPreview.value = '';
@@ -3710,11 +4083,13 @@ function handlePageClick(event) {
   const userModalShell = document.querySelector('.user-modal-shell');
   const likesPanel = document.querySelector('.likes-panel');
   const postsPanel = document.querySelector('.posts-panel');
+  const favoritesPanel = document.querySelector('.favorites-panel');
   const dockContainer = document.querySelector('.dock-container');
 
   // 如果点击的是子面板内部，不处理
   if (likesPanel?.contains(target) ||
-      postsPanel?.contains(target)) {
+      postsPanel?.contains(target) ||
+      favoritesPanel?.contains(target)) {
     return;
   }
 
@@ -3722,6 +4097,7 @@ function handlePageClick(event) {
   if (userSidebar?.contains(target) || userModalShell?.contains(target)) {
     showLikesPanel.value = false;
     showPostsPanel.value = false;
+    showFavoritesPanel.value = false;
     return;
   }
 
@@ -4018,9 +4394,15 @@ function normalizeStoryForMap(story, fallbackLocation = null) {
   const author = resolveStoryAuthor(story);
   const nextLikeCount = Number(story.likeCount ?? story.likes ?? 0);
   const normalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+  const normalizedStoryId = normalizeStoryIdKey(story.id ?? story.storyId);
+
+  if (!normalizedStoryId) {
+    return null;
+  }
 
   return {
     ...story,
+    id: normalizedStoryId,
     images: Array.isArray(story.images) ? story.images : [],
     likes: normalizedLikeCount,
     likeCount: normalizedLikeCount,
@@ -4052,6 +4434,12 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
   const nextCoords = extractCoordinates(nextBaseStory.location);
   const nextLikeCount = Number(nextBaseStory.likeCount ?? nextBaseStory.likes ?? 0);
   const nextNormalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+  const nextFavoriteCount = Number(nextBaseStory.favoriteCount ?? 0);
+  const nextNormalizedFavoriteCount = Number.isFinite(nextFavoriteCount) ? nextFavoriteCount : 0;
+  const normalizedStoryId = normalizeStoryIdKey(nextBaseStory.id ?? item.storyId ?? item.id);
+  if (!normalizedStoryId) {
+    return null;
+  }
   const nextLocationName = pickLocationText([
     nextBaseStory.locationName,
     nextBaseStory.location?.name,
@@ -4060,11 +4448,12 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
 
   return {
     ...nextBaseStory,
-    id: nextBaseStory.id ?? item.storyId ?? item.id,
+    id: normalizedStoryId,
     createdAt: nextBaseStory.createdAt || item.createdAt,
     images: Array.isArray(nextBaseStory.images) ? nextBaseStory.images : [],
     likes: nextNormalizedLikeCount,
     likeCount: nextNormalizedLikeCount,
+    favoriteCount: nextNormalizedFavoriteCount,
     username: nextAuthor.username,
     avatar: nextAuthor.avatar,
     author: nextAuthor,
@@ -4072,46 +4461,6 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
     location: buildNormalizedStoryLocation(nextBaseStory, nextCoords)
   };
 
-  if (!item || typeof item !== 'object') {
-    return null;
-  }
-
-  const baseStory = item.story && typeof item.story === 'object'
-    ? item.story
-    : item;
-  if (!baseStory || typeof baseStory !== 'object') {
-    return null;
-  }
-
-  const authorObject = baseStory.author && typeof baseStory.author === 'object'
-    ? baseStory.author
-    : null;
-  const username = firstNonEmptyString(
-    authorObject?.username,
-    typeof baseStory.author === 'string' ? baseStory.author : '',
-    baseStory.username,
-    fallbackAuthor?.username,
-    '匿名用户'
-  );
-  const avatar = firstNonEmptyString(
-    authorObject?.avatar,
-    baseStory.avatar,
-    fallbackAuthor?.avatar
-  );
-  const coords = extractCoordinates(baseStory.location);
-
-  return {
-    ...baseStory,
-    id: baseStory.id ?? item.storyId ?? item.id,
-    createdAt: baseStory.createdAt || item.createdAt,
-    images: Array.isArray(baseStory.images) ? baseStory.images : [],
-    likes: Number(baseStory.likeCount ?? baseStory.likes ?? 0),
-    username,
-    avatar,
-    author: username,
-    locationName: firstNonEmptyString(baseStory.locationName),
-    location: buildNormalizedStoryLocation(baseStory, coords)
-  };
 }
 
 async function hydrateStoryLocations(stories = []) {
@@ -4259,12 +4608,58 @@ function handleStoryLike({ storyId, liked, likeCount }) {
     : Math.max(0, currentLikeCount + (liked ? 1 : -1));
 
   storyLikeCount.value = nextLikeCount;
+  storyIsLiked.value = liked;
 
   syncStoryAcrossCollections(storyId, (story) => {
     story.likes = nextLikeCount;
     story.likeCount = nextLikeCount;
     story.isLiked = liked;
   });
+
+  const likesIndex = likesList.value.findIndex(
+    (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(storyId)
+  );
+  if (!liked && likesIndex > -1) {
+    likesList.value.splice(likesIndex, 1);
+  } else if (liked && likesIndex === -1 && selectedStory.value) {
+    const normalizedStory = normalizeUserPanelStory(selectedStory.value);
+    if (normalizedStory) {
+      normalizedStory.isLiked = true;
+      normalizedStory.likeCount = nextLikeCount;
+      normalizedStory.likes = nextLikeCount;
+      likesList.value.unshift(normalizedStory);
+    }
+  }
+}
+
+// 处理收藏
+function handleStoryFavorite({ storyId, favorited, favoriteCount }) {
+  storyIsFavorited.value = favorited;
+  if (typeof favoriteCount === 'number') {
+    storyFavoriteCount.value = Math.max(0, favoriteCount);
+  }
+  syncStoryAcrossCollections(storyId, (story) => {
+    story.isFavorited = favorited;
+    if (typeof favoriteCount === 'number') {
+      story.favoriteCount = favoriteCount;
+    }
+  });
+
+  const favoritesIndex = favoritesList.value.findIndex(
+    (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(storyId)
+  );
+  if (!favorited && favoritesIndex > -1) {
+    favoritesList.value.splice(favoritesIndex, 1);
+  } else if (favorited && favoritesIndex === -1 && selectedStory.value) {
+    const normalizedStory = normalizeUserPanelStory(selectedStory.value);
+    if (normalizedStory) {
+      normalizedStory.isFavorited = true;
+      if (typeof favoriteCount === 'number') {
+        normalizedStory.favoriteCount = favoriteCount;
+      }
+      favoritesList.value.unshift(normalizedStory);
+    }
+  }
 }
 
 // 处理评论
@@ -4341,6 +4736,46 @@ function handleDocumentClick(event) {
 }
 
 let themeAutoCheckInterval = null;
+
+// 加载通知数据
+async function loadNotifications() {
+  if (!userStore.isLoggedIn || userStore.isGuest) return;
+
+  notificationsLoading.value = true;
+  try {
+    const [listRes, countRes] = await Promise.all([
+      notificationApi.getMyNotifications({ page: 1, limit: 10 }),
+      notificationApi.getUnreadCount()
+    ]);
+
+    const listData = listRes?.data ?? listRes;
+    const countData = countRes?.data ?? countRes;
+
+    notifications.value = listData?.notifications || [];
+    notificationUnreadCount.value = countData?.unreadCount || 0;
+  } catch (error) {
+    console.error('加载通知失败:', error);
+  } finally {
+    notificationsLoading.value = false;
+  }
+}
+
+// 关闭通知栏并标记已访问
+function closeNotificationPanel() {
+  showNotificationPanel.value = false;
+}
+
+// 标记所有通知已读
+async function markAllNotificationsRead() {
+  try {
+    await notificationApi.markAllRead();
+    notificationUnreadCount.value = 0;
+    notifications.value = notifications.value.map(n => ({ ...n, isRead: true }));
+  } catch (error) {
+    console.error('标记已读失败:', error);
+  }
+}
+
 onMounted(() => {
   getUserLocation();
   loadStories();
@@ -4361,6 +4796,17 @@ onMounted(() => {
   welcomeOverlayTimer = window.setTimeout(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
+
+  // --- 通知栏：仅首次进入时显示 ---
+  const hasSeenNotification = localStorage.getItem('echostar_seen_notification');
+  if (!hasSeenNotification && userStore.isLoggedIn && !userStore.isGuest) {
+    loadNotifications().then(() => {
+      if (notifications.value.length > 0 || notificationUnreadCount.value > 0) {
+        showNotificationPanel.value = true;
+      }
+    });
+    localStorage.setItem('echostar_seen_notification', 'true');
+  }
 });
 
 onUnmounted(() => {
@@ -8323,6 +8769,268 @@ onUnmounted(() => {
   }
   100% {
     background-position: 85.71% 50%;
+  }
+}
+
+/* --- 通知栏样式 --- */
+.notification-panel {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: 360px;
+  max-height: calc(100vh - 120px);
+  border-radius: 24px;
+  border: 1px solid rgba(199, 151, 60, 0.32);
+  background:
+    linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 54%, rgba(229, 201, 150, 0.98) 100%);
+  box-shadow:
+    0 40px 88px -36px rgba(4, 8, 18, 0.72),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  color: #3c2910;
+  overflow: hidden;
+  z-index: 10001;
+}
+
+.notification-panel.dark {
+  border-color: rgba(141, 176, 235, 0.24);
+  background:
+    linear-gradient(160deg, rgba(15, 22, 40, 0.98) 0%, rgba(22, 34, 58, 0.98) 52%, rgba(29, 46, 78, 0.98) 100%);
+  box-shadow:
+    0 40px 80px -32px rgba(3, 6, 15, 0.64),
+    0 0 0 1px rgba(182, 208, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
+}
+
+.notification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(148, 111, 46, 0.18);
+  background: linear-gradient(180deg, rgba(255, 252, 245, 0.42) 0%, rgba(255, 245, 227, 0.14) 100%);
+}
+
+.notification-panel.dark .notification-header {
+  border-bottom-color: rgba(198, 219, 255, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.notification-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
+
+.notification-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-actions .mark-read-btn {
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 111, 46, 0.24);
+  background: rgba(255, 255, 255, 0.42);
+  color: #8b561d;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.notification-panel.dark .notification-actions .mark-read-btn {
+  border-color: rgba(141, 176, 235, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: #a8c4ff;
+}
+
+.notification-actions .mark-read-btn:hover {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.notification-panel.dark .notification-actions .mark-read-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.notification-actions .close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 111, 46, 0.18);
+  background: rgba(255, 255, 255, 0.24);
+  color: #8b561d;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s ease;
+}
+
+.notification-panel.dark .notification-actions .close-btn {
+  border-color: rgba(141, 176, 235, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #a8c4ff;
+}
+
+.notification-actions .close-btn:hover {
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.notification-panel.dark .notification-actions .close-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.notification-content {
+  padding: 12px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.notification-loading,
+.notification-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: rgba(60, 41, 16, 0.6);
+}
+
+.notification-panel.dark .notification-loading,
+.notification-panel.dark .notification-empty {
+  color: rgba(200, 210, 230, 0.6);
+}
+
+.empty-icon {
+  font-size: 32px;
+}
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 111, 46, 0.14);
+  background: rgba(255, 255, 255, 0.48);
+  transition: all 0.18s ease;
+  position: relative;
+}
+
+.notification-panel.dark .notification-item {
+  border-color: rgba(141, 176, 235, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.notification-item:hover {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.notification-panel.dark .notification-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.notification-item.unread {
+  border-color: rgba(199, 151, 60, 0.32);
+  background: rgba(255, 250, 240, 0.62);
+}
+
+.notification-panel.dark .notification-item.unread {
+  border-color: rgba(141, 176, 235, 0.28);
+  background: rgba(142, 108, 255, 0.08);
+}
+
+.notice-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.52) 0%, rgba(159, 105, 34, 0.14) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #8b561d;
+  flex-shrink: 0;
+}
+
+.notification-panel.dark .notice-avatar {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12) 0%, rgba(142, 108, 255, 0.14) 100%);
+  color: #a8c4ff;
+}
+
+.notice-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.notice-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice-content {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: inherit;
+}
+
+.notice-time {
+  font-size: 12px;
+  color: rgba(60, 41, 16, 0.5);
+}
+
+.notification-panel.dark .notice-time {
+  color: rgba(200, 210, 230, 0.5);
+}
+
+.unread-dot {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff6b6b;
+}
+
+.notification-panel.dark .unread-dot {
+  background: #8e6cff;
+}
+
+/* 通知栏过渡动画 */
+.notification-fade-enter-active,
+.notification-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.notification-fade-enter-from,
+.notification-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-12px);
+}
+
+@media (max-width: 640px) {
+  .notification-panel {
+    width: calc(100vw - 40px);
+    right: 20px;
+    left: 20px;
   }
 }
 </style>

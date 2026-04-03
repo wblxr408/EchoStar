@@ -4,6 +4,18 @@ import { Comment } from '../comment/comment.model.js';
 import { User } from '../auth/auth.model.js';
 import { Op } from 'sequelize';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
+import { redisClient } from '../../common/utils/redis.js';
+import { commentCacheUtil } from '../../common/utils/comment-cache.util.js';
+
+function normalizeTargetId(targetId) {
+  if (targetId === undefined || targetId === null) {
+    return null;
+  }
+
+  return typeof targetId === 'bigint'
+    ? targetId.toString()
+    : String(targetId).trim();
+}
 
 /**
  * 自定义错误类 - 统一错误处理
@@ -24,14 +36,15 @@ export const ReportService = {
    * 创建举报
    */
   async createReport({ targetType, targetId, reporterId, reason }) {
+    const normalizedTargetId = normalizeTargetId(targetId);
     // 检查举报目标是否存在
     let target;
     if (targetType === 'story') {
-      target = await Story.findByPk(targetId, {
+      target = await Story.findByPk(normalizedTargetId, {
         attributes: ['id', 'userId']
       });
     } else if (targetType === 'comment') {
-      target = await Comment.findByPk(targetId, {
+      target = await Comment.findByPk(normalizedTargetId, {
         attributes: ['id', 'userId', 'status']
       });
 
@@ -49,7 +62,7 @@ export const ReportService = {
     const existingReport = await Report.findOne({
       where: {
         targetType,
-        targetId,
+        targetId: normalizedTargetId,
         reporterId,
         status: { [Op.in]: ['pending', 'approved'] }
       }
@@ -65,7 +78,7 @@ export const ReportService = {
     // 创建举报记录
     const report = await Report.create({
       targetType,
-      targetId,
+      targetId: normalizedTargetId,
       reporterId,
       reason
     });
@@ -109,13 +122,13 @@ export const ReportService = {
       })
     ]);
 
-    const storyMap = new Map(stories.map(s => [s.id, s]));
-    const commentMap = new Map(comments.map(c => [c.id, c]));
+    const storyMap = new Map(stories.map((story) => [normalizeTargetId(story.id), story]));
+    const commentMap = new Map(comments.map((comment) => [normalizeTargetId(comment.id), comment]));
 
     const reports = rows.map(report => {
       let target = null;
       if (report.targetType === 'story') {
-        const s = storyMap.get(report.targetId);
+        const s = storyMap.get(normalizeTargetId(report.targetId));
         target = s ? {
           type: 'story',
           id: s.id,
@@ -125,7 +138,7 @@ export const ReportService = {
           userId: s.userId
         } : null;
       } else if (report.targetType === 'comment') {
-        const c = commentMap.get(report.targetId);
+        const c = commentMap.get(normalizeTargetId(report.targetId));
         target = c ? {
           type: 'comment',
           id: c.id,
@@ -138,7 +151,7 @@ export const ReportService = {
       return {
         id: report.id,
         targetType: report.targetType,
-        targetId: report.targetId,
+        targetId: normalizeTargetId(report.targetId),
         target,
         reason: report.reason,
         status: report.status,
@@ -187,7 +200,7 @@ export const ReportService = {
     }
 
     // 2. 提取所有目标ID + 批量查询（仅查对应一张表，无多余查询）
-    const targetIds = rows.map(item => item.targetId);
+    const targetIds = rows.map((item) => normalizeTargetId(item.targetId));
     let targetMap = new Map();
 
     if (targetType === 'story') {
@@ -195,20 +208,20 @@ export const ReportService = {
         where: { id: targetIds },
         attributes: ['id', 'content', 'images', 'visibility', 'isTimeCapsule', 'userId']
       });
-      targetMap = new Map(stories.map(s => [s.id, s]));
+      targetMap = new Map(stories.map((story) => [normalizeTargetId(story.id), story]));
     } else if (targetType === 'comment') {
       const comments = await Comment.findAll({
         where: { id: targetIds },
         attributes: ['id', 'content', 'status', 'userId'],
         include: [{ model: User, as: 'user', attributes: ['id', 'username'] }]
       });
-      targetMap = new Map(comments.map(c => [c.id, c]));
+      targetMap = new Map(comments.map((comment) => [normalizeTargetId(comment.id), comment]));
     }
 
     // 3. 组装数据（结构完全不变）
     const reports = rows.map(report => {
       let target = null;
-      const data = targetMap.get(report.targetId);
+      const data = targetMap.get(normalizeTargetId(report.targetId));
 
       if (targetType === 'story' && data) {
         target = {
@@ -233,7 +246,7 @@ export const ReportService = {
       return {
         id: report.id,
         targetType: report.targetType,
-        targetId: report.targetId,
+        targetId: normalizeTargetId(report.targetId),
         target,
         reason: report.reason,
         status: report.status,
@@ -273,7 +286,7 @@ export const ReportService = {
       if (!story) return null;
       return {
         type: 'story',
-        id: story.id,
+        id: normalizeTargetId(story.id),
         content: story.content ? story.content.substring(0, 200) : '',
         images: story.images ? safeParseJSONB(story.images, []) : [],
         visibility: story.visibility,
@@ -293,7 +306,7 @@ export const ReportService = {
       if (!comment) return null;
       return {
         type: 'comment',
-        id: comment.id,
+        id: normalizeTargetId(comment.id),
         content: comment.content,
         status: comment.status,
         userId: comment.userId,
@@ -322,14 +335,16 @@ export const ReportService = {
       // 如果之前是批准状态，恢复对应内容
       if (report.status === 'approved') {
         if (report.targetType === 'story') {
-          const story = await Story.findByPk(report.targetId);
+          const story = await Story.findByPk(normalizeTargetId(report.targetId));
           if (story) {
             await story.update({ visibility: 'public' });
           }
         } else if (report.targetType === 'comment') {
-          const comment = await Comment.findByPk(report.targetId);
+          const comment = await Comment.findByPk(normalizeTargetId(report.targetId));
           if (comment) {
             await comment.update({ status: 'active' });
+            // 恢复评论时递增评论缓存计数
+            await commentCacheUtil.incrementCommentCount(comment.storyId);
           }
         }
       }
@@ -339,6 +354,17 @@ export const ReportService = {
         handledBy: null,
         handledAt: null
       });
+
+      // 清除相关缓存
+      try {
+        const redis = redisClient.getClient();
+        if (report.targetType === 'story') {
+          await redis.del(`story:raw:${normalizeTargetId(report.targetId)}`);
+        }
+      } catch (err) {
+        console.error(`❌ 清除缓存失败 [restore]:`, err);
+      }
+
       return;
     }
 
@@ -350,15 +376,17 @@ export const ReportService = {
       // 批准举报
       if (report.targetType === 'story') {
         // 故事设置为 shadowban
-        const story = await Story.findByPk(report.targetId);
+        const story = await Story.findByPk(normalizeTargetId(report.targetId));
         if (story) {
           await story.update({ visibility: 'shadowban' });
         }
       } else if (report.targetType === 'comment') {
         // 评论软删除
-        const comment = await Comment.findByPk(report.targetId);
+        const comment = await Comment.findByPk(normalizeTargetId(report.targetId));
         if (comment) {
           await comment.update({ status: 'deleted' });
+          // 递减评论缓存计数
+          await commentCacheUtil.decrementCommentCount(comment.storyId);
         }
       }
     }
@@ -369,6 +397,16 @@ export const ReportService = {
       handledBy: adminId,
       handledAt: new Date()
     });
+
+    // 批准故事举报时清除 story:raw 缓存
+    if (action === 'approve' && report.targetType === 'story') {
+      try {
+        const redis = redisClient.getClient();
+        await redis.del(`story:raw:${normalizeTargetId(report.targetId)}`);
+      } catch (err) {
+        console.error(`❌ 清除故事缓存失败 [storyId: ${report.targetId}]:`, err);
+      }
+    }
   },
 
   /**
@@ -412,22 +450,22 @@ export const ReportService = {
       return { reports: [], pagination: { total: 0, page, limit, totalPages: 0 } };
     }
 
-    const targetIds = rows.map(item => item.targetId);
+    const targetIds = rows.map((item) => normalizeTargetId(item.targetId));
     const stories = await Story.findAll({
       where: { id: targetIds },
       attributes: ['id', 'content', 'images', 'visibility', 'userId']
     });
-    const storyMap = new Map(stories.map(s => [s.id, s]));
+    const storyMap = new Map(stories.map((story) => [normalizeTargetId(story.id), story]));
 
     const reports = rows.map(report => {
-      const story = storyMap.get(report.targetId);
+      const story = storyMap.get(normalizeTargetId(report.targetId));
       return {
         id: report.id,
         targetType: report.targetType,
-        targetId: report.targetId,
+        targetId: normalizeTargetId(report.targetId),
         target: story ? {
           type: 'story',
-          id: story.id,
+          id: normalizeTargetId(story.id),
           content: story.content?.substring(0, 200) || '',
           images: story.images,
           visibility: story.visibility,
@@ -482,23 +520,23 @@ export const ReportService = {
       return { reports: [], pagination: { total: 0, page, limit, totalPages: 0 } };
     }
 
-    const targetIds = rows.map(item => item.targetId);
+    const targetIds = rows.map((item) => normalizeTargetId(item.targetId));
     const comments = await Comment.findAll({
       where: { id: targetIds },
       attributes: ['id', 'content', 'status', 'userId'],
       include: [{ model: User, as: 'user', attributes: ['id', 'username'] }]
     });
-    const commentMap = new Map(comments.map(c => [c.id, c]));
+    const commentMap = new Map(comments.map((comment) => [normalizeTargetId(comment.id), comment]));
 
     const reports = rows.map(report => {
-      const comment = commentMap.get(report.targetId);
+      const comment = commentMap.get(normalizeTargetId(report.targetId));
       return {
         id: report.id,
         targetType: report.targetType,
-        targetId: report.targetId,
+        targetId: normalizeTargetId(report.targetId),
         target: comment ? {
           type: 'comment',
-          id: comment.id,
+          id: normalizeTargetId(comment.id),
           content: comment.content,
           status: comment.status,
           userId: comment.userId,
