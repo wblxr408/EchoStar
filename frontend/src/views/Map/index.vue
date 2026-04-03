@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
@@ -652,7 +652,7 @@
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
               <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
+              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
           <div v-if="likesLoadingMore" class="panel-loading-more">
@@ -708,7 +708,7 @@
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
               <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
+              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
           <div v-if="postsLoadingMore" class="panel-loading-more">
@@ -751,6 +751,7 @@
               </div>
               <button
                 class="item-action-btn unfavorite-btn"
+                :class="{ 'is-restorable': story.isFavorited === false }"
                 :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
                 @click.stop="handleToggleFavoriteFromList(story)"
               >
@@ -764,7 +765,7 @@
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
               <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
+              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
           <div v-if="favoritesLoadingMore" class="panel-loading-more">
@@ -1349,6 +1350,84 @@ function syncStoryAcrossCollections(storyId, mutate) {
   mutateStoryReference(selectedStory.value, storyId, mutate);
 }
 
+function syncCurrentUserProfileAcrossStories(nextUser) {
+  const normalizedUserId = normalizeStoryIdKey(nextUser?.id ?? userStore.user?.id);
+  if (!normalizedUserId) {
+    return;
+  }
+
+  const nextUsername = firstNonEmptyString(nextUser?.username, nextUser?.name);
+  const nextAvatar = firstNonEmptyString(nextUser?.avatar, nextUser?.avatarUrl);
+  const collections = [
+    stories,
+    feedStories,
+    featuredStories,
+    favoritesList,
+    likesList,
+    postsList
+  ];
+
+  const applyUserProfile = (story) => {
+    if (!story || typeof story !== 'object') {
+      return;
+    }
+
+    const author = resolveStoryAuthor(story);
+    const storyAuthorId = normalizeStoryIdKey(
+      author.id
+      ?? story.author?.id
+      ?? story.user?.id
+      ?? story.authorId
+      ?? story.userId
+    );
+
+    if (storyAuthorId !== normalizedUserId) {
+      return;
+    }
+
+    if (nextUsername) {
+      story.username = nextUsername;
+    }
+
+    if (nextAvatar) {
+      story.avatar = nextAvatar;
+    }
+
+    const nextAuthor = {
+      ...(story.author && typeof story.author === 'object' ? story.author : {}),
+      id: story.author?.id ?? story.user?.id ?? story.authorId ?? story.userId ?? nextUser?.id ?? null,
+      username: nextUsername || author.username,
+      avatar: nextAvatar || author.avatar
+    };
+
+    story.author = nextAuthor;
+
+    if (story.user && typeof story.user === 'object') {
+      story.user = {
+        ...story.user,
+        id: story.user.id ?? nextAuthor.id,
+        username: nextUsername || story.user.username || author.username,
+        avatar: nextAvatar || story.user.avatar || story.user.avatarUrl || author.avatar
+      };
+    }
+  };
+
+  collections.forEach((collection) => {
+    if (!Array.isArray(collection.value)) {
+      return;
+    }
+
+    collection.value.forEach((item) => {
+      const targetStory = item?.story && typeof item.story === 'object'
+        ? item.story
+        : item;
+      applyUserProfile(targetStory);
+    });
+  });
+
+  applyUserProfile(selectedStory.value);
+}
+
 async function hydrateSelectedStoryDetail(story, requestToken) {
   const storyId = story?.id;
   if (!storyId) {
@@ -1357,6 +1436,7 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
 
   storyCommentsLoading.value = true;
   const detailFallbackAuthor = {
+    id: story?.author?.id ?? story?.user?.id ?? story?.authorId ?? story?.userId ?? null,
     username: firstNonEmptyString(
       story?.username,
       typeof story?.author === 'string' ? story.author : '',
@@ -2557,10 +2637,24 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
   const userObject = source.user && typeof source.user === 'object'
     ? source.user
     : null;
+  const storyAuthorId = normalizeStoryIdKey(
+    authorObject?.id
+    ?? userObject?.id
+    ?? fallbackAuthor?.id
+    ?? source.authorId
+    ?? source.userId
+    ?? null
+  );
+  const currentUserId = normalizeStoryIdKey(userStore.user?.id);
+  const useCurrentUserProfile = Boolean(currentUserId && storyAuthorId && currentUserId === storyAuthorId);
 
   return {
-    id: authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null,
+    id: useCurrentUserProfile
+      ? userStore.user?.id ?? authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null
+      : authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null,
     username: firstNonEmptyString(
+      useCurrentUserProfile ? userStore.user?.username : '',
+      useCurrentUserProfile ? userStore.user?.name : '',
       authorObject?.username,
       userObject?.username,
       typeof source.author === 'string' ? source.author : '',
@@ -2570,6 +2664,8 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
       '\u533f\u540d\u7528\u6237'
     ),
     avatar: firstNonEmptyString(
+      useCurrentUserProfile ? userStore.user?.avatar : '',
+      useCurrentUserProfile ? userStore.user?.avatarUrl : '',
       authorObject?.avatar,
       authorObject?.avatarUrl,
       userObject?.avatar,
@@ -3691,6 +3787,10 @@ async function saveUsername() {
     });
     const updatedUser = response?.data ?? response;
     userStore.updateUser(updatedUser);
+    syncCurrentUserProfileAcrossStories({
+      ...(userStore.user || {}),
+      ...(updatedUser || {})
+    });
 
     // 退出编辑模式
     isEditingUsername.value = false;
@@ -3779,17 +3879,11 @@ async function uploadAvatar(file) {
     userStore.updateUser(updatedUser);
 
     // 同步更新故事列表中的头像
-    const newAvatar = updatedUser.avatar || updatedUser.avatarUrl || '';
-    if (newAvatar && postsList.value.length > 0) {
-      postsList.value.forEach(story => {
-        if (story.userId === updatedUser.id || story.authorId === updatedUser.id) {
-          if (story.avatar) story.avatar = newAvatar;
-          if (story.author && story.author.id === updatedUser.id) story.author.avatar = newAvatar;
-        }
-      });
-    }
-
     // 清除预览
+    syncCurrentUserProfileAcrossStories({
+      ...(userStore.user || {}),
+      ...(updatedUser || {})
+    });
     avatarPreview.value = '';
     currentAvatarFile.value = null;
     console.log('头像已更新:', uploadedUrl);
@@ -7476,6 +7570,49 @@ onUnmounted(() => {
   gap: 4px;
 }
 
+.likes-panel .item-footer,
+.favorites-panel .item-footer {
+  justify-content: flex-start;
+  gap: 14px;
+}
+
+.likes-panel .item-location,
+.favorites-panel .item-location {
+  flex: 1;
+  min-width: 0;
+}
+
+.likes-panel .item-likes,
+.favorites-panel .item-likes {
+  white-space: nowrap;
+}
+
+.likes-panel .item-likes + .item-likes,
+.favorites-panel .item-likes + .item-likes {
+  margin-left: 10px;
+}
+
+.likes-panel .item-action-btn span,
+.favorites-panel .item-action-btn span {
+  font-size: 0;
+  line-height: 0;
+}
+
+.likes-panel .item-action-btn span::before,
+.favorites-panel .item-action-btn span::before {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.likes-panel .unlike-btn span::before,
+.favorites-panel .unfavorite-btn span::before {
+  content: '❌️';
+}
+
+.favorites-panel .unfavorite-btn.is-restorable span::before {
+  content: '⭐️';
+}
+
 .panel-loading-more,
 .panel-no-more {
   display: flex;
@@ -9034,3 +9171,4 @@ onUnmounted(() => {
   }
 }
 </style>
+
