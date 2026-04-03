@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="amap-container" :class="{ 'dark-mode': isDarkMode }" ref="mapContainer"></div>
 </template>
 
@@ -62,7 +62,7 @@ const emotionColorsDark = {
 
 let map = null;
 let markers = [];
-let clusterMarkers = []; // 聚合标记
+let clusterMarkers = []; // 鑱氬悎鏍囪
 let userLocationMarker = null;
 let tempPickedMarker = null;
 const isDarkMode = ref(props.theme === 'dark');
@@ -146,12 +146,9 @@ function dedupePointIds(pointIds = []) {
 
 function resolveClusterCount(cluster) {
   const pointIds = dedupePointIds(cluster?.pointIds || []);
-  if (pointIds.length > 0) {
-    return pointIds.length;
-  }
-
   const count = Number(cluster?.count);
-  return Number.isFinite(count) && count > 0 ? count : 1;
+  const normalizedCount = Number.isFinite(count) && count > 0 ? count : 0;
+  return Math.max(normalizedCount, pointIds.length, 1);
 }
 
 function isClusterEntry(entry) {
@@ -206,6 +203,26 @@ function getClusterPointStories(clusterList, storyList = []) {
     .filter((entry) => isPointEntry(entry))
     .map((point) => createMarkerStoryFromPoint(point, storyLookup))
     .filter(Boolean);
+}
+
+function dedupeStories(stories = []) {
+  const result = [];
+  const seen = new Set();
+
+  stories.forEach((story) => {
+    const storyIdKey = getStoryIdKey(story?.id);
+    if (storyIdKey && seen.has(storyIdKey)) {
+      return;
+    }
+
+    if (storyIdKey) {
+      seen.add(storyIdKey);
+    }
+
+    result.push(story);
+  });
+
+  return result;
 }
 
 function addMapControls() {
@@ -468,7 +485,7 @@ function createTempPickedMarker(location) {
   content.className = 'temp-picked-marker';
   content.innerHTML = `
     <div class="temp-picked-flag">
-      <span class="temp-picked-flag-icon">⚑</span>
+      <span class="temp-picked-flag-icon">锟?/span>
     </div>
     <div class="temp-picked-pole"></div>
   `;
@@ -564,18 +581,19 @@ function createMarker(story) {
   return marker;
 }
 
-// 计算聚合气泡半径（随 count 增大逼近上限但永远不达到）
+// 璁＄畻鑱氬悎姘旀场鍗婂緞锛堥殢 count 澧炲ぇ閫艰繎涓婇檺浣嗘案杩滀笉杈惧埌锟?
 function calculateClusterRadius(count) {
-  const R_MIN = 25;   // 最小半径（和单个标记一致，count=1）
-  const R_MAX = 80;   // 上限半径（直径 160px）
-  const DECAY = 8;    // 衰减参数，越大收敛越慢
-  // 公式：R = R_MIN + (R_MAX - R_MIN) * count / (count + DECAY)
-  // count=1 → 30.6, count=3 → 41.3, count=10 → 58.6, count=50 → 72.2, count→∞ → 80
+  const R_MIN = 25;   
+  const R_MAX = 80;   
+  const DECAY = 8;    
+
   return R_MIN + (R_MAX - R_MIN) * (count / (count + DECAY));
 }
 
 const STORY_MARKER_SIZE = 50;
 const FORCED_STORY_CLUSTER_OVERLAP_RATIO = 0.25;
+const CLUSTER_RENDER_ZOOM_THRESHOLD = 16;
+const CLUSTER_CLUSTER_OVERLAP_THRESHOLD = 0.3;
 
 function createStoryPixelState(story) {
   if (!map) {
@@ -625,6 +643,212 @@ function getStoryMarkerOverlapRatio(a, b) {
   }
 
   return (overlapWidth * overlapHeight) / (STORY_MARKER_SIZE * STORY_MARKER_SIZE);
+}
+
+function createLowZoomRenderableEntity(entry, storyLookup) {
+  if (isClusterEntry(entry)) {
+    const coords = resolveCoordinates(entry);
+    if (!coords) {
+      return null;
+    }
+
+    return {
+      kind: 'cluster',
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      count: resolveClusterCount(entry),
+      pointIds: dedupePointIds(entry?.pointIds || [])
+    };
+  }
+
+  if (!isPointEntry(entry)) {
+    return null;
+  }
+
+  const story = createMarkerStoryFromPoint(entry, storyLookup);
+  if (!story) {
+    return null;
+  }
+
+  return {
+    kind: 'point',
+    latitude: story.location.latitude,
+    longitude: story.location.longitude,
+    count: 1,
+    pointIds: story?.id === undefined || story?.id === null ? [] : [story.id],
+    story
+  };
+}
+
+function createLowZoomEntityState(entity) {
+  if (!map) {
+    return null;
+  }
+
+  let pixel;
+  try {
+    pixel = map.lngLatToContainer([entity.longitude, entity.latitude]);
+  } catch {
+    return null;
+  }
+
+  const px = pixel?.getX?.();
+  const py = pixel?.getY?.();
+  if (!Number.isFinite(px) || !Number.isFinite(py)) {
+    return null;
+  }
+
+  const halfSize = entity.kind === 'cluster'
+    ? calculateClusterRadius(entity.count)
+    : STORY_MARKER_SIZE / 2;
+
+  return {
+    entity,
+    px,
+    py,
+    left: px - halfSize,
+    right: px + halfSize,
+    top: py - halfSize,
+    bottom: py + halfSize,
+    area: Math.pow(halfSize * 2, 2)
+  };
+}
+
+function getLowZoomEntityOverlapRatio(a, b) {
+  const overlapWidth = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+  const overlapHeight = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  if (overlapWidth <= 0 || overlapHeight <= 0) {
+    return 0;
+  }
+
+  const overlapArea = overlapWidth * overlapHeight;
+  const baseArea = Math.min(a.area, b.area);
+  if (!Number.isFinite(baseArea) || baseArea <= 0) {
+    return 0;
+  }
+
+  return overlapArea / baseArea;
+}
+
+function getLowZoomEntityOverlapThreshold(a, b) {
+  if (a.entity.kind === 'cluster' && b.entity.kind === 'cluster') {
+    return CLUSTER_CLUSTER_OVERLAP_THRESHOLD;
+  }
+
+  return FORCED_STORY_CLUSTER_OVERLAP_RATIO;
+}
+
+function resolveMergedLowZoomCount(entities) {
+  const explicitPointIds = dedupePointIds(
+    entities.flatMap((entity) => entity.pointIds || [])
+  );
+
+  const opaqueCount = entities.reduce((sum, entity) => {
+    const hasExplicitPointIds = Array.isArray(entity.pointIds) && entity.pointIds.length > 0;
+    return sum + (hasExplicitPointIds ? 0 : entity.count);
+  }, 0);
+
+  return {
+    count: Math.max(opaqueCount + explicitPointIds.length, 1),
+    pointIds: explicitPointIds
+  };
+}
+
+function buildLowZoomRenderableData(clusterList, storyList = []) {
+  if (!map) {
+    return { clusters: [], points: [] };
+  }
+
+  const storyLookup = new Map();
+  storyList.forEach((story) => {
+    const storyIdKey = getStoryIdKey(story?.id);
+    if (!storyIdKey || storyLookup.has(storyIdKey)) {
+      return;
+    }
+
+    storyLookup.set(storyIdKey, story);
+  });
+
+  const entities = clusterList
+    .map((entry) => createLowZoomRenderableEntity(entry, storyLookup))
+    .filter(Boolean);
+
+  if (entities.length === 0) {
+    return { clusters: [], points: [] };
+  }
+
+  const items = entities
+    .map(createLowZoomEntityState)
+    .filter(Boolean);
+
+  if (items.length === 0) {
+    return { clusters: [], points: [] };
+  }
+
+  const parent = items.map((_, index) => index);
+  const find = (index) => {
+    if (parent[index] !== index) {
+      parent[index] = find(parent[index]);
+    }
+    return parent[index];
+  };
+  const union = (a, b) => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) {
+      parent[rootB] = rootA;
+    }
+  };
+
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (getLowZoomEntityOverlapRatio(items[i], items[j]) >= getLowZoomEntityOverlapThreshold(items[i], items[j])) {
+        union(i, j);
+      }
+    }
+  }
+
+  const grouped = new Map();
+  items.forEach((item, index) => {
+    const root = find(index);
+    if (!grouped.has(root)) {
+      grouped.set(root, []);
+    }
+
+    grouped.get(root).push(item.entity);
+  });
+
+  const clusters = [];
+  const points = [];
+
+  grouped.forEach((group) => {
+    const totalWeight = group.reduce((sum, entity) => sum + entity.count, 0);
+    if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+      return;
+    }
+
+    const { count, pointIds } = resolveMergedLowZoomCount(group);
+    if (count <= 1 && group.length === 1 && group[0].kind === 'point' && group[0].story) {
+      points.push(group[0].story);
+      return;
+    }
+
+    const latitude = group.reduce((sum, entity) => sum + entity.latitude * entity.count, 0) / totalWeight;
+    const longitude = group.reduce((sum, entity) => sum + entity.longitude * entity.count, 0) / totalWeight;
+
+    clusters.push({
+      type: 'cluster',
+      latitude,
+      longitude,
+      count,
+      pointIds
+    });
+  });
+
+  return {
+    clusters,
+    points: dedupeStories(points)
+  };
 }
 
 function buildForcedStoryClusters(stories, excludedStoryIdKeys = new Set()) {
@@ -727,7 +951,7 @@ function createPixelClusterState(cluster) {
   }
 
   const pointIds = dedupePointIds(cluster?.pointIds || []);
-  const count = pointIds.length > 0 ? pointIds.length : resolveClusterCount(cluster);
+  const count = resolveClusterCount(cluster);
 
   return {
     cluster: {
@@ -747,42 +971,42 @@ function createPixelClusterState(cluster) {
   };
 }
 
-// 检查两个气泡是否重叠超过阈值
+// 妫€鏌ヤ袱涓皵娉℃槸鍚﹂噸鍙犺秴杩囬槇锟?
 function isOverlapping(m1, m2, threshold) {
   const dx = m1.px - m2.px;
   const dy = m1.py - m2.py;
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist >= m1.radius + m2.radius) return false;
   if (dist <= 0) return true;
-  // 重叠比例 = 两圆重叠部分的宽度 / 较小圆直径的近似
+  // 閲嶅彔姣斾緥 = 涓ゅ渾閲嶅彔閮ㄥ垎鐨勫锟?/ 杈冨皬鍦嗙洿寰勭殑杩戜技
   const overlap = m1.radius + m2.radius - dist;
   const minDiameter = 2 * Math.min(m1.radius, m2.radius);
   return (overlap / minDiameter) > threshold;
 }
 
-// 合并重叠的聚合气泡（基于像素坐标检测，>20% 重叠则合并）
+// 鍚堝苟閲嶅彔鐨勮仛鍚堟皵娉★紙鍩轰簬鍍忕礌鍧愭爣妫€娴嬶紝>20% 閲嶅彔鍒欏悎骞讹級
 function mergeOverlappingClusters(clusterList) {
   if (!map || clusterList.length <= 1) return clusterList;
 
-  // 转换为像素坐标并计算半径
+  // 杞崲涓哄儚绱犲潗鏍囧苟璁＄畻鍗婂緞
   let items = clusterList.map(createPixelClusterState).filter(Boolean);
 
   if (items.length <= 1) return items.map(i => i.cluster);
 
-  // 迭代合并，直到没有新的重叠
+  // 杩唬鍚堝苟锛岀洿鍒版病鏈夋柊鐨勯噸锟?
   let changed = true;
   while (changed) {
     changed = false;
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {
         if (isOverlapping(items[i], items[j], 0.2)) {
-          // 合并：按 count 加权平均位置，count 和 pointIds 累加
+          // 鍚堝苟锛氭寜 count 鍔犳潈骞冲潎浣嶇疆锛宑ount 锟?pointIds 绱姞
           const pointIds = dedupePointIds([
             ...(items[i].cluster.pointIds || []),
             ...(items[j].cluster.pointIds || [])
           ]);
           const weightTotal = items[i].count + items[j].count;
-          const total = pointIds.length > 0 ? pointIds.length : weightTotal;
+          const total = Math.max(weightTotal, pointIds.length, 1);
           const newLat = (items[i].latitude * items[i].count + items[j].latitude * items[j].count) / weightTotal;
           const newLng = (items[i].longitude * items[i].count + items[j].longitude * items[j].count) / weightTotal;
           const mergedCluster = {
@@ -814,13 +1038,13 @@ function mergeOverlappingClusters(clusterList) {
   return items.map(item => item.cluster);
 }
 
-// 创建聚合标记
+// 鍒涘缓鑱氬悎鏍囪
 function createClusterMarker(cluster) {
   if (!map || !window.AMap) {
     return null;
   }
 
-  // 兼容不同坐标格式
+  // 鍏煎涓嶅悓鍧愭爣鏍煎紡
   const coords = resolveCoordinates(cluster) || resolveCoordinates({
     latitude: cluster.latitude ?? cluster.location?.lat,
     longitude: cluster.longitude ?? cluster.location?.lng
@@ -871,7 +1095,7 @@ function createClusterMarker(cluster) {
   `;
   content.appendChild(countSpan);
 
-  // Hover 效果
+  // Hover 鏁堟灉
   content.addEventListener('mouseenter', () => {
     content.style.transform = 'scale(1.15)';
     img.style.filter = 'drop-shadow(0 6px 16px rgba(218, 165, 32, 0.7))';
@@ -900,7 +1124,7 @@ function createClusterMarker(cluster) {
   return marker;
 }
 
-// 保存被聚合气泡吸收的单点故事 ID（前端重叠吸收）
+// 淇濆瓨琚仛鍚堟皵娉″惛鏀剁殑鍗曠偣鏁呬簨 ID锛堝墠绔噸鍙犲惛鏀讹級
 let absorbedStoryIds = new Set();
 
 function updateClusterMarkers() {
@@ -910,6 +1134,29 @@ function updateClusterMarkers() {
 
   clearClusterMarkers();
   absorbedStoryIds = new Set();
+
+  {
+    const currentZoom = Number(props.zoom);
+    if (Number.isFinite(currentZoom) && currentZoom >= CLUSTER_RENDER_ZOOM_THRESHOLD) {
+      return;
+    }
+
+    const clusterEntries = Array.isArray(props.clusters) ? props.clusters : [];
+    const lowZoomRenderData = buildLowZoomRenderableData(clusterEntries, props.stories);
+    const mergedClusters = lowZoomRenderData.clusters;
+
+    mergedClusters.forEach((cluster) => {
+      const marker = createClusterMarker(cluster);
+      if (marker) {
+        clusterMarkers.push(marker);
+      }
+    });
+
+    if (clusterMarkers.length > 0) {
+      map.add(clusterMarkers);
+    }
+    return;
+  }
 
   const clusterList = Array.isArray(props.clusters) ? props.clusters : [];
   const storyList = Array.isArray(props.stories) ? props.stories : [];
@@ -945,20 +1192,20 @@ function updateClusterMarkers() {
   const forcedStoryClustersResult = buildForcedStoryClusters(renderableStories, clusteredStoryIdKeys);
   const validClusters = clusterList.filter((cluster) => isClusterEntry(cluster));
 
-  // 前端重叠检测与合并
+  // 鍓嶇閲嶅彔妫€娴嬩笌鍚堝苟
   let merged = mergeOverlappingClusters([
     ...validClusters,
     ...forcedStoryClustersResult.clusters
   ]);
 
-  // 聚合气泡吸收附近的单个故事点
+  // 鑱氬悎姘旀场鍚告敹闄勮繎鐨勫崟涓晠浜嬬偣
   merged = absorbNearbyStories(merged, renderableStories);
 
   forcedStoryClustersResult.absorbedIds.forEach((id) => {
     absorbedStoryIds.add(id);
   });
 
-  // 根据吸收后的最终 count 重新计算并创建标记
+  // 鏍规嵁鍚告敹鍚庣殑鏈€锟?count 閲嶆柊璁＄畻骞跺垱寤烘爣锟?
   merged.forEach((cluster) => {
     const marker = createClusterMarker(cluster);
     if (marker) {
@@ -971,7 +1218,7 @@ function updateClusterMarkers() {
   }
 }
 
-// 聚合气泡吸收被其显示范围覆盖的单个故事点
+// 鑱氬悎姘旀场鍚告敹琚叾鏄剧ず鑼冨洿瑕嗙洊鐨勫崟涓晠浜嬬偣
 function absorbNearbyStories(clusters, stories) {
   if (!map || !clusters.length || !stories.length) return clusters;
 
@@ -985,10 +1232,10 @@ function absorbNearbyStories(clusters, stories) {
     });
   });
 
-  // 将聚合气泡转为像素坐标（深拷贝避免修改 props）
+  // 灏嗚仛鍚堟皵娉¤浆涓哄儚绱犲潗鏍囷紙娣辨嫹璐濋伩鍏嶄慨锟?props锟?
   const pixelClusters = clusters.map(createPixelClusterState).filter(Boolean);
 
-  // 检查每个单点是否在某个气泡范围内
+  // 妫€鏌ユ瘡涓崟鐐规槸鍚﹀湪鏌愪釜姘旀场鑼冨洿锟?
   stories.forEach(story => {
     const storyIdKey = getStoryIdKey(story?.id);
     if ((storyIdKey && clusteredStoryIdKeys.has(storyIdKey)) || (storyIdKey && absorbedStoryIds.has(storyIdKey))) {
@@ -1018,30 +1265,37 @@ function absorbNearbyStories(clusters, stories) {
       const dy = spy - pc.py;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // 单点在气泡范围内（像素距离 <= 气泡半径）
+      // 鍗曠偣鍦ㄦ皵娉¤寖鍥村唴锛堝儚绱犺窛锟?<= 姘旀场鍗婂緞锟?
       if (dist <= pc.radius) {
+        const previousCount = pc.count;
+        const hadExactPointIds = Array.isArray(pc.cluster.pointIds) && pc.cluster.pointIds.length > 0;
+
         if (storyIdKey) {
           absorbedStoryIds.add(storyIdKey);
+        }
+
+        if (storyIdKey && hadExactPointIds) {
           const pointIds = dedupePointIds([...(pc.cluster.pointIds || []), story.id]);
           pc.pointIdKeys = new Set(pointIds.map(getStoryIdKey).filter(Boolean));
           pc.cluster.pointIds = pointIds;
-          pc.count = pointIds.length;
-        } else {
-          pc.count += 1;
+          pc.count = Math.max(previousCount, pointIds.length);
+        } else if (!storyIdKey && hadExactPointIds) {
+          pc.count = previousCount + 1;
         }
 
-        pc.radius = calculateClusterRadius(pc.count);
         pc.cluster.count = pc.count;
-        // 按 count 加权平均更新位置
-        const total = pc.count;
-        const origCount = total - 1;
-        pc.latitude = (pc.latitude * origCount + coords.latitude) / total;
-        pc.longitude = (pc.longitude * origCount + coords.longitude) / total;
-        pc.cluster.latitude = pc.latitude;
-        pc.cluster.longitude = pc.longitude;
-        break; // 一个单点只被一个气泡吸收
+
+        if (pc.count !== previousCount) {
+          pc.radius = calculateClusterRadius(pc.count);
+          const total = pc.count;
+          pc.latitude = (pc.latitude * previousCount + coords.latitude) / total;
+          pc.longitude = (pc.longitude * previousCount + coords.longitude) / total;
+          pc.cluster.latitude = pc.latitude;
+          pc.cluster.longitude = pc.longitude;
+        }
+        break;
       }
-    }
+      }
   });
 
   return pixelClusters.map(pc => pc.cluster);
@@ -1054,7 +1308,28 @@ function updateMarkers() {
 
   clearMarkers();
 
-  // 获取已被聚合的故事 ID 集合
+  {
+    const currentZoom = Number(props.zoom);
+    const clusterEntries = Array.isArray(props.clusters) ? props.clusters : [];
+    const storyEntries = Array.isArray(props.stories) ? props.stories : [];
+    const renderableStories = Number.isFinite(currentZoom) && currentZoom < CLUSTER_RENDER_ZOOM_THRESHOLD
+      ? buildLowZoomRenderableData(clusterEntries, storyEntries).points
+      : dedupeStories(storyEntries);
+
+    renderableStories.forEach((story) => {
+      const marker = createMarker(story);
+      if (marker) {
+        markers.push(marker);
+      }
+    });
+
+    if (markers.length > 0) {
+      map.add(markers);
+    }
+    return;
+  }
+
+  // 鑾峰彇宸茶鑱氬悎鐨勬晠锟?ID 闆嗗悎
   const clusterList = Array.isArray(props.clusters) ? props.clusters : [];
   const clusteredStoryIds = new Set();
   clusterList.forEach(cluster => {
@@ -1088,7 +1363,6 @@ function updateMarkers() {
 
   renderableStories.forEach((story) => {
     const storyIdKey = getStoryIdKey(story?.id);
-    // 跳过已被聚合或被气泡吸收的故事
     if ((storyIdKey && clusteredStoryIds.has(storyIdKey)) || (storyIdKey && absorbedStoryIds.has(storyIdKey))) {
       return;
     }
@@ -1148,7 +1422,7 @@ defineExpose({
       }
 
 
-      // 兼容不同版本的高德地图 API（lat/lng 可能是属性或方法）
+      // 鍏煎涓嶅悓鐗堟湰鐨勯珮寰峰湴锟?API锛坙at/lng 鍙兘鏄睘鎬ф垨鏂规硶锟?
       const getLat = (obj) => typeof obj.lat === 'function' ? obj.lat() : obj.lat;
       const getLng = (obj) => typeof obj.lng === 'function' ? obj.lng() : obj.lng;
 
@@ -1425,7 +1699,7 @@ watch(() => props.tempPickedLocation, (newLocation) => {
   overflow: hidden;
 }
 
-/* 夜间模式：标记点如夜空星辰 */
+/* 澶滈棿妯″紡锛氭爣璁扮偣濡傚绌烘槦锟?*/
 :deep(.amap-container.dark-mode .marker-wrapper) {
   box-shadow: 0 0 12px currentColor, 0 0 24px rgba(255, 255, 255, 0.3), 0 4px 12px rgba(0, 0, 0, 0.5);
 }
@@ -1459,3 +1733,4 @@ watch(() => props.tempPickedLocation, (newLocation) => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 </style>
+
