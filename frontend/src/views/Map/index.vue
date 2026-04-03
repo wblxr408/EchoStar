@@ -998,6 +998,7 @@ let nearbyCenterLabelTimer = null;
 let activeNearbySearchToken = 0;
 let activeNearbyCenterLabelToken = 0;
 let activeUserLocationLabelToken = 0;
+let activeClusterRequestToken = 0;
 let suppressNearbySearchQueryWatch = false;
 let geocoderInstance = null;
 let geocoderPromise = null;
@@ -4376,8 +4377,38 @@ async function loadStories() {
 // 聚合显示的 zoom 阈值，超过此值显示原始标记点
 const CLUSTER_ZOOM_THRESHOLD = 16;
 
+function padBounds(bounds, paddingRatio = 0.08) {
+  if (!bounds?.northEast || !bounds?.southWest) {
+    return null;
+  }
+
+  const north = Number(bounds.northEast.lat);
+  const east = Number(bounds.northEast.lng);
+  const south = Number(bounds.southWest.lat);
+  const west = Number(bounds.southWest.lng);
+
+  if (![north, east, south, west].every(Number.isFinite)) {
+    return null;
+  }
+
+  const latPadding = Math.max(Math.abs(north - south) * paddingRatio, 0.0005);
+  const lngPadding = Math.max(Math.abs(east - west) * paddingRatio, 0.0005);
+
+  return {
+    northEast: {
+      lat: Math.min(90, north + latPadding),
+      lng: Math.min(180, east + lngPadding)
+    },
+    southWest: {
+      lat: Math.max(-90, south - latPadding),
+      lng: Math.max(-180, west - lngPadding)
+    }
+  };
+}
+
 // 加载聚合数据
 async function loadClusterData() {
+  const requestToken = ++activeClusterRequestToken;
   try {
     const currentZoom = mapStore.zoom;
 
@@ -4409,32 +4440,51 @@ async function loadClusterData() {
       const response = await mapApi.getClusterData(
         defaultBounds.northEast,
         defaultBounds.southWest,
-        mapStore.zoom
+        currentZoom
       );
 
       const data = response?.data ?? response;
       console.log('[Map] cluster API response:', data);
-      if (Array.isArray(data)) {
+      if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
         clusters.value = data;
         console.log('[Map] clusters loaded with default bounds:', clusters.value.length);
       }
       return;
     }
 
+    {
+      const response = await mapApi.getClusterData(
+        bounds.northEast,
+        bounds.southWest,
+        currentZoom
+      );
+
+      const data = response?.data ?? response;
+      console.log('[Map] cluster API response:', data);
+      if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
+        clusters.value = data;
+        console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
+      }
+      return;
+    }
+
+    const paddedBounds = padBounds(bounds) || bounds;
     const response = await mapApi.getClusterData(
-      bounds.northEast,
-      bounds.southWest,
-      mapStore.zoom
+      paddedBounds.northEast,
+      paddedBounds.southWest,
+      currentZoom
     );
 
     const data = response?.data ?? response;
     console.log('[Map] cluster API response:', data);
-    if (Array.isArray(data)) {
+    if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
       clusters.value = data;
       console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
     }
   } catch (error) {
-    clusters.value = [];
+    if (requestToken === activeClusterRequestToken) {
+      clusters.value = [];
+    }
     console.error('加载聚合数据失败:', error);
   }
 }
