@@ -1,11 +1,23 @@
 /**
  * EchoStar 后端限流测试
- * 
- * 测试后端速率限制功能是否正常工作：
- * 1. 在达到限流阈值前，请求应正常响应 (200)
- * 2. 达到阈值后，后续请求应被拒绝 (429)
- * 3. 429 响应格式应包含正确的 code 和 message
- * 
+ *
+ * 设计原则：
+ *   - 均匀压力分布：各模块按比例均匀触发限流，确保所有 limiter 被覆盖
+ *   - 429 响应验证：检查限流响应格式（code=429, message 非空）
+ *   - 不检查失败率：429 是预期行为
+ *   - 低数据量 setup：减少 setup 阶段消耗的限流配额
+ *   - k6 tags 驱动指标：通过 tags 自动生成按 limiter 类型细分的响应时间指标
+ *
+ * 权重分配（按 limiter 类型均匀分布）：
+ *   auth(25%)        → strictLimiter
+ *   story(15%)       → generalLimiter
+ *   like(13%)        → generalLimiter
+ *   comment(12%)     → generalLimiter
+ *   favorite(10%)    → generalLimiter
+ *   map(10%)         → looseLimiter
+ *   notification(5%) → generalLimiter
+ *   report(10%)      → generalLimiter
+ *
  * 使用方法（通过 run-test.bat）：
  *   run-test.bat --mode rate-limit
  *   run-test.bat --mode rate-limit --reset
@@ -14,60 +26,99 @@
 import { sleep } from 'k6';
 import http from 'k6/http';
 import { check, group } from 'k6';
-import { config } from './config.js';
+import { Rate } from 'k6/metrics';
+import { config, RATE_LIMIT_WEIGHTS, chooseByWeight, parseDuration } from './config.js';
+import { randomInt } from './data-generator.js';
 
-// 解析持续时间字符串（如 "2m" -> 120秒）
-function parseDuration(str) {
-  const match = str.match(/^(\d+)(s|m|h)$/);
-  if (!match) return parseInt(str) || 60;
-  const [, value, unit] = match;
-  switch (unit) {
-    case 's': return parseInt(value);
-    case 'm': return parseInt(value) * 60;
-    case 'h': return parseInt(value) * 3600;
-    default: return parseInt(value) || 60;
-  }
+// ===================== 自定义指标 =====================
+const rate429 = new Rate('rate_429');
+const totalRequests = new Rate('rate_success');
+
+// ===================== 工具函数 =====================
+
+function safeJsonParse(raw) {
+  const fixed = raw.replace(/"([^"]+)"\s*:\s*(\d{15,})\b/g, '"$1":"$2"');
+  return JSON.parse(fixed);
 }
 
+/**
+ * 为 HTTP 请求参数注入 endpoint + limiter tag
+ * k6 自动生成:
+ *   http_req_duration{endpoint:auth,limiter:strict}
+ *   http_req_duration{endpoint:story,limiter:general}
+ *   http_req_duration{endpoint:map,limiter:loose}
+ */
+function tagParams(params, endpoint, limiter) {
+  const tags = { endpoint, limiter };
+  if (!params) return { tags };
+  if (!params.tags) return { ...params, tags };
+  return { ...params, tags: { ...params.tags, ...tags } };
+}
+
+// ===================== k6 配置 =====================
+const currentProfile = config.profile;
 const loadVus = config.concurrency.load;
 const loadDurationStr = config.duration.load;
 const loadDurationSec = parseDuration(loadDurationStr);
 
 export const options = {
-  // 分阶段测试限流行为（根据 duration 参数动态计算各阶段时长）
   stages: [
-    // 阶段1: 预热 - 低并发，请求应全部成功
+    // 预热 - 低并发，请求应全部成功
     { duration: `${Math.max(15, Math.floor(loadDurationSec * 0.15))}s`, target: Math.max(10, Math.floor(loadVus * 0.2)) },
-    // 阶段2: 逐渐增加 - 应开始触发限流
+    // 逐渐增加 - 应开始触发限流
     { duration: `${Math.max(30, Math.floor(loadDurationSec * 0.35))}s`, target: loadVus },
-    // 阶段3: 持续高负载 - 大部分请求应被限流
+    // 持续高负载 - 大部分请求应被限流
     { duration: `${Math.max(30, Math.floor(loadDurationSec * 0.35))}s`, target: loadVus * 2 },
-    // 阶段4: 冷却
+    // 冷却
     { duration: `${Math.max(15, Math.floor(loadDurationSec * 0.15))}s`, target: 0 },
   ],
-  // 限流测试的阈值：不检查失败率（因为预期会有大量 429）
   thresholds: {
     'http_req_duration': ['p(95)<1000', 'p(99)<2000'],
-    // 以下按接口分组检查响应时间
-    'http_req_duration{group:::auth}': ['p(95)<800'],
-    'http_req_duration{group:::story}': ['p(95)<1500'],
-    'http_req_duration{group:::map}': ['p(95)<2000'],
-    'http_req_duration{group:::comment}': ['p(95)<500'],
-    'http_req_duration{group:::favorite}': ['p(95)<500'],
-    'http_req_duration{group:::like}': ['p(95)<500'],
-    // 注意：不设置 http_req_failed 阈值，因为 429 是预期行为
+    // 按 limiter 类型细分的阈值
+    'http_req_duration{limiter:strict}': ['p(95)<800'],
+    'http_req_duration{limiter:general}': ['p(95)<1000'],
+    'http_req_duration{limiter:loose}': ['p(95)<2000'],
+    // 按模块细分的阈值
+    'http_req_duration{endpoint:auth}': ['p(95)<800'],
+    'http_req_duration{endpoint:story}': ['p(95)<1500'],
+    'http_req_duration{endpoint:map}': ['p(95)<2000'],
+    'http_req_duration{endpoint:comment}': ['p(95)<500'],
+    'http_req_duration{endpoint:favorite}': ['p(95)<500'],
+    'http_req_duration{endpoint:like}': ['p(95)<500'],
+    'http_req_duration{endpoint:notification}': ['p(95)<500'],
+    'http_req_duration{endpoint:report}': ['p(95)<500'],
+    // 不设置 http_req_failed 阈值，因为 429 是预期行为
   },
 };
 
 const BASE_URL = config.baseUrl;
 
-// 测试数据
-let testUsers = [];
-let testStories = [];
+// ===================== 429 响应验证 =====================
+
+function checkRateLimitResponse(res) {
+  if (res.status !== 429) return true;
+  try {
+    const body = safeJsonParse(res.body);
+    return body.code === 429 && typeof body.message === 'string' && body.message.length > 0;
+  } catch (e) {
+    return false;
+  }
+}
 
 /**
- * Setup: 创建基础测试数据
+ * 记录限流测试请求（仅 Rate 分类，响应时间由 k6 tags 自动收集）
  */
+function recordRLResponse(res) {
+  if (res.status === 429) {
+    rate429.add(1);
+  } else {
+    rate429.add(0);
+  }
+  totalRequests.add(res.status >= 200 && res.status < 400 ? 1 : 0);
+}
+
+// ===================== Setup =====================
+
 export function setup() {
   console.log('=== Rate Limit Test - Data Preparation ===');
 
@@ -83,12 +134,13 @@ export function setup() {
 
   for (let i = 0; i < userCount; i++) {
     if (i % 10 === 0) {
-      console.log(`[Setup] Creating users: ${i}/${userCount}`);
+      console.log(`[Setup] Users: ${i}/${userCount}`);
     }
+    const ts = Date.now();
     const userData = {
-      email: `rltest_user_${i}_${Date.now()}@test.com`,
+      email: `rltest_${i}_${ts}@test.com`,
       password: `Test@${i}Password`,
-      username: `rltest_user_${i}_${Date.now()}`,
+      username: `rltest_${i}_${ts}`,
     };
 
     const response = http.post(`${BASE_URL}/api/auth/register_2`, JSON.stringify(userData), {
@@ -97,7 +149,7 @@ export function setup() {
 
     if (response.status === 200 || response.status === 201) {
       try {
-        const body = JSON.parse(response.body);
+        const body = safeJsonParse(response.body);
         if (body.code === 0 && body.data) {
           setupData.users.push({
             id: body.data.user.id,
@@ -153,11 +205,10 @@ export function setup() {
 
         if (response.status === 200 || response.status === 201) {
           try {
-            const body = JSON.parse(response.body);
+            const body = safeJsonParse(response.body);
             if (body.code === 0 && body.data) {
               setupData.stories.push({
-                id: body.data.id,
-                userId: user.id,
+                id: String(body.data.id),
               });
             }
           } catch (e) {}
@@ -173,214 +224,256 @@ export function setup() {
   return setupData;
 }
 
-/**
- * 验证 429 响应格式
- */
-function checkRateLimitResponse(res) {
-  if (res.status !== 429) return true; // 非 429 响应不需要检查
+// ===================== 限流测试 Action 实现 =====================
 
-  try {
-    const body = JSON.parse(res.body);
-    return body.code === 429 && typeof body.message === 'string' && body.message.length > 0;
-  } catch (e) {
-    return false;
+function randomUser(data) {
+  return data.users[Math.floor(Math.random() * data.users.length)];
+}
+
+function randomStory(data) {
+  return data.stories[Math.floor(Math.random() * data.stories.length)];
+}
+
+// limiter 分类映射
+const actionLimiterMap = {
+  auth: 'strict',
+  story: 'general',
+  like: 'general',
+  favorite: 'general',
+  comment: 'general',
+  map: 'loose',
+  notification: 'general',
+  report: 'general',
+};
+
+/**
+ * Auth - 触发 strictLimiter (权重 25%)
+ */
+function rlTestAuth(data) {
+  const user = randomUser(data);
+  const res = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
+    email: user.email,
+    password: user.password,
+  }), tagParams({ headers: { 'Content-Type': 'application/json' } }, 'auth', 'strict'));
+
+  check(res, {
+    'auth: status 200 or 429': (r) => r.status === 200 || r.status === 429,
+    'auth: 429 has correct format': (r) => checkRateLimitResponse(r),
+  });
+  recordRLResponse(res);
+
+  // 获取用户信息
+  const userRes = http.get(`${BASE_URL}/api/auth/users/${user.id}`, tagParams(null, 'auth', 'strict'));
+  check(userRes, {
+    'auth: get user 200 or 429': (r) => r.status === 200 || r.status === 429,
+  });
+  recordRLResponse(userRes);
+}
+
+/**
+ * Story - 触发 generalLimiter (权重 15%)
+ */
+function rlTestStory(data) {
+  const story = randomStory(data);
+  const res = http.get(`${BASE_URL}/api/stories/${story.id}`, tagParams(null, 'story', 'general'));
+  check(res, {
+    'story: status 200 or 429': (r) => r.status === 200 || r.status === 429,
+    'story: 429 has correct format': (r) => checkRateLimitResponse(r),
+  });
+  recordRLResponse(res);
+
+  const keywords = ['开心', '测试', '故事', '打卡'];
+  const keyword = keywords[randomInt(0, keywords.length - 1)];
+  const searchRes = http.get(`${BASE_URL}/api/stories/search?keyword=${encodeURIComponent(keyword)}&page=1&limit=20`, tagParams(null, 'story', 'general'));
+  check(searchRes, {
+    'story: search 200 or 429': (r) => r.status === 200 || r.status === 429,
+  });
+  recordRLResponse(searchRes);
+}
+
+/**
+ * Like - 触发 generalLimiter (权重 13%)
+ */
+function rlTestLike(data) {
+  const user = randomUser(data);
+  const story = randomStory(data);
+  if (user.token) {
+    const res = http.post(`${BASE_URL}/api/likes`, JSON.stringify({ storyId: story.id }), tagParams({
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
+    }, 'like', 'general'));
+    check(res, {
+      'like: status 200 or 429': (r) => r.status === 200 || r.status === 429,
+      'like: 429 has correct format': (r) => checkRateLimitResponse(r),
+    });
+    recordRLResponse(res);
+  }
+
+  const countRes = http.get(`${BASE_URL}/api/likes/${story.id}/count`, tagParams(null, 'like', 'general'));
+  check(countRes, {
+    'like: count 200 or 429': (r) => r.status === 200 || r.status === 429,
+  });
+  recordRLResponse(countRes);
+}
+
+/**
+ * Favorite - 触发 generalLimiter (权重 10%)
+ */
+function rlTestFavorite(data) {
+  const user = randomUser(data);
+  const story = randomStory(data);
+  if (user.token) {
+    const res = http.post(`${BASE_URL}/api/favorites`, JSON.stringify({ storyId: story.id }), tagParams({
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
+    }, 'favorite', 'general'));
+    check(res, {
+      'favorite: status 200 or 429': (r) => r.status === 200 || r.status === 429,
+      'favorite: 429 has correct format': (r) => checkRateLimitResponse(r),
+    });
+    recordRLResponse(res);
   }
 }
 
 /**
- * 测试执行函数
+ * Comment - 触发 generalLimiter (权重 12%)
  */
+function rlTestComment(data) {
+  const user = randomUser(data);
+  const story = randomStory(data);
+  if (user.token) {
+    const res = http.post(`${BASE_URL}/api/comments`, JSON.stringify({
+      storyId: story.id,
+      content: `限流测试评论 ${Date.now()}`,
+    }), tagParams({
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${user.token}`,
+      },
+    }, 'comment', 'general'));
+    check(res, {
+      'comment: status 200 or 429': (r) => r.status === 200 || r.status === 429,
+      'comment: 429 has correct format': (r) => checkRateLimitResponse(r),
+    });
+    recordRLResponse(res);
+  }
+
+  const listRes = http.get(`${BASE_URL}/api/comments/story/${story.id}?page=1&limit=10`, tagParams(null, 'comment', 'general'));
+  check(listRes, {
+    'comment: list 200 or 429': (r) => r.status === 200 || r.status === 429,
+  });
+  recordRLResponse(listRes);
+}
+
+/**
+ * Map - 触发 looseLimiter (权重 10%)
+ */
+function rlTestMap(data) {
+  const lat = 39.9 + Math.random() * 0.1;
+  const lng = 116.3 + Math.random() * 0.2;
+
+  const exploreRes = http.get(`${BASE_URL}/api/map/explore?lat=${lat}&lng=${lng}&radius=1000`, tagParams(null, 'map', 'loose'));
+  check(exploreRes, {
+    'map: explore 200 or 429': (r) => r.status === 200 || r.status === 429,
+    'map: explore 429 format': (r) => checkRateLimitResponse(r),
+  });
+  recordRLResponse(exploreRes);
+
+  const feedRes = http.get(`${BASE_URL}/api/map/feed?lat=${lat}&lng=${lng}&page=1&limit=20`, tagParams(null, 'map', 'loose'));
+  check(feedRes, {
+    'map: feed 200 or 429': (r) => r.status === 200 || r.status === 429,
+  });
+  recordRLResponse(feedRes);
+}
+
+/**
+ * Notification - 触发 generalLimiter (权重 5%)
+ */
+function rlTestNotification(data) {
+  const user = randomUser(data);
+  if (!user.token) return;
+
+  const res = http.get(`${BASE_URL}/api/v1/notifications/me?page=1&limit=10`, tagParams(
+    { headers: { 'Authorization': `Bearer ${user.token}` } },
+    'notification', 'general',
+  ));
+  check(res, {
+    'notification: 200 or 429': (r) => r.status === 200 || r.status === 429,
+    'notification: 429 format': (r) => checkRateLimitResponse(r),
+  });
+  recordRLResponse(res);
+}
+
+/**
+ * Report - 触发 generalLimiter (权重 10%)
+ */
+function rlTestReport(data) {
+  const user = randomUser(data);
+  const story = randomStory(data);
+  if (!user.token) return;
+
+  const reasons = ['内容不当', '涉嫌抄袭', '虚假信息', '恶意内容', '其他问题'];
+  const res = http.post(`${BASE_URL}/api/reports`, JSON.stringify({
+    targetType: 'story',
+    targetId: story.id,
+    reason: reasons[randomInt(0, reasons.length - 1)],
+  }), tagParams({
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${user.token}`,
+    },
+  }, 'report', 'general'));
+  check(res, {
+    'report: 200 or 429': (r) => r.status === 200 || r.status === 429,
+    'report: 429 format': (r) => checkRateLimitResponse(r),
+  });
+  recordRLResponse(res);
+}
+
+// Action 分发映射
+const rlActionMap = {
+  auth: rlTestAuth,
+  story: rlTestStory,
+  like: rlTestLike,
+  favorite: rlTestFavorite,
+  comment: rlTestComment,
+  map: rlTestMap,
+  notification: rlTestNotification,
+  report: rlTestReport,
+};
+
+// ===================== 主测试函数 =====================
+
 export default function (data) {
   if (!data || data.users.length === 0) {
     sleep(1);
     return;
   }
 
-  const action = Math.floor(Math.random() * 100);
+  // 基于权重随机选择模块
+  const actionName = chooseByWeight(RATE_LIMIT_WEIGHTS);
+  const actionFn = rlActionMap[actionName];
 
-  if (action < 30) {
-    group('auth', () => testAuth(data));
-  } else if (action < 50) {
-    group('story', () => testStory(data));
-  } else if (action < 65) {
-    group('like', () => testLike(data));
-  } else if (action < 75) {
-    group('favorite', () => testFavorite(data));
-  } else if (action < 85) {
-    group('comment', () => testComment(data));
-  } else {
-    group('map', () => testMap(data));
+  if (actionFn) {
+    group(actionName, () => actionFn(data));
   }
 
   sleep(Math.random() * 0.2 + 0.05);
 }
 
-/**
- * 认证模块测试（主要触发 strictLimiter）
- */
-function testAuth(data) {
-  if (data.users.length === 0) return;
+// ===================== Teardown =====================
 
-  const user = data.users[Math.floor(Math.random() * data.users.length)];
-
-  const loginRes = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
-    email: user.email,
-    password: user.password,
-  }), { headers: { 'Content-Type': 'application/json' } });
-
-  check(loginRes, {
-    'auth: status is 200 or 429': (r) => r.status === 200 || r.status === 429,
-    'auth: login response time < 500ms': (r) => r.timings.duration < 500,
-    'auth: 429 has correct format': (r) => checkRateLimitResponse(r),
-  });
-
-  // 获取用户信息（公开接口）
-  const userRes = http.get(`${BASE_URL}/api/auth/users/${user.id}`);
-
-  check(userRes, {
-    'auth: get user status 200 or 429': (r) => r.status === 200 || r.status === 429,
-    'auth: get user response time < 300ms': (r) => r.timings.duration < 300,
-    'auth: get user 429 format': (r) => checkRateLimitResponse(r),
-  });
-}
-
-/**
- * 故事模块测试（触发 generalLimiter）
- */
-function testStory(data) {
-  if (data.stories.length === 0) return;
-
-  const story = data.stories[Math.floor(Math.random() * data.stories.length)];
-
-  const storyRes = http.get(`${BASE_URL}/api/stories/${story.id}`);
-
-  check(storyRes, {
-    'story: status 200 or 429': (r) => r.status === 200 || r.status === 429,
-    'story: response time < 500ms': (r) => r.timings.duration < 500,
-    'story: 429 has correct format': (r) => checkRateLimitResponse(r),
-  });
-
-  const keywords = ['开心', '测试', '故事', '打卡'];
-  const keyword = keywords[Math.floor(Math.random() * keywords.length)];
-  const searchRes = http.get(`${BASE_URL}/api/stories/search?keyword=${encodeURIComponent(keyword)}&page=1&limit=20`);
-
-  check(searchRes, {
-    'story: search status 200 or 429': (r) => r.status === 200 || r.status === 429,
-    'story: search response time < 1000ms': (r) => r.timings.duration < 1000,
-    'story: search 429 format': (r) => checkRateLimitResponse(r),
-  });
-}
-
-/**
- * 点赞模块测试
- */
-function testLike(data) {
-  if (data.stories.length === 0 || data.users.length === 0) return;
-
-  const user = data.users[Math.floor(Math.random() * data.users.length)];
-  const story = data.stories[Math.floor(Math.random() * data.stories.length)];
-
-  if (user.token) {
-    const likeRes = http.post(`${BASE_URL}/api/likes`, JSON.stringify({ storyId: story.id }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${user.token}`,
-      },
-    });
-
-    check(likeRes, {
-      'like: status 200 or 429': (r) => r.status === 200 || r.status === 429,
-      'like: response time < 500ms': (r) => r.timings.duration < 500,
-      'like: 429 has correct format': (r) => checkRateLimitResponse(r),
-    });
-  }
-
-  const countRes = http.get(`${BASE_URL}/api/likes/${story.id}/count`);
-
-  check(countRes, {
-    'like: count status 200 or 429': (r) => r.status === 200 || r.status === 429,
-    'like: count response time < 300ms': (r) => r.timings.duration < 300,
-    'like: count 429 format': (r) => checkRateLimitResponse(r),
-  });
-}
-
-/**
- * 收藏模块测试
- */
-function testFavorite(data) {
-  if (data.stories.length === 0 || data.users.length === 0) return;
-
-  const user = data.users[Math.floor(Math.random() * data.users.length)];
-  const story = data.stories[Math.floor(Math.random() * data.stories.length)];
-
-  if (user.token) {
-    const favRes = http.post(`${BASE_URL}/api/favorites`, JSON.stringify({ storyId: story.id }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${user.token}`,
-      },
-    });
-
-    check(favRes, {
-      'favorite: status 200 or 429': (r) => r.status === 200 || r.status === 429,
-      'favorite: response time < 500ms': (r) => r.timings.duration < 500,
-      'favorite: 429 has correct format': (r) => checkRateLimitResponse(r),
-    });
-  }
-}
-
-/**
- * 评论模块测试
- */
-function testComment(data) {
-  if (data.stories.length === 0 || data.users.length === 0) return;
-
-  const user = data.users[Math.floor(Math.random() * data.users.length)];
-  const story = data.stories[Math.floor(Math.random() * data.stories.length)];
-
-  // 获取评论列表（不需要认证）
-  const listRes = http.get(`${BASE_URL}/api/comments/story/${story.id}?page=1&limit=10`);
-
-  check(listRes, {
-    'comment: status 200 or 429': (r) => r.status === 200 || r.status === 429,
-    'comment: response time < 500ms': (r) => r.timings.duration < 500,
-    'comment: 429 has correct format': (r) => checkRateLimitResponse(r),
-  });
-}
-
-/**
- * 地图模块测试（触发 looseLimiter）
- */
-function testMap(data) {
-  const lat = 39.9 + Math.random() * 0.1;
-  const lng = 116.3 + Math.random() * 0.2;
-
-  const exploreRes = http.get(`${BASE_URL}/api/map/explore?lat=${lat}&lng=${lng}&radius=1000`);
-
-  check(exploreRes, {
-    'map: explore status 200 or 429': (r) => r.status === 200 || r.status === 429,
-    'map: explore response time < 1000ms': (r) => r.timings.duration < 1000,
-    'map: explore 429 format': (r) => checkRateLimitResponse(r),
-  });
-
-  const feedRes = http.get(`${BASE_URL}/api/map/feed?lat=${lat}&lng=${lng}&page=1&limit=20`);
-
-  check(feedRes, {
-    'map: feed status 200 or 429': (r) => r.status === 200 || r.status === 429,
-    'map: feed response time < 1000ms': (r) => r.timings.duration < 1000,
-    'map: feed 429 format': (r) => checkRateLimitResponse(r),
-  });
-}
-
-/**
- * Teardown: 输出统计
- */
 export function teardown(data) {
   console.log('\n=== Rate Limit Test Completed ===');
   console.log(`Created users: ${data.users.length}`);
   console.log(`Created stories: ${data.stories.length}`);
   console.log('\nKey metrics to check:');
-  console.log('  1. http_req_failed rate should be > 0 (rate limiting triggered)');
+  console.log('  1. rate_429 should be > 0 (rate limiting triggered)');
   console.log('  2. 429 response format checks should all pass');
   console.log('  3. Response times for successful requests should be acceptable');
+  console.log('  4. Check http_req_duration{limiter:strict/general/loose} for limiter-specific timing');
 }

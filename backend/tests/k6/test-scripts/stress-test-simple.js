@@ -1,114 +1,233 @@
 /**
- * EchoStar 后端压力测试 - 简化版（性能测试）
- * 专注于接口性能测试，要求服务器已关闭限流（使用 server.no-limit.js 启动）
- * 
+ * EchoStar 后端压力测试 - 场景化行为脚本（性能测试）
+ *
+ * 设计原则：
+ *   - 场景化用户行为：每个 VU 模拟一次用户会话（登录 → 浏览 → 互动 → 退出）
+ *   - 85/15 读写比：浏览阶段 85% 读操作，互动阶段 15% 写操作
+ *   - 80/20 法则：核心接口承载 80% 流量，低频接口（管理员）单独测试
+ *   - 指数分布思考时间：模拟真实用户行为的快慢差异
+ *   - 数据有效性校验：优先选择 public 可见的故事，避免无意义 404
+ *   - 错误分类监控：区分 4xx / 5xx / 429，辅助定位问题
+ *   - k6 tags 驱动指标：通过 tags 实现按接口细分，自动出现在 summary-export 中
+ *
  * 使用方法（通过 run-test.bat）：
  *   run-test.bat --mode performance
  *   run-test.bat --mode performance --reset
- * 
+ *
  * 直接使用 k6：
- *   TEST_MODE=performance k6 run --out json=tests/k6/test-reports/performance-test/result.json tests/k6/test-scripts/stress-test-simple.js
+ *   TEST_MODE=performance k6 run tests/k6/test-scripts/stress-test-simple.js
+ *   k6 run --env PROFILE=peak tests/k6/test-scripts/stress-test-simple.js
  */
 
 import { sleep } from 'k6';
 import http from 'k6/http';
 import { check, group } from 'k6';
-import { config } from './config.js';
+import { Rate, Counter } from 'k6/metrics';
+import {
+  config, ACTION_WEIGHTS, READ_ACTIONS, WRITE_ACTIONS,
+  chooseByWeight, ENDPOINT_THRESHOLDS, parseDuration,
+  pickByDist, distMode, HOT_RATIO, sortByPopularity,
+} from './config.js';
+import { randomInt, randomExp } from './data-generator.js';
 
-// 解析持续时间字符串（如 "2m" -> 120秒）
-function parseDuration(str) {
-  const match = str.match(/^(\d+)(s|m|h)$/);
-  if (!match) return parseInt(str) || 60;
-  const [, value, unit] = match;
-  switch (unit) {
-    case 's': return parseInt(value);
-    case 'm': return parseInt(value) * 60;
-    case 'h': return parseInt(value) * 3600;
-    default: return parseInt(value) || 60;
-  }
+// ===================== 自定义指标 =====================
+// 使用 k6 tags 实现按接口细分的响应时间（自动生成 http_req_duration{endpoint:xxx}）
+// 无需手动创建 Trend 对象，k6 自动收集和管理
+
+// 错误分类计数
+const error4xx = new Rate('errors_4xx');
+const error5xx = new Rate('errors_5xx');
+const errorOther = new Rate('errors_other');
+
+// 性能拐点检测：使用 Counter 跨 VU 汇总（k6 自动聚合所有 VU 的数据）
+const p95BreachCounter = new Counter('p95_breach_count');
+const totalRequestCounter = new Counter('total_request_checks');
+
+// ===================== 工具函数 =====================
+
+/**
+ * 安全解析 JSON，防止 Snowflake ID (BIGINT) 精度丢失
+ */
+function safeJsonParse(raw) {
+  const fixed = raw.replace(/"([^"]+)"\s*:\s*(\d{15,})\b/g, '"$1":"$2"');
+  return JSON.parse(fixed);
 }
 
-// 从配置中获取参数
+/**
+ * 为 HTTP 请求参数注入 endpoint tag
+ * k6 会自动生成 http_req_duration{endpoint:xxx} 指标
+ */
+function tagParams(params, endpoint) {
+  if (!params) return { tags: { endpoint } };
+  if (!params.tags) return { ...params, tags: { endpoint } };
+  return { ...params, tags: { ...params.tags, endpoint } };
+}
+
+// ===================== k6 配置 =====================
+const currentProfile = config.profile;
 const loadVus = config.concurrency.load;
 const loadDurationStr = config.duration.load;
 const loadDurationSec = parseDuration(loadDurationStr);
 
-// k6 配置选项（使用动态配置）
+// 生成按接口细分的阈值（基于 ENDPOINT_THRESHOLDS 自动生成）
+const endpointThresholds = {};
+for (const [ep, threshold] of Object.entries(ENDPOINT_THRESHOLDS)) {
+  endpointThresholds[`http_req_duration{endpoint:${ep}}`] = [`p(95)<${threshold}`];
+}
+
+// 使用 config 中定义的 stages（如未通过 --env 覆盖 profile）
+// 阶梯拐点测试使用宽松阈值（仅监控不中断），其他 profile 使用标准阈值
+const isRampProfile = config.profileName === 'ramp';
+
 export const options = {
-  // 分阶段压力测试
-  stages: [
-    // 预热阶段
-    { duration: '30s', target: Math.max(10, Math.floor(loadVus * 0.2)) },
-    // 负载测试
+  stages: currentProfile.stages || [
+    { duration: '30s', target: Math.max(10, Math.floor(loadVus * 0.25)) },
     { duration: `${Math.floor(loadDurationSec * 0.4)}s`, target: loadVus },
-    // 压力测试
-    { duration: `${Math.floor(loadDurationSec * 0.4)}s`, target: loadVus * 2 },
-    // 峰值测试
-    { duration: '30s', target: loadVus * 4 },
-    // 恢复阶段
+    { duration: `${Math.floor(loadDurationSec * 0.4)}s`, target: Math.floor(loadVus * 1.5) },
     { duration: '30s', target: 0 },
   ],
-  // 性能阈值
-  thresholds: {
+  thresholds: isRampProfile ? {
+    // 阶梯拐点测试：宽松阈值，故意压过拐点观察行为
+    'http_req_duration': ['p(95)<10000'],
+    'errors_5xx': ['rate<0.05'],
+    // 不设 http_req_failed 和接口细分阈值（高并发下预期会超限）
+  } : {
+    // 其他 profile：标准性能阈值
     'http_req_duration': ['p(95)<1000', 'p(99)<2000'],
     'http_req_failed': ['rate<0.05'],
-    // 按接口分类的阈值
-    'http_req_duration{group:::auth}': ['p(95)<800'],
-    'http_req_duration{group:::story}': ['p(95)<1500'],
-    'http_req_duration{group:::map}': ['p(95)<2000'],
-    'http_req_duration{group:::comment}': ['p(95)<500'],
-    'http_req_duration{group:::favorite}': ['p(95)<500'],
-    'http_req_duration{group:::like}': ['p(95)<500'],
-    'http_req_duration{group:::notification}': ['p(95)<500'],
-    'http_req_duration{group:::recommendation}': ['p(95)<2000'],
-    'http_req_duration{group:::misc}': ['p(95)<200'],
+    'errors_5xx': ['rate<0.01'],
+    // 按接口细分的阈值（自动从 ENDPOINT_THRESHOLDS 生成）
+    ...endpointThresholds,
   },
 };
 
 const BASE_URL = config.baseUrl;
 
-// 测试数据
-let testUsers = [];
-let testStories = [];
-let userTokens = [];
-let adminToken = null;
+// ===================== 数据有效性 =====================
+
+// 预过滤的公开故事缓存（setup 阶段填充，避免每次请求重复 filter）
+let _publicStories = [];
 
 /**
- * Setup: 创建基础测试数据
+ * 从数据集中获取有效的公开故事
+ * 使用热度分布选择：热门故事被更频繁地访问
+ * @param {Object} data - setup 数据
+ * @returns {Object|null} 选中的故事
  */
+function getValidStory(data) {
+  if (!_publicStories || _publicStories.length === 0) return null;
+  return pickByDist(_publicStories, distMode);
+}
+
+/**
+ * 获取一个用户（带 token 保证）
+ * 使用热度分布选择：活跃用户被更频繁地选中
+ * @param {Object} data - setup 数据
+ * @returns {Object|null} 选中的用户
+ */
+function getRandomUser(data) {
+  if (!data.users || data.users.length === 0) return null;
+  return pickByDist(data.users, distMode);
+}
+
+/**
+ * 确保用户有 token，没有则登录获取
+ */
+function ensureToken(user) {
+  if (user.token) return user.token;
+
+  const loginRes = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
+    email: user.email,
+    password: user.password,
+  }), { headers: { 'Content-Type': 'application/json' } });
+
+  if (loginRes.status === 200) {
+    try {
+      const body = safeJsonParse(loginRes.body);
+      if (body.code === 0 && body.data && body.data.accessToken) {
+        user.token = body.data.accessToken;
+        return user.token;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+/**
+ * 记录请求指标（错误分类 + 性能拐点检测）
+ * 响应时间指标通过 k6 tags 自动收集，无需手动记录
+ */
+function recordMetrics(actionName, res) {
+  // 错误分类
+  if (res.status >= 400 && res.status < 500) {
+    error4xx.add(1);
+    error5xx.add(0);
+  } else if (res.status >= 500) {
+    error4xx.add(0);
+    error5xx.add(1);
+  } else {
+    error4xx.add(0);
+    error5xx.add(0);
+  }
+  errorOther.add(res.status === 0 ? 1 : 0);
+
+  // 性能拐点检测（跨 VU 汇总）
+  totalRequestCounter.add(1);
+  const threshold = ENDPOINT_THRESHOLDS[actionName] || 1000;
+  if (res.timings.duration > threshold * 1.5) {
+    p95BreachCounter.add(1);
+    console.warn(`[PERF] ${actionName} response ${res.timings.duration.toFixed(0)}ms exceeds 1.5x threshold (${threshold}ms)`);
+  }
+}
+
+// ===================== Setup =====================
+
 export function setup() {
-  console.log('=== Starting Data Preparation ===');
-  
+  const profileName = config.profileName;
+  const profile = config.profile;
+  console.log(`=== Starting Setup (Profile: ${profileName}) ===`);
+  console.log(`  VUs: ${profile.vus}, Duration: ${profile.duration}`);
+  console.log(`  Data Scale: users=${profile.dataScale.users}, stories=${profile.dataScale.stories}`);
+  console.log(`  Access Distribution: ${distMode} (hot ratio: ${(HOT_RATIO * 100).toFixed(0)}%)`);
+  if (distMode === 'pareto') {
+    console.log(`  → Top ${(HOT_RATIO * 100).toFixed(0)}% stories/users receive ~80% of all requests`);
+  } else if (distMode === 'zipfian') {
+    console.log(`  → Top 5% stories/users receive ~50% of all requests (steeper head)`);
+  } else {
+    console.log(`  → All stories/users accessed with equal probability`);
+  }
+
   const setupData = {
     users: [],
-    admins: [],
     stories: [],
     tokens: [],
     notifiedUsers: [],
+    commentIds: [],
+    storyComments: {},
   };
-  
+
   // 创建测试用户
   const userCount = Math.min(1000, config.users.count);
   console.log(`Creating ${userCount} test users...`);
-  
+
   for (let i = 0; i < userCount; i++) {
-    // Progress log every 10 users
-    if (i % 10 === 0) {
-      console.log(`[Setup] Creating users: ${i}/${userCount}`);
+    if (i % 100 === 0) {
+      console.log(`[Setup] Users: ${i}/${userCount}`);
     }
+    const ts = Date.now();
     const userData = {
-      email: `loadtest_user_${i}_${Date.now()}@test.com`,
+      email: `loadtest_${profileName}_${i}_${ts}@test.com`,
       password: `Test@${i}Password`,
-      username: `loadtest_user_${i}_${Date.now()}`,
+      username: `loadtest_${profileName}_${i}_${ts}`,
     };
-    
+
     const response = http.post(`${BASE_URL}/api/auth/register_2`, JSON.stringify(userData), {
       headers: { 'Content-Type': 'application/json' },
     });
 
     if (response.status === 200 || response.status === 201) {
       try {
-        const body = JSON.parse(response.body);
+        const body = safeJsonParse(response.body);
         if (body.code === 0 && body.data) {
           setupData.users.push({
             id: body.data.user.id,
@@ -125,10 +244,10 @@ export function setup() {
         }
       } catch (e) {}
     }
-    
+
     if (i % 20 === 0) sleep(0.05);
   }
-  
+
   console.log(`[Setup] Created ${setupData.users.length} users`);
 
   // 创建测试故事
@@ -136,36 +255,32 @@ export function setup() {
     const storyCount = Math.min(5000, config.stories.count);
     console.log(`Creating ${storyCount} test stories...`);
 
+    // 热门故事比例：前 hotRatio 的故事模拟"热门内容"（更丰富的内容、带图片占位符）
+    const hotStoryCount = Math.floor(storyCount * HOT_RATIO);
+    const emotions = ['开心', '难过', '治愈', '打卡', '感动', '惊喜', '孤独', '自由'];
+
     for (let i = 0; i < storyCount; i++) {
       const userIndex = i % setupData.users.length;
       const user = setupData.users[userIndex];
 
       let token = user.token;
       if (!token) {
-        // 登录获取 token
-        const loginRes = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
-          email: user.email,
-          password: user.password,
-        }), { headers: { 'Content-Type': 'application/json' } });
-
-        if (loginRes.status === 200) {
-          try {
-            const loginBody = JSON.parse(loginRes.body);
-            if (loginBody.code === 0 && loginBody.data) {
-              token = loginBody.data.accessToken;
-              user.token = token;
-            }
-          } catch (e) {}
-        }
+        token = ensureToken(user);
       }
 
       if (token) {
-        const location = generateBeijingLocation();
+        const location = {
+          lat: 39.8 + Math.random() * 0.3,
+          lng: 116.2 + Math.random() * 0.4,
+        };
+        const isHot = i < hotStoryCount;
         const storyData = {
-          content: `压力测试故事 #${i} - ${Date.now()}`,
-          images: [],
+          content: isHot
+            ? `热门故事 #${i} - 这是一条精心编辑的故事内容，${Date.now()}`
+            : `压力测试故事 #${i} - ${Date.now()}`,
+          images: isHot ? [`placeholder_hot_${i}.jpg`] : [],
           location: location,
-          emotionTag: ['开心', '难过', '治愈', '打卡'][i % 4],
+          emotionTag: emotions[isHot ? (i % emotions.length) : (i % 4)],
           isTimeCapsule: false,
           visibility: 'public',
         };
@@ -179,39 +294,97 @@ export function setup() {
 
         if (response.status === 200 || response.status === 201) {
           try {
-            const body = JSON.parse(response.body);
+            const body = safeJsonParse(response.body);
             if (body.code === 0 && body.data) {
               setupData.stories.push({
-                id: body.data.id,
-                userId: user.id,
+                id: String(body.data.id),
+                visibility: 'public',
+                images: storyData.images || [],
+                emotionTag: storyData.emotionTag || null,
               });
             }
           } catch (e) {}
         }
       }
-      
-      if (i % 50 === 0) {
-        sleep(0.05);
-      }
+
+      if (i % 50 === 0) sleep(0.05);
     }
   }
-  
+
   console.log(`[Setup] Created ${setupData.stories.length} stories`);
 
-  // 创建通知数据：通过点赞操作触发通知（通知模块数据存储在 Redis，无法 SQL 插入）
+  // 按热度排序故事数组（热门故事排在前面，供 pickByDist 使用）
+  if (setupData.stories.length > 0 && distMode !== 'uniform') {
+    setupData.stories = sortByPopularity(setupData.stories, HOT_RATIO);
+    const hotCount = Math.floor(setupData.stories.length * HOT_RATIO);
+    console.log(`[Setup] Sorted stories by popularity: top ${hotCount} are "hot" stories`);
+  }
+
+  // 预过滤公开故事并缓存（避免每次请求重复 filter）
+  _publicStories = setupData.stories.filter(s => s.visibility === 'public');
+  console.log(`[Setup] Public stories available: ${_publicStories.length}`);
+
+  // 创建评论数据（为 list_comments 接口提供数据）
+  if (setupData.stories.length > 0 && setupData.users.length > 1) {
+    const commentCount = Math.min(200, setupData.stories.length);
+    console.log(`[Setup] Creating comments (max ${commentCount})...`);
+    let createdComments = 0;
+
+    for (let i = 0; i < commentCount; i++) {
+      const story = setupData.stories[i % setupData.stories.length];
+      const commenterIndex = (i + 1) % setupData.users.length;
+      const commenter = setupData.users[commenterIndex];
+
+      // 故事作者索引为 i % users.length，评论者索引为 (i+1) % users.length，天然不同
+      if (commenter && commenter.token) {
+        const commentRes = http.post(`${BASE_URL}/api/comments`, JSON.stringify({
+          storyId: story.id,
+          content: `压力测试评论 ${i} - ${Date.now()}`,
+        }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${commenter.token}`,
+          },
+        });
+
+        if (commentRes.status === 200) {
+          createdComments++;
+          try {
+            const body = safeJsonParse(commentRes.body);
+            if (body.code === 0 && body.data && body.data.id) {
+              const cid = String(body.data.id);
+              setupData.commentIds.push({ id: cid, userId: commenter.id, token: commenter.token });
+              if (!setupData.storyComments[story.id]) {
+                setupData.storyComments[story.id] = [];
+              }
+              setupData.storyComments[story.id].push(cid);
+            }
+          } catch (e) {}
+        }
+      }
+
+      if (i % 20 === 0) sleep(0.05);
+    }
+    console.log(`[Setup] Created ${createdComments} comments`);
+  }
+
+  // 创建通知数据：通过点赞操作触发通知
   if (setupData.stories.length > 0 && setupData.users.length > 1) {
     const maxLikes = Math.min(200, setupData.stories.length);
-    console.log(`[Setup] Creating likes to generate notification data (max ${maxLikes})...`);
+    console.log(`[Setup] Creating likes for notification data (max ${maxLikes})...`);
     let likeCount = 0;
 
     for (let i = 0; i < maxLikes; i++) {
       const story = setupData.stories[i];
       if (!story) continue;
 
+      // 故事作者索引为 i % users.length，liker 索引为 (i+1) % users.length，天然不同
       const likerIndex = (i + 1) % setupData.users.length;
       const liker = setupData.users[likerIndex];
+      const authorIndex = i % setupData.users.length;
+      const author = setupData.users[authorIndex];
 
-      if (liker && liker.token && String(story.userId) !== String(liker.id)) {
+      if (liker && liker.token && author) {
         const likeRes = http.post(`${BASE_URL}/api/likes`, JSON.stringify({ storyId: story.id }), {
           headers: {
             'Content-Type': 'application/json',
@@ -221,9 +394,8 @@ export function setup() {
 
         if (likeRes.status === 200) {
           likeCount++;
-          if (!setupData.notifiedUsers.find(u => String(u.id) === String(story.userId))) {
-            const author = setupData.users.find(u => String(u.id) === String(story.userId));
-            if (author) setupData.notifiedUsers.push(author);
+          if (!setupData.notifiedUsers.find(u => String(u.id) === String(author.id))) {
+            setupData.notifiedUsers.push(author);
           }
         }
       }
@@ -232,497 +404,553 @@ export function setup() {
     }
     console.log(`[Setup] Created ${likeCount} likes, ${setupData.notifiedUsers.length} users have notifications`);
   }
-  
+
+  console.log(`\n=== Setup Complete ===`);
+  console.log(`  Users: ${setupData.users.length}`);
+  console.log(`  Stories: ${setupData.stories.length}`);
+  console.log(`  Comments: ${setupData.commentIds.length}`);
+  console.log(`  Users with notifications: ${setupData.notifiedUsers.length}`);
+
   return setupData;
 }
 
-/**
- * 生成北京地区随机坐标
- */
-function generateBeijingLocation() {
-  return {
-    lat: 39.8 + Math.random() * 0.3,
-    lng: 116.2 + Math.random() * 0.4,
-  };
-}
+// ===================== 读操作实现 =====================
 
 /**
- * 测试执行函数
+ * 获取故事详情（权重 30%，最高频读操作）
  */
-export default function (data) {
-  if (!data || data.users.length === 0) {
-    sleep(1);
-    return;
-  }
-  
-  const action = Math.floor(Math.random() * 100);
-  
-  // 认证模块测试
-  if (action < 18) {
-    group('auth', () => {
-      testAuth(data);
-    });
-  }
-  // 故事模块测试
-  else if (action < 40) {
-    group('story', () => {
-      testStory(data);
-    });
-  }
-  // 点赞模块测试
-  else if (action < 53) {
-    group('like', () => {
-      testLike(data);
-    });
-  }
-  // 收藏模块测试
-  else if (action < 62) {
-    group('favorite', () => {
-      testFavorite(data);
-    });
-  }
-  // 评论模块测试
-  else if (action < 71) {
-    group('comment', () => {
-      testComment(data);
-    });
-  }
-  // 地图模块测试（仅 explore + wall，推荐接口移至 recommendation 组）
-  else if (action < 87) {
-    group('map', () => {
-      testMap(data);
-    });
-  }
-  // 通知模块测试 - 查询列表 + 标记单条已读
-  else if (action < 89) {
-    group('notification', () => {
-      testNotification(data);
-    });
-  }
-  // 通知模块测试 - 标记全部已读
-  else if (action < 90) {
-    group('notification', () => {
-      testNotificationMarkAll(data);
-    });
-  }
-  // 推荐模块测试
-  else if (action < 93) {
-    group('recommendation', () => {
-      testRecommendation(data);
-    });
-  }
-  // 其他测试
-  else {
-    group('misc', () => {
-      testMisc(data);
-    });
-  }
-  
-  sleep(Math.random() * 0.3 + 0.1);
-}
+function actionGetStory(token, data) {
+  const story = getValidStory(data);
+  if (!story) return;
 
-/**
- * 认证模块测试
- */
-function testAuth(data) {
-  // 用户登录
-  if (data.users.length > 0) {
-    const userIndex = Math.floor(Math.random() * data.users.length);
-    const user = data.users[userIndex];
-    
-    const loginRes = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
-      email: user.email,
-      password: user.password,
-    }), { headers: { 'Content-Type': 'application/json' } });
-    
-    check(loginRes, {
-      'login status is 200': (r) => r.status === 200,
-      'login response time < 500ms': (r) => r.timings.duration < 500,
-    });
-    
-    // 获取当前用户信息
-    if (loginRes.status === 200) {
-      try {
-        const body = JSON.parse(loginRes.body);
-        if (body.code === 0 && body.data && body.data.accessToken) {
-          const token = body.data.accessToken;
-          
-          const meRes = http.get(`${BASE_URL}/api/auth/me`, {
-            headers: { 'Authorization': `Bearer ${token}` },
-          });
-          
-          check(meRes, {
-            'get current user status is 200': (r) => r.status === 200,
-            'get current user response time < 300ms': (r) => r.timings.duration < 300,
-          });
-        }
-      } catch (e) {}
-    }
-  }
-  
-  // 查看用户信息
-  if (data.users.length > 0) {
-    const userIndex = Math.floor(Math.random() * data.users.length);
-    const user = data.users[userIndex];
-    
-    const userRes = http.get(`${BASE_URL}/api/auth/users/${user.id}`);
-    
-    check(userRes, {
-      'get user info status is 200': (r) => r.status === 200,
-      'get user info response time < 300ms': (r) => r.timings.duration < 300,
-    });
-  }
-}
+  const res = http.get(`${BASE_URL}/api/stories/${story.id}`, tagParams(
+    token ? { headers: { 'Authorization': `Bearer ${token}` } } : undefined,
+    'get_story',
+  ));
 
-/**
- * 故事模块测试
- */
-function testStory(data) {
-  if (data.stories.length === 0) return;
-  
-  const storyIndex = Math.floor(Math.random() * data.stories.length);
-  const story = data.stories[storyIndex];
-  
-  // 获取故事详情
-  const storyRes = http.get(`${BASE_URL}/api/stories/${story.id}`);
-  
-  check(storyRes, {
-    'get story status is 200': (r) => r.status === 200,
-    'get story response time < 500ms': (r) => r.timings.duration < 500,
+  check(res, {
+    'get_story status 200': (r) => r.status === 200,
+    'get_story < 500ms': (r) => r.timings.duration < 500,
   });
-  
-  // 搜索故事
-  const keywords = ['开心', '测试', '故事', '打卡'];
-  const keyword = keywords[Math.floor(Math.random() * keywords.length)];
-  
-  const searchRes = http.get(`${BASE_URL}/api/stories/search?keyword=${encodeURIComponent(keyword)}&page=1&limit=20`);
-  
-  check(searchRes, {
-    'search story status is 200': (r) => r.status === 200,
-    'search story response time < 1000ms': (r) => r.timings.duration < 1000,
-  });
-  
-  // 我的故事列表（需要认证）
-  if (data.users.length > 0) {
-    const userIndex = Math.floor(Math.random() * data.users.length);
-    const user = data.users[userIndex];
-    
-    if (user.token) {
-      const myStoriesRes = http.get(`${BASE_URL}/api/stories/me/list?page=1&limit=20`, {
-        headers: { 'Authorization': `Bearer ${user.token}` },
-      });
-      
-      check(myStoriesRes, {
-        'get my stories status is 200': (r) => r.status === 200,
-        'get my stories response time < 500ms': (r) => r.timings.duration < 500,
-      });
-    }
-  }
+  recordMetrics('get_story', res);
 }
 
 /**
- * 点赞模块测试
+ * 地图范围探索（权重 15%）
  */
-function testLike(data) {
-  if (data.stories.length === 0 || data.users.length === 0) return;
-  
-  const userIndex = Math.floor(Math.random() * data.users.length);
-  const user = data.users[userIndex];
-  const storyIndex = Math.floor(Math.random() * data.stories.length);
-  const story = data.stories[storyIndex];
-  
-  if (!user.token) {
-    // 登录
-    const loginRes = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
-      email: user.email,
-      password: user.password,
-    }), { headers: { 'Content-Type': 'application/json' } });
-    
-    if (loginRes.status === 200) {
-      try {
-        const body = JSON.parse(loginRes.body);
-        if (body.code === 0 && body.data && body.data.accessToken) {
-          user.token = body.data.accessToken;
-        }
-      } catch (e) {}
-    }
-  }
-  
-  if (user.token) {
-    // 点赞
-    const likeRes = http.post(`${BASE_URL}/api/likes`, JSON.stringify({ storyId: story.id }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${user.token}`,
-      },
-    });
-    
-    check(likeRes, {
-      'toggle like status is 200': (r) => r.status === 200,
-      'toggle like response time < 500ms': (r) => r.timings.duration < 500,
-    });
-    
-    // 检查点赞状态
-    const checkRes = http.get(`${BASE_URL}/api/likes/${story.id}/check`, {
-      headers: { 'Authorization': `Bearer ${user.token}` },
-    });
-    
-    check(checkRes, {
-      'check like status is 200': (r) => r.status === 200,
-      'check like response time < 300ms': (r) => r.timings.duration < 300,
-    });
-  }
-  
-  // 获取点赞数量（无需认证）
-  const countRes = http.get(`${BASE_URL}/api/likes/${story.id}/count`);
-  
-  check(countRes, {
-    'get like count status is 200': (r) => r.status === 200,
-    'get like count response time < 300ms': (r) => r.timings.duration < 300,
+function actionMapExplore(token, data) {
+  const lat = 39.8 + Math.random() * 0.3;
+  const lng = 116.2 + Math.random() * 0.4;
+  const radius = randomInt(200, 2000);
+
+  const res = http.get(`${BASE_URL}/api/map/explore?lat=${lat}&lng=${lng}&radius=${radius}`, tagParams(null, 'map_explore'));
+
+  check(res, {
+    'map_explore status 200': (r) => r.status === 200,
+    'map_explore < 1200ms': (r) => r.timings.duration < 1200,
   });
+  recordMetrics('map_explore', res);
 }
 
 /**
- * 收藏模块测试
+ * 推荐信息流（权重 10%）
  */
-function testFavorite(data) {
-  if (data.stories.length === 0 || data.users.length === 0) return;
-  
-  const userIndex = Math.floor(Math.random() * data.users.length);
-  const user = data.users[userIndex];
-  const storyIndex = Math.floor(Math.random() * data.stories.length);
-  const story = data.stories[storyIndex];
-  
-  if (!user.token) {
-    const loginRes = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
-      email: user.email,
-      password: user.password,
-    }), { headers: { 'Content-Type': 'application/json' } });
-    
-    if (loginRes.status === 200) {
-      try {
-        const body = JSON.parse(loginRes.body);
-        if (body.code === 0 && body.data && body.data.accessToken) {
-          user.token = body.data.accessToken;
-        }
-      } catch (e) {}
-    }
-  }
-  
-  if (user.token) {
-    // 收藏
-    const favRes = http.post(`${BASE_URL}/api/favorites`, JSON.stringify({ storyId: story.id }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${user.token}`,
-      },
-    });
-    
-    check(favRes, {
-      'toggle favorite status is 200': (r) => r.status === 200,
-      'toggle favorite response time < 500ms': (r) => r.timings.duration < 500,
-    });
-  }
-  
-  // 获取收藏数量（无需认证）
-  const countRes = http.get(`${BASE_URL}/api/favorites/${story.id}/count`);
-  
-  check(countRes, {
-    'get favorite count status is 200': (r) => r.status === 200,
-    'get favorite count response time < 300ms': (r) => r.timings.duration < 300,
+function actionMapFeed(token, data) {
+  const lat = 39.8 + Math.random() * 0.3;
+  const lng = 116.2 + Math.random() * 0.4;
+  const mood = ['开心', '难过', '治愈', '打卡'][randomInt(0, 3)];
+  const page = randomInt(1, 5);
+
+  const res = http.get(`${BASE_URL}/api/v1/map/feed?lat=${lat}&lng=${lng}&mood=${encodeURIComponent(mood)}&page=${page}&limit=20`, tagParams(null, 'map_feed'));
+
+  check(res, {
+    'map_feed status 200': (r) => r.status === 200,
+    'map_feed < 1200ms': (r) => r.timings.duration < 1200,
   });
+  recordMetrics('map_feed', res);
 }
 
 /**
- * 评论模块测试
+ * 搜索故事（权重 12%）
  */
-function testComment(data) {
-  if (data.stories.length === 0 || data.users.length === 0) return;
-  
-  const userIndex = Math.floor(Math.random() * data.users.length);
-  const user = data.users[userIndex];
-  const storyIndex = Math.floor(Math.random() * data.stories.length);
-  const story = data.stories[storyIndex];
-  
-  if (!user.token) {
-    const loginRes = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
-      email: user.email,
-      password: user.password,
-    }), { headers: { 'Content-Type': 'application/json' } });
-    
-    if (loginRes.status === 200) {
-      try {
-        const body = JSON.parse(loginRes.body);
-        if (body.code === 0 && body.data && body.data.accessToken) {
-          user.token = body.data.accessToken;
-        }
-      } catch (e) {}
-    }
-  }
-  
-  if (user.token) {
-    // 创建评论
-    const commentRes = http.post(`${BASE_URL}/api/comments`, JSON.stringify({
-      storyId: story.id,
-      content: `压力测试评论 ${Date.now()}`,
-    }), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${user.token}`,
-      },
-    });
-    
-    check(commentRes, {
-      'create comment status is 200': (r) => r.status === 200,
-      'create comment response time < 500ms': (r) => r.timings.duration < 500,
-    });
-  }
-  
-  // 获取评论列表（无需认证）
-  const listRes = http.get(`${BASE_URL}/api/comments/story/${story.id}?page=1&limit=10`);
-  
-  check(listRes, {
-    'get comments status is 200': (r) => r.status === 200,
-    'get comments response time < 500ms': (r) => r.timings.duration < 500,
+function actionSearchStory(token, data) {
+  const keywords = ['开心', '测试', '故事', '打卡', '旅行', '美食'];
+  const keyword = keywords[randomInt(0, keywords.length - 1)];
+
+  const res = http.get(`${BASE_URL}/api/stories/search?keyword=${encodeURIComponent(keyword)}&page=1&limit=20`, tagParams(null, 'search_story'));
+
+  check(res, {
+    'search_story status 200': (r) => r.status === 200,
+    'search_story < 800ms': (r) => r.timings.duration < 800,
   });
-  
-  // 获取评论数量
-  const countRes = http.get(`${BASE_URL}/api/comments/${story.id}/count`);
-  
-  check(countRes, {
-    'get comment count status is 200': (r) => r.status === 200,
-    'get comment count response time < 300ms': (r) => r.timings.duration < 300,
-  });
+  recordMetrics('search_story', res);
 }
 
 /**
- * 地图模块测试
+ * 获取评论列表（权重 8%）
  */
-function testMap(data) {
+function actionListComments(token, data) {
+  const story = getValidStory(data);
+  if (!story) return;
+
+  const page = randomInt(1, 3);
+  const res = http.get(`${BASE_URL}/api/comments/story/${story.id}?page=${page}&limit=10`, tagParams(null, 'list_comments'));
+
+  check(res, {
+    'list_comments status 200': (r) => r.status === 200,
+    'list_comments < 800ms': (r) => r.timings.duration < 800,
+  });
+  recordMetrics('list_comments', res);
+}
+
+/**
+ * 获取用户信息（权重 5%）
+ */
+function actionGetUser(token, data) {
+  const user = getRandomUser(data);
+  if (!user) return;
+
+  const res = http.get(`${BASE_URL}/api/auth/users/${user.id}`, tagParams(null, 'get_user'));
+
+  check(res, {
+    'get_user status 200': (r) => r.status === 200,
+    'get_user < 500ms': (r) => r.timings.duration < 500,
+  });
+  recordMetrics('get_user', res);
+}
+
+/**
+ * 通知列表（权重 3%）
+ * 使用当前会话用户的 token 获取自己的通知（即使为空也正常返回）
+ */
+function actionListNotifications(token, data) {
+  if (!token) return;
+
+  const page = randomInt(1, 3);
+  const res = http.get(`${BASE_URL}/api/v1/notifications/me?page=${page}&limit=10`, tagParams(
+    { headers: { 'Authorization': `Bearer ${token}` } },
+    'list_notifications',
+  ));
+
+  check(res, {
+    'list_notifications status 200': (r) => r.status === 200,
+    'list_notifications < 800ms': (r) => r.timings.duration < 800,
+  });
+  recordMetrics('list_notifications', res);
+}
+
+/**
+ * 健康检查（权重 1%）
+ */
+function actionHealthCheck(token, data) {
+  const res = http.get(`${BASE_URL}/health`, tagParams(null, 'health_check'));
+
+  check(res, {
+    'health_check status 200': (r) => r.status === 200,
+    'health_check < 100ms': (r) => r.timings.duration < 100,
+  });
+  recordMetrics('health_check', res);
+}
+
+/**
+ * 聚合数据（权重 1%）
+ */
+function actionMapClusters(token, data) {
   const lat = 39.9 + Math.random() * 0.1;
   const lng = 116.3 + Math.random() * 0.2;
-  
-  // 范围查询
-  const exploreRes = http.get(`${BASE_URL}/api/map/explore?lat=${lat}&lng=${lng}&radius=1000`);
-  
-  check(exploreRes, {
-    'explore stories status is 200': (r) => r.status === 200,
-    'explore stories response time < 1000ms': (r) => r.timings.duration < 1000,
+  const northEast = JSON.stringify({ lat: lat + 0.05, lng: lng + 0.05 });
+  const southWest = JSON.stringify({ lat: lat - 0.05, lng: lng - 0.05 });
+
+  const res = http.get(`${BASE_URL}/api/map/clusters?northEast=${encodeURIComponent(northEast)}&southWest=${encodeURIComponent(southWest)}`, tagParams(null, 'map_clusters'));
+
+  check(res, {
+    'map_clusters status 200': (r) => r.status === 200,
+    'map_clusters < 1200ms': (r) => r.timings.duration < 1200,
   });
-  
-  // 故事墙
-  const wallRes = http.get(`${BASE_URL}/api/map/wall?lat=${lat}&lng=${lng}&radius=50`);
-  
-  check(wallRes, {
-    'location wall status is 200': (r) => r.status === 200,
-    'location wall response time < 1000ms': (r) => r.timings.duration < 1000,
-  });
+  recordMetrics('map_clusters', res);
 }
 
-/**
- * 其他测试
- */
-function testMisc(data) {
-  // 健康检查
-  const healthRes = http.get(`${BASE_URL}/health`);
-  
-  check(healthRes, {
-    'health check response time < 100ms': (r) => r.timings.duration < 100,
-  });
-}
+// ===================== 写操作实现 =====================
 
 /**
- * 通知模块测试（简化版：仅查询接口，数据由 setup 中点赞操作自动产生）
+ * 登录（权重 3%）
  */
-function testNotification(data) {
-  if (!data.notifiedUsers || data.notifiedUsers.length === 0) return;
+function actionLogin(token, data) {
+  const user = getRandomUser(data);
+  if (!user) return;
 
-  const user = data.notifiedUsers[Math.floor(Math.random() * data.notifiedUsers.length)];
-  if (!user || !user.token) return;
+  const res = http.post(`${BASE_URL}/api/auth/login`, JSON.stringify({
+    email: user.email,
+    password: user.password,
+  }), tagParams({ headers: { 'Content-Type': 'application/json' } }, 'login'));
 
-  // 获取通知列表
-  const page = Math.floor(Math.random() * 3) + 1;
-  const listRes = http.get(`${BASE_URL}/api/v1/notifications/me?page=${page}&limit=10`, {
-    headers: { 'Authorization': `Bearer ${user.token}` },
+  check(res, {
+    'login status 200': (r) => r.status === 200,
+    'login < 1000ms': (r) => r.timings.duration < 1000,
   });
+  recordMetrics('login', res);
 
-  check(listRes, {
-    'get notifications status is 200': (r) => r.status === 200,
-    'get notifications response time < 500ms': (r) => r.timings.duration < 500,
-  });
-
-  // 从列表中取一条标记已读
-  if (listRes.status === 200) {
+  // 更新 token
+  if (res.status === 200) {
     try {
-      const body = JSON.parse(listRes.body);
-      if (body.code === 0 && body.data && body.data.notifications && body.data.notifications.length > 0) {
-        const noticeId = body.data.notifications[0].id;
-        const markReadRes = http.put(`${BASE_URL}/api/v1/notifications/${noticeId}/mark-read`, null, {
-          headers: { 'Authorization': `Bearer ${user.token}` },
-        });
-
-        check(markReadRes, {
-          'mark notification read status is 200': (r) => r.status === 200,
-          'mark notification read response time < 500ms': (r) => r.timings.duration < 500,
-        });
+      const body = safeJsonParse(res.body);
+      if (body.code === 0 && body.data && body.data.accessToken) {
+        user.token = body.data.accessToken;
       }
     } catch (e) {}
   }
 }
 
 /**
- * 通知模块测试 - 标记全部已读
+ * 注册（权重 1%）
  */
-function testNotificationMarkAll(data) {
-  if (!data.notifiedUsers || data.notifiedUsers.length === 0) return;
+function actionRegister(token, data) {
+  const ts = Date.now();
+  const res = http.post(`${BASE_URL}/api/auth/register_2`, JSON.stringify({
+    email: `reg_${ts}@test.com`,
+    password: `Test@${randomInt(100, 999)}Password`,
+    username: `reg_${ts}`,
+  }), tagParams({ headers: { 'Content-Type': 'application/json' } }, 'register'));
 
-  const user = data.notifiedUsers[Math.floor(Math.random() * data.notifiedUsers.length)];
-  if (!user || !user.token) return;
-
-  const markAllRes = http.put(`${BASE_URL}/api/v1/notifications/me/mark-read`, null, {
-    headers: { 'Authorization': `Bearer ${user.token}` },
+  check(res, {
+    'register status 200 or 201': (r) => r.status === 200 || r.status === 201,
+    'register < 1500ms': (r) => r.timings.duration < 1500,
   });
-
-  check(markAllRes, {
-    'mark all notifications read status is 200': (r) => r.status === 200,
-    'mark all notifications read response time < 500ms': (r) => r.timings.duration < 500,
-  });
+  recordMetrics('register', res);
 }
 
 /**
- * 推荐模块测试（简化版：仅测接口响应性能，不验证推荐准确性）
- * 使用可选认证（optionalAuth），有无 Token 均可
+ * 创建评论（权重 3%）
+ * 故事 404 时自动重试一次（使用另一个故事）
  */
-function testRecommendation(data) {
-  const lat = 39.9 + Math.random() * 0.1;
-  const lng = 116.3 + Math.random() * 0.2;
-  const moods = ['开心', '难过', '治愈', '打卡'];
-  const mood = moods[Math.floor(Math.random() * moods.length)];
+function actionCreateComment(token, data) {
+  if (!token) return;
+  let story = getValidStory(data);
+  if (!story) return;
 
-  // 随机漫步推荐
-  const walkRes = http.get(`${BASE_URL}/api/v1/map/random?lat=${lat}&lng=${lng}&mood=${encodeURIComponent(mood)}`);
-
-  check(walkRes, {
-    'recommendation random status is 200': (r) => r.status === 200,
-    'recommendation random response time < 1500ms': (r) => r.timings.duration < 1500,
+  const body = JSON.stringify({
+    storyId: story.id,
+    content: `场景测试评论 ${Date.now()}`,
   });
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
 
-  // 推荐信息流
-  const page = Math.floor(Math.random() * 5) + 1;
-  const feedRes = http.get(`${BASE_URL}/api/v1/map/feed?lat=${lat}&lng=${lng}&mood=${encodeURIComponent(mood)}&page=${page}&limit=20`);
+  let res = http.post(`${BASE_URL}/api/comments`, body, tagParams({ headers }, 'create_comment'));
 
-  check(feedRes, {
-    'recommendation feed status is 200': (r) => r.status === 200,
-    'recommendation feed response time < 2000ms': (r) => r.timings.duration < 2000,
+  // 故事可能已被 shadowban，重试一次
+  if (res.status === 404) {
+    story = getValidStory(data);
+    if (story) {
+      const retryBody = JSON.stringify({
+        storyId: story.id,
+        content: `场景测试评论 ${Date.now()}`,
+      });
+      res = http.post(`${BASE_URL}/api/comments`, retryBody, tagParams({ headers }, 'create_comment'));
+    }
+  }
+
+  check(res, {
+    'create_comment status 200': (r) => r.status === 200,
+    'create_comment < 1000ms': (r) => r.timings.duration < 1000,
   });
+  recordMetrics('create_comment', res);
 }
 
 /**
- * Teardown: 输出统计
+ * 点赞/取消点赞（权重 3%）
  */
+function actionLikeToggle(token, data) {
+  if (!token) return;
+  const story = getValidStory(data);
+  if (!story) return;
+
+  const res = http.post(`${BASE_URL}/api/likes`, JSON.stringify({ storyId: story.id }), tagParams({
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  }, 'like_toggle'));
+
+  check(res, {
+    'like_toggle status 200': (r) => r.status === 200,
+    'like_toggle < 1000ms': (r) => r.timings.duration < 1000,
+  });
+  recordMetrics('like_toggle', res);
+}
+
+/**
+ * 收藏/取消收藏（权重 2%）
+ */
+function actionFavoriteToggle(token, data) {
+  if (!token) return;
+  const story = getValidStory(data);
+  if (!story) return;
+
+  const res = http.post(`${BASE_URL}/api/favorites`, JSON.stringify({ storyId: story.id }), tagParams({
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  }, 'favorite_toggle'));
+
+  check(res, {
+    'favorite_toggle status 200': (r) => r.status === 200,
+    'favorite_toggle < 1000ms': (r) => r.timings.duration < 1000,
+  });
+  recordMetrics('favorite_toggle', res);
+}
+
+/**
+ * 创建故事（权重 1.5%）
+ */
+function actionCreateStory(token, data) {
+  if (!token) return;
+
+  const location = {
+    lat: 39.8 + Math.random() * 0.3,
+    lng: 116.2 + Math.random() * 0.4,
+  };
+  const res = http.post(`${BASE_URL}/api/stories`, JSON.stringify({
+    content: `场景测试创建故事 ${Date.now()}`,
+    images: [],
+    location: location,
+    emotionTag: ['开心', '难过', '治愈', '打卡'][randomInt(0, 3)],
+    isTimeCapsule: false,
+    visibility: 'public',
+  }), tagParams({
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  }, 'create_story'));
+
+  check(res, {
+    'create_story status 200 or 201': (r) => r.status === 200 || r.status === 201,
+    'create_story < 1500ms': (r) => r.timings.duration < 1500,
+  });
+  recordMetrics('create_story', res);
+}
+
+/**
+ * 举报（权重 0.5%）
+ */
+function actionCreateReport(token, data) {
+  if (!token) return;
+  const story = getValidStory(data);
+  if (!story) return;
+
+  const reasons = ['内容不当', '涉嫌抄袭', '虚假信息', '恶意内容', '其他问题'];
+  const res = http.post(`${BASE_URL}/api/reports`, JSON.stringify({
+    targetType: 'story',
+    targetId: story.id,
+    reason: reasons[randomInt(0, reasons.length - 1)],
+  }), tagParams({
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  }, 'create_report'));
+
+  check(res, {
+    'create_report status 200': (r) => r.status === 200,
+    'create_report < 1000ms': (r) => r.timings.duration < 1000,
+  });
+  recordMetrics('create_report', res);
+}
+
+/**
+ * 标记通知已读（权重 0.5%）
+ * 使用当前会话用户的 token 标记自己的通知为已读
+ */
+function actionMarkNotifRead(token, data) {
+  if (!token) return;
+
+  const res = http.put(`${BASE_URL}/api/v1/notifications/me/mark-read`, null, tagParams(
+    { headers: { 'Authorization': `Bearer ${token}` } },
+    'mark_notif_read',
+  ));
+
+  check(res, {
+    'mark_notif_read status 200': (r) => r.status === 200,
+    'mark_notif_read < 500ms': (r) => r.timings.duration < 500,
+  });
+  recordMetrics('mark_notif_read', res);
+}
+
+/**
+ * 更新个人资料（权重 0.5%）
+ */
+function actionUpdateProfile(token, data) {
+  if (!token) return;
+
+  const res = http.put(`${BASE_URL}/api/auth/users/me`, JSON.stringify({
+    bio: `更新个人简介 ${Date.now()}`,
+  }), tagParams({
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  }, 'update_profile'));
+
+  check(res, {
+    'update_profile status 200': (r) => r.status === 200,
+    'update_profile < 1000ms': (r) => r.timings.duration < 1000,
+  });
+  recordMetrics('update_profile', res);
+}
+
+// ===================== Action 分发映射 =====================
+
+const readActionMap = {
+  get_story: actionGetStory,
+  map_explore: actionMapExplore,
+  map_feed: actionMapFeed,
+  search_story: actionSearchStory,
+  list_comments: actionListComments,
+  get_user: actionGetUser,
+  list_notifications: actionListNotifications,
+  health_check: actionHealthCheck,
+  map_clusters: actionMapClusters,
+};
+
+const writeActionMap = {
+  login: actionLogin,
+  register: actionRegister,
+  create_comment: actionCreateComment,
+  like_toggle: actionLikeToggle,
+  favorite_toggle: actionFavoriteToggle,
+  create_story: actionCreateStory,
+  create_report: actionCreateReport,
+  mark_notif_read: actionMarkNotifRead,
+  update_profile: actionUpdateProfile,
+};
+
+// ===================== 主测试函数 =====================
+
+/**
+ * 自然增长写操作（仅用于 ramp 阶梯拐点测试）
+ * 模拟生产环境数据持续增长：
+ *   - 60% 创建新故事（核心写操作，生成冷数据）
+ *   - 25% 创建新评论（对已有故事的互动）
+ *   - 8% 点赞/取消点赞
+ *   - 7% 收藏/取消收藏
+ *
+ * 新数据写入数据库后，map_explore/search_story 等聚合查询
+ * 会自然返回新数据，使缓存命中率随时间平滑下降，更贴近真实场景。
+ */
+function naturalGrowthWrite(token, data) {
+  const r = Math.random();
+  if (r < 0.60) {
+    actionCreateStory(token, data);
+  } else if (r < 0.85) {
+    actionCreateComment(token, data);
+  } else if (r < 0.93) {
+    actionLikeToggle(token, data);
+  } else {
+    actionFavoriteToggle(token, data);
+  }
+}
+
+/**
+ * 每个虚拟用户的迭代逻辑（根据 Profile 自动选择模式）：
+ *
+ * ramp 阶梯拐点测试 — 自然增长模式：
+ *   - 95% 执行一次随机读操作（高吞吐、短思考时间）
+ *   - 5% 创建新数据（故事/评论/点赞/收藏）
+ *   - 数据量随时间线性增长，模拟冷热数据混合
+ *
+ * 其他 Profile — 场景化行为模式：
+ *   - 浏览阶段：3-10 次读操作
+ *   - 互动阶段：1-3 次写操作
+ *   - 模拟真实用户会话
+ */
+export default function (data) {
+  if (!data || data.users.length === 0) {
+    sleep(1);
+    return;
+  }
+
+  // 1. 获取用户身份和 token
+  const user = getRandomUser(data);
+  const token = ensureToken(user);
+  if (!token) {
+    sleep(0.5);
+    return;
+  }
+
+  if (isRampProfile) {
+    // ===== 阶梯拐点测试：自然增长模式 =====
+    // 95% 读 / 5% 写，短思考时间保持高吞吐
+    const r = Math.random();
+    if (r < 0.05) {
+      group('write', () => naturalGrowthWrite(token, data));
+    } else {
+      const actionName = chooseByWeight(READ_ACTIONS);
+      const actionFn = readActionMap[actionName];
+      if (actionFn) {
+        group('read', () => actionFn(token, data));
+      }
+    }
+    // 短思考时间（均值 ~0.2s），最大化吞吐以探测拐点
+    sleep(randomExp(0.1, 0.3));
+  } else {
+    // ===== 其他 Profile：场景化行为模式 =====
+
+    // 2. 浏览阶段（3-10 次读操作）
+    const browseCount = randomInt(3, 10);
+    for (let i = 0; i < browseCount; i++) {
+      const actionName = chooseByWeight(READ_ACTIONS);
+      const actionFn = readActionMap[actionName];
+
+      if (actionFn) {
+        group('read', () => {
+          actionFn(token, data);
+        });
+      }
+
+      // 指数分布思考时间（0.3-2秒，均值约 1秒）
+      sleep(randomExp(0.3, 0.7));
+    }
+
+    // 3. 互动阶段（1-3 次写操作）
+    const interactCount = randomInt(1, 3);
+    for (let i = 0; i < interactCount; i++) {
+      const actionName = chooseByWeight(WRITE_ACTIONS);
+      const actionFn = writeActionMap[actionName];
+
+      if (actionFn) {
+        group('write', () => {
+          actionFn(token, data);
+        });
+      }
+
+      // 指数分布思考时间（0.5-3秒，均值约 1.5秒）
+      sleep(randomExp(0.5, 1.0));
+    }
+  }
+}
+
+// ===================== Teardown =====================
+
 export function teardown(data) {
   console.log('\n=== Test Completed ===');
+  console.log(`Profile: ${config.profileName}`);
+  console.log(`Access Distribution: ${distMode}`);
   console.log(`Created users: ${data.users.length}`);
   console.log(`Created stories: ${data.stories.length}`);
+  console.log(`Created comments: ${data.commentIds ? data.commentIds.length : 0}`);
   console.log(`Users with notifications: ${data.notifiedUsers ? data.notifiedUsers.length : 0}`);
+  if (distMode !== 'uniform') {
+    const hotStories = Math.floor(data.stories.length * HOT_RATIO);
+    const hotUsers = Math.floor(data.users.length * HOT_RATIO);
+    console.log(`Hot set: top ${hotStories} stories + top ${hotUsers} users`);
+  }
+
+  // p95_breach_count 和 total_request_checks 由 k6 Counter 自动汇总
+  // 在 summary export 中查看这两个指标的值
+  console.log('\n  Key metrics in summary:');
+  console.log('    p95_breach_count     - requests exceeding 1.5x endpoint threshold');
+  console.log('    total_request_checks - total requests evaluated');
 }

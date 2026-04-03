@@ -1,5 +1,6 @@
 /**
  * 测试数据生成器
+ * 提供统一的测试数据生成函数，供所有脚本共享使用
  */
 
 // 北京市中心坐标范围
@@ -60,15 +61,17 @@ const REPORT_REASONS = [
   '其他问题',
 ];
 
+// ===================== 基础工具 =====================
+
 /**
- * 生成随机整数
+ * 随机整数 [min, max]
  */
 export function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 /**
- * 生成随机浮点数
+ * 随机浮点数
  */
 export function randomFloat(min, max, decimals = 6) {
   const num = Math.random() * (max - min) + min;
@@ -81,6 +84,20 @@ export function randomFloat(min, max, decimals = 6) {
 export function randomChoice(arr) {
   return arr[randomInt(0, arr.length - 1)];
 }
+
+/**
+ * 指数分布随机延迟（模拟真实用户思考时间）
+ * @param {number} min - 最小延迟（秒）
+ * @param {number} mean - 平均延迟（秒）
+ * @returns {number} 随机延迟（秒）
+ */
+export function randomExp(min, mean) {
+  const u = Math.max(0.001, Math.random());
+  const value = -mean * Math.log(u) + min;
+  return Math.max(min, value);
+}
+
+// ===================== 用户数据生成 =====================
 
 /**
  * 生成随机邮箱
@@ -119,15 +136,26 @@ export function generatePassword(index) {
 }
 
 /**
+ * 生成用户注册数据
+ */
+export function generateUserData(index, isAdmin = false) {
+  const prefix = isAdmin ? 'admin' : 'testuser';
+  return {
+    email: isAdmin ? generateAdminEmail(index) : generateEmail(index),
+    password: generatePassword(index),
+    username: isAdmin ? generateAdminUsername(index) : generateUsername(index),
+  };
+}
+
+// ===================== 故事数据生成 =====================
+
+/**
  * 生成北京地区随机坐标
  */
 export function generateBeijingLocation() {
   return {
-    type: 'Point',
-    coordinates: [
-      randomFloat(BEIJING_BOUNDS.lngMin, BEIJING_BOUNDS.lngMax),
-      randomFloat(BEIJING_BOUNDS.latMin, BEIJING_BOUNDS.latMax),
-    ],
+    lat: randomFloat(BEIJING_BOUNDS.latMin, BEIJING_BOUNDS.latMax),
+    lng: randomFloat(BEIJING_BOUNDS.lngMin, BEIJING_BOUNDS.lngMax),
   };
 }
 
@@ -158,46 +186,30 @@ export function generateEmotionTag() {
 }
 
 /**
- * 生成评论内容
- */
-export function generateCommentContent() {
-  return randomChoice(COMMENT_TEMPLATES);
-}
-
-/**
- * 生成举报原因
- */
-export function generateReportReason() {
-  return randomChoice(REPORT_REASONS);
-}
-
-/**
- * 生成用户注册数据
- */
-export function generateUserData(index, isAdmin = false) {
-  const prefix = isAdmin ? 'admin' : 'testuser';
-  return {
-    email: isAdmin ? generateAdminEmail(index) : generateEmail(index),
-    password: generatePassword(index),
-    username: isAdmin ? generateAdminUsername(index) : generateUsername(index),
-  };
-}
-
-/**
  * 生成故事数据
  */
 export function generateStoryData(userId) {
-  const location = generateBeijingLocation();
+  const lat = randomFloat(BEIJING_BOUNDS.latMin, BEIJING_BOUNDS.latMax);
+  const lng = randomFloat(BEIJING_BOUNDS.lngMin, BEIJING_BOUNDS.lngMax);
   return {
     content: generateStoryContent(),
     images: [],
-    location: location,
+    location: { lat, lng },
     emotionTag: generateEmotionTag(),
     isTimeCapsule: false,
     visibility: 'public',
     visibilityStartTime: null,
     visibilityEndTime: null,
   };
+}
+
+// ===================== 评论数据生成 =====================
+
+/**
+ * 生成评论内容
+ */
+export function generateCommentContent() {
+  return randomChoice(COMMENT_TEMPLATES);
 }
 
 /**
@@ -210,22 +222,27 @@ export function generateCommentData(storyId) {
   };
 }
 
+// ===================== 点赞/收藏/举报 =====================
+
 /**
  * 生成点赞数据
  */
 export function generateLikeData(storyId) {
-  return {
-    storyId: storyId,
-  };
+  return { storyId };
 }
 
 /**
  * 生成收藏数据
  */
 export function generateFavoriteData(storyId) {
-  return {
-    storyId: storyId,
-  };
+  return { storyId };
+}
+
+/**
+ * 生成举报原因
+ */
+export function generateReportReason() {
+  return randomChoice(REPORT_REASONS);
 }
 
 /**
@@ -238,6 +255,8 @@ export function generateReportData(targetType, targetId) {
     reason: generateReportReason(),
   };
 }
+
+// ===================== 地图相关 =====================
 
 /**
  * 生成地图边界参数
@@ -256,6 +275,8 @@ export function generateMapBounds() {
     }),
   };
 }
+
+// ===================== 批量生成 =====================
 
 /**
  * 生成批量用户数据

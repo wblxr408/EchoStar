@@ -1,11 +1,27 @@
 /**
  * API 客户端封装
+ *
+ * 提供统一的 HTTP 请求函数和各模块 API 调用封装。
+ * 使用前需确保 config.js 和 report-generator.js 已正确初始化。
+ *
+ * 注意：本模块为完整测试脚本 (stress-test.js) 和管理员测试提供支持。
+ *       场景化行为脚本 (stress-test-simple.js) 直接使用 http 模块以避免额外开销。
  */
 
 import http from 'k6/http';
 import { check } from 'k6';
 import { config } from './config.js';
 import { recordRequest } from './report-generator.js';
+
+/**
+ * 安全解析 JSON，防止 Snowflake ID (BIGINT) 精度丢失
+ * Snowflake ID 约 19 位十进制，超出 JS 安全整数范围 (2^53 ≈ 16位)
+ * 将 JSON 中 15 位以上的纯数字值转为字符串，避免 JSON.parse 丢精度
+ */
+export function safeJsonParse(raw) {
+  const fixed = raw.replace(/"([^"]+)"\s*:\s*(\d{15,})\b/g, '"$1":"$2"');
+  return JSON.parse(fixed);
+}
 
 // 存储认证令牌
 const userTokens = [];
@@ -73,13 +89,13 @@ export function registerUser(userData) {
   
   if (response.status === 200 || response.status === 201) {
     try {
-      const body = JSON.parse(response.body);
+      const body = safeJsonParse(response.body);
       if (body.code === 0 && body.data && body.data.user && body.data.user.id) {
         userIds.push(body.data.user.id);
         return {
           success: true,
           userId: body.data.user.id,
-          token: body.data.token,
+          token: body.data.accessToken,
         };
       }
     } catch (e) {
@@ -100,13 +116,13 @@ export function registerAdmin(adminData) {
   
   if (response.status === 200 || response.status === 201) {
     try {
-      const body = JSON.parse(response.body);
+      const body = safeJsonParse(response.body);
       if (body.code === 0 && body.data && body.data.user && body.data.user.id) {
         adminIds.push(body.data.user.id);
         return {
           success: true,
           adminId: body.data.user.id,
-          token: body.data.token,
+          token: body.data.accessToken,
         };
       }
     } catch (e) {
@@ -125,15 +141,15 @@ export function loginUser(email, password) {
   
   if (response.status === 200) {
     try {
-      const body = JSON.parse(response.body);
-      if (body.code === 0 && body.data && body.data.token) {
+      const body = safeJsonParse(response.body);
+      if (body.code === 0 && body.data && body.data.accessToken) {
         userTokens.push({
-          token: body.data.token,
+          token: body.data.accessToken,
           userId: body.data.user.id,
         });
         return {
           success: true,
-          token: body.data.token,
+          token: body.data.accessToken,
           userId: body.data.user.id,
         };
       }
@@ -153,15 +169,15 @@ export function loginAdmin(email, password) {
   
   if (response.status === 200) {
     try {
-      const body = JSON.parse(response.body);
-      if (body.code === 0 && body.data && body.data.token) {
+      const body = safeJsonParse(response.body);
+      if (body.code === 0 && body.data && body.data.accessToken) {
         adminTokens.push({
-          token: body.data.token,
+          token: body.data.accessToken,
           adminId: body.data.user.id,
         });
         return {
           success: true,
-          token: body.data.token,
+          token: body.data.accessToken,
           adminId: body.data.user.id,
         };
       }
@@ -217,7 +233,7 @@ export function createStory(token, storyData) {
   
   if (response.status === 200 || response.status === 201) {
     try {
-      const body = JSON.parse(response.body);
+      const body = safeJsonParse(response.body);
       if (body.code === 0 && body.data && body.data.id) {
         storyIds.push(body.data.id);
         return {
@@ -276,7 +292,7 @@ export function createComment(token, commentData) {
   
   if (response.status === 200 || response.status === 201) {
     try {
-      const body = JSON.parse(response.body);
+      const body = safeJsonParse(response.body);
       if (body.code === 0 && body.data && body.data.id) {
         commentIds.push(body.data.id);
         return {
