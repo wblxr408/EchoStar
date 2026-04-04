@@ -906,6 +906,7 @@ import { favoriteApi } from '../../api/favorite';
 import { authApi } from '../../api/auth';
 import { reportApi } from '../../api/report';
 import { notificationApi } from '../../api/notification';
+import { showToast, showConfirm } from '../../composables/useToast.js';
 import AMap from '../../components/AMap.vue';
 import StoryCard from '../../components/StoryCard.vue';
 import PublishForm from '../../components/PublishForm.vue';
@@ -1681,7 +1682,7 @@ async function toggleStoryLike() {
   }
 
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再点赞');
+    showToast('请先登录后再点赞', 'warning');
     return;
   }
 
@@ -1716,7 +1717,7 @@ async function toggleStoryLike() {
     storyIsLiked.value = previousLiked;
     storyLikeCount.value = previousCount;
     handleStoryLike({ storyId, liked: previousLiked, likeCount: previousCount });
-    alert(error.message || '点赞失败，请重试');
+    showToast(error.message || '点赞失败，请重试', 'error');
   } finally {
     storyLikePending.value = false;
   }
@@ -1724,7 +1725,7 @@ async function toggleStoryLike() {
 
 async function toggleStoryFavorite() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再收藏');
+    showToast('请先登录后再收藏', 'warning');
     return;
   }
   if (storyFavoritePending.value) return;
@@ -1761,7 +1762,7 @@ async function toggleStoryFavorite() {
     storyIsFavorited.value = previousFavorited;
     storyFavoriteCount.value = previousFavoriteCount;
     handleStoryFavorite({ storyId, favorited: previousFavorited, favoriteCount: previousFavoriteCount });
-    alert(error.message || '收藏操作失败，请重试');
+    showToast(error.message || '收藏操作失败，请重试', 'error');
   } finally {
     storyFavoritePending.value = false;
   }
@@ -1776,7 +1777,7 @@ async function submitStoryComment() {
   }
 
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再评论');
+    showToast('请先登录后再评论', 'warning');
     return;
   }
 
@@ -1803,7 +1804,7 @@ async function submitStoryComment() {
     storyCommentComposerOpen.value = false;
   } catch (error) {
     console.error('评论失败:', error);
-    alert(error.message || '评论失败，请重试');
+    showToast(error.message || '评论失败，请重试', 'error');
   } finally {
     storyCommentSubmitting.value = false;
   }
@@ -1815,7 +1816,7 @@ async function handleSubmitCommentFromStory({ storyId, content }) {
   }
 
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再评论');
+    showToast('请先登录后再评论', 'warning');
     return;
   }
 
@@ -1840,7 +1841,7 @@ async function handleSubmitCommentFromStory({ storyId, content }) {
     handleStoryComment({ storyId, comment: newComment });
   } catch (error) {
     console.error('评论失败:', error);
-    alert(error.message || '评论失败，请重试');
+    showToast(error.message || '评论失败，请重试', 'error');
   } finally {
     storyCommentSubmitting.value = false;
   }
@@ -2620,7 +2621,7 @@ function restorePublishPanelFromPick() {
 function handlePublishClick() {
   // 检查是否登录（游客不能发布）
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再发布故事');
+    showToast('请先登录后再发布故事', 'warning');
     showLoginModal.value = true;
     isDockExpanded.value = false;
     return;
@@ -3746,7 +3747,7 @@ async function handleToggleFavoriteFromList(story) {
 
   try {
     if (isCurrentlyFavorited) {
-      if (!confirm('确定要取消收藏吗？')) return;
+      if (!(await showConfirm('确定要取消收藏吗？'))) return;
       await favoriteApi.remove(story.id);
       handleStoryFavorite({
         storyId: story.id,
@@ -3776,7 +3777,7 @@ async function handleToggleFavoriteFromList(story) {
     } catch (_e) { /* count refresh is non-critical */ }
   } catch (error) {
     console.error('收藏操作失败:', error);
-    alert(error.message || '操作失败，请重试');
+    showToast(error.message || '操作失败，请重试', 'error');
   }
 }
 
@@ -3789,7 +3790,7 @@ function handleStoryClick(story) {
 }
 
 async function handleUnlike(story) {
-  if (!confirm('确定要取消点赞吗？')) {
+  if (!(await showConfirm('确定要取消点赞吗？'))) {
     return;
   }
 
@@ -3808,12 +3809,12 @@ async function handleUnlike(story) {
     console.log('已取消点赞:', story.id);
   } catch (error) {
     console.error('取消点赞失败:', error);
-    alert('取消点赞失败，请重试');
+    showToast('取消点赞失败，请重试', 'error');
   }
 }
 
 async function handleDeleteStory(story) {
-  if (!confirm('确定要删除这个故事吗？此操作不可恢复。')) {
+  if (!(await showConfirm('确定要删除这个故事吗？此操作不可恢复。'))) {
     return;
   }
 
@@ -3832,7 +3833,7 @@ async function handleDeleteStory(story) {
     console.log('已删除故事:', story.id);
   } catch (error) {
     console.error('删除故事失败:', error);
-    alert('删除失败，请重试');
+    showToast('删除失败，请重试', 'error');
   }
 }
 
@@ -4125,12 +4126,12 @@ function handleLocate() {
       },
       (error) => {
         console.error('获取位置失败:', error);
-        alert('获取位置失败，请检查定位权限');
+        showToast('获取位置失败，请检查定位权限', 'error');
         isDockExpanded.value = false;
       }
     );
   } else {
-    alert('您的浏览器不支持地理定位');
+    showToast('您的浏览器不支持地理定位', 'error');
     isDockExpanded.value = false;
   }
 }
@@ -4140,17 +4141,17 @@ async function handlePublishSubmit(storyData) {
   try {
     const selectedLocation = extractCoordinates(storyData.location);
     if (!selectedLocation) {
-      alert('请先选择一个地点后再发布故事');
+      showToast('请先选择一个地点后再发布故事', 'warning');
       return;
     }
 
     if (!storyData.emotion) {
-      alert('请先选择一个情绪标签');
+      showToast('请先选择一个情绪标签', 'warning');
       return;
     }
 
     if (storyData.isTimeCapsule && !storyData.unlockAt) {
-      alert('请为时光胶囊选择解锁时间');
+      showToast('请为时光胶囊选择解锁时间', 'warning');
       return;
     }
 
@@ -4225,11 +4226,11 @@ async function handlePublishSubmit(storyData) {
     mapStore.updateCenter(location.latitude, location.longitude);
     mapStore.updateZoom(15);
 
-    alert('发布成功！');
+    showToast('发布成功！', 'success');
     closePublishPanel();
   } catch (error) {
     console.error('发布失败:', error);
-    alert('发布失败，请重试');
+    showToast('发布失败，请重试', 'error');
   }
 }
 
@@ -4253,8 +4254,8 @@ function toggleDock() {
 }
 
 // 退出登录
-function handleLogout() {
-  if (confirm('确定要退出登录吗？')) {
+async function handleLogout() {
+  if (await showConfirm('确定要退出登录吗？')) {
     showUserSidebar.value = false;
     userStore.logout();
     window.location.href = '/';
@@ -4805,7 +4806,7 @@ async function handleRandomWalk() {
     const { story, coords } = normalized || {};
     if (!normalized) {
       console.error('random walk response format error:', response);
-      alert('随机漫步返回数据格式错误');
+      showToast('随机漫步返回数据格式错误', 'error');
       return;
     }
 
@@ -4823,7 +4824,7 @@ async function handleRandomWalk() {
 
     if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
       console.error('随机漫步返回的位置为空:', coords, story);
-      alert('随机漫步返回的位置信息为空');
+      showToast('随机漫步返回的位置信息为空', 'error');
       return;
     }
 
@@ -4842,7 +4843,7 @@ async function handleRandomWalk() {
     }, 800); // 等待地图移动和缩放动画完成
   } catch (error) {
     console.error('随机漫步失败:', error);
-    alert('随机漫步失败，请重试');
+    showToast('随机漫步失败，请重试', 'error');
   } finally {
     randomWalking.value = false;
   }
@@ -4946,17 +4947,17 @@ function handleStoryComment({ storyId, comment }) {
 async function handleStoryReport({ storyId, reason, description }) {
   // 检查是否登录（游客不能举报）
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再举报');
+    showToast('请先登录后再举报', 'warning');
     return;
   }
 
   try {
     await reportApi.create('story', storyId, `${reason}: ${description}`);
-    alert('举报已提交，我们会尽快处理');
+    showToast('举报已提交，我们会尽快处理', 'success');
   } catch (error) {
     console.error('举报失败:', error);
     const message = error.message || '举报失败，请重试';
-    alert(message);
+    showToast(message, 'error');
     throw new Error(message);
   }
 }
@@ -5087,7 +5088,7 @@ async function markAllNotificationsRead() {
 
 // 清空所有通知
 async function clearAllNotifications() {
-  if (!confirm('确定要清空所有通知吗？此操作不可恢复。')) return;
+  if (!(await showConfirm('确定要清空所有通知吗？此操作不可恢复。'))) return;
   try {
     await notificationApi.clearAll();
     notifications.value = [];

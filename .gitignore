@@ -50,3 +50,4 @@ coverage/
 
 # Redis
 dump.rdb
+"backend/logic/" 

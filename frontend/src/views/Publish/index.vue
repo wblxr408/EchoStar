@@ -36,7 +36,10 @@
 
         <div v-if="form.isTimeCapsule" class="time-capsule-config">
           <label>解锁时间</label>
-          <input v-model="form.unlockAt" type="datetime-local" />
+          <div class="date-picker-wrapper">
+            <input v-model="form.unlockAt" type="datetime-local" />
+            <span class="date-picker-icon">📅</span>
+          </div>
         </div>
       </div>
     </div>
@@ -51,6 +54,7 @@ import { useMapStore } from '../../stores/map';
 import ImageUploader from '../../components/ImageUploader.vue';
 import EmotionSelector from '../../components/EmotionSelector.vue';
 import { uploadImages, validateImage } from '../../utils/upload';
+import { showToast } from '../composables/useToast.js';
 
 const router = useRouter();
 const storyStore = useStoryStore();
@@ -112,7 +116,7 @@ async function handleSubmit() {
       for (const file of form.value.images) {
         const validation = validateImage(file);
         if (!validation.valid) {
-          alert(validation.error);
+          showToast(validation.error, 'warning');
           return;
         }
       }
@@ -134,11 +138,11 @@ async function handleSubmit() {
       unlockAt: form.value.unlockAt
     });
 
-    alert('发布成功！');
+    showToast('发布成功！', 'success');
     router.push('/map');
   } catch (error) {
     console.error('发布失败:', error);
-    alert('发布失败，请重试');
+    showToast('发布失败，请重试', 'error');
   }
 }
 </script>
@@ -296,33 +300,50 @@ textarea::placeholder {
   margin-top: 16px;
 }
 
+.date-picker-wrapper {
+  position: relative;
+}
+
+.date-picker-wrapper input {
+  width: 100%;
+  padding: 12px;
+  padding-right: 40px;
+  border: 2px solid rgba(102, 126, 234, 0.5);
+  border-radius: 8px;
+  font-size: 16px;
+  background: #dce8ff;
+  color: #333333;
+  transition: all 0.3s ease;
+}
+
+.date-picker-wrapper input:focus {
+  outline: none;
+  border-color: #667eea;
+  background: #c5d6ff;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.date-picker-icon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  pointer-events: none;
+  user-select: none;
+}
+
 .time-capsule-config label {
   display: block;
   margin-bottom: 8px;
   font-size: 14px;
   color: rgba(255, 255, 255, 0.8);
 }
+</style>
 
-.time-capsule-config input {
-  width: 100%;
-  padding: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
-  font-size: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
-  transition: all 0.3s ease;
-}
-
-.time-capsule-config input:focus {
-  outline: none;
-  border-color: #667eea;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-}
-
-.time-capsule-config input::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  cursor: pointer;
+<!-- 非 scoped：隐藏原生黑色日历图标 -->
+<style>
+.publish-page .date-picker-wrapper input::-webkit-calendar-picker-indicator {
+  opacity: 0 !important;
 }
 </style>

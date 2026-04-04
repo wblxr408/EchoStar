@@ -105,6 +105,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { validateImageFile, createPreviewURL, revokePreviewURL } from '../utils/image';
+import { showToast } from '../composables/useToast.js';
 
 const props = defineProps({
   modelValue: {
@@ -139,13 +140,13 @@ function addFiles(files) {
     // 验证文件
     const { valid, error } = validateImageFile(file);
     if (!valid) {
-      alert(error);
+      showToast(error, 'warning');
       return;
     }
 
     // 检查数量限制
     if (previewImages.value.length >= props.maxImages) {
-      alert(`最多只能上传 ${props.maxImages} 张图片`);
+      showToast(`最多只能上传 ${props.maxImages} 张图片`, 'warning');
       return;
     }
 
@@ -176,7 +177,7 @@ function handleDrop(event) {
   });
 
   if (imageFiles.length === 0) {
-    alert('请上传图片文件');
+    showToast('请上传图片文件', 'warning');
     return;
   }
 

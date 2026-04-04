@@ -1,10 +1,12 @@
 <template>
   <router-view />
+  <AppToast />
 </template>
 
 <script setup>
 import { onMounted } from 'vue';
 import { useUserStore } from './stores/user';
+import AppToast from './components/AppToast.vue';
 
 const userStore = useUserStore();
 

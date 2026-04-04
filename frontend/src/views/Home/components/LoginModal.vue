@@ -264,6 +264,7 @@ import { ref, reactive, computed, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../../../stores/user';
 import { authApi } from '../../../api/auth';
+import { showToast } from '../../../composables/useToast.js';
 
 const emit = defineEmits(['close']);
 const router = useRouter();
@@ -383,19 +384,19 @@ async function sendVerificationCode() {
     // 注册模式：检查具体哪个字段有问题
     if (!isLogin.value && !isForgotPassword.value) {
       if (!form.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-        alert('请先输入有效的邮箱地址');
+        showToast('请先输入有效的邮箱地址', 'warning');
         return;
       }
       if (form.password.length < 6) {
-        alert('密码至少需要6位');
+        showToast('密码至少需要6位', 'warning');
         return;
       }
       if (form.password !== form.confirmPassword) {
-        alert('两次输入的密码不一致');
+        showToast('两次输入的密码不一致', 'warning');
         return;
       }
     } else {
-      alert('请先输入有效的邮箱地址');
+      showToast('请先输入有效的邮箱地址', 'warning');
     }
     return;
   }
@@ -413,10 +414,10 @@ async function sendVerificationCode() {
       }
     }, 1000);
 
-    alert('验证码已发送到您的邮箱，请查收');
+    showToast('验证码已发送到您的邮箱，请查收', 'success');
   } catch (error) {
     console.error('发送验证码失败:', error);
-    alert(error.message || '发送验证码失败，请重试');
+    showToast(error.message || '发送验证码失败，请重试', 'error');
   }
 }
 
@@ -467,17 +468,17 @@ async function handleSubmit() {
   }
 
   if (!isLogin.value && form.password !== form.confirmPassword) {
-    alert('两次输入的密码不一致');
+    showToast('两次输入的密码不一致', 'warning');
     return;
   }
 
   if (!isLogin.value && !form.username) {
-    alert('请输入用户名');
+    showToast('请输入用户名', 'warning');
     return;
   }
 
   if (!isLogin.value && !form.verificationCode.trim()) {
-    alert('\u8bf7\u8f93\u5165\u9a8c\u8bc1\u7801');
+    showToast('请输入验证码', 'warning');
     return;
   }
 
@@ -513,7 +514,7 @@ async function handleSubmit() {
     }
   } catch (error) {
     console.error('登录/注册失败:', error);
-    alert(error.message || '操作失败，请重试');
+    showToast(error.message || '操作失败，请重试', 'error');
   } finally {
     loading.value = false;
   }
@@ -522,19 +523,19 @@ async function handleSubmit() {
 // 忘记密码处理
 async function handleForgotPassword() {
   if (!form.email) {
-    alert('请输入邮箱');
+    showToast('请输入邮箱', 'warning');
     return;
   }
   if (!form.verificationCode) {
-    alert('请输入验证码');
+    showToast('请输入验证码', 'warning');
     return;
   }
   if (!form.newPassword || form.newPassword.length < 6) {
-    alert('新密码至少需要6位');
+    showToast('新密码至少需要6位', 'warning');
     return;
   }
   if (form.newPassword !== form.confirmNewPassword) {
-    alert('两次输入的新密码不一致');
+    showToast('两次输入的新密码不一致', 'warning');
     return;
   }
 
@@ -543,7 +544,7 @@ async function handleForgotPassword() {
 
   try {
     await authApi.forgotPassword(form.email, form.newPassword, form.verificationCode);
-    alert('密码重置成功，请使用新密码登录');
+    showToast('密码重置成功，请使用新密码登录', 'success');
     isForgotPassword.value = false;
     form.password = '';
     form.verificationCode = '';
@@ -551,7 +552,7 @@ async function handleForgotPassword() {
     form.confirmNewPassword = '';
   } catch (error) {
     console.error('重置密码失败:', error);
-    alert(error.message || '重置密码失败，请重试');
+    showToast(error.message || '重置密码失败，请重试', 'error');
   } finally {
     loading.value = false;
   }

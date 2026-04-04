@@ -538,6 +538,7 @@ import { reportApi } from '@/api/report';
 import { storyApi } from '@/api/story';
 import { mapApi } from '@/api/map';
 import { formatShortTime } from '@/utils/time';
+import { showToast, showConfirm, showPrompt } from '../../composables/useToast.js';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -660,7 +661,7 @@ async function openStoryDetail(storyId) {
     };
   } catch (error) {
     console.error('加载故事详情失败:', error);
-    alert('加载故事详情失败');
+    showToast('加载故事详情失败', 'error');
     showStoryDetail.value = false;
   } finally {
     storyDetailLoading.value = false;
@@ -675,8 +676,8 @@ function formatLocation(loc) {
 }
 
 async function handleRecommendFromDetail(storyId) {
-  const reason = prompt('请输入推荐理由：');
-  if (reason === null) return;
+  const reason = await showPrompt('请输入推荐理由：');
+  if (reason === null || !reason.trim()) return;
   try {
     const response = await adminApi.recommend(storyId, reason);
     const data = response.data || response;
@@ -687,15 +688,15 @@ async function handleRecommendFromDetail(storyId) {
     if (story && data.isRecommended !== undefined) {
       story.isRecommended = data.isRecommended;
     }
-    alert('推荐成功');
+    showToast('推荐成功', 'success');
   } catch (error) {
     console.error('推荐失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
 async function handleUnrecommendFromDetail(storyId) {
-  if (!confirm('确定取消推荐该故事？')) return;
+  if (!await showConfirm('确定取消推荐该故事？')) return;
   try {
     const response = await adminApi.unrecommend(storyId);
     const data = response.data || response;
@@ -706,16 +707,16 @@ async function handleUnrecommendFromDetail(storyId) {
     if (story && data.isRecommended !== undefined) {
       story.isRecommended = data.isRecommended;
     }
-    alert('已取消推荐');
+    showToast('已取消推荐', 'success');
   } catch (error) {
     console.error('取消推荐失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
 async function handleShadowbanFromDetail(storyId) {
-  const reason = prompt('请输入隐藏理由：');
-  if (reason === null) return;
+  const reason = await showPrompt('请输入隐藏理由：');
+  if (reason === null || !reason.trim()) return;
   try {
     await adminApi.shadowban(storyId, reason);
     if (storyDetail.value) {
@@ -727,30 +728,36 @@ async function handleShadowbanFromDetail(storyId) {
       story.isShadowbanned = true;
       story.isRecommended = false;
     }
-    alert('已隐藏该故事');
+    showToast('已隐藏该故事', 'success');
   } catch (error) {
     console.error('隐藏失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
 async function handleRestoreFromDetail(storyId) {
   try {
     await adminApi.restore(storyId);
-    if (storyDetail.value) storyDetail.value.visibility = 'public';
+    if (storyDetail.value) {
+      storyDetail.value.visibility = 'public';
+      storyDetail.value.isRecommended = false;
+    }
     const story = stories.value.find(s => s.id === storyId);
-    if (story) story.isShadowbanned = false;
-    alert('已恢复该故事');
+    if (story) {
+      story.isShadowbanned = false;
+      story.isRecommended = false;
+    }
+    showToast('已恢复该故事', 'success');
   } catch (error) {
     console.error('恢复失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
 // API 8.1 推荐
 async function handleRecommendStory(storyId) {
-  const reason = prompt('请输入推荐理由：');
-  if (reason === null) return;
+  const reason = await showPrompt('请输入推荐理由：');
+  if (reason === null || !reason.trim()) return;
   try {
     const response = await adminApi.recommend(storyId, reason);
     const data = response.data || response;
@@ -758,16 +765,16 @@ async function handleRecommendStory(storyId) {
     if (story && data.isRecommended !== undefined) {
       story.isRecommended = data.isRecommended;
     }
-    alert('推荐成功');
+    showToast('推荐成功', 'success');
   } catch (error) {
     console.error('推荐失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
 // 取消推荐
 async function handleUnrecommendStory(storyId) {
-  if (!confirm('确定取消推荐该故事？')) return;
+  if (!await showConfirm('确定取消推荐该故事？')) return;
   try {
     const response = await adminApi.unrecommend(storyId);
     const data = response.data || response;
@@ -775,17 +782,17 @@ async function handleUnrecommendStory(storyId) {
     if (story && data.isRecommended !== undefined) {
       story.isRecommended = data.isRecommended;
     }
-    alert('已取消推荐');
+    showToast('已取消推荐', 'success');
   } catch (error) {
     console.error('取消推荐失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
 // API 8.2 Shadowban
 async function handleShadowbanStory(storyId) {
-  const reason = prompt('请输入隐藏理由：');
-  if (reason === null) return;
+  const reason = await showPrompt('请输入隐藏理由：');
+  if (reason === null || !reason.trim()) return;
   try {
     await adminApi.shadowban(storyId, reason);
     const story = stories.value.find(s => s.id === storyId);
@@ -793,10 +800,10 @@ async function handleShadowbanStory(storyId) {
       story.isShadowbanned = true;
       story.isRecommended = false;
     }
-    alert('已隐藏该故事');
+    showToast('已隐藏该故事', 'success');
   } catch (error) {
     console.error('隐藏失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
@@ -805,11 +812,14 @@ async function handleRestoreStory(storyId) {
   try {
     await adminApi.restore(storyId);
     const story = stories.value.find(s => s.id === storyId);
-    if (story) story.isShadowbanned = false;
-    alert('已恢复该故事');
+    if (story) {
+      story.isShadowbanned = false;
+      story.isRecommended = false;
+    }
+    showToast('已恢复该故事', 'success');
   } catch (error) {
     console.error('恢复失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
@@ -884,7 +894,7 @@ async function confirmBan() {
   if (!selectedUser.value) return;
   try {
     await adminApi.banUser(selectedUser.value.id, banReason.value);
-    alert(`已封禁用户: ${selectedUser.value.name}`);
+    showToast(`已封禁用户: ${selectedUser.value.name}`, 'success');
     showBanModal.value = false;
     // 从正常用户列表移除，添加到封禁列表
     normalUsers.value = normalUsers.value.filter(u => u.id !== selectedUser.value.id);
@@ -900,7 +910,7 @@ async function confirmBan() {
     ];
   } catch (error) {
     console.error('封禁失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
@@ -908,7 +918,7 @@ async function confirmBan() {
 async function handleUnbanUser(userId) {
   try {
     await adminApi.unbanUser(userId);
-    alert('已解封用户');
+    showToast('已解封用户', 'success');
     // 从封禁列表移除，添加到正常用户列表
     const user = bannedUsers.value.find(u => u.id === userId);
     if (user) {
@@ -928,7 +938,7 @@ async function handleUnbanUser(userId) {
     ];
   } catch (error) {
     console.error('解封失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
@@ -1006,10 +1016,10 @@ async function handleDismissReport(reportId) {
       const reportsTab = tabs.value.find(t => t.key === 'reports');
       if (reportsTab) reportsTab.badge = pendingCount;
     }
-    alert('已驳回举报');
+    showToast('已驳回举报', 'success');
   } catch (error) {
     console.error('驳回举报失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
@@ -1032,10 +1042,10 @@ async function handleApproveReport(reportId) {
       const reportsTab = tabs.value.find(t => t.key === 'reports');
       if (reportsTab) reportsTab.badge = pendingCount;
     }
-    alert('举报已批准，内容已处理');
+    showToast('举报已批准，内容已处理', 'success');
   } catch (error) {
     console.error('批准举报失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
@@ -1059,10 +1069,10 @@ async function handleRestoreReport(reportId) {
       const reportsTab = tabs.value.find(t => t.key === 'reports');
       if (reportsTab) reportsTab.badge = pendingCount;
     }
-    alert('举报已恢复为待处理');
+    showToast('举报已恢复为待处理', 'success');
   } catch (error) {
     console.error('恢复举报失败:', error);
-    alert(error.message || '操作失败');
+    showToast(error.message || '操作失败', 'error');
   }
 }
 
@@ -1096,10 +1106,10 @@ async function submitAnnouncement() {
     await mapApi.createAnnouncement(announcementForm.value);
     showAnnouncementModal.value = false;
     announcementForm.value = { title: '', content: '', type: 'info' };
-    alert('公告发布成功');
+    showToast('公告发布成功', 'success');
   } catch (error) {
     console.error('发布公告失败:', error);
-    alert('发布公告失败');
+    showToast('发布公告失败', 'error');
   } finally {
     announcementSubmitting.value = false;
   }

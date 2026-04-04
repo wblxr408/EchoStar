@@ -227,6 +227,7 @@ import { getEmotionEmoji } from '../utils/emotion';
 import { REPORT_TYPES } from '../utils/report';
 import { useUserStore } from '../stores/user';
 import { reportApi } from '../api/report';
+import { showToast } from '../composables/useToast.js';
 
 const userStore = useUserStore();
 
@@ -351,7 +352,7 @@ function handleClose() {
 
 function handleLike() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再点赞');
+    showToast('请先登录后再点赞', 'warning');
     return;
   }
 
@@ -364,7 +365,7 @@ function handleLike() {
 
 function handleFavorite() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再收藏');
+    showToast('请先登录后再收藏', 'warning');
     return;
   }
 
@@ -377,7 +378,7 @@ function handleFavorite() {
 
 function submitComment() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再评论');
+    showToast('请先登录后再评论', 'warning');
     return;
   }
 
@@ -408,7 +409,7 @@ function closeReportModal() {
 
 async function submitReport() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    alert('请先登录后再举报');
+    showToast('请先登录后再举报', 'warning');
     return;
   }
 
@@ -428,10 +429,10 @@ async function submitReport() {
   try {
     await reportApi.create('story', props.story.id, `${selectedReportReason.value}: ${description}`);
     closeReportModal();
-    alert('举报已提交，我们会尽快处理');
+    showToast('举报已提交，我们会尽快处理', 'success');
   } catch (error) {
     console.error('举报失败:', error);
-    alert(error.message || '举报失败，请重试');
+    showToast(error.message || '举报失败，请重试', 'error');
   }
 }
 </script>

@@ -378,7 +378,7 @@ export const ReportService = {
         // 故事设置为 shadowban
         const story = await Story.findByPk(normalizeTargetId(report.targetId));
         if (story) {
-          await story.update({ visibility: 'shadowban' });
+          await story.update({ visibility: 'shadowban', isRecommended: false });
         }
       } else if (report.targetType === 'comment') {
         // 评论软删除
