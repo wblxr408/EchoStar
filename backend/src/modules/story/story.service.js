@@ -7,6 +7,7 @@ import { rocketmqClient, StoryOperation, MessageModule } from '../../common/util
 import { snowflake } from '../../common/utils/snowflake.js';
 import { Op } from 'sequelize';
 import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
+import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
 
 function parseStoryLocationValue(locationValue) {
   if (!locationValue) {
@@ -595,7 +596,7 @@ class StoryServiceClass {
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      attributes: ['id', 'emotionTag', 'content', 'visibility', 'locationName', 'createdAt', 'viewCount'],
+      attributes: ['id', 'emotionTag', 'content', 'visibility', 'locationName', 'createdAt', 'viewCount', 'isRecommended', 'images', 'location', 'userId'],
       include: [{
         model: User,
         as: 'author',
@@ -624,10 +625,14 @@ class StoryServiceClass {
         locationName: story.locationName,
         createdAt: story.createdAt,
         viewCount: realViewCounts[index],
+        isRecommended: Boolean(story.isRecommended),
+        images: safeParseJSONB(story.images, []),
+        location: story.location ? parseStoryLocationValue(story.location) : null,
+        userId: story.userId,
         author: {
-          id: story.author.id,
-          username: story.author.username,
-          avatar: story.author.avatarUrl
+          id: story.author?.id || story.userId,
+          username: story.author?.username || '匿名用户',
+          avatar: story.author?.avatarUrl || null
         }
       })),
       pagination: {
