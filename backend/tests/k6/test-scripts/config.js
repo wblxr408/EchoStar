@@ -173,11 +173,11 @@ export const ACTION_WEIGHTS = {
   // ========== 读操作 (85%) ==========
   get_story:         30,    // 获取故事详情（最高频读操作）
   map_explore:       15,    // 地图范围探索
-  map_clusters:      12,    // 聚合数据（次高频，仅次于 map_explore）
-  search_story:       5,    // 搜索故事（降低）
+  map_clusters:      12,    // 聚合数据
+  search_story:       5,    // 搜索故事
   list_comments:      8,    // 获取评论列表
   map_feed:          10,    // 推荐信息流
-  get_user:           2,    // 获取用户信息（降低）
+  get_user:           2,    // 获取用户信息
   list_notifications: 3,    // 通知列表
   health_check:       1,    // 健康检查
   // ========== 写操作 (15%) ==========

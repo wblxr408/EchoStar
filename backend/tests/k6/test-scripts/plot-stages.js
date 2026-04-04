@@ -177,6 +177,8 @@ function generateHtmlReport(stageData) {
   .grade-acceptable { color: #fbbf24; }
   .grade-slow { color: #f97316; }
   .grade-critical { color: #ef4444; }
+  .card-full { grid-column: 1 / -1; }
+  .chart-container-tall { height: 550px; }
 </style>
 </head>
 <body>
@@ -206,13 +208,13 @@ function generateHtmlReport(stageData) {
   </div>
 
   ${endpoints.length > 0 ? `
-  <div class="card" style="grid-column: 1 / -1;">
+  <div class="card card-full">
     <h2>各接口 P95 响应时间对比</h2>
-    <div class="chart-container" style="height: 550px;"><canvas id="endpointChart"></canvas></div>
+    <div class="chart-container chart-container-tall"><canvas id="endpointChart"></canvas></div>
   </div>` : ''}
 
   ${(stageData.inflectionPoints || []).length > 0 ? `
-  <div class="card" style="grid-column: 1 / -1;">
+  <div class="card card-full">
     <h2>检测到的性能拐点</h2>
     <table class="inflection-table">
       <thead><tr><th>类型</th><th>阶段</th><th>VUs</th><th>详情</th></tr></thead>
