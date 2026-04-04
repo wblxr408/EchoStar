@@ -116,10 +116,15 @@ async function fetchCandidateStories(options = {}) {
     limit: RECOMMENDATION.CANDIDATE_POOL_SIZE
   });
 
-  return stories.map(s => ({
-    ...s.get({ plain: true }),
-    _coords: parsePoint(s.location)
-  }));
+  return stories.map(s => {
+    const plain = s.get({ plain: true });
+    // 确保雪花ID始终为字符串，防止JS精度丢失导致负数截断
+    plain.id = normalizeStoryId(plain.id);
+    return {
+      ...plain,
+      _coords: parsePoint(s.location)
+    };
+  });
 }
 
 // ===================== 评分函数 =====================
