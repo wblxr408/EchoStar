@@ -122,12 +122,12 @@ export function createApp() {
     });
   }, 60 * 60 * 1000);  // 每小时执行一次
 
-  // 定时任务：每5分钟同步点赞数据到数据库
+  // 定时任务：每5秒同步点赞数据到数据库
   setInterval(() => {
     syncLikeToDatabase().catch(err => {
       console.error('❌ 同步点赞数据失败:', err);
     });
-  }, 5 * 60 * 1000);  // 每5分钟执行一次
+  }, 5 * 1000);  // 每5秒执行一次
 
   // 定时任务：每5s同步收藏数据到数据库
   setInterval(() => {

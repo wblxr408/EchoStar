@@ -29,6 +29,8 @@ export const sequelize = new Sequelize(
     dialectOptions: {
       // Postgres 需要设置这个才能让 timezone 生效
       useUTC: false, // 读取时不要转为 UTC
+      // 雪花ID是大整数(BIGINT)，必须以字符串形式返回避免JS精度丢失
+      bigNumberStrings: true,
       // 如果需要 SSL
       // ssl: {
       //   require: true,

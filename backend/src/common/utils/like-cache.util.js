@@ -181,16 +181,11 @@ class LikeCacheUtil {
     const baseKey = this.getBaseKey(normalizedStoryId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
-    // 操作前快照
-    const [preBase, preAdd, preDel] = (await redis.pipeline().scard(baseKey).scard(addKey).scard(delKey).exec()).map(r => r[1]);
-
     // 检查是否已点赞
     const isLiked = await this.isLiked(userId, normalizedStoryId);
 
     // ✅ 核心优化：先检查用户是否在 BASE 里
     const inBase = await redis.sismember(baseKey, userId);
-
-    console.log(`[DEBUG-like] story=${normalizedStoryId} user=${userId} | isLiked=${isLiked} inBase=${inBase} | 前: base=${preBase} add=${preAdd} del=${preDel}`);
 
     if (isLiked) {
       throw new Error('Story already liked');
@@ -201,8 +196,7 @@ class LikeCacheUtil {
     // 1. 从取消 Set 移除（如果之前取消过）
     pipeline.srem(delKey, userId);
     // 2. 只有不在 BASE 里，才加到 ADD（避免冗余）
-    const willWriteAdd = !inBase;
-    if (willWriteAdd) {
+    if (!inBase) {
       pipeline.sadd(addKey, userId);
     }
     // 3. 添加到待同步集合
@@ -210,7 +204,6 @@ class LikeCacheUtil {
     await pipeline.exec();
 
     const likeCount = await this.getLikeCount(normalizedStoryId);
-    console.log(`[DEBUG-like] 操作后: writeAdd=${willWriteAdd} count=${likeCount}`);
 
     return {
       isLiked: true,
@@ -230,9 +223,6 @@ class LikeCacheUtil {
     const delKey = this.getDelKey(normalizedStoryId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
-    // 操作前快照
-    const [preBase, preAdd, preDel] = (await redis.pipeline().scard(baseKey).scard(addKey).scard(delKey).exec()).map(r => r[1]);
-
     // 检查是否未点赞
     const isLiked = await this.isLiked(userId, normalizedStoryId);
 
@@ -240,18 +230,15 @@ class LikeCacheUtil {
     const inBase = await redis.sismember(baseKey, userId);
     const inAdd = await redis.sismember(addKey, userId);
 
-    console.log(`[DEBUG-unlike] story=${normalizedStoryId} user=${userId} | isLiked=${isLiked} inBase=${inBase} inAdd=${inAdd} | 前: base=${preBase} add=${preAdd} del=${preDel}`);
-
     if (!isLiked) {
       throw new Error('Like record not found');
     }
 
     // Pipeline 原子操作
     const pipeline = redis.pipeline();
-    // 1. 从新增 Set 移除（无论在哪都尝试移除）
+    // 1. 从新增 Set 移除
     pipeline.srem(addKey, userId);
-    // 2. 只有在 BASE 中的用户才加入 DEL（同步时需从 DB 删除）
-    //    纯新增（只在 ADD 中）的用户直接从 ADD 移除即可，不需要写 DEL
+    // 2. 只有在 BASE 中的用户才加入 DEL
     if (inBase) {
       pipeline.sadd(delKey, userId);
     }
@@ -260,7 +247,6 @@ class LikeCacheUtil {
     await pipeline.exec();
 
     const likeCount = await this.getLikeCount(normalizedStoryId);
-    console.log(`[DEBUG-unlike] 操作后: wroteDel=${inBase} count=${likeCount}`);
 
     return {
       isLiked: false,
