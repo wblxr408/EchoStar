@@ -596,7 +596,8 @@ class StoryServiceClass {
 
     return {
       stories: rows.map((story) => {
-        const { lat, lng } = parsePoint(story.location);
+        const coords = parseStoryLocationValue(story.location) || { lat: 0, lng: 0 };
+        const { lat, lng } = coords;
         return {
           id: normalizeStoryId(story.id),
           content: story.content,

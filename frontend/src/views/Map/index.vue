@@ -4516,7 +4516,9 @@ function handleClusterClick({ cluster, latitude, longitude, count }) {
 async function loadFeaturedStories() {
   try {
     const res = await storyApi.getFeaturedStories();
-    featuredStories.value = res?.data?.stories || [];
+    const data = res?.data ?? res;
+    const list = data?.stories ?? [];
+    featuredStories.value = list.map((s) => normalizeStoryForMap(s)).filter(Boolean);
   } catch (error) {
     console.error('加载精选推荐失败:', error);
     featuredStories.value = [];
