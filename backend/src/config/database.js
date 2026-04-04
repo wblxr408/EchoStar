@@ -15,7 +15,7 @@ export const sequelize = new Sequelize(
     dialect: 'postgres',
     logging: config.database.logging ? (msg) => logger.debug(msg) : false,
     pool: {
-      max: 10,
+      max: 50,
       min: 0,
       acquire: 30000,
       idle: 10000
