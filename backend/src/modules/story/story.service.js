@@ -594,8 +594,14 @@ class StoryServiceClass {
       offset: parseInt(offset)
     });
 
+    // 批量获取点赞数
+    const storyIds = rows.map(story => story.id);
+    const likeCounts = await Promise.all(
+      storyIds.map(id => likeCacheUtil.getLikeCount(id).catch(() => 0))
+    );
+
     return {
-      stories: rows.map((story) => {
+      stories: rows.map((story, index) => {
         const coords = parseStoryLocationValue(story.location) || { lat: 0, lng: 0 };
         const { lat, lng } = coords;
         return {
@@ -613,6 +619,7 @@ class StoryServiceClass {
           locationName: story.locationName,
           emotionTag: story.emotionTag,
           isRecommended: true,
+          likeCount: likeCounts[index] || 0,
           createdAt: story.createdAt
         };
       }),
