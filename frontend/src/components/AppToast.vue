@@ -75,6 +75,18 @@ function handlePromptSubmit(value) {
 const isDark = ref(false);
 let themeTimer = null;
 
+function handleThemeStorageChange(event) {
+  if (event.key && event.key !== 'mapTheme') {
+    return;
+  }
+
+  detectTheme();
+}
+
+function handleMapThemeChange() {
+  detectTheme();
+}
+
 function detectTheme() {
   // 登录页 / 首页 / 管理员页面（深色背景）始终使用暗色样式，优先级最高
   const path = window.location.pathname;
@@ -95,12 +107,14 @@ onMounted(() => {
   detectTheme();
   // 每30秒检测一次（应对 auto 模式下跨时段切换）
   themeTimer = setInterval(detectTheme, 30000);
-  window.addEventListener('storage', detectTheme);
+  window.addEventListener('storage', handleThemeStorageChange);
+  window.addEventListener('map-theme-change', handleMapThemeChange);
 });
 
 onUnmounted(() => {
   clearInterval(themeTimer);
-  window.removeEventListener('storage', detectTheme);
+  window.removeEventListener('storage', handleThemeStorageChange);
+  window.removeEventListener('map-theme-change', handleMapThemeChange);
 });
 
 const iconMap = {

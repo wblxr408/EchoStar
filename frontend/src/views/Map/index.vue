@@ -4237,8 +4237,6 @@ async function handlePublishSubmit(storyData) {
 // 切换地图主题（用户手动选择后保存为显式偏好，覆盖自动）
 function toggleTheme() {
   const next = effectiveMapTheme.value === 'dark' ? 'light' : 'dark';
-  mapTheme.value = next;
-  localStorage.setItem('mapTheme', next);
   handleThemeChange(next);
   isDockExpanded.value = false;
 }
@@ -4966,6 +4964,9 @@ async function handleStoryReport({ storyId, reason, description }) {
 function handleThemeChange(theme) {
   mapTheme.value = theme;
   localStorage.setItem('mapTheme', theme);
+  window.dispatchEvent(new CustomEvent('map-theme-change', {
+    detail: { theme }
+  }));
 }
 
 // 获取用户位置
