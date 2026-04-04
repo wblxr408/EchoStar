@@ -63,6 +63,11 @@ router.put('/:id/visibility', authenticateJWT, storyController.updateVisibility)
 router.post('/:id/unlock', storyController.unlockTimeCapsule);
 
 /**
+ * GET /api/stories/featured - 获取精选推荐故事
+ */
+router.get('/featured', optionalAuth, storyController.getFeaturedStories);
+
+/**
  * GET /api/stories/admin/all - 管理员获取所有帖子
  */
 router.get('/admin/all', authenticateJWT, requireAdmin, storyController.getAllStoriesForAdmin);

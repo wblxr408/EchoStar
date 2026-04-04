@@ -96,6 +96,16 @@ export const storyApi = {
   },
 
   /**
+   * 获取精选推荐故事
+   */
+  getFeaturedStories(params = {}) {
+    if (storyApiProxy) {
+      return storyApiProxy.getFeaturedStories(params);
+    }
+    return api.get('/v1/stories/featured', { params });
+  },
+
+  /**
    * 管理员获取所有帖子
    */
   getAdminStories(params = {}) {
