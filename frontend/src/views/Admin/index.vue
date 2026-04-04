@@ -110,18 +110,14 @@
               class="story-card"
               @click="openStoryDetail(story.id)"
             >
-              <div class="story-image" v-if="story.images?.length">
-                <img :src="story.images[0]" alt="故事图片">
-                <div class="story-badges">
-                  <span v-if="story.isRecommended" class="badge recommended">⭐ 推荐</span>
+              <div class="story-badges">
                   <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
                 </div>
-              </div>
               <div class="story-content">
                 <p class="story-text">{{ story.content }}</p>
                 <div class="story-tags">
                   <span class="emotion-tag">{{ story.emotionTag || story.emotion }}</span>
-                  <span class="location-tag">📍 {{ story.location?.address || story.location }}</span>
+                  <span class="location-tag">📍 {{ story.locationName || story.location }}</span>
                 </div>
                 <div class="story-stats">
                   <span>❤️ {{ story.likeCount || story.likes || 0 }}</span>
@@ -368,7 +364,6 @@
               <span class="detail-time">{{ formatShortTime(storyDetail.createdAt) }}</span>
             </div>
             <div class="detail-badges">
-              <span v-if="storyDetail.isRecommended" class="badge-sm recommended">⭐ 推荐</span>
               <span v-if="storyDetail.visibility === 'shadowban'" class="badge-sm shadowbanned">👻 已隐藏</span>
               <span v-if="storyDetail.isTimeCapsule" class="badge-sm capsule">⏳ 时光胶囊</span>
             </div>

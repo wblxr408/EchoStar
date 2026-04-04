@@ -58,7 +58,7 @@
           <button 
             class="tab-btn" 
             :class="{ 'active': sidebarTab === 'featured' }"
-            @click="sidebarTab = 'featured'"
+            @click="sidebarTab = 'featured'; loadFeaturedStories()"
           >精选推荐</button>
           <button
             class="tab-btn"
@@ -205,7 +205,6 @@
                 <img :src="story.images[0]" alt="故事图片">
                 <div class="featured-badges">
                   <span v-if="story.isPinned" class="badge pinned">📌</span>
-                  <span class="badge featured">★</span>
                 </div>
               </div>
               <div class="featured-content">
@@ -4237,8 +4236,6 @@ async function handlePublishSubmit(storyData) {
 // 切换地图主题（用户手动选择后保存为显式偏好，覆盖自动）
 function toggleTheme() {
   const next = effectiveMapTheme.value === 'dark' ? 'light' : 'dark';
-  mapTheme.value = next;
-  localStorage.setItem('mapTheme', next);
   handleThemeChange(next);
   isDockExpanded.value = false;
 }
@@ -4512,6 +4509,19 @@ function handleClusterClick({ cluster, latitude, longitude, count }) {
     loadStories();
     loadClusterData();
   }, 300);
+}
+
+// 加载精选推荐
+async function loadFeaturedStories() {
+  try {
+    const res = await storyApi.getFeaturedStories();
+    const data = res?.data ?? res;
+    const list = data?.stories ?? [];
+    featuredStories.value = list.map((s) => normalizeStoryForMap(s)).filter(Boolean);
+  } catch (error) {
+    console.error('加载精选推荐失败:', error);
+    featuredStories.value = [];
+  }
 }
 
 // 加载推荐流
@@ -4966,6 +4976,9 @@ async function handleStoryReport({ storyId, reason, description }) {
 function handleThemeChange(theme) {
   mapTheme.value = theme;
   localStorage.setItem('mapTheme', theme);
+  window.dispatchEvent(new CustomEvent('map-theme-change', {
+    detail: { theme }
+  }));
 }
 
 // 获取用户位置
@@ -5851,7 +5864,9 @@ onUnmounted(() => {
 
 .featured-image {
   position: relative;
-  height: 104px;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
 }
 
 .featured-image img {
@@ -8687,6 +8702,7 @@ onUnmounted(() => {
 .story-sidebar:not(.dark) .empty .hint,
 .story-sidebar:not(.dark) .featured-text,
 .story-sidebar:not(.dark) .featured-meta,
+.story-sidebar:not(.dark) .featured-author-name,
 .story-sidebar:not(.dark) .ann-title,
 .story-sidebar:not(.dark) .ann-content,
 .story-sidebar:not(.dark) .ann-time,
@@ -8716,6 +8732,7 @@ onUnmounted(() => {
 .story-sidebar.dark .empty .hint,
 .story-sidebar.dark .featured-text,
 .story-sidebar.dark .featured-meta,
+.story-sidebar.dark .featured-author-name,
 .story-sidebar.dark .ann-title,
 .story-sidebar.dark .ann-content,
 .story-sidebar.dark .ann-time,

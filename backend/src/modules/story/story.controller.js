@@ -149,6 +149,19 @@ export const searchStories = async (req, res, next) => {
 };
 
 /**
+ * 获取精选推荐故事
+ */
+export const getFeaturedStories = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const result = await StoryService.getFeaturedStories({ page, limit });
+    res.json({ code: 0, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * 管理员获取所有帖子
  */
 export const getAllStoriesForAdmin = async (req, res, next) => {

@@ -745,6 +745,7 @@ async function submitReport() {
 .story-images {
   display: grid;
   gap: 10px;
+  align-items: start;
 }
 
 .story-images:has(:nth-child(1)):not(:has(:nth-child(2))) {
@@ -762,12 +763,22 @@ async function submitReport() {
 .story-images img {
   width: 100%;
   aspect-ratio: 1;
-  object-fit: cover;
+  display: block;
+  box-sizing: border-box;
+  object-fit: contain;
+  object-position: center;
+  padding: 10px;
+  background: linear-gradient(145deg, rgba(255, 252, 246, 0.96) 0%, rgba(236, 216, 180, 0.74) 100%);
   border-radius: 18px;
   border: 1px solid var(--story-detail-frame);
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
   box-shadow: 0 16px 26px -22px rgba(0, 0, 0, 0.28);
+}
+
+.story-images:has(:nth-child(1)):not(:has(:nth-child(2))) img {
+  aspect-ratio: auto;
+  max-height: min(52vh, 420px);
 }
 
 .story-images img:hover {

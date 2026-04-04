@@ -574,6 +574,65 @@ class StoryServiceClass {
   }
 
   /**
+   * 获取精选推荐故事（公开接口）
+   */
+  async getFeaturedStories({ page = 1, limit = 20 } = {}) {
+    const offset = (page - 1) * limit;
+    
+    const { rows, count } = await Story.findAndCountAll({
+      where: {
+        visibility: 'public',
+        isRecommended: true,
+      },
+      include: [{
+        model: User,
+        as: 'author',
+        attributes: ['id', 'username', 'avatarUrl']
+      }],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+
+    // 批量获取点赞数
+    const storyIds = rows.map(story => story.id);
+    const likeCounts = await Promise.all(
+      storyIds.map(id => likeCacheUtil.getLikeCount(id).catch(() => 0))
+    );
+
+    return {
+      stories: rows.map((story, index) => {
+        const coords = parseStoryLocationValue(story.location) || { lat: 0, lng: 0 };
+        const { lat, lng } = coords;
+        return {
+          id: normalizeStoryId(story.id),
+          content: story.content,
+          images: safeParseJSONB(story.images, []),
+          username: story.author?.username || '',
+          avatar: story.author?.avatarUrl || null,
+          author: story.author ? {
+            id: story.author.id,
+            username: story.author.username || '匿名用户',
+            avatar: story.author.avatarUrl || null
+          } : null,
+          location: { latitude: lat, longitude: lng },
+          locationName: story.locationName,
+          emotionTag: story.emotionTag,
+          isRecommended: true,
+          likeCount: likeCounts[index] || 0,
+          createdAt: story.createdAt
+        };
+      }),
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / limit)
+      }
+    };
+  }
+
+  /**
    * 管理员获取所有帖子（public + shadowban）
    */
   async getAllStoriesForAdmin({ page = 1, limit = 20, visibility = null }) {
