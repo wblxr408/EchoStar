@@ -181,21 +181,28 @@ class LikeCacheUtil {
     const baseKey = this.getBaseKey(normalizedStoryId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
+    // 操作前快照
+    const [preBase, preAdd, preDel] = (await redis.pipeline().scard(baseKey).scard(addKey).scard(delKey).exec()).map(r => r[1]);
+
     // 检查是否已点赞
     const isLiked = await this.isLiked(userId, normalizedStoryId);
-    if (isLiked) {
-      throw new Error('Story already liked');
-    }
 
     // ✅ 核心优化：先检查用户是否在 BASE 里
     const inBase = await redis.sismember(baseKey, userId);
+
+    console.log(`[DEBUG-like] story=${normalizedStoryId} user=${userId} | isLiked=${isLiked} inBase=${inBase} | 前: base=${preBase} add=${preAdd} del=${preDel}`);
+
+    if (isLiked) {
+      throw new Error('Story already liked');
+    }
 
     // Pipeline 原子操作
     const pipeline = redis.pipeline();
     // 1. 从取消 Set 移除（如果之前取消过）
     pipeline.srem(delKey, userId);
     // 2. 只有不在 BASE 里，才加到 ADD（避免冗余）
-    if (!inBase) {
+    const willWriteAdd = !inBase;
+    if (willWriteAdd) {
       pipeline.sadd(addKey, userId);
     }
     // 3. 添加到待同步集合
@@ -203,6 +210,7 @@ class LikeCacheUtil {
     await pipeline.exec();
 
     const likeCount = await this.getLikeCount(normalizedStoryId);
+    console.log(`[DEBUG-like] 操作后: writeAdd=${willWriteAdd} count=${likeCount}`);
 
     return {
       isLiked: true,
@@ -222,8 +230,14 @@ class LikeCacheUtil {
     const delKey = this.getDelKey(normalizedStoryId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
+    // 操作前快照
+    const [preBase, preAdd, preDel] = (await redis.pipeline().scard(baseKey).scard(addKey).scard(delKey).exec()).map(r => r[1]);
+
     // 检查是否未点赞
     const isLiked = await this.isLiked(userId, normalizedStoryId);
+
+    console.log(`[DEBUG-unlike] story=${normalizedStoryId} user=${userId} | isLiked=${isLiked} | 前: base=${preBase} add=${preAdd} del=${preDel}`);
+
     if (!isLiked) {
       throw new Error('Like record not found');
     }
@@ -239,6 +253,7 @@ class LikeCacheUtil {
     await pipeline.exec();
 
     const likeCount = await this.getLikeCount(normalizedStoryId);
+    console.log(`[DEBUG-unlike] 操作后: count=${likeCount}`);
 
     return {
       isLiked: false,

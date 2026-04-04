@@ -129,12 +129,12 @@ export function createApp() {
     });
   }, 5 * 60 * 1000);  // 每5分钟执行一次
 
-  // 定时任务：每5分钟同步收藏数据到数据库
+  // 定时任务：每5s同步收藏数据到数据库
   setInterval(() => {
     syncFavoriteToDatabase().catch(err => {
       console.error('❌ 同步收藏数据失败:', err);
     });
-  }, 5 * 60 * 1000);
+  }, 5 * 1000);
 
   // 启动时执行一次（防止服务重启期间的数据丢失）
   syncStoryViewCount().catch(err => {
