@@ -80,6 +80,8 @@ for (const [ep, threshold] of Object.entries(ENDPOINT_THRESHOLDS)) {
 const isRampProfile = config.profileName === 'ramp';
 
 export const options = {
+  setupTimeout: '300s',
+  teardownTimeout: '60s',
   stages: currentProfile.stages || [
     { duration: '30s', target: Math.max(10, Math.floor(loadVus * 0.25)) },
     { duration: `${Math.floor(loadDurationSec * 0.4)}s`, target: loadVus },

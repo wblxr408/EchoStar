@@ -340,11 +340,15 @@ function parseJsonLinesDeep(jsonFilePath) {
  * 从 VU 采样数据推断 Stage 边界
  * k6 的 stages 定义了 target VUs 的阶梯，VU 数据会在阶段边界处有明显跳变
  *
+ * 策略：
+ *   1. 优先使用 k6 原始 stages 配置（如果 summary export 可用）
+ *   2. fallback 从 VU 采样推断：取窗口内 VU 中位数作为阶段目标值
+ *
  * @returns {{ stages: Array, isFlat: boolean }}
  *   - stages: 阶段定义数组
  *   - isFlat: true 表示 VU 始终平稳（无阶梯），调用方应使用时间窗口 fallback
  */
-function inferStagesFromVusData(vusSamples, testStartTimestamp, startTime) {
+function inferStagesFromVusData(vusSamples, testStartTimestamp, startTime, k6Stages) {
   if (vusSamples.length === 0) return { stages: [], isFlat: false, avgVus: 0 };
 
   // 计算相对时间（秒）
@@ -353,14 +357,14 @@ function inferStagesFromVusData(vusSamples, testStartTimestamp, startTime) {
 
   const baseMs = baseTime.getTime();
 
-  // 取样：每隔几秒取一个样本，减少噪声
+  // 取样：每隔 10 秒取一个样本，减少噪声（原 3 秒太敏感）
   const sampled = [];
   let lastSampleTime = 0;
   for (const s of vusSamples) {
     const t = new Date(s.timestamp).getTime();
     const relSec = (t - baseMs) / 1000;
     if (relSec < 0) continue;
-    if (relSec - lastSampleTime >= 3) {  // 每 3 秒取一个样本
+    if (relSec - lastSampleTime >= 10) {  // 每 10 秒取一个样本
       sampled.push({ relSec, value: s.value });
       lastSampleTime = relSec;
     }
@@ -368,8 +372,72 @@ function inferStagesFromVusData(vusSamples, testStartTimestamp, startTime) {
 
   if (sampled.length < 2) return { stages: [], isFlat: false, avgVus: sampled.length > 0 ? sampled[0].value : 0 };
 
-  // 计算平均 VU 和标准差，判断是否为平坦压力测试
+  // 计算平均 VU
   const avgVus = sampled.reduce((a, b) => a + b.value, 0) / sampled.length;
+
+  // ===== 策略 1：优先使用 k6 原始 stages 配置 =====
+  if (k6Stages && Array.isArray(k6Stages) && k6Stages.length > 0) {
+    const parsed = [];
+    let elapsed = 0;
+    for (const stage of k6Stages) {
+      const durStr = stage.duration || '';
+      const durMatch = durStr.match(/^(\d+)(s|m|h)$/);
+      const durSec = durMatch
+        ? durMatch[2] === 'h' ? parseInt(durMatch[1]) * 3600
+          : durMatch[2] === 'm' ? parseInt(durMatch[1]) * 60
+          : parseInt(durMatch[1])
+        : 60;
+      const target = stage.target || 0;
+
+      parsed.push({
+        startSec: elapsed,
+        endSec: elapsed + durSec,
+        targetVus: target,
+        name: `${target}vus`,
+      });
+      elapsed += durSec;
+    }
+
+    // 去除 ramp-down（target=0）的尾部阶段（对性能分析无意义）
+    const meaningful = parsed.filter(s => s.targetVus > 0);
+    // 去除第一个 ramp-up 阶段中 VU 还在爬升的阶段（VU 不稳定，样本不可靠）
+    // 只保留最后一个 ramp-up 阶段和之后的 hold 阶段
+    if (meaningful.length >= 2) {
+      // 找到第一个 target 稳定的区间：最后一个 target < 后续 target 的 stage
+      const lastRampIdx = meaningful.findIndex((s, i) =>
+        i > 0 && s.targetVus === meaningful[i - 1].targetVus
+      );
+      if (lastRampIdx > 1) {
+        // 合并 ramp-up 阶段为一个大预热阶段
+        const rampStages = meaningful.slice(0, lastRampIdx);
+        const rampMax = rampStages[rampStages.length - 1].targetVus;
+        const mergedRamp = {
+          startSec: rampStages[0].startSec,
+          endSec: rampStages[lastRampIdx].startSec,
+          targetVus: rampMax,
+          name: `${rampMax}vus_ramp`,
+        };
+        meaningful.splice(0, lastRampIdx, mergedRamp);
+      }
+    }
+
+    // 合并相邻 targetVus 相同的阶段（如 hold + ramp-to-same）
+    const consolidated = [];
+    for (const stage of meaningful) {
+      if (consolidated.length > 0 && consolidated[consolidated.length - 1].targetVus === stage.targetVus) {
+        consolidated[consolidated.length - 1].endSec = stage.endSec;
+      } else {
+        consolidated.push({ ...stage });
+      }
+    }
+
+    if (consolidated.length > 0) {
+      console.log(`  [stages] 使用 k6 原始 stages 配置，识别到 ${consolidated.length} 个阶段`);
+      return { stages: consolidated, isFlat: false, avgVus: Math.round(avgVus) };
+    }
+  }
+
+  // ===== 策略 2：fallback - 从 VU 采样推断 =====
   const variance = sampled.reduce((a, b) => a + (b.value - avgVus) ** 2, 0) / sampled.length;
   const stddev = Math.sqrt(variance);
   const cv = avgVus > 0 ? stddev / avgVus : 0;  // 变异系数
@@ -386,37 +454,52 @@ function inferStagesFromVusData(vusSamples, testStartTimestamp, startTime) {
     };
   }
 
-  // 检测稳定平台（VU 数值连续多个样本相同的区间）
+  // 检测稳定平台：VU 变化超过阈值的点作为阶段分界
+  // 阈值 = max(10 VUs, 5% 平均 VU)，避免微小波动产生碎片阶段
+  const vuThreshold = Math.max(10, Math.round(avgVus * 0.05));
+
   const stages = [];
   let currentTarget = sampled[0].value;
   let stageStart = sampled[0].relSec;
+  // 收集当前阶段的所有 VU 值，用于计算中位数
+  let currentStageValues = [sampled[0].value];
 
   for (let i = 1; i < sampled.length; i++) {
     const s = sampled[i];
-    if (Math.abs(s.value - currentTarget) > 2) {
+    if (Math.abs(s.value - currentTarget) > vuThreshold) {
+      // 使用中位数作为该阶段的目标 VU（比最后采样值更准确）
+      const sorted = [...currentStageValues].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
       stages.push({
         startSec: stageStart,
         endSec: s.relSec,
-        targetVus: Math.round(currentTarget),
-        name: `${Math.round(currentTarget)}vus`,
+        targetVus: Math.round(median),
+        name: `${Math.round(median)}vus`,
       });
       stageStart = s.relSec;
       currentTarget = s.value;
+      currentStageValues = [s.value];
+    } else {
+      currentStageValues.push(s.value);
     }
   }
 
   // 最后一个 stage
-  stages.push({
-    startSec: stageStart,
-    endSec: sampled[sampled.length - 1].relSec + 5,
-    targetVus: Math.round(currentTarget),
-    name: `${Math.round(currentTarget)}vus`,
-  });
+  {
+    const sorted = [...currentStageValues].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    stages.push({
+      startSec: stageStart,
+      endSec: sampled[sampled.length - 1].relSec + 5,
+      targetVus: Math.round(median),
+      name: `${Math.round(median)}vus`,
+    });
+  }
 
-  // 合并过短的 stage（< 10s 可能是过渡噪声）
+  // 合并过短的 stage（< 30s 可能是过渡噪声，原 10s 太短）
   const merged = [];
   for (const stage of stages) {
-    if (stage.endSec - stage.startSec < 10 && merged.length > 0) {
+    if (stage.endSec - stage.startSec < 30 && merged.length > 0) {
       merged[merged.length - 1].endSec = stage.endSec;
       merged[merged.length - 1].targetVus = Math.max(merged[merged.length - 1].targetVus, stage.targetVus);
       merged[merged.length - 1].name = `${merged[merged.length - 1].targetVus}vus`;
@@ -430,15 +513,17 @@ function inferStagesFromVusData(vusSamples, testStartTimestamp, startTime) {
 
 /**
  * 将原始请求分配到 Stage，并计算每个 Stage 的统计
+ * @param {object} raw - 解析后的原始数据
+ * @param {Array} [k6Stages] - k6 原始 stages 配置（来自 summary export）
  */
-function buildStageAnalysis(raw) {
+function buildStageAnalysis(raw, k6Stages) {
   const baseTime = raw.startTime;
   if (!baseTime) return { stages: [], overall: null };
 
   const baseMs = baseTime.getTime();
 
-  // 推断 stages
-  const inferred = inferStagesFromVusData(raw.vusSamples, null, raw.startTime);
+  // 推断 stages（优先使用 k6 原始 stages 配置）
+  const inferred = inferStagesFromVusData(raw.vusSamples, null, raw.startTime, k6Stages);
   const stageDefs = inferred.stages;
 
   if (stageDefs.length === 0) {
@@ -1197,7 +1282,9 @@ async function generateDeepAnalysis(jsonLinesPath, outputDir, summaryData) {
   console.log(`  VU 采样点: ${raw.vusSamples.length}`);
 
   console.log('  [2/5] 推断阶段边界...');
-  const stageAnalysis = buildStageAnalysis(raw);
+  // 优先使用 k6 原始 stages 配置（从 summary export 获取）
+  const k6Stages = summaryData?.stages || summaryData?.options?.stages || null;
+  const stageAnalysis = buildStageAnalysis(raw, k6Stages);
   console.log(`  识别到 ${stageAnalysis.stages.length} 个阶段`);
   if (stageAnalysis.stages.length > 0) {
     console.log(`  阶段范围: ${stageAnalysis.stages[0].name} → ${stageAnalysis.stages[stageAnalysis.stages.length - 1].name}`);

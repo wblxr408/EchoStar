@@ -370,8 +370,8 @@ if exist "%SUMMARY_EXPORT%" (
         if exist "%JSON_LINES_EXPORT%" (
             echo [REPORT] Running deep stage analysis...
             node tests\k6\test-scripts\parse-report.js "%SUMMARY_EXPORT%" "%JSON_LINES_EXPORT%" "%REPORT_DIR%"
-            REM Generate charts (parse-report.js produces {profile}-analysis-{timestamp}.json)
-            set STAGES_JSON=!REPORT_DIR!\!PROFILE!-analysis-!TIMESTAMP!.json
+            REM Generate charts (parse-report.js produces {profile}-{timestamp}-analysis.json)
+            set STAGES_JSON=!REPORT_DIR!\!PROFILE!-!TIMESTAMP!-analysis.json
             if exist "!STAGES_JSON!" (
                 echo [CHARTS] Generating visual charts...
                 node tests\k6\test-scripts\plot-stages.js "!STAGES_JSON!" "!REPORT_DIR!"
