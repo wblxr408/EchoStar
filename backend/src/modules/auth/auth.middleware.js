@@ -161,8 +161,12 @@ export const logoutToken = async (token) => {
 };
 
 // 清理用户缓存（封禁/解封/修改状态时必须调用）
+// 同时清除 JWT 中间件缓存 (user:info) 和 Service 层缓存 (user:raw)
 export const clearUserCache = async (userId) => {
   if (!userId) return;
   const redis = redisClient.getClient();
-  await redis.del(`user:info:${userId}`);
+  const pipeline = redis.pipeline();
+  pipeline.del(`user:info:${userId}`);
+  pipeline.del(`user:raw:${userId}`);
+  await pipeline.exec();
 };

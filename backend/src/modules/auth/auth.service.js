@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { User } from './auth.model.js';
 import { Blacklist } from './blacklist.model.js';
 import config from '../../config/index.js';
-import { redisClient } from '../../common/utils/redis.js';
+import { redisClient, wrapWithCache } from '../../common/utils/redis.js';
 import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
 import { getRandomDefaultAvatar } from '../../common/utils/oss.js'; 
@@ -12,7 +12,7 @@ import { clearUserCache } from './auth.middleware.js';
 /**
  * Auth Service - 认证业务逻辑
  */
-export const AuthService = {
+const AuthServiceImpl = {
   /**
    * 发送验证码到邮箱
    */
@@ -248,26 +248,57 @@ export const AuthService = {
   },
 
   /**
-   * 获取当前用户信息
+   * 纯查询函数：获取用户原始数据（受缓存适配器管理）
+   * 职责：数据库查询 + 数据转换
+   * 注意：缓存通过 wrapWithCache 在外部手动应用
    */
-  async getCurrentUser(userId) {
+  async fetchUserRaw(userId) {
     const user = await User.findByPk(userId, {
       attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'status', 'createdAt']
     });
 
-    if (!user) {
-      throw new Error('用户不存在');
-    }
+    if (!user) return null;
 
     return {
       id: user.id,
       email: user.email,
       username: user.username,
-      avatar: user.avatarUrl,  // ✅ 映射为 avatar
-      bio: user.bio,
+      avatarUrl: user.avatarUrl,
       role: user.role,
+      bio: user.bio,
       status: user.status,
       createdAt: user.createdAt
+    };
+  },
+
+  /**
+   * 获取当前用户信息
+   * 调用缓存的 fetchUserRaw
+   */
+  async getCurrentUser(userId) {
+    const rawData = await this.fetchUserRaw(userId);
+
+    if (rawData && rawData._updating) {
+      return {
+        id: userId,
+        _updating: true,
+        message: '用户信息正在更新中，请稍后再试'
+      };
+    }
+
+    if (!rawData) {
+      throw new Error('用户不存在');
+    }
+
+    return {
+      id: rawData.id,
+      email: rawData.email,
+      username: rawData.username,
+      avatar: rawData.avatarUrl,
+      bio: rawData.bio,
+      role: rawData.role,
+      status: rawData.status,
+      createdAt: rawData.createdAt
     };
   },
 
@@ -311,21 +342,28 @@ export const AuthService = {
 
   /**
    * 查看其他用户信息
+   * 用户基本信息走缓存，故事列表实时查询
    */
   async getUserById(userId) {
-    const user = await User.findByPk(userId, {
-      attributes: ['id', 'username', 'avatarUrl', 'bio', 'status']
-    });
+    const rawData = await this.fetchUserRaw(userId);
 
-    if (!user) {
+    if (rawData && rawData._updating) {
+      return {
+        id: userId,
+        _updating: true,
+        message: '用户信息正在更新中，请稍后再试'
+      };
+    }
+
+    if (!rawData) {
       throw new Error('用户不存在');
     }
 
-    if (user.status === 'deleted') {
+    if (rawData.status === 'deleted') {
       throw new Error('用户已被删除');
     }
 
-    // 联表查询该用户的故事列表（只返回 public 状态）
+    // 联表查询该用户的故事列表（只返回 public 状态，不缓存）
     const { Story } = await import('../story/story.model.js');
     const stories = await Story.findAll({
       where: {
@@ -334,14 +372,14 @@ export const AuthService = {
       },
       attributes: ['id', 'content', 'createdAt', 'viewCount', 'isTimeCapsule', 'unlockAt'],
       order: [['createdAt', 'DESC']],
-      limit: 20  // 限制返回数量
+      limit: 20
     });
 
     return {
-      id: user.id,
-      username: user.username,
-      avatar: user.avatarUrl,
-      bio: user.bio,
+      id: rawData.id,
+      username: rawData.username,
+      avatar: rawData.avatarUrl,
+      bio: rawData.bio,
       stories: stories.map(story => ({
         id: story.id,
         content: story.content,
@@ -473,6 +511,8 @@ export const AuthService = {
       status: 'deleted'
     });
 
+    await clearUserCache(user.id);
+
     return {
       success: true,
       message: '账号已注销'
@@ -510,3 +550,16 @@ export const AuthService = {
     };
   }
 };
+
+// 创建实例并手动应用缓存包装器
+AuthServiceImpl.fetchUserRaw = wrapWithCache(
+  AuthServiceImpl,
+  'fetchUserRaw',
+  AuthServiceImpl.fetchUserRaw,
+  'user:raw',
+  3600,
+  300,
+  0
+);
+
+export const AuthService = AuthServiceImpl;

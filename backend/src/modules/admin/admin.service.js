@@ -43,6 +43,10 @@ export const AdminService = {
     // 更新推荐状态
     await story.update({ isRecommended: true });
 
+    // 清除故事详情缓存
+    const redis = redisClient.getClient();
+    await redis.del(`story:raw:${storyId}`);
+
     // 记录管理员操作
     await AdminAction.create({
       storyId,
@@ -71,6 +75,10 @@ export const AdminService = {
 
     // 取消推荐状态
     await story.update({ isRecommended: false });
+
+    // 清除故事详情缓存
+    const redis = redisClient.getClient();
+    await redis.del(`story:raw:${storyId}`);
 
     // 记录管理员操作
     await AdminAction.create({
