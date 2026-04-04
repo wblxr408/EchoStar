@@ -65,16 +65,15 @@ class LikeServiceClass {
 
     if (isLiked) {
       // 取消点赞
-      await likeCacheUtil.unlikeStory(userId, normalizedStoryId);
-      const likeCount = await likeCacheUtil.getLikeCount(normalizedStoryId);
+      const result = await likeCacheUtil.unlikeStory(userId, normalizedStoryId);
       return {
         isLiked: false,
-        likeCount,
+        likeCount: result.likeCount,
         message: 'Like removed'
       };
     } else {
       // 点赞（只写 Redis，不立即写 DB）
-      await likeCacheUtil.likeStory(userId, normalizedStoryId);
+      const result = await likeCacheUtil.likeStory(userId, normalizedStoryId);
 
       // 发送通知（给故事作者）
       if (story.userId !== userId) {
@@ -83,10 +82,9 @@ class LikeServiceClass {
         });
       }
 
-      const likeCount = await likeCacheUtil.getLikeCount(normalizedStoryId);
       return {
         isLiked: true,
-        likeCount,
+        likeCount: result.likeCount,
         message: 'Like created'
       };
     }

@@ -173,7 +173,7 @@ class FavoriteCacheUtil {
 
   /**
    * 用户收藏故事（纯Redis写入 + 批量同步架构）
-   * 核心优化：先检查用户是否在 BASE 里，避免重复写入 ADD
+   * 优化：所有读取合并为单次 pipeline，count 内联计算
    */
   async favoriteStory(userId, storyId) {
     const normalizedStoryId = this.normalizeStoryId(storyId);
@@ -183,27 +183,40 @@ class FavoriteCacheUtil {
     const baseKey = this.getBaseKey(normalizedStoryId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
-    // 检查是否已收藏
-    const isFavorited = await this.isFavorited(userId, normalizedStoryId);
+    // 确保基础集合已初始化（只调用一次）
+    await this.ensureBaseSetInit(normalizedStoryId);
 
-    // 核心优化：先检查用户是否在 BASE 里
-    const inBase = await redis.sismember(baseKey, userId);
+    // 单次 pipeline 完成所有读取：状态检查 + 集合大小
+    const readPipeline = redis.pipeline();
+    readPipeline.sismember(baseKey, userId);  // [0] inBase
+    readPipeline.sismember(addKey, userId);   // [1] inAdd
+    readPipeline.sismember(delKey, userId);   // [2] inDel
+    readPipeline.scard(baseKey);              // [3] baseSize
+    readPipeline.scard(addKey);               // [4] addSize
+    readPipeline.scard(delKey);               // [5] delSize
 
+    const readResults = await readPipeline.exec();
+    const [[, inBase], [, inAdd], [, inDel], [, baseSize], [, addSize], [, delSize]] = readResults;
+
+    const isFavorited = (inBase === 1 || inAdd === 1) && inDel !== 1;
     if (isFavorited) {
       throw new Error('Story already favorited');
     }
 
     // Pipeline 原子操作
-    const pipeline = redis.pipeline();
-    pipeline.srem(delKey, userId);   // 从删除集移除
-    // 只有不在 BASE 里，才加到新增集（避免冗余）
+    const writePipeline = redis.pipeline();
+    writePipeline.srem(delKey, userId);   // 从删除集移除
     if (!inBase) {
-      pipeline.sadd(addKey, userId);
+      writePipeline.sadd(addKey, userId);
     }
-    pipeline.zadd(syncKey, Date.now(), normalizedStoryId); // 标记需要同步
-    await pipeline.exec();
+    writePipeline.zadd(syncKey, Date.now(), normalizedStoryId);
+    await writePipeline.exec();
 
-    const favoriteCount = await this.getFavoriteCount(normalizedStoryId);
+    // 内联计算新的收藏数（基于读取时的快照 + 本次写入的增量）
+    const newDelSize = (delSize || 0) - (inDel === 1 ? 1 : 0);
+    const newAddSize = (addSize || 0) + (!inBase && inAdd !== 1 ? 1 : 0);
+    const favoriteCount = Math.max(0, (baseSize || 0) + newAddSize - newDelSize);
+
     return {
       isFavorited: true,
       favoriteCount
@@ -212,7 +225,7 @@ class FavoriteCacheUtil {
 
   /**
    * 用户取消收藏（纯Redis写入 + 批量同步架构）
-   * 核心优化：只有在 BASE 中的用户才加入 DEL，避免 ±2 bug
+   * 优化：所有读取合并为单次 pipeline，count 内联计算
    */
   async unfavoriteStory(userId, storyId) {
     const normalizedStoryId = this.normalizeStoryId(storyId);
@@ -222,28 +235,40 @@ class FavoriteCacheUtil {
     const delKey = this.getDelKey(normalizedStoryId);
     const syncKey = this.KEY_PREFIX.SYNC_STORIES;
 
-    // 检查是否未收藏
-    const isFavorited = await this.isFavorited(userId, normalizedStoryId);
+    // 确保基础集合已初始化（只调用一次）
+    await this.ensureBaseSetInit(normalizedStoryId);
 
-    // 检查用户是否在 BASE 中（决定是否需要写 DEL）
-    const inBase = await redis.sismember(baseKey, userId);
-    const inAdd = await redis.sismember(addKey, userId);
+    // 单次 pipeline 完成所有读取
+    const readPipeline = redis.pipeline();
+    readPipeline.sismember(baseKey, userId);  // [0] inBase
+    readPipeline.sismember(addKey, userId);   // [1] inAdd
+    readPipeline.sismember(delKey, userId);   // [2] inDel
+    readPipeline.scard(baseKey);              // [3] baseSize
+    readPipeline.scard(addKey);               // [4] addSize
+    readPipeline.scard(delKey);               // [5] delSize
 
+    const readResults = await readPipeline.exec();
+    const [[, inBase], [, inAdd], [, inDel], [, baseSize], [, addSize], [, delSize]] = readResults;
+
+    const isFavorited = (inBase === 1 || inAdd === 1) && inDel !== 1;
     if (!isFavorited) {
       throw new Error('Favorite record not found');
     }
 
     // Pipeline 原子操作
-    const pipeline = redis.pipeline();
-    pipeline.srem(addKey, userId);     // 从新增集移除
-    // 只有在 BASE 中的用户才加入 DEL
+    const writePipeline = redis.pipeline();
+    writePipeline.srem(addKey, userId);     // 从新增集移除
     if (inBase) {
-      pipeline.sadd(delKey, userId);
+      writePipeline.sadd(delKey, userId);
     }
-    pipeline.zadd(syncKey, Date.now(), normalizedStoryId); // 标记需要同步
-    await pipeline.exec();
+    writePipeline.zadd(syncKey, Date.now(), normalizedStoryId);
+    await writePipeline.exec();
 
-    const favoriteCount = await this.getFavoriteCount(normalizedStoryId);
+    // 内联计算新的收藏数
+    const newAddSize = (addSize || 0) - (inAdd === 1 ? 1 : 0);
+    const newDelSize = (delSize || 0) + (inBase === 1 ? 1 : 0);
+    const favoriteCount = Math.max(0, (baseSize || 0) + newAddSize - newDelSize);
+
     return {
       isFavorited: false,
       favoriteCount

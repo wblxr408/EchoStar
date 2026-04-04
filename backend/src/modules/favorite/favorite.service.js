@@ -1,6 +1,6 @@
 import { Favorite } from './favorite.model.js';
 import { User } from '../auth/auth.model.js';
-import { Story } from '../story/story.model.js';
+import { StoryService } from '../story/story.service.js';
 import { Op } from 'sequelize';
 import { favoriteCacheUtil } from '../../common/utils/favorite-cache.util.js';
 import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
@@ -61,7 +61,8 @@ class FavoriteServiceClass {
    */
   async toggleFavorite(userId, storyId) {
     const normalizedStoryId = normalizeStoryId(storyId);
-    const story = await Story.findByPk(normalizedStoryId);
+    const storyData = await StoryService.fetchStoryRaw(normalizedStoryId);
+    const story = storyData?.story || storyData;
 
     if (!story) {
       throw new Error('Story not found');
@@ -71,29 +72,18 @@ class FavoriteServiceClass {
       const isFavorited = await favoriteCacheUtil.isFavorited(userId, normalizedStoryId);
 
       if (isFavorited) {
-        await favoriteCacheUtil.unfavoriteStory(userId, normalizedStoryId);
-        const favoriteCount = await favoriteCacheUtil.getFavoriteCount(normalizedStoryId);
-
+        const result = await favoriteCacheUtil.unfavoriteStory(userId, normalizedStoryId);
         return {
           isFavorited: false,
-          favoriteCount,
+          favoriteCount: result.favoriteCount,
           message: 'Favorite removed'
         };
       }
 
-      await favoriteCacheUtil.favoriteStory(userId, normalizedStoryId);
-      const favoriteCount = await favoriteCacheUtil.getFavoriteCount(normalizedStoryId);
-
-      // 更新like缓存（如果需要）
-      try {
-        await likeCacheUtil.updateStoryStats(normalizedStoryId);
-      } catch (err) {
-        console.error(`[favorite-service] 更新like缓存失败: storyId=${normalizedStoryId}`, err);
-      }
-
+      const result = await favoriteCacheUtil.favoriteStory(userId, normalizedStoryId);
       return {
         isFavorited: true,
-        favoriteCount,
+        favoriteCount: result.favoriteCount,
         message: 'Favorite created'
       };
     } catch (err) {
@@ -107,13 +97,6 @@ class FavoriteServiceClass {
         await Favorite.destroy({ where: { userId, storyId: normalizedStoryId } });
         const favoriteCount = await Favorite.count({ where: { storyId: normalizedStoryId } });
 
-        // 更新like缓存（如果需要）
-        try {
-          await likeCacheUtil.updateStoryStats(normalizedStoryId);
-        } catch (err) {
-          console.error(`[favorite-service] 更新like缓存失败: storyId=${normalizedStoryId}`, err);
-        }
-
         return {
           isFavorited: false,
           favoriteCount,
@@ -122,13 +105,6 @@ class FavoriteServiceClass {
       } else {
         await Favorite.create({ userId, storyId: normalizedStoryId });
         const favoriteCount = await Favorite.count({ where: { storyId: normalizedStoryId } });
-
-        // 更新like缓存（如果需要）
-        try {
-          await likeCacheUtil.updateStoryStats(normalizedStoryId);
-        } catch (err) {
-          console.error(`[favorite-service] 更新like缓存失败: storyId=${normalizedStoryId}`, err);
-        }
 
         return {
           isFavorited: true,
@@ -144,7 +120,8 @@ class FavoriteServiceClass {
    */
   async createFavorite(userId, storyId) {
     const normalizedStoryId = normalizeStoryId(storyId);
-    const story = await Story.findByPk(normalizedStoryId);
+    const storyData = await StoryService.fetchStoryRaw(normalizedStoryId);
+    const story = storyData?.story || storyData;
 
     if (!story) {
       throw new Error('Story not found');
