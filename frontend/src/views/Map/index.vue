@@ -58,7 +58,7 @@
           <button 
             class="tab-btn" 
             :class="{ 'active': sidebarTab === 'featured' }"
-            @click="sidebarTab = 'featured'"
+            @click="sidebarTab = 'featured'; loadFeaturedStories()"
           >精选推荐</button>
           <button
             class="tab-btn"
@@ -4512,6 +4512,17 @@ function handleClusterClick({ cluster, latitude, longitude, count }) {
     loadStories();
     loadClusterData();
   }, 300);
+}
+
+// 加载精选推荐
+async function loadFeaturedStories() {
+  try {
+    const res = await storyApi.getFeaturedStories();
+    featuredStories.value = res?.data?.stories || [];
+  } catch (error) {
+    console.error('加载精选推荐失败:', error);
+    featuredStories.value = [];
+  }
 }
 
 // 加载推荐流
