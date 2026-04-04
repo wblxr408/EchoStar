@@ -9193,7 +9193,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 10001;
+  z-index: 9997;
 }
 
 .notification-panel {
@@ -9212,7 +9212,7 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
   color: #3c2910;
   overflow: hidden;
-  z-index: 10002;
+  z-index: 9998;
 }
 
 .notification-panel.dark {
@@ -9629,7 +9629,7 @@ onUnmounted(() => {
   right: 0;
   top: 25%;
   transform: translateY(-50%);
-  z-index: 10003;
+  z-index: 9996;
 }
 
 .msg-trigger-btn {
@@ -9649,7 +9649,7 @@ onUnmounted(() => {
   font-weight: 700;
   letter-spacing: 1px;
   cursor: pointer;
-  z-index: 10003;
+  z-index: 9996;
   text-orientation: mixed;
   display: flex;
   align-items: center;
