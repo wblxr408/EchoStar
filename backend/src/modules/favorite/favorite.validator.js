@@ -2,8 +2,8 @@ import Joi from 'joi';
 
 const storyIdSchema = Joi.alternatives()
   .try(
-    Joi.string().trim().pattern(/^-?[1-9]\d*$/),
-    Joi.number().integer().invalid(0).unsafe(false)
+    Joi.string().trim().pattern(/^[1-9]\d*$/),
+    Joi.number().integer().positive().unsafe(false)
   )
   .custom((value, helpers) => {
     if (typeof value === 'number' && !Number.isSafeInteger(value)) {
@@ -14,7 +14,7 @@ const storyIdSchema = Joi.alternatives()
       ? value.toString()
       : String(value).trim();
 
-    if (!/^-?[1-9]\d*$/.test(normalizedValue)) {
+    if (!/^[1-9]\d*$/.test(normalizedValue)) {
       return helpers.error('string.pattern.base');
     }
 
@@ -48,12 +48,16 @@ export const checkMultipleFavoritedSchema = Joi.object({
 });
 
 export const validateCreateFavorite = (req, res, next) => {
+  // DEBUG: 打印实际传入的storyId值和类型
+  console.log('[favorite-validator-debug] storyId:', req.body?.storyId, 'type:', typeof req.body?.storyId, 'raw:', JSON.stringify(req.body));
+
   const { error, value } = createFavoriteSchema.validate(req.body, {
     abortEarly: false
   });
 
   if (error) {
     const errors = error.details.map((detail) => detail.message);
+    console.log('[favorite-validator-debug] 验证失败:', errors, '| Joi error details:', JSON.stringify(error.details));
     return res.status(400).json({
       code: 4000,
       message: '输入验证失败',
