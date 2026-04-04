@@ -111,7 +111,6 @@
               @click="openStoryDetail(story.id)"
             >
               <div class="story-badges">
-                  <span v-if="story.isRecommended" class="badge recommended">⭐ 推荐</span>
                   <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
                 </div>
               <div class="story-content">
@@ -365,7 +364,6 @@
               <span class="detail-time">{{ formatShortTime(storyDetail.createdAt) }}</span>
             </div>
             <div class="detail-badges">
-              <span v-if="storyDetail.isRecommended" class="badge-sm recommended">⭐ 推荐</span>
               <span v-if="storyDetail.visibility === 'shadowban'" class="badge-sm shadowbanned">👻 已隐藏</span>
               <span v-if="storyDetail.isTimeCapsule" class="badge-sm capsule">⏳ 时光胶囊</span>
             </div>

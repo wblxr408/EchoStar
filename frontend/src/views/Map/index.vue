@@ -205,7 +205,6 @@
                 <img :src="story.images[0]" alt="故事图片">
                 <div class="featured-badges">
                   <span v-if="story.isPinned" class="badge pinned">📌</span>
-                  <span class="badge featured">★</span>
                 </div>
               </div>
               <div class="featured-content">
@@ -5865,7 +5864,9 @@ onUnmounted(() => {
 
 .featured-image {
   position: relative;
-  height: 104px;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
 }
 
 .featured-image img {
