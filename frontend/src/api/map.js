@@ -86,5 +86,22 @@ export const mapApi = {
         zoom
       }
     });
+  },
+
+  /**
+   * 获取公告列表
+   */
+  getAnnouncements() {
+    if (mapApiProxy) {
+      return mapApiProxy.getAnnouncements();
+    }
+    return api.get('/v1/announcements');
+  },
+
+  /**
+   * 创建公告（管理员）
+   */
+  createAnnouncement(data) {
+    return api.post('/v1/announcements', data);
   }
 };

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
@@ -65,11 +65,6 @@
             :class="{ 'active': sidebarTab === 'recommend' }"
             @click="sidebarTab = 'recommend'; loadRecommendationFeed()"
           >为你推荐</button>
-          <button
-            class="tab-btn"
-            :class="{ 'active': sidebarTab === 'announcement' }"
-            @click="sidebarTab = 'announcement'"
-          >公告</button>
         </div>
         <button class="close-btn" @click.stop="closeStoryPanel"><span>×</span></button>
       </div>
@@ -148,8 +143,7 @@
                   <span>{{ poi.address }}</span>
                 </div>
                 <div class="nearby-search-panel__result-meta">
-                  <span>{{ poi.district || '位置已解析' }}</span>
-                  <small v-if="poi.type">{{ poi.type }}</small>
+                  <span>{{ formatPoiDistrictLabel(poi) }}</span>
                 </div>
               </button>
             </div>
@@ -232,28 +226,6 @@
           </div>
         </div>
 
-        <!-- 公告 -->
-        <div v-if="sidebarTab === 'announcement'">
-          <div v-if="announcements.length === 0" class="empty">
-            <p>暂无公告</p>
-            <p class="hint">关注这里获取最新动态</p>
-          </div>
-          <div v-else class="announcement-list">
-            <div 
-              v-for="ann in announcements" 
-              :key="ann.id" 
-              class="announcement-card"
-              :class="ann.type"
-            >
-              <div class="ann-header">
-                <span class="ann-type-badge">{{ getAnnouncementTypeIcon(ann.type) }}</span>
-                <span class="ann-time">{{ formatRelativeTime(ann.createdAt) }}</span>
-              </div>
-              <h4 class="ann-title">{{ ann.title }}</h4>
-              <p class="ann-content">{{ ann.content }}</p>
-            </div>
-          </div>
-        </div>
       </div>
         </div>
       </div>
@@ -652,7 +624,7 @@
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
               <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
+              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
           <div v-if="likesLoadingMore" class="panel-loading-more">
@@ -708,7 +680,7 @@
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
               <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
+              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
           <div v-if="postsLoadingMore" class="panel-loading-more">
@@ -751,6 +723,7 @@
               </div>
               <button
                 class="item-action-btn unfavorite-btn"
+                :class="{ 'is-restorable': story.isFavorited === false }"
                 :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
                 @click.stop="handleToggleFavoriteFromList(story)"
               >
@@ -764,7 +737,7 @@
             <div class="item-footer">
               <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
               <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-              <span class="item-likes">★ {{ story.favoriteCount ?? 0 }}</span>
+              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
           <div v-if="favoritesLoadingMore" class="panel-loading-more">
@@ -797,56 +770,122 @@
       @report="handleStoryReport"
     />
 
+    <!-- 消息/公告面板呼出按钮 -->
+    <div class="msg-trigger-wrapper">
+      <button
+        class="msg-trigger-btn"
+        :class="{ 'dark': effectiveMapTheme === 'dark' }"
+        @click.stop="openMsgPanel"
+      >我的通知</button>
+      <span v-if="hasNotificationBadge" class="msg-badge-dot"></span>
+    </div>
+
     <!-- 登录模态框 -->
     <!-- 通知栏 -->
     <transition name="notification-fade">
       <div
         v-if="showNotificationPanel"
+        class="notification-backdrop"
+        @click.self="closeNotificationPanel"
+      >
+      <div
         class="notification-panel"
         :class="{ dark: effectiveMapTheme === 'dark' }"
         @click.stop
       >
         <div class="notification-header">
-          <h4>通知</h4>
-          <div class="notification-actions">
+          <div class="notification-tabs">
             <button
-              v-if="notificationUnreadCount > 0"
-              class="mark-read-btn"
-              @click="markAllNotificationsRead"
+              class="notification-tab-btn"
+              :class="{ active: notificationTab === 'messages' }"
+              @click="switchNotificationTab('messages')"
             >
-              全部已读
+              消息
+              <span v-if="notificationUnreadCount > 0" class="tab-badge">{{ notificationUnreadCount > 99 ? '99+' : notificationUnreadCount }}</span>
             </button>
+            <button
+              class="notification-tab-btn"
+              :class="{ active: notificationTab === 'announcements' }"
+              @click="switchNotificationTab('announcements')"
+            >
+              公告
+              <span v-if="hasUnreadAnnouncements" class="tab-dot"></span>
+            </button>
+          </div>
+          <div class="notification-actions">
+            <template v-if="notificationTab === 'messages'">
+              <button
+                v-if="notificationUnreadCount > 0"
+                class="mark-read-btn"
+                @click="markAllNotificationsRead"
+              >全部已读</button>
+              <button
+                v-if="notifications.length > 0"
+                class="clear-all-btn"
+                @click="clearAllNotifications"
+              >清空全部</button>
+            </template>
             <button class="close-btn" @click="closeNotificationPanel"><span>×</span></button>
           </div>
         </div>
         <div class="notification-content">
-          <div v-if="notificationsLoading" class="notification-loading">
-            <span class="loading-spinner">⌛</span>
-            <span>加载中...</span>
-          </div>
-          <div v-else-if="notifications.length === 0" class="notification-empty">
-            <span class="empty-icon">📭</span>
-            <span>暂无通知</span>
-          </div>
-          <div v-else class="notification-list">
-            <div
-              v-for="notice in notifications"
-              :key="notice.id"
-              class="notification-item"
-              :class="{ unread: !notice.isRead }"
-            >
-              <div class="notice-avatar">
-                <img v-if="notice.fromUser?.avatar" :src="notice.fromUser.avatar" alt="" />
-                <span v-else>{{ (notice.fromUser?.username || notice.fromUserName || '匿')[0] }}</span>
-              </div>
-              <div class="notice-body">
-                <p class="notice-content">{{ notice.content }}</p>
-                <span class="notice-time">{{ formatRelativeTime(notice.createdAt) }}</span>
-              </div>
-              <span v-if="!notice.isRead" class="unread-dot"></span>
+          <!-- 消息标签内容 -->
+          <template v-if="notificationTab === 'messages'">
+            <div v-if="notificationsLoading" class="notification-loading">
+              <span class="loading-spinner">⌛</span>
+              <span>加载中...</span>
             </div>
-          </div>
+            <div v-else-if="notifications.length === 0" class="notification-empty">
+              <span class="empty-icon">📭</span>
+              <span>暂无通知</span>
+            </div>
+            <div v-else class="notification-list">
+              <div
+                v-for="notice in notifications"
+                :key="notice.id"
+                class="notification-item"
+                :class="{ unread: !notice.isRead }"
+              >
+                <div class="notice-avatar">
+                  <img v-if="notice.fromUser?.avatar" :src="notice.fromUser.avatar" alt="" />
+                  <span v-else>{{ (notice.fromUser?.username || notice.fromUserName || '匿')[0] }}</span>
+                </div>
+                <div class="notice-body">
+                  <p class="notice-content">{{ notice.content }}</p>
+                  <span class="notice-time">{{ formatRelativeTime(notice.createdAt) }}</span>
+                </div>
+                <span v-if="!notice.isRead" class="unread-dot"></span>
+              </div>
+            </div>
+          </template>
+          <!-- 公告标签内容 -->
+          <template v-if="notificationTab === 'announcements'">
+            <div v-if="announcementsLoading" class="notification-loading">
+              <span class="loading-spinner">⌛</span>
+              <span>加载中...</span>
+            </div>
+            <div v-else-if="announcements.length === 0" class="notification-empty">
+              <span class="empty-icon">📢</span>
+              <span>暂无公告</span>
+            </div>
+            <div v-else class="announcement-panel-list">
+              <div
+                v-for="ann in announcements"
+                :key="ann.id"
+                class="np-announcement-card"
+                :class="ann.type"
+              >
+                <div class="np-ann-header">
+                  <span class="np-ann-type-badge">{{ getAnnouncementTypeIcon(ann.type) }}</span>
+                  <span class="np-ann-time">{{ formatRelativeTime(ann.createdAt) }}</span>
+                </div>
+                <h4 class="np-ann-title">{{ ann.title }}</h4>
+                <p class="np-ann-content">{{ ann.content }}</p>
+              </div>
+            </div>
+          </template>
         </div>
+      </div>
       </div>
     </transition>
 
@@ -893,9 +932,11 @@ const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
 const showLoginModal = ref(false);
 const showNotificationPanel = ref(false);
+const notificationTab = ref('messages');
 const notifications = ref([]);
 const notificationsLoading = ref(false);
 const notificationUnreadCount = ref(0);
+const announcementsLoading = ref(false);
 const loading = ref(false);
 const nearbySearchQuery = ref('');
 const nearbySearchResults = ref([]);
@@ -957,6 +998,7 @@ let nearbyCenterLabelTimer = null;
 let activeNearbySearchToken = 0;
 let activeNearbyCenterLabelToken = 0;
 let activeUserLocationLabelToken = 0;
+let activeClusterRequestToken = 0;
 let suppressNearbySearchQueryWatch = false;
 let geocoderInstance = null;
 let geocoderPromise = null;
@@ -1349,6 +1391,84 @@ function syncStoryAcrossCollections(storyId, mutate) {
   mutateStoryReference(selectedStory.value, storyId, mutate);
 }
 
+function syncCurrentUserProfileAcrossStories(nextUser) {
+  const normalizedUserId = normalizeStoryIdKey(nextUser?.id ?? userStore.user?.id);
+  if (!normalizedUserId) {
+    return;
+  }
+
+  const nextUsername = firstNonEmptyString(nextUser?.username, nextUser?.name);
+  const nextAvatar = firstNonEmptyString(nextUser?.avatar, nextUser?.avatarUrl);
+  const collections = [
+    stories,
+    feedStories,
+    featuredStories,
+    favoritesList,
+    likesList,
+    postsList
+  ];
+
+  const applyUserProfile = (story) => {
+    if (!story || typeof story !== 'object') {
+      return;
+    }
+
+    const author = resolveStoryAuthor(story);
+    const storyAuthorId = normalizeStoryIdKey(
+      author.id
+      ?? story.author?.id
+      ?? story.user?.id
+      ?? story.authorId
+      ?? story.userId
+    );
+
+    if (storyAuthorId !== normalizedUserId) {
+      return;
+    }
+
+    if (nextUsername) {
+      story.username = nextUsername;
+    }
+
+    if (nextAvatar) {
+      story.avatar = nextAvatar;
+    }
+
+    const nextAuthor = {
+      ...(story.author && typeof story.author === 'object' ? story.author : {}),
+      id: story.author?.id ?? story.user?.id ?? story.authorId ?? story.userId ?? nextUser?.id ?? null,
+      username: nextUsername || author.username,
+      avatar: nextAvatar || author.avatar
+    };
+
+    story.author = nextAuthor;
+
+    if (story.user && typeof story.user === 'object') {
+      story.user = {
+        ...story.user,
+        id: story.user.id ?? nextAuthor.id,
+        username: nextUsername || story.user.username || author.username,
+        avatar: nextAvatar || story.user.avatar || story.user.avatarUrl || author.avatar
+      };
+    }
+  };
+
+  collections.forEach((collection) => {
+    if (!Array.isArray(collection.value)) {
+      return;
+    }
+
+    collection.value.forEach((item) => {
+      const targetStory = item?.story && typeof item.story === 'object'
+        ? item.story
+        : item;
+      applyUserProfile(targetStory);
+    });
+  });
+
+  applyUserProfile(selectedStory.value);
+}
+
 async function hydrateSelectedStoryDetail(story, requestToken) {
   const storyId = story?.id;
   if (!storyId) {
@@ -1357,6 +1477,7 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
 
   storyCommentsLoading.value = true;
   const detailFallbackAuthor = {
+    id: story?.author?.id ?? story?.user?.id ?? story?.authorId ?? story?.userId ?? null,
     username: firstNonEmptyString(
       story?.username,
       typeof story?.author === 'string' ? story.author : '',
@@ -2542,6 +2663,49 @@ function firstNonEmptyString(...values) {
   return '';
 }
 
+function buildLocationDistrictLabel(source) {
+  if (!source || typeof source !== 'object') {
+    return '';
+  }
+
+  const city = firstNonEmptyString(source.city);
+  const district = firstNonEmptyString(source.district);
+  const province = firstNonEmptyString(source.province);
+
+  if (city && district) {
+    return district.includes(city) ? district : `${city} ${district}`;
+  }
+
+  return district || city || province || '';
+}
+
+function buildLocationAddressLabel(source, latitude, longitude) {
+  const districtLabel = buildLocationDistrictLabel(source);
+  const rawAddress = firstNonEmptyString(
+    source?.address,
+    source?.formattedAddress,
+    source?.name
+  );
+
+  if (rawAddress) {
+    if (districtLabel && !rawAddress.includes(districtLabel)) {
+      return `${districtLabel} ${rawAddress}`;
+    }
+
+    return rawAddress;
+  }
+
+  return districtLabel || formatMapPickAddress(latitude, longitude);
+}
+
+function formatPoiDistrictLabel(poi) {
+  if (!poi || typeof poi !== 'object') {
+    return '已解析位置';
+  }
+
+  return buildLocationDistrictLabel(poi) || '已解析位置';
+}
+
 function resolveStoryAuthor(source, fallbackAuthor = null) {
   if (!source || typeof source !== 'object') {
     return {
@@ -2557,10 +2721,24 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
   const userObject = source.user && typeof source.user === 'object'
     ? source.user
     : null;
+  const storyAuthorId = normalizeStoryIdKey(
+    authorObject?.id
+    ?? userObject?.id
+    ?? fallbackAuthor?.id
+    ?? source.authorId
+    ?? source.userId
+    ?? null
+  );
+  const currentUserId = normalizeStoryIdKey(userStore.user?.id);
+  const useCurrentUserProfile = Boolean(currentUserId && storyAuthorId && currentUserId === storyAuthorId);
 
   return {
-    id: authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null,
+    id: useCurrentUserProfile
+      ? userStore.user?.id ?? authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null
+      : authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null,
     username: firstNonEmptyString(
+      useCurrentUserProfile ? userStore.user?.username : '',
+      useCurrentUserProfile ? userStore.user?.name : '',
       authorObject?.username,
       userObject?.username,
       typeof source.author === 'string' ? source.author : '',
@@ -2570,6 +2748,8 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
       '\u533f\u540d\u7528\u6237'
     ),
     avatar: firstNonEmptyString(
+      useCurrentUserProfile ? userStore.user?.avatar : '',
+      useCurrentUserProfile ? userStore.user?.avatarUrl : '',
       authorObject?.avatar,
       authorObject?.avatarUrl,
       userObject?.avatar,
@@ -2659,16 +2839,25 @@ function getCoordinateCacheKey(latitude, longitude) {
 }
 
 function buildFallbackLocation(latitude, longitude, overrides = {}) {
+  const city = firstNonEmptyString(overrides.city);
+  const district = buildLocationDistrictLabel({
+    city,
+    district: firstNonEmptyString(overrides.district),
+    province: firstNonEmptyString(overrides.province)
+  });
+  const province = firstNonEmptyString(overrides.province);
   const name = pickLocationText([
     overrides.name,
     overrides.address,
     'Map Pick'
   ]);
-  const address = pickLocationText([
-    overrides.address,
-    overrides.name,
-    formatMapPickAddress(latitude, longitude)
-  ]);
+  const address = buildLocationAddressLabel({
+    ...overrides,
+    city,
+    district,
+    province,
+    name
+  }, latitude, longitude);
 
   return {
     id: overrides.id || `map-pick-${longitude}-${latitude}`,
@@ -2676,10 +2865,10 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
     address,
     latitude,
     longitude,
-    city: firstNonEmptyString(overrides.city),
-    district: firstNonEmptyString(overrides.district),
+    city,
+    district,
     adcode: firstNonEmptyString(overrides.adcode),
-    province: firstNonEmptyString(overrides.province),
+    province,
     type: firstNonEmptyString(overrides.type, 'map-click'),
     nearbyPois: Array.isArray(overrides.nearbyPois) ? overrides.nearbyPois : []
   };
@@ -3106,9 +3295,6 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
       });
 
       const regeocode = result?.regeocode || {};
-      const firstPoi = Array.isArray(regeocode.pois)
-        ? normalizeNearbyPoiFromGeocode(regeocode.pois[0])
-        : null;
       const district = [
         regeocode.addressComponent?.city,
         regeocode.addressComponent?.district,
@@ -3118,6 +3304,16 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         regeocode.addressComponent?.city,
         regeocode.addressComponent?.province
       );
+      const province = firstNonEmptyString(regeocode.addressComponent?.province);
+      const locality = {
+        city,
+        district,
+        adcode: firstNonEmptyString(regeocode.addressComponent?.adcode),
+        province
+      };
+      const firstPoi = Array.isArray(regeocode.pois)
+        ? normalizeNearbyPoiFromGeocode(regeocode.pois[0], locality)
+        : null;
       const resolvedLocation = buildFallbackLocation(latitude, longitude, {
         id: `map-pick-${longitude}-${latitude}`,
         name: pickLocationText([
@@ -3134,7 +3330,7 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         city: firstNonEmptyString(firstPoi?.city, city),
         district: firstNonEmptyString(firstPoi?.district, district),
         adcode: firstNonEmptyString(firstPoi?.adcode, regeocode.addressComponent?.adcode),
-        province: firstNonEmptyString(firstPoi?.province, regeocode.addressComponent?.province),
+        province: firstNonEmptyString(firstPoi?.province, province),
         type: firstNonEmptyString(firstPoi?.type, 'map-click'),
         nearbyPois: Array.isArray(regeocode.pois) ? regeocode.pois : []
       });
@@ -3152,7 +3348,7 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
   return pendingTask;
 }
 
-function normalizeNearbyPoiFromGeocode(poi) {
+function normalizeNearbyPoiFromGeocode(poi, locality = null) {
   if (!poi) {
     return null;
   }
@@ -3163,8 +3359,30 @@ function normalizeNearbyPoiFromGeocode(poi) {
     return null;
   }
 
-  const district = [poi.cityname, poi.adname].filter(Boolean).join(' ');
-  const address = [district, poi.address].filter(Boolean).join(' ');
+  const city = firstNonEmptyString(
+    poi.cityname,
+    poi.city,
+    locality?.city,
+    locality?.province
+  );
+  const province = firstNonEmptyString(
+    poi.pname,
+    poi.province,
+    locality?.province
+  );
+  const district = buildLocationDistrictLabel({
+    city,
+    district: firstNonEmptyString(poi.adname, poi.district, locality?.district),
+    province
+  });
+  const address = buildLocationAddressLabel({
+    city,
+    district,
+    province,
+    address: firstNonEmptyString(poi.address),
+    formattedAddress: firstNonEmptyString(poi.formattedAddress),
+    name: poi.name || 'Nearby Place'
+  }, latitude, longitude);
 
   return {
     id: poi.id || `nearby-${longitude}-${latitude}-${poi.name || 'poi'}`,
@@ -3172,10 +3390,10 @@ function normalizeNearbyPoiFromGeocode(poi) {
     address: address || poi.name || formatMapPickAddress(latitude, longitude),
     latitude,
     longitude,
-    city: firstNonEmptyString(poi.cityname, poi.pname),
+    city,
     district,
-    adcode: firstNonEmptyString(poi.adcode),
-    province: firstNonEmptyString(poi.pname),
+    adcode: firstNonEmptyString(poi.adcode, locality?.adcode),
+    province,
     type: poi.type || 'nearby-poi',
     distance: toFiniteNumber(poi.distance)
   };
@@ -3187,7 +3405,7 @@ function buildSuggestedLocations(rawLocation, nearbyPois = []) {
   }
 
   const normalizedPois = nearbyPois
-    .map(normalizeNearbyPoiFromGeocode)
+    .map((poi) => normalizeNearbyPoiFromGeocode(poi, rawLocation))
     .filter(Boolean)
     .filter((poi, index, list) => list.findIndex((item) => item.id === poi.id) === index)
     .sort((left, right) => getSuggestedLocationDistance(left, rawLocation) - getSuggestedLocationDistance(right, rawLocation))
@@ -3691,6 +3909,10 @@ async function saveUsername() {
     });
     const updatedUser = response?.data ?? response;
     userStore.updateUser(updatedUser);
+    syncCurrentUserProfileAcrossStories({
+      ...(userStore.user || {}),
+      ...(updatedUser || {})
+    });
 
     // 退出编辑模式
     isEditingUsername.value = false;
@@ -3779,17 +4001,11 @@ async function uploadAvatar(file) {
     userStore.updateUser(updatedUser);
 
     // 同步更新故事列表中的头像
-    const newAvatar = updatedUser.avatar || updatedUser.avatarUrl || '';
-    if (newAvatar && postsList.value.length > 0) {
-      postsList.value.forEach(story => {
-        if (story.userId === updatedUser.id || story.authorId === updatedUser.id) {
-          if (story.avatar) story.avatar = newAvatar;
-          if (story.author && story.author.id === updatedUser.id) story.author.avatar = newAvatar;
-        }
-      });
-    }
-
     // 清除预览
+    syncCurrentUserProfileAcrossStories({
+      ...(userStore.user || {}),
+      ...(updatedUser || {})
+    });
     avatarPreview.value = '';
     currentAvatarFile.value = null;
     console.log('头像已更新:', uploadedUrl);
@@ -4161,8 +4377,38 @@ async function loadStories() {
 // 聚合显示的 zoom 阈值，超过此值显示原始标记点
 const CLUSTER_ZOOM_THRESHOLD = 16;
 
+function padBounds(bounds, paddingRatio = 0.08) {
+  if (!bounds?.northEast || !bounds?.southWest) {
+    return null;
+  }
+
+  const north = Number(bounds.northEast.lat);
+  const east = Number(bounds.northEast.lng);
+  const south = Number(bounds.southWest.lat);
+  const west = Number(bounds.southWest.lng);
+
+  if (![north, east, south, west].every(Number.isFinite)) {
+    return null;
+  }
+
+  const latPadding = Math.max(Math.abs(north - south) * paddingRatio, 0.0005);
+  const lngPadding = Math.max(Math.abs(east - west) * paddingRatio, 0.0005);
+
+  return {
+    northEast: {
+      lat: Math.min(90, north + latPadding),
+      lng: Math.min(180, east + lngPadding)
+    },
+    southWest: {
+      lat: Math.max(-90, south - latPadding),
+      lng: Math.max(-180, west - lngPadding)
+    }
+  };
+}
+
 // 加载聚合数据
 async function loadClusterData() {
+  const requestToken = ++activeClusterRequestToken;
   try {
     const currentZoom = mapStore.zoom;
 
@@ -4194,32 +4440,51 @@ async function loadClusterData() {
       const response = await mapApi.getClusterData(
         defaultBounds.northEast,
         defaultBounds.southWest,
-        mapStore.zoom
+        currentZoom
       );
 
       const data = response?.data ?? response;
       console.log('[Map] cluster API response:', data);
-      if (Array.isArray(data)) {
+      if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
         clusters.value = data;
         console.log('[Map] clusters loaded with default bounds:', clusters.value.length);
       }
       return;
     }
 
+    {
+      const response = await mapApi.getClusterData(
+        bounds.northEast,
+        bounds.southWest,
+        currentZoom
+      );
+
+      const data = response?.data ?? response;
+      console.log('[Map] cluster API response:', data);
+      if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
+        clusters.value = data;
+        console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
+      }
+      return;
+    }
+
+    const paddedBounds = padBounds(bounds) || bounds;
     const response = await mapApi.getClusterData(
-      bounds.northEast,
-      bounds.southWest,
-      mapStore.zoom
+      paddedBounds.northEast,
+      paddedBounds.southWest,
+      currentZoom
     );
 
     const data = response?.data ?? response;
     console.log('[Map] cluster API response:', data);
-    if (Array.isArray(data)) {
+    if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
       clusters.value = data;
       console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
     }
   } catch (error) {
-    clusters.value = [];
+    if (requestToken === activeClusterRequestToken) {
+      clusters.value = [];
+    }
     console.error('加载聚合数据失败:', error);
   }
 }
@@ -4765,6 +5030,50 @@ function closeNotificationPanel() {
   showNotificationPanel.value = false;
 }
 
+// 打开消息面板
+function openMsgPanel() {
+  showNotificationPanel.value = true;
+  if (notificationTab.value === 'messages') {
+    loadNotifications();
+  } else {
+    loadAnnouncements();
+  }
+}
+
+// 切换通知面板标签（点击即视为已读该栏）
+function switchNotificationTab(tab) {
+  notificationTab.value = tab;
+  if (tab === 'messages') {
+    // 点击消息tab → 消息标记已读
+    if (notificationUnreadCount.value > 0) {
+      notificationApi.markAllRead().catch(() => {});
+      notificationUnreadCount.value = 0;
+      notifications.value = notifications.value.map(n => ({ ...n, isRead: true }));
+    }
+    loadNotifications();
+  } else {
+    loadAnnouncements();
+  }
+}
+
+// 加载公告数据（加载后若当前在公告tab则自动标记已读）
+async function loadAnnouncements() {
+  announcementsLoading.value = true;
+  try {
+    const res = await mapApi.getAnnouncements();
+    const data = res?.data ?? res;
+    announcements.value = data?.announcements || [];
+    // 若当前正在查看公告tab，加载完成后标记已读
+    if (notificationTab.value === 'announcements') {
+      markAnnouncementsAsRead();
+    }
+  } catch (error) {
+    console.error('加载公告失败:', error);
+  } finally {
+    announcementsLoading.value = false;
+  }
+}
+
 // 标记所有通知已读
 async function markAllNotificationsRead() {
   try {
@@ -4773,6 +5082,56 @@ async function markAllNotificationsRead() {
     notifications.value = notifications.value.map(n => ({ ...n, isRead: true }));
   } catch (error) {
     console.error('标记已读失败:', error);
+  }
+}
+
+// 清空所有通知
+async function clearAllNotifications() {
+  if (!confirm('确定要清空所有通知吗？此操作不可恢复。')) return;
+  try {
+    await notificationApi.clearAll();
+    notifications.value = [];
+    notificationUnreadCount.value = 0;
+  } catch (error) {
+    console.error('清空通知失败:', error);
+  }
+}
+
+// ========== 红点状态管理 ==========
+
+// 消息未读数（后端返回）
+// 公告已读状态：记录用户"已看过的公告ID列表"（用数组确保Vue响应式）
+const readAnnouncementIds = ref([]);
+
+// 标记所有公告为已读
+function markAnnouncementsAsRead() {
+  announcements.value.forEach(a => {
+    if (!readAnnouncementIds.value.includes(a.id)) {
+      readAnnouncementIds.value.push(a.id);
+    }
+  });
+}
+
+// 消息是否有未读
+const hasUnreadMessages = computed(() => notificationUnreadCount.value > 0);
+
+// 公告是否有未读（存在未在 readAnnouncementIds 中的公告）
+const hasUnreadAnnouncements = computed(() => {
+  return announcements.value.some(a => !readAnnouncementIds.value.includes(a.id));
+});
+
+// msg按钮是否显示红点（消息未读 OR 公告未读）
+const hasNotificationBadge = computed(() => hasUnreadMessages.value || hasUnreadAnnouncements.value);
+
+// 后台预加载：仅获取未读通知数（不加载列表，轻量）
+async function prefetchUnreadCount() {
+  if (!userStore.isLoggedIn || userStore.isGuest) return;
+  try {
+    const res = await notificationApi.getUnreadCount();
+    const data = res?.data ?? res;
+    notificationUnreadCount.value = data?.unreadCount || 0;
+  } catch (error) {
+    // 静默失败
   }
 }
 
@@ -4797,15 +5156,27 @@ onMounted(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
 
-  // --- 通知栏：仅首次进入时显示 ---
-  const hasSeenNotification = localStorage.getItem('echostar_seen_notification');
-  if (!hasSeenNotification && userStore.isLoggedIn && !userStore.isGuest) {
-    loadNotifications().then(() => {
-      if (notifications.value.length > 0 || notificationUnreadCount.value > 0) {
+  // --- 通知栏：有未读消息或新公告时自动弹出 ---
+  if (userStore.isLoggedIn && !userStore.isGuest) {
+    // 并行加载通知和公告，任一有新内容则弹出
+    const loadTasks = [loadNotifications(), loadAnnouncements()];
+    Promise.all(loadTasks).then(() => {
+      const hasUnread = notificationUnreadCount.value > 0 || hasUnreadAnnouncements.value;
+      if (hasUnread) {
+        // 优先展示有新内容的tab，并标记已读
+        if (notificationUnreadCount.value > 0) {
+          notificationTab.value = 'messages';
+          if (notificationUnreadCount.value > 0) {
+            notificationApi.markAllRead().catch(() => {});
+            notificationUnreadCount.value = 0;
+          }
+        } else {
+          notificationTab.value = 'announcements';
+          markAnnouncementsAsRead();
+        }
         showNotificationPanel.value = true;
       }
     });
-    localStorage.setItem('echostar_seen_notification', 'true');
   }
 });
 
@@ -7476,6 +7847,49 @@ onUnmounted(() => {
   gap: 4px;
 }
 
+.likes-panel .item-footer,
+.favorites-panel .item-footer {
+  justify-content: flex-start;
+  gap: 14px;
+}
+
+.likes-panel .item-location,
+.favorites-panel .item-location {
+  flex: 1;
+  min-width: 0;
+}
+
+.likes-panel .item-likes,
+.favorites-panel .item-likes {
+  white-space: nowrap;
+}
+
+.likes-panel .item-likes + .item-likes,
+.favorites-panel .item-likes + .item-likes {
+  margin-left: 10px;
+}
+
+.likes-panel .item-action-btn span,
+.favorites-panel .item-action-btn span {
+  font-size: 0;
+  line-height: 0;
+}
+
+.likes-panel .item-action-btn span::before,
+.favorites-panel .item-action-btn span::before {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.likes-panel .unlike-btn span::before,
+.favorites-panel .unfavorite-btn span::before {
+  content: '❌️';
+}
+
+.favorites-panel .unfavorite-btn.is-restorable span::before {
+  content: '⭐️';
+}
+
 .panel-loading-more,
 .panel-no-more {
   display: flex;
@@ -8773,6 +9187,15 @@ onUnmounted(() => {
 }
 
 /* --- 通知栏样式 --- */
+.notification-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10001;
+}
+
 .notification-panel {
   position: fixed;
   top: 80px;
@@ -8789,7 +9212,7 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
   color: #3c2910;
   overflow: hidden;
-  z-index: 10001;
+  z-index: 10002;
 }
 
 .notification-panel.dark {
@@ -8812,9 +9235,81 @@ onUnmounted(() => {
   background: linear-gradient(180deg, rgba(255, 252, 245, 0.42) 0%, rgba(255, 245, 227, 0.14) 100%);
 }
 
+.notification-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.notification-tab-btn {
+  padding: 5px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(60, 41, 16, 0.55);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+/* 消息tab 红点角标 */
+.notification-tab-btn .tab-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  background: #f44336;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  box-shadow: 0 1px 4px rgba(244, 67, 54, 0.4);
+}
+
+/* 公告tab 红点 */
+.notification-tab-btn .tab-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f44336;
+  box-shadow: 0 0 4px rgba(244, 67, 54, 0.6);
+}
+
+.notification-tab-btn.active {
+  border-color: rgba(199, 151, 60, 0.28);
+  background: rgba(255, 255, 255, 0.45);
+  color: #3c2910;
+}
+
+.notification-tab-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.22);
+}
+
 .notification-panel.dark .notification-header {
   border-bottom-color: rgba(198, 219, 255, 0.12);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.notification-panel.dark .notification-tab-btn {
+  color: rgba(200, 210, 230, 0.55);
+}
+
+.notification-panel.dark .notification-tab-btn.active {
+  border-color: rgba(141, 176, 235, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
+}
+
+.notification-panel.dark .notification-tab-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .notification-header h4 {
@@ -8840,6 +9335,32 @@ onUnmounted(() => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.18s ease;
+}
+
+.notification-actions .clear-all-btn {
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(220, 80, 60, 0.22);
+  background: rgba(244, 67, 54, 0.08);
+  color: #c0392b;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.notification-actions .clear-all-btn:hover {
+  background: rgba(244, 67, 54, 0.18);
+}
+
+.notification-panel.dark .notification-actions .clear-all-btn {
+  border-color: rgba(244, 67, 54, 0.3);
+  background: rgba(244, 67, 54, 0.1);
+  color: #f5a8a2;
+}
+
+.notification-panel.dark .notification-actions .clear-all-btn:hover {
+  background: rgba(244, 67, 54, 0.22);
 }
 
 .notification-panel.dark .notification-actions .mark-read-btn {
@@ -9014,6 +9535,171 @@ onUnmounted(() => {
   background: #8e6cff;
 }
 
+/* 公告面板内卡片样式 */
+.announcement-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.np-announcement-card {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 111, 46, 0.14);
+  background: rgba(255, 255, 255, 0.48);
+  transition: all 0.18s ease;
+  border-left: 3px solid #667eea;
+}
+
+.np-announcement-card:hover {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.np-announcement-card.emotion {
+  border-left-color: #e74c3c;
+}
+
+.np-announcement-card.feature {
+  border-left-color: #f39c12;
+}
+
+.np-announcement-card.warning {
+  border-left-color: #f39c12;
+}
+
+.np-ann-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.np-ann-type-badge {
+  font-size: 16px;
+}
+
+.np-ann-time {
+  font-size: 12px;
+  color: rgba(60, 41, 16, 0.5);
+}
+
+.np-ann-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
+
+.np-ann-content {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+
+.notification-panel.dark .np-announcement-card {
+  border-color: rgba(141, 176, 235, 0.12);
+  border-left-color: #667eea;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.notification-panel.dark .np-announcement-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.notification-panel.dark .np-announcement-card.emotion {
+  border-left-color: #e74c3c;
+}
+
+.notification-panel.dark .np-announcement-card.feature {
+  border-left-color: #f39c12;
+}
+
+.notification-panel.dark .np-announcement-card.warning {
+  border-left-color: #f39c12;
+}
+
+.notification-panel.dark .np-ann-time {
+  color: rgba(200, 210, 230, 0.5);
+}
+
+/* --- 消息呼出按钮 --- */
+.msg-trigger-wrapper {
+  position: fixed;
+  right: 0;
+  top: 25%;
+  transform: translateY(-50%);
+  z-index: 10003;
+}
+
+.msg-trigger-btn {
+  writing-mode: vertical-lr;
+  text-orientation: upright;
+  letter-spacing: 0;
+  position: relative;
+  width: 30px;
+  height: 200px;
+  border: none;
+  border-radius: 10px 0 0 10px;
+  background: linear-gradient(180deg, rgba(250, 239, 217, 0.92) 0%, rgba(229, 201, 150, 0.92) 100%);
+  border: 1px solid rgba(199, 151, 60, 0.24);
+  border-right: none;
+  color: #8b561d;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  z-index: 10003;
+  text-orientation: mixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: -4px 0 16px -6px rgba(4, 8, 18, 0.18);
+}
+
+.msg-trigger-btn:hover {
+  width: 38px;
+  background: linear-gradient(180deg, rgba(255, 250, 240, 0.96) 0%, rgba(240, 223, 191, 0.96) 100%);
+}
+
+.msg-trigger-btn.dark {
+  background: linear-gradient(180deg, rgba(15, 22, 40, 0.92) 0%, rgba(29, 46, 78, 0.92) 100%);
+  border-color: rgba(141, 176, 235, 0.18);
+  color: #a8c4ff;
+  box-shadow: -4px 0 16px -6px rgba(3, 6, 15, 0.32);
+}
+
+.msg-trigger-btn.dark:hover {
+  width: 38px;
+  background: linear-gradient(180deg, rgba(22, 34, 58, 0.96) 0%, rgba(35, 55, 90, 0.96) 100%);
+}
+
+/* msg按钮红点 */
+.msg-badge-dot {
+  position: absolute;
+  top: 8px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f44336;
+  border: 2px solid #fff8ee;
+  box-shadow: 0 0 6px rgba(244, 67, 54, 0.7);
+  animation: badge-pulse 2s ease-in-out infinite;
+  z-index: 1;
+}
+
+.msg-trigger-btn.dark + .msg-badge-dot,
+.msg-wrapper .msg-badge-dot {
+  border-color: #1a2845;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.75; }
+}
+
 /* 通知栏过渡动画 */
 .notification-fade-enter-active,
 .notification-fade-leave-active {
@@ -9034,3 +9720,4 @@ onUnmounted(() => {
   }
 }
 </style>
+

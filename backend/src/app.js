@@ -16,10 +16,12 @@ import likeRoutes from './routes/like.routes.js';
 import favoriteRoutes from './routes/favorite.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import reportRoutes from './routes/report.routes.js';
+import announcementRoutes from './routes/announcement.routes.js';
 
 // 导入定时任务
 import { syncStoryViewCount } from './jobs/sync-story-view-count.js';
 import { syncLikeToDatabase } from './jobs/sync-like-to-db.js';
+import { syncFavoriteToDatabase } from './jobs/sync-favorite-to-db.js';
 
 // 导入 RocketMQ
 import { rocketmqClient } from './common/utils/rocketmq.js';
@@ -75,6 +77,7 @@ export function createApp() {
   app.use('/api/v1/favorites', favoriteRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
   app.use('/api/v1/reports', reportRoutes);
+  app.use('/api/v1/announcements', announcementRoutes);
 
   // 兼容旧版 API 路由 (不带 v1 前缀)
   app.use('/api/auth', authRoutes);
@@ -86,6 +89,7 @@ export function createApp() {
   app.use('/api/favorites', favoriteRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/reports', reportRoutes);
+  app.use('/api/announcements', announcementRoutes);
 
   // 404 处理
   app.use(notFoundHandler);
@@ -125,12 +129,22 @@ export function createApp() {
     });
   }, 5 * 60 * 1000);  // 每5分钟执行一次
 
+  // 定时任务：每5分钟同步收藏数据到数据库
+  setInterval(() => {
+    syncFavoriteToDatabase().catch(err => {
+      console.error('❌ 同步收藏数据失败:', err);
+    });
+  }, 5 * 60 * 1000);
+
   // 启动时执行一次（防止服务重启期间的数据丢失）
   syncStoryViewCount().catch(err => {
     console.error('❌ 启动时同步浏览量失败:', err);
   });
   syncLikeToDatabase().catch(err => {
     console.error('❌ 启动时同步点赞数据失败:', err);
+  });
+  syncFavoriteToDatabase().catch(err => {
+    console.error('❌ 启动时同步收藏数据失败:', err);
   });
 
   return app;
