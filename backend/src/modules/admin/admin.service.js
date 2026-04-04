@@ -99,7 +99,7 @@ export const AdminService = {
       throw new AdminError('故事已经是 shadowban 状态', 400);
     }
 
-    await story.update({ visibility: 'shadowban' });
+    await story.update({ visibility: 'shadowban', isRecommended: false });
 
     // 清除故事缓存，确保立即生效
     const redis = redisClient.getClient();
@@ -134,7 +134,7 @@ export const AdminService = {
       throw new AdminError('故事已删除，无法恢复', 400);
     }
 
-    await story.update({ visibility: 'public' });
+    await story.update({ visibility: 'public', isRecommended: false });
 
     // 清除故事缓存，确保立即生效
     const redisForRestore = redisClient.getClient();

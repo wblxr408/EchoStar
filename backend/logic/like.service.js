@@ -4,7 +4,6 @@ import { StoryService } from '../story/story.service.js';
 import { NotificationService } from '../notification/notification.service.js';
 import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
 import { Story } from '../story/story.model.js';
-import { favoriteServiceInstance } from '../favorite/favorite.service.js';
 
 function parseStoryLocationValue(locationValue) {
   if (!locationValue) {
@@ -33,57 +32,42 @@ function parseStoryLocationValue(locationValue) {
   };
 }
 
-function normalizeStoryId(storyId) {
-  if (storyId === undefined || storyId === null) {
-    throw new Error('Story ID is required');
-  }
-  return typeof storyId === 'bigint' ? storyId.toString() : String(storyId).trim();
-}
-
 /**
- * Like Service - 点赞业务逻辑（使用 Redis 三集合增量缓存架构）
- *
- * 架构说明：
- *   - 点赞/取消点赞只写 Redis（BASE/ADD/DEL 三个集合）
- *   - 通过 syncToDatabase() 定时任务批量持久化到数据库
- *   - 所有读取走 Redis 缓存，DB 故障时自动回退
+ * Like Service - 点赞业务逻辑（使用 Redis 缓存优化）
  */
 class LikeServiceClass {
   /**
    * 点赞/取消点赞（切换）
    */
   async toggleLike(userId, storyId) {
-    const normalizedStoryId = normalizeStoryId(storyId);
-    const storyData = await StoryService.fetchStoryRaw(normalizedStoryId);
-    const story = storyData?.story || storyData;
-
+    const story = await StoryService.fetchStoryRaw(storyId);
     if (!story) {
       throw new Error('Story not found');
     }
 
-    const isLiked = await likeCacheUtil.isLiked(userId, normalizedStoryId);
+    const isLiked = await likeCacheUtil.isLiked(userId, storyId);
 
     if (isLiked) {
       // 取消点赞
-      await likeCacheUtil.unlikeStory(userId, normalizedStoryId);
-      const likeCount = await likeCacheUtil.getLikeCount(normalizedStoryId);
+      await likeCacheUtil.unlikeStory(userId, storyId);
+      const likeCount = await likeCacheUtil.getLikeCount(storyId);
       return {
         isLiked: false,
         likeCount,
         message: 'Like removed'
       };
     } else {
-      // 点赞（只写 Redis，不立即写 DB）
-      await likeCacheUtil.likeStory(userId, normalizedStoryId);
+      // 点赞
+      await likeCacheUtil.likeStory(userId, storyId);
 
-      // 发送通知（给故事作者）
+      // 发送通知
       if (story.userId !== userId) {
-        NotificationService.createNotification('like', story.userId, userId, normalizedStoryId).catch((err) => {
+        NotificationService.createNotification('like', story.userId, userId, storyId).catch((err) => {
           console.error('Failed to create like notification:', err);
         });
       }
 
-      const likeCount = await likeCacheUtil.getLikeCount(normalizedStoryId);
+      const likeCount = await likeCacheUtil.getLikeCount(storyId);
       return {
         isLiked: true,
         likeCount,
@@ -93,27 +77,24 @@ class LikeServiceClass {
   }
 
   /**
-   * 创建点赞（明确点赞，不能切换取消）
+   * 创建点赞（明确点赞，不能取消）
    */
   async createLike(userId, storyId) {
-    const normalizedStoryId = normalizeStoryId(storyId);
-    const storyData = await StoryService.fetchStoryRaw(normalizedStoryId);
-    const story = storyData?.story || storyData;
-
+    const story = await StoryService.fetchStoryRaw(storyId);
     if (!story) {
       throw new Error('Story not found');
     }
 
-    const isLiked = await likeCacheUtil.isLiked(userId, normalizedStoryId);
+    const isLiked = await likeCacheUtil.isLiked(userId, storyId);
     if (isLiked) {
       throw new Error('Story already liked');
     }
 
-    const result = await likeCacheUtil.likeStory(userId, normalizedStoryId);
+    const result = await likeCacheUtil.likeStory(userId, storyId);
 
-    // 发送通知（给故事作者）
+    // 发送通知
     if (story.userId !== userId) {
-      NotificationService.createNotification('like', story.userId, userId, normalizedStoryId).catch((err) => {
+      NotificationService.createNotification('like', story.userId, userId, storyId).catch((err) => {
         console.error('Failed to create like notification:', err);
       });
     }
@@ -128,13 +109,12 @@ class LikeServiceClass {
    * 删除点赞
    */
   async deleteLike(storyId, userId) {
-    const normalizedStoryId = normalizeStoryId(storyId);
-    const isLiked = await likeCacheUtil.isLiked(userId, normalizedStoryId);
+    const isLiked = await likeCacheUtil.isLiked(userId, storyId);
     if (!isLiked) {
       throw new Error('Like record not found');
     }
 
-    await likeCacheUtil.unlikeStory(userId, normalizedStoryId);
+    await likeCacheUtil.unlikeStory(userId, storyId);
 
     return {
       success: true,
@@ -143,38 +123,37 @@ class LikeServiceClass {
   }
 
   /**
-   * 获取故事点赞列表（直接查数据库，列表数据不需要缓存）
+   * 获取故事点赞列表
+   * 直接查询数据库（列表数据不需要缓存）
    */
   async getLikesByStoryId(storyId, { page = 1, limit = 10 } = {}) {
-    const normalizedStoryId = normalizeStoryId(storyId);
-    return await likeCacheUtil.getLikesByStoryId(normalizedStoryId, { page, limit });
+    return await likeCacheUtil.getLikesByStoryId(storyId, { page, limit });
   }
 
   /**
-   * 统计点赞数量（从 Redis 缓存计算：|base| + |add| - |del|）
+   * 统计点赞数量
+   * 从 Redis 缓存计算（|base| + |add| - |del|）
    */
   async getLikeCount(storyId) {
-    const normalizedStoryId = normalizeStoryId(storyId);
-    const count = await likeCacheUtil.getLikeCount(normalizedStoryId);
-    return { storyId: normalizedStoryId, likeCount: count };
+    const count = await likeCacheUtil.getLikeCount(storyId);
+    return { storyId, likeCount: count };
   }
 
   /**
    * 检查用户是否已点赞
    */
   async checkIsLiked(storyId, userId) {
-    const normalizedStoryId = normalizeStoryId(storyId);
     if (!userId) {
-      return { storyId: normalizedStoryId, isLiked: false };
+      return { storyId, isLiked: false };
     }
 
-    const isLiked = await likeCacheUtil.isLiked(userId, normalizedStoryId);
-    return { storyId: normalizedStoryId, isLiked };
+    const isLiked = await likeCacheUtil.isLiked(userId, storyId);
+    return { storyId, isLiked };
   }
 
   /**
    * 获取用户的点赞列表
-   * 查数据库获取用户点过赞的故事详情，同时从 Redis 获取最新点赞数和收藏数
+   * 废弃接口，保留兼容性（前端未使用）
    */
   async getUserLikes(userId, { page = 1, limit = 10 } = {}) {
     const offset = (page - 1) * limit;
@@ -196,22 +175,18 @@ class LikeServiceClass {
       offset: parseInt(offset, 10)
     });
 
-    // 获取每个故事的点赞数和收藏数（并行执行）
-    const storyIds = rows.map(like => like.storyId).filter(Boolean);
-    const [likeCountResults, favoriteCountResults] = await Promise.all([
-      Promise.all(storyIds.map(sid => likeCacheUtil.getLikeCount(sid))),
-      Promise.all(storyIds.map(sid => favoriteServiceInstance.getFavoriteCount(sid)))
-    ]);
+    // 获取每个故事的点赞数（并行执行）
+    const storyIds = rows.map((like) => like.storyId).filter(Boolean);
+    const countPromises = storyIds.map(storyId => likeCacheUtil.getLikeCount(storyId));
+    const counts = await Promise.all(countPromises);
 
     const likeCounts = {};
-    const favoriteCounts = {};
-    storyIds.forEach((sid, i) => {
-      likeCounts[sid] = likeCountResults[i];
-      favoriteCounts[sid] = favoriteCountResults[i]?.favoriteCount || 0;
+    storyIds.forEach((storyId, i) => {
+      likeCounts[storyId] = counts[i];
     });
 
     return {
-      likes: rows.map(like => ({
+      likes: rows.map((like) => ({
         id: like.id,
         createdAt: like.createdAt,
         story: {
@@ -223,7 +198,6 @@ class LikeServiceClass {
           location: parseStoryLocationValue(like.story?.location),
           locationName: like.story?.locationName,
           likeCount: likeCounts[like.storyId] || 0,
-          favoriteCount: favoriteCounts[like.storyId] || 0,
           author: like.story?.author
             ? {
                 id: like.story.author.id,
@@ -247,7 +221,10 @@ class LikeServiceClass {
    */
   async checkMultipleLiked(storyIds, userId) {
     if (!userId) {
-      return storyIds.map(storyId => ({ storyId, isLiked: false }));
+      return storyIds.map((storyId) => ({
+        storyId,
+        isLiked: false
+      }));
     }
 
     return await likeCacheUtil.checkMultipleLiked(storyIds, userId);

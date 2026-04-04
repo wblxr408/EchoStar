@@ -458,7 +458,7 @@ class FavoriteCacheUtil {
 
         // 批量删除收藏
         if (delUsers.length > 0) {
-          await Like.destroy({
+          await Favorite.destroy({
             where: {
               userId: { [Op.in]: delUsers.map((id) => parseInt(id, 10)) },
               storyId: normalizedStoryId

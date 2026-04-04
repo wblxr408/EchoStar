@@ -87,7 +87,7 @@ export const adminLogin = async (req, res, next) => {
     const result = await AuthService.adminLogin(email, password);
     res.json({ code: 0, data: result });
   } catch (error) {
-    next(error);
+    return res.status(401).json({ code: 1, message: error.message });
   }
 };
 
@@ -100,7 +100,7 @@ export const login = async (req, res, next) => {
     const result = await AuthService.login(email, password);
     res.json({ code: 0, data: result });
   } catch (error) {
-    next(error);
+    return res.status(401).json({ code: 1, message: error.message });
   }
 };
 

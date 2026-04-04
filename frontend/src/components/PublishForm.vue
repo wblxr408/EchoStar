@@ -1306,6 +1306,11 @@ function handleSubmit() {
   color: var(--panel-muted);
 }
 
+.theme-dark .time-capsule-config input[type="datetime-local"] {
+  background: #dce8ff;
+  color: #333333;
+}
+
 .visibility-options {
   display: grid;
   gap: 12px;

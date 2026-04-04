@@ -2,8 +2,8 @@ import Joi from 'joi';
 
 const storyIdSchema = Joi.alternatives()
   .try(
-    Joi.string().trim().pattern(/^-?[1-9]\d*$/),
-    Joi.number().integer().invalid(0).unsafe(false)
+    Joi.string().trim().pattern(/^[1-9]\d*$/),
+    Joi.number().integer().positive().unsafe(false)
   )
   .custom((value, helpers) => {
     if (typeof value === 'number' && !Number.isSafeInteger(value)) {
@@ -14,7 +14,7 @@ const storyIdSchema = Joi.alternatives()
       ? value.toString()
       : String(value).trim();
 
-    if (!/^-?[1-9]\d*$/.test(normalizedValue)) {
+    if (!/^[1-9]\d*$/.test(normalizedValue)) {
       return helpers.error('string.pattern.base');
     }
 

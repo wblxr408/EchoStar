@@ -42,10 +42,12 @@ api.interceptors.response.use(
 
       switch (status) {
         case 401:
-          // Token 过期或无效，跳转登录
-          localStorage.removeItem('token');
-          window.location.href = '/';
-          errorMessage = '登录已过期，请重新登录';
+          // Token 过期或无效（非登录接口），跳转登录
+          if (data?.message !== '邮箱或密码错误') {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+          }
+          errorMessage = data?.message || '登录已过期，请重新登录';
           break;
         case 403:
           errorMessage = '权限不足';
