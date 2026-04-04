@@ -329,15 +329,27 @@ if "%DO_MONITOR%"=="1" (
     echo.
     echo [MONITOR] Stopping monitor...
     if defined MONITOR_PID_FILE (
+        REM Read PID from the PID file (not the file path itself)
+        set "MONITOR_PID="
+        if exist "!MONITOR_PID_FILE!" (
+            set /p MONITOR_PID=<"!MONITOR_PID_FILE!"
+        )
         REM Create stop signal file to trigger graceful exit in monitor.cjs
         set STOP_SIGNAL_FILE=!MONITOR_PID_FILE:.pid=.stop!
         type nul > "!STOP_SIGNAL_FILE!" 2>nul
-        REM Wait for monitor to exit (max 5 seconds)
-        for /L %%i in (1,1,10) do (
+        REM Wait for monitor to finish saving report (max 15 seconds)
+        for /L %%i in (1,1,15) do (
             timeout /t 1 /nobreak > nul
-            tasklist /fi "PID eq !MONITOR_PID!" 2>nul | find "node" >nul || goto :monitor_stopped
+            REM Check if monitor process is still running (by PID, not file path)
+            if defined MONITOR_PID (
+                tasklist /fi "PID eq !MONITOR_PID!" 2>nul | find "node" >nul || goto :monitor_stopped
+            ) else (
+                goto :monitor_stopped
+            )
         )
         :monitor_stopped
+        REM Give monitor extra time to finish writing report before cleaning up files
+        timeout /t 2 /nobreak > nul
         if exist "!MONITOR_PID_FILE!" del "!MONITOR_PID_FILE!" >nul 2>nul
         if exist "!STOP_SIGNAL_FILE!" del "!STOP_SIGNAL_FILE!" >nul 2>nul
     )
@@ -359,10 +371,13 @@ if exist "%SUMMARY_EXPORT%" (
             echo [REPORT] Running deep stage analysis...
             node tests\k6\test-scripts\parse-report.js "%SUMMARY_EXPORT%" "%JSON_LINES_EXPORT%" "%REPORT_DIR%"
             REM Generate charts (parse-report.js produces {profile}-analysis-{timestamp}.json)
-            set STAGES_JSON=%REPORT_DIR%\%PROFILE%-analysis-%TIMESTAMP%.json
-            if exist "%STAGES_JSON%" (
+            set STAGES_JSON=!REPORT_DIR!\!PROFILE!-analysis-!TIMESTAMP!.json
+            if exist "!STAGES_JSON!" (
                 echo [CHARTS] Generating visual charts...
-                node tests\k6\test-scripts\plot-stages.js "%STAGES_JSON%" "%REPORT_DIR%"
+                node tests\k6\test-scripts\plot-stages.js "!STAGES_JSON!" "!REPORT_DIR!"
+            ) else (
+                echo [WARNING] Analysis JSON not found: !STAGES_JSON!
+                echo [WARNING] plot-stages.js skipped. Run manually if needed.
             )
         ) else (
             echo [REPORT] Generating summary report...

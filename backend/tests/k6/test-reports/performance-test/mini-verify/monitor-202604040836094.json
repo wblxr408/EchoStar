@@ -1,0 +1,1260 @@
+{
+  "startTime": "2026-04-04T08:36:09.416Z",
+  "endTime": "2026-04-04T08:38:31.560Z",
+  "config": {
+    "redisContainer": "echostar-redis",
+    "pgContainer": "echostar-postgres",
+    "intervalSeconds": 5,
+    "durationSeconds": "manual"
+  },
+  "samples": [
+    {
+      "timestamp": "2026-04-04T08:36:09.488Z",
+      "redis": {
+        "usedMemory": "1.06M",
+        "usedMemoryBytes": 1115376,
+        "peakMemory": "1.06M",
+        "rssMemory": "8.50M",
+        "fragmentation": "8.29",
+        "opsPerSec": 0,
+        "keyspaceHits": 0,
+        "keyspaceMisses": 2,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 0,
+        "expires": 0
+      },
+      "redisDocker": {
+        "cpu": "0.37%",
+        "cpuVal": 0.37,
+        "mem": "3.711MiB / 7.412GiB",
+        "memPerc": 0.05,
+        "netIO": "4.12kB / 12.3kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "11.21%",
+        "cpuVal": 11.21,
+        "mem": "48.74MiB / 7.412GiB",
+        "memPerc": 0.64,
+        "netIO": "137kB / 266kB",
+        "blockIO": "446kB / 153MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 29,
+        "memFreeMB": 978,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:19.788Z",
+      "redis": {
+        "usedMemory": "1.54M",
+        "usedMemoryBytes": 1611560,
+        "peakMemory": "1.54M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.67",
+        "opsPerSec": 32,
+        "keyspaceHits": 385,
+        "keyspaceMisses": 615,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 245,
+        "expires": 135
+      },
+      "redisDocker": {
+        "cpu": "0.61%",
+        "cpuVal": 0.61,
+        "mem": "5.566MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "254kB / 159kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "0.37%",
+        "cpuVal": 0.37,
+        "mem": "60.23MiB / 7.412GiB",
+        "memPerc": 0.79,
+        "netIO": "221kB / 364kB",
+        "blockIO": "4.38MB / 153MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 12,
+        "memFreeMB": 884,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:24.795Z",
+      "redis": {
+        "usedMemory": "1.56M",
+        "usedMemoryBytes": 1636192,
+        "peakMemory": "1.56M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.58",
+        "opsPerSec": 24,
+        "keyspaceHits": 447,
+        "keyspaceMisses": 664,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 245,
+        "expires": 137
+      },
+      "redisDocker": {
+        "cpu": "1.05%",
+        "cpuVal": 1.05,
+        "mem": "4.867MiB / 7.412GiB",
+        "memPerc": 0.06,
+        "netIO": "280kB / 185kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "0.61%",
+        "cpuVal": 0.61,
+        "mem": "72.12MiB / 7.412GiB",
+        "memPerc": 0.95,
+        "netIO": "268kB / 423kB",
+        "blockIO": "4.38MB / 163MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 16,
+        "memFreeMB": 864,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:29.801Z",
+      "redis": {
+        "usedMemory": "1.56M",
+        "usedMemoryBytes": 1638872,
+        "peakMemory": "1.56M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.57",
+        "opsPerSec": 46,
+        "keyspaceHits": 553,
+        "keyspaceMisses": 754,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 251,
+        "expires": 140
+      },
+      "redisDocker": {
+        "cpu": "0.86%",
+        "cpuVal": 0.86,
+        "mem": "5.375MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "314kB / 214kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "3.82%",
+        "cpuVal": 3.82,
+        "mem": "77.02MiB / 7.412GiB",
+        "memPerc": 1.01,
+        "netIO": "327kB / 546kB",
+        "blockIO": "4.38MB / 163MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 18,
+        "memFreeMB": 832,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:34.811Z",
+      "redis": {
+        "usedMemory": "1.59M",
+        "usedMemoryBytes": 1670096,
+        "peakMemory": "1.59M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.47",
+        "opsPerSec": 83,
+        "keyspaceHits": 703,
+        "keyspaceMisses": 898,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 261,
+        "expires": 141
+      },
+      "redisDocker": {
+        "cpu": "0.73%",
+        "cpuVal": 0.73,
+        "mem": "5.895MiB / 7.412GiB",
+        "memPerc": 0.08,
+        "netIO": "363kB / 255kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "0.65%",
+        "cpuVal": 0.65,
+        "mem": "82.68MiB / 7.412GiB",
+        "memPerc": 1.09,
+        "netIO": "388kB / 649kB",
+        "blockIO": "4.38MB / 163MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 17,
+        "memFreeMB": 697,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:39.811Z",
+      "redis": {
+        "usedMemory": "1.62M",
+        "usedMemoryBytes": 1694840,
+        "peakMemory": "1.62M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.39",
+        "opsPerSec": 69,
+        "keyspaceHits": 861,
+        "keyspaceMisses": 1009,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 262,
+        "expires": 141
+      },
+      "redisDocker": {
+        "cpu": "1.12%",
+        "cpuVal": 1.12,
+        "mem": "5.598MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "409kB / 299kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.01%",
+        "cpuVal": 1.01,
+        "mem": "83.63MiB / 7.412GiB",
+        "memPerc": 1.1,
+        "netIO": "448kB / 736kB",
+        "blockIO": "4.38MB / 163MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 13,
+        "memFreeMB": 583,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:44.818Z",
+      "redis": {
+        "usedMemory": "1.62M",
+        "usedMemoryBytes": 1695160,
+        "peakMemory": "1.62M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.39",
+        "opsPerSec": 82,
+        "keyspaceHits": 1088,
+        "keyspaceMisses": 1176,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 265,
+        "expires": 141
+      },
+      "redisDocker": {
+        "cpu": "0.84%",
+        "cpuVal": 0.84,
+        "mem": "5.199MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "471kB / 348kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.07%",
+        "cpuVal": 1.07,
+        "mem": "86.28MiB / 7.412GiB",
+        "memPerc": 1.14,
+        "netIO": "509kB / 818kB",
+        "blockIO": "4.38MB / 185MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 15,
+        "memFreeMB": 638,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:49.833Z",
+      "redis": {
+        "usedMemory": "1.62M",
+        "usedMemoryBytes": 1701008,
+        "peakMemory": "1.62M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.37",
+        "opsPerSec": 82,
+        "keyspaceHits": 1254,
+        "keyspaceMisses": 1320,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 279,
+        "expires": 146
+      },
+      "redisDocker": {
+        "cpu": "1.21%",
+        "cpuVal": 1.21,
+        "mem": "5.457MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "540kB / 402kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "2.74%",
+        "cpuVal": 2.74,
+        "mem": "81.03MiB / 7.412GiB",
+        "memPerc": 1.07,
+        "netIO": "582kB / 952kB",
+        "blockIO": "4.38MB / 185MB",
+        "pids": "9"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 22,
+        "memFreeMB": 694,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:54.846Z",
+      "redis": {
+        "usedMemory": "1.63M",
+        "usedMemoryBytes": 1708184,
+        "peakMemory": "1.63M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.34",
+        "opsPerSec": 101,
+        "keyspaceHits": 1515,
+        "keyspaceMisses": 1500,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 292,
+        "expires": 148
+      },
+      "redisDocker": {
+        "cpu": "0.92%",
+        "cpuVal": 0.92,
+        "mem": "4.984MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "609kB / 464kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.80%",
+        "cpuVal": 1.8,
+        "mem": "94.68MiB / 7.412GiB",
+        "memPerc": 1.25,
+        "netIO": "671kB / 1.11MB",
+        "blockIO": "4.38MB / 185MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 31,
+        "memFreeMB": 647,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:36:59.855Z",
+      "redis": {
+        "usedMemory": "1.63M",
+        "usedMemoryBytes": 1714416,
+        "peakMemory": "1.63M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.32",
+        "opsPerSec": 105,
+        "keyspaceHits": 1716,
+        "keyspaceMisses": 1636,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 306,
+        "expires": 152
+      },
+      "redisDocker": {
+        "cpu": "1.24%",
+        "cpuVal": 1.24,
+        "mem": "5.227MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "675kB / 521kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.29%",
+        "cpuVal": 1.29,
+        "mem": "95.63MiB / 7.412GiB",
+        "memPerc": 1.26,
+        "netIO": "766kB / 1.27MB",
+        "blockIO": "4.38MB / 185MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 21,
+        "memFreeMB": 636,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:04.868Z",
+      "redis": {
+        "usedMemory": "1.64M",
+        "usedMemoryBytes": 1718640,
+        "peakMemory": "1.64M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.31",
+        "opsPerSec": 154,
+        "keyspaceHits": 1995,
+        "keyspaceMisses": 1832,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 318,
+        "expires": 179
+      },
+      "redisDocker": {
+        "cpu": "1.02%",
+        "cpuVal": 1.02,
+        "mem": "4.758MiB / 7.412GiB",
+        "memPerc": 0.06,
+        "netIO": "766kB / 599kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.27%",
+        "cpuVal": 1.27,
+        "mem": "88.31MiB / 7.412GiB",
+        "memPerc": 1.16,
+        "netIO": "842kB / 1.37MB",
+        "blockIO": "4.38MB / 185MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 15,
+        "memFreeMB": 669,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:09.877Z",
+      "redis": {
+        "usedMemory": "1.64M",
+        "usedMemoryBytes": 1723752,
+        "peakMemory": "1.64M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.29",
+        "opsPerSec": 101,
+        "keyspaceHits": 2263,
+        "keyspaceMisses": 1975,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 329,
+        "expires": 178
+      },
+      "redisDocker": {
+        "cpu": "1.27%",
+        "cpuVal": 1.27,
+        "mem": "5.043MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "850kB / 675kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.45%",
+        "cpuVal": 1.45,
+        "mem": "95.64MiB / 7.412GiB",
+        "memPerc": 1.26,
+        "netIO": "938kB / 1.54MB",
+        "blockIO": "4.38MB / 186MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 14,
+        "memFreeMB": 665,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:14.887Z",
+      "redis": {
+        "usedMemory": "1.65M",
+        "usedMemoryBytes": 1726600,
+        "peakMemory": "1.65M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.28",
+        "opsPerSec": 177,
+        "keyspaceHits": 2631,
+        "keyspaceMisses": 2246,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 337,
+        "expires": 182
+      },
+      "redisDocker": {
+        "cpu": "1.40%",
+        "cpuVal": 1.4,
+        "mem": "6.055MiB / 7.412GiB",
+        "memPerc": 0.08,
+        "netIO": "958kB / 767kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.14%",
+        "cpuVal": 1.14,
+        "mem": "95.62MiB / 7.412GiB",
+        "memPerc": 1.26,
+        "netIO": "1.03MB / 1.64MB",
+        "blockIO": "4.38MB / 186MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 23,
+        "memFreeMB": 625,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:19.898Z",
+      "redis": {
+        "usedMemory": "1.65M",
+        "usedMemoryBytes": 1728248,
+        "peakMemory": "1.65M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.28",
+        "opsPerSec": 173,
+        "keyspaceHits": 2909,
+        "keyspaceMisses": 2451,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 344,
+        "expires": 184
+      },
+      "redisDocker": {
+        "cpu": "1.02%",
+        "cpuVal": 1.02,
+        "mem": "5.078MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "1.03MB / 835kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.51%",
+        "cpuVal": 1.51,
+        "mem": "82.43MiB / 7.412GiB",
+        "memPerc": 1.09,
+        "netIO": "1.12MB / 1.8MB",
+        "blockIO": "4.38MB / 186MB",
+        "pids": "9"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 16,
+        "memFreeMB": 625,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:24.900Z",
+      "redis": {
+        "usedMemory": "1.65M",
+        "usedMemoryBytes": 1735232,
+        "peakMemory": "1.65M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.26",
+        "opsPerSec": 234,
+        "keyspaceHits": 3271,
+        "keyspaceMisses": 2726,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 358,
+        "expires": 190
+      },
+      "redisDocker": {
+        "cpu": "1.22%",
+        "cpuVal": 1.22,
+        "mem": "5.289MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "1.16MB / 936kB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.89%",
+        "cpuVal": 1.89,
+        "mem": "88.91MiB / 7.412GiB",
+        "memPerc": 1.17,
+        "netIO": "1.23MB / 1.99MB",
+        "blockIO": "4.38MB / 186MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 14,
+        "memFreeMB": 661,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:29.907Z",
+      "redis": {
+        "usedMemory": "1.66M",
+        "usedMemoryBytes": 1741896,
+        "peakMemory": "1.66M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.24",
+        "opsPerSec": 153,
+        "keyspaceHits": 3691,
+        "keyspaceMisses": 3032,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 371,
+        "expires": 192
+      },
+      "redisDocker": {
+        "cpu": "1.13%",
+        "cpuVal": 1.13,
+        "mem": "5.246MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "1.28MB / 1.04MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.64%",
+        "cpuVal": 1.64,
+        "mem": "89.29MiB / 7.412GiB",
+        "memPerc": 1.18,
+        "netIO": "1.34MB / 2.15MB",
+        "blockIO": "4.38MB / 187MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 19,
+        "memFreeMB": 662,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:34.919Z",
+      "redis": {
+        "usedMemory": "1.66M",
+        "usedMemoryBytes": 1742800,
+        "peakMemory": "1.66M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.23",
+        "opsPerSec": 165,
+        "keyspaceHits": 4011,
+        "keyspaceMisses": 3316,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 370,
+        "expires": 204
+      },
+      "redisDocker": {
+        "cpu": "2.35%",
+        "cpuVal": 2.35,
+        "mem": "5.523MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "1.41MB / 1.14MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.96%",
+        "cpuVal": 1.96,
+        "mem": "96.29MiB / 7.412GiB",
+        "memPerc": 1.27,
+        "netIO": "1.46MB / 2.37MB",
+        "blockIO": "4.38MB / 187MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 19,
+        "memFreeMB": 607,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:39.934Z",
+      "redis": {
+        "usedMemory": "1.67M",
+        "usedMemoryBytes": 1750216,
+        "peakMemory": "1.67M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.21",
+        "opsPerSec": 145,
+        "keyspaceHits": 4394,
+        "keyspaceMisses": 3640,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 384,
+        "expires": 208
+      },
+      "redisDocker": {
+        "cpu": "1.13%",
+        "cpuVal": 1.13,
+        "mem": "5.785MiB / 7.412GiB",
+        "memPerc": 0.08,
+        "netIO": "1.5MB / 1.23MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.70%",
+        "cpuVal": 1.7,
+        "mem": "97.18MiB / 7.412GiB",
+        "memPerc": 1.28,
+        "netIO": "1.58MB / 2.64MB",
+        "blockIO": "4.38MB / 187MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 17,
+        "memFreeMB": 607,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:44.939Z",
+      "redis": {
+        "usedMemory": "1.68M",
+        "usedMemoryBytes": 1756952,
+        "peakMemory": "1.68M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.19",
+        "opsPerSec": 227,
+        "keyspaceHits": 4818,
+        "keyspaceMisses": 3898,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 393,
+        "expires": 208
+      },
+      "redisDocker": {
+        "cpu": "1.54%",
+        "cpuVal": 1.54,
+        "mem": "5.32MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "1.64MB / 1.35MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "2.35%",
+        "cpuVal": 2.35,
+        "mem": "90.07MiB / 7.412GiB",
+        "memPerc": 1.19,
+        "netIO": "1.69MB / 2.89MB",
+        "blockIO": "4.38MB / 188MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 23,
+        "memFreeMB": 610,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:49.944Z",
+      "redis": {
+        "usedMemory": "1.68M",
+        "usedMemoryBytes": 1762656,
+        "peakMemory": "1.68M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.18",
+        "opsPerSec": 268,
+        "keyspaceHits": 5240,
+        "keyspaceMisses": 4291,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 406,
+        "expires": 212
+      },
+      "redisDocker": {
+        "cpu": "1.35%",
+        "cpuVal": 1.35,
+        "mem": "5.051MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "1.78MB / 1.48MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.91%",
+        "cpuVal": 1.91,
+        "mem": "98.28MiB / 7.412GiB",
+        "memPerc": 1.29,
+        "netIO": "1.83MB / 3.31MB",
+        "blockIO": "4.38MB / 188MB",
+        "pids": "11"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 11,
+        "memFreeMB": 626,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:54.945Z",
+      "redis": {
+        "usedMemory": "1.68M",
+        "usedMemoryBytes": 1766592,
+        "peakMemory": "1.68M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.17",
+        "opsPerSec": 127,
+        "keyspaceHits": 5613,
+        "keyspaceMisses": 4508,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 409,
+        "expires": 234
+      },
+      "redisDocker": {
+        "cpu": "1.92%",
+        "cpuVal": 1.92,
+        "mem": "5.117MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "1.9MB / 1.59MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.98%",
+        "cpuVal": 1.98,
+        "mem": "123.2MiB / 7.412GiB",
+        "memPerc": 1.62,
+        "netIO": "1.98MB / 3.73MB",
+        "blockIO": "4.38MB / 188MB",
+        "pids": "17"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 11,
+        "memFreeMB": 566,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:37:59.953Z",
+      "redis": {
+        "usedMemory": "1.69M",
+        "usedMemoryBytes": 1771872,
+        "peakMemory": "1.69M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.15",
+        "opsPerSec": 164,
+        "keyspaceHits": 5994,
+        "keyspaceMisses": 4775,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 420,
+        "expires": 236
+      },
+      "redisDocker": {
+        "cpu": "1.50%",
+        "cpuVal": 1.5,
+        "mem": "5.309MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "2.01MB / 1.69MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "4.33%",
+        "cpuVal": 4.33,
+        "mem": "141.9MiB / 7.412GiB",
+        "memPerc": 1.87,
+        "netIO": "2.13MB / 4.18MB",
+        "blockIO": "4.38MB / 189MB",
+        "pids": "17"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 16,
+        "memFreeMB": 495,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:38:04.960Z",
+      "redis": {
+        "usedMemory": "1.70M",
+        "usedMemoryBytes": 1780048,
+        "peakMemory": "1.70M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.12",
+        "opsPerSec": 299,
+        "keyspaceHits": 6518,
+        "keyspaceMisses": 5179,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 432,
+        "expires": 268
+      },
+      "redisDocker": {
+        "cpu": "0.94%",
+        "cpuVal": 0.94,
+        "mem": "5.113MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "2.18MB / 1.82MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "1.47%",
+        "cpuVal": 1.47,
+        "mem": "127.2MiB / 7.412GiB",
+        "memPerc": 1.68,
+        "netIO": "2.29MB / 4.64MB",
+        "blockIO": "4.38MB / 189MB",
+        "pids": "15"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 49,
+        "memFreeMB": 1038,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:38:09.964Z",
+      "redis": {
+        "usedMemory": "1.70M",
+        "usedMemoryBytes": 1786824,
+        "peakMemory": "1.70M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.10",
+        "opsPerSec": 139,
+        "keyspaceHits": 6839,
+        "keyspaceMisses": 5417,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 446,
+        "expires": 295
+      },
+      "redisDocker": {
+        "cpu": "0.96%",
+        "cpuVal": 0.96,
+        "mem": "5.316MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "2.27MB / 1.9MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "3.91%",
+        "cpuVal": 3.91,
+        "mem": "92.02MiB / 7.412GiB",
+        "memPerc": 1.21,
+        "netIO": "2.35MB / 4.78MB",
+        "blockIO": "4.38MB / 189MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 73,
+        "memFreeMB": 1083,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:38:14.975Z",
+      "redis": {
+        "usedMemory": "1.71M",
+        "usedMemoryBytes": 1790512,
+        "peakMemory": "1.71M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.09",
+        "opsPerSec": 80,
+        "keyspaceHits": 6989,
+        "keyspaceMisses": 5507,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 455,
+        "expires": 297
+      },
+      "redisDocker": {
+        "cpu": "0.58%",
+        "cpuVal": 0.58,
+        "mem": "5.648MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "2.31MB / 1.93MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "0.57%",
+        "cpuVal": 0.57,
+        "mem": "90.88MiB / 7.412GiB",
+        "memPerc": 1.2,
+        "netIO": "2.38MB / 4.87MB",
+        "blockIO": "4.38MB / 189MB",
+        "pids": "10"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 21,
+        "memFreeMB": 1086,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:38:19.980Z",
+      "redis": {
+        "usedMemory": "1.71M",
+        "usedMemoryBytes": 1792352,
+        "peakMemory": "1.71M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.09",
+        "opsPerSec": 7,
+        "keyspaceHits": 7027,
+        "keyspaceMisses": 5535,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 456,
+        "expires": 296
+      },
+      "redisDocker": {
+        "cpu": "0.60%",
+        "cpuVal": 0.6,
+        "mem": "5.172MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "2.33MB / 1.94MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "0.13%",
+        "cpuVal": 0.13,
+        "mem": "83.61MiB / 7.412GiB",
+        "memPerc": 1.1,
+        "netIO": "2.39MB / 4.87MB",
+        "blockIO": "4.38MB / 189MB",
+        "pids": "9"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 13,
+        "memFreeMB": 1179,
+        "memTotalMB": 15677
+      }
+    },
+    {
+      "timestamp": "2026-04-04T08:38:24.981Z",
+      "redis": {
+        "usedMemory": "1.69M",
+        "usedMemoryBytes": 1773472,
+        "peakMemory": "1.71M",
+        "rssMemory": "8.50M",
+        "fragmentation": "5.14",
+        "opsPerSec": 0,
+        "keyspaceHits": 7063,
+        "keyspaceMisses": 5556,
+        "connectedClients": 2,
+        "blockedClients": 0,
+        "evictedKeys": 0,
+        "keys": 460,
+        "expires": 298
+      },
+      "redisDocker": {
+        "cpu": "0.45%",
+        "cpuVal": 0.45,
+        "mem": "5.52MiB / 7.412GiB",
+        "memPerc": 0.07,
+        "netIO": "2.33MB / 1.95MB",
+        "blockIO": "1.43MB / 0B",
+        "pids": "6"
+      },
+      "pg": null,
+      "pgDocker": {
+        "cpu": "0.05%",
+        "cpuVal": 0.05,
+        "mem": "83.33MiB / 7.412GiB",
+        "memPerc": 1.1,
+        "netIO": "2.39MB / 4.87MB",
+        "blockIO": "4.38MB / 189MB",
+        "pids": "9"
+      },
+      "nodeHealth": null,
+      "system": {
+        "cpuPerc": 32,
+        "memFreeMB": 1559,
+        "memTotalMB": 15677
+      }
+    }
+  ],
+  "keyDistribution": {
+    "story:raw": {
+      "pattern": "story:raw:*",
+      "count": 24
+    },
+    "story:cache": {
+      "pattern": "story:cache:*",
+      "count": 0
+    },
+    "story:list": {
+      "pattern": "story:list:*",
+      "count": 0
+    },
+    "user:info": {
+      "pattern": "user:info:*",
+      "count": 15
+    },
+    "user:session": {
+      "pattern": "user:session:*",
+      "count": 0
+    },
+    "comment": {
+      "pattern": "comment:*",
+      "count": 48
+    },
+    "like": {
+      "pattern": "like:*",
+      "count": 53
+    },
+    "favorite": {
+      "pattern": "favorite:*",
+      "count": 29
+    },
+    "notification": {
+      "pattern": "notification:*",
+      "count": 0
+    },
+    "map": {
+      "pattern": "map:*",
+      "count": 0
+    },
+    "rate_limit": {
+      "pattern": "rate_limit:*",
+      "count": 0
+    },
+    "token": {
+      "pattern": "token:*",
+      "count": 0
+    },
+    "_unmatched": {
+      "pattern": "(未匹配前缀)",
+      "count": 291
+    },
+    "_total": {
+      "pattern": "DBSIZE",
+      "count": 460
+    }
+  },
+  "summary": {
+    "redis": {
+      "memory": null,
+      "opsPerSec": null,
+      "keys": null,
+      "keyspaceHits": null,
+      "keyspaceMisses": null,
+      "cpu": null,
+      "memPerc": null
+    },
+    "postgres": {
+      "cpu": null,
+      "memPerc": null,
+      "activeConnections": null,
+      "totalConnections": null
+    },
+    "nodeBackend": {
+      "healthResponseMs": null
+    },
+    "system": {
+      "cpuPerc": null,
+      "memFreeMB": null
+    },
+    "duration": {
+      "totalSeconds": "142.1",
+      "sampleCount": 27,
+      "intervalSeconds": 5
+    }
+  }
+}

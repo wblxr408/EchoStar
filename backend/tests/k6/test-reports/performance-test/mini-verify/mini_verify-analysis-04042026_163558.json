@@ -1,0 +1,1538 @@
+{
+  "metadata": {
+    "generatedAt": "2026-04-04T08:38:34.361Z",
+    "startTime": "2026-04-04T08:36:11.419Z",
+    "endTime": "2026-04-04T08:38:25.733Z",
+    "totalRequests": 2077,
+    "testDurationSec": 134.314
+  },
+  "stages": [
+    {
+      "name": "5vus",
+      "targetVus": 5,
+      "startSec": 3.87,
+      "endSec": 16.87,
+      "durationSec": 13,
+      "requestCount": 69,
+      "rps": 5.31,
+      "errorRate": 0,
+      "p50": 6.45,
+      "p90": 15.57,
+      "p95": 16.74,
+      "p99": 61.18,
+      "avg": 10.21,
+      "endpoints": {
+        "map_explore": {
+          "count": 13,
+          "p95": 61.18,
+          "p99": 61.18,
+          "avg": 9.54,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 20,
+          "p95": 15.76,
+          "p99": 16.16,
+          "avg": 14.09,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 2,
+          "p95": 8.44,
+          "p99": 8.44,
+          "avg": 6.54,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 10,
+          "p95": 11.73,
+          "p99": 11.73,
+          "avg": 7.01,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 3,
+          "p95": 8.96,
+          "p99": 8.96,
+          "avg": 6.74,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 9,
+          "p95": 5.44,
+          "p99": 5.44,
+          "avg": 4.58,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 7,
+          "p95": 7.12,
+          "p99": 7.12,
+          "avg": 6.14,
+          "errorRate": 0
+        },
+        "mark_notif_read": {
+          "count": 2,
+          "p95": 6.04,
+          "p99": 6.04,
+          "avg": 6,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 1,
+          "p95": 38.88,
+          "p99": 38.88,
+          "avg": 38.88,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 1,
+          "p95": 5.55,
+          "p99": 5.55,
+          "avg": 5.55,
+          "errorRate": 0
+        },
+        "login": {
+          "count": 1,
+          "p95": 54.51,
+          "p99": 54.51,
+          "avg": 54.51,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "9vus",
+      "targetVus": 9,
+      "startSec": 16.87,
+      "endSec": 28.87,
+      "durationSec": 12,
+      "requestCount": 128,
+      "rps": 10.67,
+      "errorRate": 0,
+      "p50": 6.18,
+      "p90": 17.6,
+      "p95": 53.89,
+      "p99": 60.03,
+      "avg": 11.43,
+      "endpoints": {
+        "map_feed": {
+          "count": 15,
+          "p95": 8.14,
+          "p99": 8.14,
+          "avg": 5.35,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 14,
+          "p95": 8.26,
+          "p99": 8.26,
+          "avg": 6.1,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 11,
+          "p95": 5.45,
+          "p99": 5.45,
+          "avg": 4.06,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 7,
+          "p95": 7.98,
+          "p99": 7.98,
+          "avg": 5.71,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 34,
+          "p95": 16.24,
+          "p99": 17.6,
+          "avg": 13.53,
+          "errorRate": 0
+        },
+        "update_profile": {
+          "count": 2,
+          "p95": 12.6,
+          "p99": 12.6,
+          "avg": 11.68,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 23,
+          "p95": 24.62,
+          "p99": 25.25,
+          "avg": 5.93,
+          "errorRate": 0
+        },
+        "login": {
+          "count": 7,
+          "p95": 61.55,
+          "p99": 61.55,
+          "avg": 55.84,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 3,
+          "p95": 6.06,
+          "p99": 6.06,
+          "avg": 5.78,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 2,
+          "p95": 6.87,
+          "p99": 6.87,
+          "avg": 6.64,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 3,
+          "p95": 4.66,
+          "p99": 4.66,
+          "avg": 4.4,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 3,
+          "p95": 8.91,
+          "p99": 8.91,
+          "avg": 6.63,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 2,
+          "p95": 32.01,
+          "p99": 32.01,
+          "avg": 31.68,
+          "errorRate": 0
+        },
+        "create_report": {
+          "count": 1,
+          "p95": 14.68,
+          "p99": 14.68,
+          "avg": 14.68,
+          "errorRate": 0
+        },
+        "register": {
+          "count": 1,
+          "p95": 60.03,
+          "p99": 60.03,
+          "avg": 60.03,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "12vus",
+      "targetVus": 12,
+      "startSec": 28.87,
+      "endSec": 41.87,
+      "durationSec": 12.999999999999996,
+      "requestCount": 143,
+      "rps": 11,
+      "errorRate": 0,
+      "p50": 6.96,
+      "p90": 27.85,
+      "p95": 33.32,
+      "p99": 58.76,
+      "avg": 11.36,
+      "endpoints": {
+        "map_feed": {
+          "count": 12,
+          "p95": 7.65,
+          "p99": 7.65,
+          "avg": 5.35,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 37,
+          "p95": 15.85,
+          "p99": 15.85,
+          "avg": 13.61,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 20,
+          "p95": 5.84,
+          "p99": 6.28,
+          "avg": 4.26,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 6,
+          "p95": 44.15,
+          "p99": 44.15,
+          "avg": 35.64,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 12,
+          "p95": 5.23,
+          "p99": 5.23,
+          "avg": 3.92,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 17,
+          "p95": 10.43,
+          "p99": 10.43,
+          "avg": 6.21,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 7,
+          "p95": 5.85,
+          "p99": 5.85,
+          "avg": 4.49,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 6,
+          "p95": 32.75,
+          "p99": 32.75,
+          "avg": 30.09,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 4,
+          "p95": 6.76,
+          "p99": 6.76,
+          "avg": 6.29,
+          "errorRate": 0
+        },
+        "update_profile": {
+          "count": 1,
+          "p95": 10.15,
+          "p99": 10.15,
+          "avg": 10.15,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 1,
+          "p95": 7.37,
+          "p99": 7.37,
+          "avg": 7.37,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 11,
+          "p95": 9.4,
+          "p99": 9.4,
+          "avg": 7.04,
+          "errorRate": 0
+        },
+        "register": {
+          "count": 2,
+          "p95": 62.06,
+          "p99": 62.06,
+          "avg": 59.54,
+          "errorRate": 0
+        },
+        "login": {
+          "count": 2,
+          "p95": 58.76,
+          "p99": 58.76,
+          "avg": 56.43,
+          "errorRate": 0
+        },
+        "create_report": {
+          "count": 3,
+          "p95": 12.73,
+          "p99": 12.73,
+          "avg": 11.12,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 1,
+          "p95": 1.83,
+          "p99": 1.83,
+          "avg": 1.83,
+          "errorRate": 0
+        },
+        "mark_notif_read": {
+          "count": 1,
+          "p95": 6.24,
+          "p99": 6.24,
+          "avg": 6.24,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "15vus",
+      "targetVus": 15,
+      "startSec": 41.87,
+      "endSec": 53.87,
+      "durationSec": 12,
+      "requestCount": 195,
+      "rps": 16.25,
+      "errorRate": 0,
+      "p50": 5.95,
+      "p90": 28.84,
+      "p95": 54.31,
+      "p99": 58.13,
+      "avg": 11.94,
+      "endpoints": {
+        "get_story": {
+          "count": 46,
+          "p95": 16.89,
+          "p99": 19.69,
+          "avg": 13.91,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 30,
+          "p95": 5.45,
+          "p99": 23.83,
+          "avg": 4.73,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 21,
+          "p95": 7.77,
+          "p99": 8.64,
+          "avg": 5.17,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 12,
+          "p95": 5.69,
+          "p99": 5.69,
+          "avg": 4.98,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 13,
+          "p95": 7.44,
+          "p99": 7.44,
+          "avg": 6,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 5,
+          "p95": 6.59,
+          "p99": 6.59,
+          "avg": 5.62,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 22,
+          "p95": 6.34,
+          "p99": 20.86,
+          "avg": 5.83,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 6,
+          "p95": 34.69,
+          "p99": 34.69,
+          "avg": 29.67,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 13,
+          "p95": 6.11,
+          "p99": 6.11,
+          "avg": 4.35,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 1,
+          "p95": 1.68,
+          "p99": 1.68,
+          "avg": 1.68,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 2,
+          "p95": 8.1,
+          "p99": 8.1,
+          "avg": 6.34,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 4,
+          "p95": 32.56,
+          "p99": 32.56,
+          "avg": 29.65,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2,
+          "p95": 5.75,
+          "p99": 5.75,
+          "avg": 4.76,
+          "errorRate": 0
+        },
+        "register": {
+          "count": 1,
+          "p95": 59.88,
+          "p99": 59.88,
+          "avg": 59.88,
+          "errorRate": 0
+        },
+        "login": {
+          "count": 12,
+          "p95": 58.13,
+          "p99": 58.13,
+          "avg": 55.28,
+          "errorRate": 0
+        },
+        "update_profile": {
+          "count": 1,
+          "p95": 11.82,
+          "p99": 11.82,
+          "avg": 11.82,
+          "errorRate": 0
+        },
+        "mark_notif_read": {
+          "count": 3,
+          "p95": 6.67,
+          "p99": 6.67,
+          "avg": 6.07,
+          "errorRate": 0
+        },
+        "create_report": {
+          "count": 1,
+          "p95": 13.97,
+          "p99": 13.97,
+          "avg": 13.97,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "18vus",
+      "targetVus": 18,
+      "startSec": 53.87,
+      "endSec": 68.87,
+      "durationSec": 15.000000000000007,
+      "requestCount": 251,
+      "rps": 16.73,
+      "errorRate": 0,
+      "p50": 7.02,
+      "p90": 31.05,
+      "p95": 55.19,
+      "p99": 60.76,
+      "avg": 12.88,
+      "endpoints": {
+        "list_notifications": {
+          "count": 7,
+          "p95": 10.34,
+          "p99": 10.34,
+          "avg": 7.53,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 5,
+          "p95": 7.91,
+          "p99": 7.91,
+          "avg": 6.77,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 75,
+          "p95": 16.72,
+          "p99": 31.05,
+          "avg": 13.83,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 41,
+          "p95": 6.04,
+          "p99": 22.4,
+          "avg": 4.56,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 17,
+          "p95": 6.31,
+          "p99": 6.31,
+          "avg": 4.83,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 10,
+          "p95": 35.71,
+          "p99": 35.71,
+          "avg": 30.63,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 9,
+          "p95": 7.02,
+          "p99": 7.02,
+          "avg": 5.96,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 17,
+          "p95": 5.02,
+          "p99": 5.02,
+          "avg": 3.89,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 24,
+          "p95": 7.71,
+          "p99": 9.65,
+          "avg": 5.14,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 16,
+          "p95": 7.65,
+          "p99": 7.65,
+          "avg": 5.54,
+          "errorRate": 0
+        },
+        "update_profile": {
+          "count": 2,
+          "p95": 11.57,
+          "p99": 11.57,
+          "avg": 10.36,
+          "errorRate": 0
+        },
+        "login": {
+          "count": 10,
+          "p95": 56.55,
+          "p99": 56.55,
+          "avg": 55.2,
+          "errorRate": 0
+        },
+        "register": {
+          "count": 6,
+          "p95": 63.16,
+          "p99": 63.16,
+          "avg": 59.99,
+          "errorRate": 0
+        },
+        "create_report": {
+          "count": 1,
+          "p95": 10.24,
+          "p99": 10.24,
+          "avg": 10.24,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 8,
+          "p95": 35.02,
+          "p99": 35.02,
+          "avg": 31.24,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 3,
+          "p95": 3.68,
+          "p99": 3.68,
+          "avg": 3.2,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "21vus",
+      "targetVus": 21,
+      "startSec": 68.87,
+      "endSec": 81.87,
+      "durationSec": 13,
+      "requestCount": 246,
+      "rps": 18.92,
+      "errorRate": 0,
+      "p50": 6.37,
+      "p90": 29.74,
+      "p95": 37.81,
+      "p99": 57.93,
+      "avg": 12.07,
+      "endpoints": {
+        "search_story": {
+          "count": 31,
+          "p95": 8.91,
+          "p99": 9.49,
+          "avg": 5.71,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 18,
+          "p95": 5.31,
+          "p99": 5.31,
+          "avg": 4.18,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 62,
+          "p95": 16.14,
+          "p99": 17.63,
+          "avg": 13.7,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 15,
+          "p95": 6.07,
+          "p99": 6.07,
+          "avg": 4.52,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 13,
+          "p95": 7.11,
+          "p99": 7.11,
+          "avg": 5.83,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 15,
+          "p95": 7.89,
+          "p99": 7.89,
+          "avg": 6.1,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 7,
+          "p95": 8.62,
+          "p99": 8.62,
+          "avg": 6.24,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 16,
+          "p95": 39.11,
+          "p99": 39.11,
+          "avg": 30.51,
+          "errorRate": 0
+        },
+        "mark_notif_read": {
+          "count": 7,
+          "p95": 7.42,
+          "p99": 7.42,
+          "avg": 5.56,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 8,
+          "p95": 30.81,
+          "p99": 30.81,
+          "avg": 29.76,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 36,
+          "p95": 5.88,
+          "p99": 13.03,
+          "avg": 4.52,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 3,
+          "p95": 7.28,
+          "p99": 7.28,
+          "avg": 5.74,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 2,
+          "p95": 1.66,
+          "p99": 1.66,
+          "avg": 1.51,
+          "errorRate": 0
+        },
+        "login": {
+          "count": 8,
+          "p95": 57.87,
+          "p99": 57.87,
+          "avg": 55.35,
+          "errorRate": 0
+        },
+        "register": {
+          "count": 3,
+          "p95": 60.27,
+          "p99": 60.27,
+          "avg": 59.33,
+          "errorRate": 0
+        },
+        "update_profile": {
+          "count": 1,
+          "p95": 10.21,
+          "p99": 10.21,
+          "avg": 10.21,
+          "errorRate": 0
+        },
+        "create_report": {
+          "count": 1,
+          "p95": 10.11,
+          "p99": 10.11,
+          "avg": 10.11,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "24vus",
+      "targetVus": 24,
+      "startSec": 81.87,
+      "endSec": 96.87,
+      "durationSec": 15,
+      "requestCount": 335,
+      "rps": 22.33,
+      "errorRate": 0,
+      "p50": 6.96,
+      "p90": 30.81,
+      "p95": 54.48,
+      "p99": 61.47,
+      "avg": 12.99,
+      "endpoints": {
+        "login": {
+          "count": 12,
+          "p95": 68.32,
+          "p99": 68.32,
+          "avg": 56.43,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 10,
+          "p95": 38.38,
+          "p99": 38.38,
+          "avg": 30.98,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 104,
+          "p95": 17.38,
+          "p99": 20.07,
+          "avg": 13.49,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 45,
+          "p95": 5.69,
+          "p99": 23.17,
+          "avg": 4.64,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 24,
+          "p95": 6.68,
+          "p99": 13.95,
+          "avg": 4.5,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 4,
+          "p95": 1.99,
+          "p99": 1.99,
+          "avg": 1.38,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 12,
+          "p95": 5.98,
+          "p99": 5.98,
+          "avg": 4.83,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 6,
+          "p95": 11.05,
+          "p99": 11.05,
+          "avg": 7.13,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 32,
+          "p95": 6.96,
+          "p99": 7.12,
+          "avg": 4.91,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 14,
+          "p95": 32.5,
+          "p99": 32.5,
+          "avg": 29.87,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 31,
+          "p95": 7.73,
+          "p99": 8.41,
+          "avg": 5.2,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 1,
+          "p95": 4.39,
+          "p99": 4.39,
+          "avg": 4.39,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 18,
+          "p95": 8.25,
+          "p99": 8.25,
+          "avg": 6.05,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 8,
+          "p95": 7.83,
+          "p99": 7.83,
+          "avg": 5.95,
+          "errorRate": 0
+        },
+        "register": {
+          "count": 10,
+          "p95": 65.9,
+          "p99": 65.9,
+          "avg": 60.25,
+          "errorRate": 0
+        },
+        "mark_notif_read": {
+          "count": 1,
+          "p95": 7.81,
+          "p99": 7.81,
+          "avg": 7.81,
+          "errorRate": 0
+        },
+        "create_report": {
+          "count": 1,
+          "p95": 14.7,
+          "p99": 14.7,
+          "avg": 14.7,
+          "errorRate": 0
+        },
+        "update_profile": {
+          "count": 2,
+          "p95": 8.75,
+          "p99": 8.75,
+          "avg": 8.39,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "30vus",
+      "targetVus": 30,
+      "startSec": 96.87,
+      "endSec": 135.87,
+      "durationSec": 39,
+      "requestCount": 615,
+      "rps": 15.77,
+      "errorRate": 0.3252,
+      "p50": 6.56,
+      "p90": 33.07,
+      "p95": 54.75,
+      "p99": 59.83,
+      "avg": 13.01,
+      "endpoints": {
+        "list_comments": {
+          "count": 55,
+          "p95": 6.02,
+          "p99": 6.52,
+          "avg": 4.07,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 27,
+          "p95": 35.64,
+          "p99": 37.84,
+          "avg": 32.01,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 141,
+          "p95": 17.56,
+          "p99": 20.22,
+          "avg": 13.95,
+          "errorRate": 0
+        },
+        "update_profile": {
+          "count": 6,
+          "p95": 12.57,
+          "p99": 12.57,
+          "avg": 10.06,
+          "errorRate": 0
+        },
+        "create_report": {
+          "count": 12,
+          "p95": 11.63,
+          "p99": 11.63,
+          "avg": 9.47,
+          "errorRate": 16.6667
+        },
+        "map_feed": {
+          "count": 74,
+          "p95": 23.13,
+          "p99": 24.91,
+          "avg": 6.63,
+          "errorRate": 0
+        },
+        "login": {
+          "count": 28,
+          "p95": 58.7,
+          "p99": 58.73,
+          "avg": 55.12,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 18,
+          "p95": 15.25,
+          "p99": 15.25,
+          "avg": 6.86,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 23,
+          "p95": 7.2,
+          "p99": 7.46,
+          "avg": 5.94,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 62,
+          "p95": 7.57,
+          "p99": 8.45,
+          "avg": 5.17,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 17,
+          "p95": 36.5,
+          "p99": 36.5,
+          "avg": 31.11,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 35,
+          "p95": 7.77,
+          "p99": 8.35,
+          "avg": 6.02,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 24,
+          "p95": 6.19,
+          "p99": 6.34,
+          "avg": 4.67,
+          "errorRate": 0
+        },
+        "register": {
+          "count": 16,
+          "p95": 61.47,
+          "p99": 61.47,
+          "avg": 59.38,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 60,
+          "p95": 5.51,
+          "p99": 22.87,
+          "avg": 4.62,
+          "errorRate": 0
+        },
+        "mark_notif_read": {
+          "count": 8,
+          "p95": 8.72,
+          "p99": 8.72,
+          "avg": 6.17,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 6,
+          "p95": 4.98,
+          "p99": 4.98,
+          "avg": 4.31,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 3,
+          "p95": 2.09,
+          "p99": 2.09,
+          "avg": 1.65,
+          "errorRate": 0
+        }
+      }
+    }
+  ],
+  "inflectionPoints": [
+    {
+      "stageIndex": 7,
+      "stageName": "30vus",
+      "vus": 30,
+      "prevRps": "22.3",
+      "currRps": "15.8",
+      "rpsDrop": "29.4",
+      "type": "throughput_drop"
+    }
+  ],
+  "endpointTrends": {
+    "map_explore": {
+      "firstHalfP95": "24.3",
+      "secondHalfP95": "5.8",
+      "change": "-76.2",
+      "trend": "improving",
+      "statusCounts": [
+        13,
+        23,
+        20,
+        30,
+        41,
+        36,
+        45,
+        60
+      ],
+      "p95Series": [
+        61.2,
+        24.6,
+        5.8,
+        5.5,
+        6,
+        5.9,
+        5.7,
+        5.5
+      ]
+    },
+    "get_story": {
+      "firstHalfP95": "16.2",
+      "secondHalfP95": "17.0",
+      "change": "4.7",
+      "trend": "stable",
+      "statusCounts": [
+        20,
+        34,
+        37,
+        46,
+        75,
+        62,
+        104,
+        141
+      ],
+      "p95Series": [
+        15.8,
+        16.2,
+        15.9,
+        16.9,
+        16.7,
+        16.1,
+        17.4,
+        17.6
+      ]
+    },
+    "get_user": {
+      "firstHalfP95": "6.7",
+      "secondHalfP95": "6.1",
+      "change": "-8.5",
+      "trend": "stable",
+      "statusCounts": [
+        2,
+        2,
+        7,
+        12,
+        17,
+        15,
+        12,
+        24
+      ],
+      "p95Series": [
+        8.4,
+        6.9,
+        5.8,
+        5.7,
+        6.3,
+        6.1,
+        6,
+        6.2
+      ]
+    },
+    "search_story": {
+      "firstHalfP95": "9.5",
+      "secondHalfP95": "8.0",
+      "change": "-16.4",
+      "trend": "stable",
+      "statusCounts": [
+        10,
+        14,
+        17,
+        21,
+        24,
+        31,
+        31,
+        62
+      ],
+      "p95Series": [
+        11.7,
+        8.3,
+        10.4,
+        7.8,
+        7.7,
+        8.9,
+        7.7,
+        7.6
+      ]
+    },
+    "create_comment": {
+      "firstHalfP95": "8.4",
+      "secondHalfP95": "7.7",
+      "change": "-8.4",
+      "trend": "stable",
+      "statusCounts": [
+        3,
+        7,
+        11,
+        13,
+        9,
+        15,
+        18,
+        35
+      ],
+      "p95Series": [
+        9,
+        8,
+        9.4,
+        7.4,
+        7,
+        7.9,
+        8.2,
+        7.8
+      ]
+    },
+    "list_comments": {
+      "firstHalfP95": "5.6",
+      "secondHalfP95": "5.8",
+      "change": "3.6",
+      "trend": "stable",
+      "statusCounts": [
+        9,
+        11,
+        12,
+        13,
+        17,
+        18,
+        24,
+        55
+      ],
+      "p95Series": [
+        5.4,
+        5.4,
+        5.2,
+        6.1,
+        5,
+        5.3,
+        6.7,
+        6
+      ]
+    },
+    "map_feed": {
+      "firstHalfP95": "7.3",
+      "secondHalfP95": "11.2",
+      "change": "53.4",
+      "trend": "degrading",
+      "statusCounts": [
+        7,
+        15,
+        12,
+        22,
+        16,
+        13,
+        32,
+        74
+      ],
+      "p95Series": [
+        7.1,
+        8.1,
+        7.6,
+        6.3,
+        7.7,
+        7.1,
+        7,
+        23.1
+      ]
+    },
+    "mark_notif_read": {
+      "firstHalfP95": "6.3",
+      "secondHalfP95": "8.0",
+      "change": "26.4",
+      "trend": "degrading",
+      "statusCounts": [
+        2,
+        0,
+        1,
+        3,
+        0,
+        7,
+        1,
+        8
+      ],
+      "p95Series": [
+        6,
+        0,
+        6.2,
+        6.7,
+        0,
+        7.4,
+        7.8,
+        8.7
+      ]
+    },
+    "favorite_toggle": {
+      "firstHalfP95": "36.9",
+      "secondHalfP95": "35.2",
+      "change": "-4.7",
+      "trend": "stable",
+      "statusCounts": [
+        1,
+        2,
+        6,
+        4,
+        8,
+        8,
+        10,
+        17
+      ],
+      "p95Series": [
+        38.9,
+        32,
+        44.2,
+        32.6,
+        35,
+        30.8,
+        38.4,
+        36.5
+      ]
+    },
+    "create_story": {
+      "firstHalfP95": "6.4",
+      "secondHalfP95": "7.6",
+      "change": "18.2",
+      "trend": "stable",
+      "statusCounts": [
+        1,
+        3,
+        1,
+        5,
+        5,
+        3,
+        8,
+        23
+      ],
+      "p95Series": [
+        5.6,
+        6.1,
+        7.4,
+        6.6,
+        7.9,
+        7.3,
+        7.8,
+        7.2
+      ]
+    },
+    "login": {
+      "firstHalfP95": "58.2",
+      "secondHalfP95": "60.4",
+      "change": "3.6",
+      "trend": "stable",
+      "statusCounts": [
+        1,
+        7,
+        2,
+        12,
+        10,
+        8,
+        12,
+        28
+      ],
+      "p95Series": [
+        54.5,
+        61.5,
+        58.8,
+        58.1,
+        56.5,
+        57.9,
+        68.3,
+        58.7
+      ]
+    },
+    "update_profile": {
+      "firstHalfP95": "11.5",
+      "secondHalfP95": "10.8",
+      "change": "-6.5",
+      "trend": "stable",
+      "statusCounts": [
+        0,
+        2,
+        1,
+        1,
+        2,
+        1,
+        2,
+        6
+      ],
+      "p95Series": [
+        0,
+        12.6,
+        10.1,
+        11.8,
+        11.6,
+        10.2,
+        8.7,
+        12.6
+      ]
+    },
+    "map_clusters": {
+      "firstHalfP95": "5.2",
+      "secondHalfP95": "4.4",
+      "change": "-16.4",
+      "trend": "stable",
+      "statusCounts": [
+        0,
+        3,
+        0,
+        2,
+        3,
+        0,
+        1,
+        6
+      ],
+      "p95Series": [
+        0,
+        4.7,
+        0,
+        5.8,
+        3.7,
+        0,
+        4.4,
+        5
+      ]
+    },
+    "list_notifications": {
+      "firstHalfP95": "7.9",
+      "secondHalfP95": "11.3",
+      "change": "42.8",
+      "trend": "degrading",
+      "statusCounts": [
+        0,
+        3,
+        4,
+        2,
+        7,
+        7,
+        6,
+        18
+      ],
+      "p95Series": [
+        0,
+        8.9,
+        6.8,
+        8.1,
+        10.3,
+        8.6,
+        11.1,
+        15.2
+      ]
+    },
+    "create_report": {
+      "firstHalfP95": "13.8",
+      "secondHalfP95": "11.7",
+      "change": "-15.4",
+      "trend": "stable",
+      "statusCounts": [
+        0,
+        1,
+        3,
+        1,
+        1,
+        1,
+        1,
+        12
+      ],
+      "p95Series": [
+        0,
+        14.7,
+        12.7,
+        14,
+        10.2,
+        10.1,
+        14.7,
+        11.6
+      ]
+    },
+    "register": {
+      "firstHalfP95": "60.7",
+      "secondHalfP95": "62.7",
+      "change": "3.4",
+      "trend": "stable",
+      "statusCounts": [
+        0,
+        1,
+        2,
+        1,
+        6,
+        3,
+        10,
+        16
+      ],
+      "p95Series": [
+        0,
+        60,
+        62.1,
+        59.9,
+        63.2,
+        60.3,
+        65.9,
+        61.5
+      ]
+    },
+    "like_toggle": {
+      "firstHalfP95": "33.7",
+      "secondHalfP95": "35.7",
+      "change": "6.0",
+      "trend": "stable",
+      "statusCounts": [
+        0,
+        0,
+        6,
+        6,
+        10,
+        16,
+        14,
+        27
+      ],
+      "p95Series": [
+        0,
+        0,
+        32.8,
+        34.7,
+        35.7,
+        39.1,
+        32.5,
+        35.6
+      ]
+    },
+    "health_check": {
+      "firstHalfP95": "1.8",
+      "secondHalfP95": "1.9",
+      "change": "9.1",
+      "trend": "stable",
+      "statusCounts": [
+        0,
+        0,
+        1,
+        1,
+        0,
+        2,
+        4,
+        3
+      ],
+      "p95Series": [
+        0,
+        0,
+        1.8,
+        1.7,
+        0,
+        1.7,
+        2,
+        2.1
+      ]
+    }
+  }
+}

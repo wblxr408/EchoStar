@@ -305,32 +305,47 @@ function sampleRedisKeyDistribution() {
 }
 
 function saveReport() {
-  if (!fs.existsSync(REPORT_DIR)) fs.mkdirSync(REPORT_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(REPORT_DIR)) fs.mkdirSync(REPORT_DIR, { recursive: true });
 
-  // 命名格式: monitor-{timestamp}.json
-  const ts = startTime.toISOString().replace(/[-:.T]/g, '').slice(0, 15);
-  const outputFile = path.join(REPORT_DIR, `monitor-${ts}.json`);
+    // 命名格式: monitor-{timestamp}.json
+    const ts = startTime.toISOString().replace(/[-:.T]/g, '').slice(0, 15);
+    const outputFile = path.join(REPORT_DIR, `monitor-${ts}.json`);
 
-  // 测试结束后采样一次 Redis key 分布（TTL 未过期）
-  const keyDistribution = sampleRedisKeyDistribution();
+    // 测试结束后采样一次 Redis key 分布（TTL 未过期）
+    const keyDistribution = sampleRedisKeyDistribution();
 
-  const report = {
-    startTime: startTime.toISOString(),
-    endTime: new Date().toISOString(),
-    config: {
-      redisContainer: REDIS_CONTAINER,
-      pgContainer: PG_CONTAINER,
-      intervalSeconds: INTERVAL,
-      durationSeconds: DURATION || 'manual',
-    },
-    samples,
-    keyDistribution,
-    summary: computeSummary(),
-  };
+    const report = {
+      startTime: startTime.toISOString(),
+      endTime: new Date().toISOString(),
+      config: {
+        redisContainer: REDIS_CONTAINER,
+        pgContainer: PG_CONTAINER,
+        intervalSeconds: INTERVAL,
+        durationSeconds: DURATION || 'manual',
+      },
+      samples,
+      keyDistribution,
+      summary: computeSummary(),
+    };
 
-  fs.writeFileSync(outputFile, JSON.stringify(report, null, 2));
-  console.log(`\n报告已保存: ${outputFile}`);
-  return outputFile;
+    fs.writeFileSync(outputFile, JSON.stringify(report, null, 2));
+    console.log(`\n报告已保存: ${outputFile}`);
+    return outputFile;
+  } catch (err) {
+    console.error(`\n[ERROR] 保存监控报告失败: ${err.message}`);
+    // 尝试保存到备用路径
+    try {
+      const fallbackDir = path.join(__dirname, '..', 'test-reports');
+      if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+      const ts = startTime.toISOString().replace(/[-:.T]/g, '').slice(0, 15);
+      const fallbackFile = path.join(fallbackDir, `monitor-${ts}.json`);
+      fs.writeFileSync(fallbackFile, JSON.stringify({ samples, error: err.message }, null, 2));
+      console.log(`[FALLBACK] 报告已保存到备用路径: ${fallbackFile}`);
+    } catch (fallbackErr) {
+      console.error(`[ERROR] 备用路径也保存失败: ${fallbackErr.message}`);
+    }
+  }
 }
 
 // ─── 主流程 ─────────────────────────────────────────────

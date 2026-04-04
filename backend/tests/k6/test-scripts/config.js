@@ -53,6 +53,23 @@ export const profiles = {
     readWriteRatio: 0.85,
     description: '聚焦 150-350 VUs 拐点区间，每 25 VUs 一级阶梯，快速预热 + 高密度测量',
   },
+  // 快速验证测试 - 3-5分钟跑完，覆盖全部18个接口逻辑路径
+  mini_verify: {
+    name: '快速验证测试',
+    vus: 30,
+    duration: '2m',
+    stages: [
+      // ---- 阶梯1：快速爬升 ----
+      { duration: '15s', target: 10 },
+      // ---- 阶梯2：保持负载，收集足够样本覆盖全部接口 ----
+      { duration: '1m30s', target: 30 },
+      // ---- 阶梯3：优雅停止 ----
+      { duration: '15s', target: 0 },
+    ],
+    dataScale: { users: 15, stories: 30 },
+    readWriteRatio: 0.85,
+    description: '3分钟快速验证，场景化行为模式覆盖全部18个接口（9读+9写）',
+  },
   // 耐力测试 - 检测内存泄漏和连接泄漏
   endurance: {
     name: '耐力测试',
@@ -156,13 +173,13 @@ export const ACTION_WEIGHTS = {
   // ========== 读操作 (85%) ==========
   get_story:         30,    // 获取故事详情（最高频读操作）
   map_explore:       15,    // 地图范围探索
-  map_feed:          10,    // 推荐信息流
-  search_story:      12,    // 搜索故事
+  map_clusters:      12,    // 聚合数据（次高频，仅次于 map_explore）
+  search_story:       5,    // 搜索故事（降低）
   list_comments:      8,    // 获取评论列表
-  get_user:           5,    // 获取用户信息
+  map_feed:          10,    // 推荐信息流
+  get_user:           2,    // 获取用户信息（降低）
   list_notifications: 3,    // 通知列表
   health_check:       1,    // 健康检查
-  map_clusters:       1,    // 聚合数据
   // ========== 写操作 (15%) ==========
   login:              3,    // 登录
   register:           1,    // 注册
@@ -179,13 +196,13 @@ export const ACTION_WEIGHTS = {
 export const READ_ACTIONS = {
   get_story:         30,
   map_explore:       15,
-  map_feed:          10,
-  search_story:      12,
+  map_clusters:      12,
+  search_story:       5,
   list_comments:      8,
-  get_user:           5,
+  map_feed:          10,
+  get_user:           2,
   list_notifications: 3,
   health_check:       1,
-  map_clusters:       1,
 };
 
 // 写操作子集（用于互动阶段，场景化行为脚本）

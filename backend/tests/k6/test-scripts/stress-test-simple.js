@@ -872,6 +872,11 @@ export default function (data) {
     return;
   }
 
+  // 确保 _publicStories 已初始化（k6 某些执行器/版本下模块级变量可能未保留 setup 副作用）
+  if ((!_publicStories || _publicStories.length === 0) && data.stories && data.stories.length > 0) {
+    _publicStories = data.stories.filter(s => s.visibility === 'public');
+  }
+
   // 1. 获取用户身份和 token
   const user = getRandomUser(data);
   const token = ensureToken(user);
