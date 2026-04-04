@@ -57,16 +57,12 @@ export const checkMultipleLikedSchema = Joi.object({
  * 验证中间件 - 创建点赞
  */
 export const validateCreateLike = (req, res, next) => {
-  // DEBUG: 打印实际传入的storyId值和类型
-  console.log('[validator-debug] storyId:', req.body?.storyId, 'type:', typeof req.body?.storyId, 'raw:', JSON.stringify(req.body));
-
   const { error, value } = createLikeSchema.validate(req.body, {
     abortEarly: false
   });
 
   if (error) {
     const errors = error.details.map((detail) => detail.message);
-    console.log('[validator-debug] 验证失败:', errors, '| Joi error details:', JSON.stringify(error.details));
     return res.status(400).json({
       code: 4000,
       message: '输入验证失败',
