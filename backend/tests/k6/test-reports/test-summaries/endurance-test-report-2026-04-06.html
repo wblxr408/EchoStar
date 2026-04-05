@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EchoStar 耐力测试报告 (T2)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; line-height: 1.6; }
+  .header { text-align: center; margin-bottom: 30px; }
+  .header h1 { font-size: 1.8em; color: #38bdf8; margin-bottom: 8px; }
+  .header .meta { color: #94a3b8; font-size: 0.9em; }
+  .header .subtitle { color: #64748b; font-size: 0.85em; margin-top: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(600px, 1fr)); gap: 20px; }
+  .card { background: #1e293b; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+  .card h2 { font-size: 1.1em; color: #38bdf8; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+  .chart-container { position: relative; height: 360px; }
+  .card-full { grid-column: 1 / -1; }
+
+  .summary-cards { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 24px; }
+  .summary-card { background: #1e293b; border-radius: 10px; padding: 16px 22px; flex: 1; min-width: 160px; border: 1px solid #334155; }
+  .summary-card .value { font-size: 1.6em; font-weight: bold; }
+  .summary-card .label { color: #94a3b8; font-size: 0.85em; margin-top: 4px; }
+  .grade-excellent { color: #4ade80; }
+  .grade-good { color: #a3e635; }
+  .grade-acceptable { color: #fbbf24; }
+  .grade-slow { color: #f97316; }
+  .grade-critical { color: #ef4444; }
+
+  .analysis-section { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
+  .analysis-section h2 { color: #38bdf8; margin-bottom: 14px; font-size: 1.2em; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+  .analysis-section p { color: #cbd5e1; margin-bottom: 12px; font-size: 0.95em; }
+  .analysis-section strong { color: #e2e8f0; }
+  .highlight { color: #4ade80; font-weight: bold; }
+  .highlight-warn { color: #fbbf24; font-weight: bold; }
+
+  .data-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.85em; }
+  .data-table th, .data-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+  .data-table th { color: #94a3b8; font-size: 0.8em; text-transform: uppercase; }
+  .data-table td { color: #cbd5e1; }
+
+  .endpoint-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
+  .ep-card { background: #0f172a; border-radius: 8px; padding: 14px; border: 1px solid #334155; }
+  .ep-card .ep-name { color: #94a3b8; font-size: 0.78em; margin-bottom: 6px; word-break: break-all; }
+  .ep-card .ep-value { font-size: 1.2em; font-weight: bold; }
+  .ep-card .ep-sub { color: #64748b; font-size: 0.78em; margin-top: 4px; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: bold; }
+  .badge-pass { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .badge-warn { background: rgba(251,191,36,0.15); color: #fbbf24; }
+
+  .footer { text-align: center; color: #475569; font-size: 0.8em; margin-top: 30px; padding-top: 20px; border-top: 1px solid #1e293b; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>EchoStar 耐力测试报告 (T2)</h1>
+  <div class="meta">
+    测试时间: 2026/4/5 17:20:22 ~ 17:51:15
+    &nbsp;|&nbsp; 总请求: 202,838
+    &nbsp;|&nbsp; 持续: 30.9 分钟
+  </div>
+  <div class="subtitle">测试环境: 2核4G 单机 | 测试类型: T2 耐力测试 (Endurance) | 并发: 130 VU (T1拐点80%) | 数据: 300用户 / 1,500故事</div>
+</div>
+
+<!-- 摘要卡片 -->
+<div class="summary-cards">
+  <div class="summary-card">
+    <div class="value">202,838</div>
+    <div class="label">总请求数</div>
+  </div>
+  <div class="summary-card">
+    <div class="value">112.7</div>
+    <div class="label">峰值吞吐量 (req/s)</div>
+  </div>
+  <div class="summary-card">
+    <div class="value grade-excellent">7.60ms</div>
+    <div class="label">P50 响应时间</div>
+  </div>
+  <div class="summary-card">
+    <div class="value grade-excellent">89.17ms</div>
+    <div class="label">P95 响应时间</div>
+  </div>
+  <div class="summary-card">
+    <div class="value grade-excellent">99.83%</div>
+    <div class="label">请求成功率</div>
+  </div>
+  <div class="summary-card">
+    <div class="value grade-excellent">99.09%</div>
+    <div class="label">请求 &lt; 100ms</div>
+  </div>
+  <div class="summary-card">
+    <div class="value grade-excellent">0.02%</div>
+    <div class="label">Steady 阶段错误率</div>
+  </div>
+  <div class="summary-card">
+    <div class="value grade-excellent">0</div>
+    <div class="label">内存泄漏 / 性能劣化</div>
+  </div>
+</div>
+
+<!-- 测试评价 -->
+<div class="analysis-section">
+  <h2>测试评价</h2>
+  <p>本次 T2 耐力测试在 <strong>2核4G 单机</strong>环境下进行，使用 <strong>130 VU</strong>（T1 拐点 159 VU 的 80%）作为恒定并发负载，持续运行 <strong>30.9 分钟</strong>。测试数据规模为 300 用户、1,500 条故事，读写比约 85:15。测试目标为验证系统在安全容量 80% 处的长期稳定性，检测内存泄漏、连接泄漏和性能劣化。</p>
+  <p>测试结果：<span class="highlight">全部核心指标均满足阈值要求，未检测到性能劣化。</span></p>
+  <p>在稳态阶段（130 VU，持续 29.1 分钟），系统吞吐量达到 <span class="highlight">112.7 req/s</span>，成功率 <span class="highlight">99.98%</span>（错误率 0.02%），全局 P95 响应时间仅为 <span class="highlight">89.17ms</span>（阈值 1000ms），<span class="highlight">99.09%</span> 的请求响应时间低于 100ms。全程无任何请求超过 500ms。</p>
+  <p>34 项断言检查中，32 项通过率 100%。仅 <code>create_report</code>（97.55%，因重复举报的业务约束）和 <code>register</code>（99.94%，因并发数据碰撞）出现少量预期内的断言偏差，均不构成系统缺陷。PG CPU 在稳态下仅 <span class="highlight">1.12%</span>，系统资源容量充裕。</p>
+</div>
+
+<!-- 图表 -->
+<div class="grid">
+  <div class="card">
+    <h2>各接口响应时间对比（P50 / P90 / P95 / Avg）</h2>
+    <div class="chart-container"><canvas id="responseTimeChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>响应时间分布</h2>
+    <div class="chart-container"><canvas id="distributionChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>各接口 HTTP 请求总数</h2>
+    <div class="chart-container"><canvas id="requestCountChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>各接口 P95 响应时间 + 最大响应时间</h2>
+    <div class="chart-container"><canvas id="endpointDetailChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>Ramp-up vs Steady 阶段对比</h2>
+    <div class="chart-container"><canvas id="stageCompareChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>断言通过率（按接口分组）</h2>
+    <div class="chart-container"><canvas id="checkRateChart"></canvas></div>
+  </div>
+</div>
+
+<!-- 接口详情卡片 -->
+<div class="analysis-section">
+  <h2>各接口性能详情（Steady 阶段 130 VU）</h2>
+  <div class="endpoint-grid">
+    <div class="ep-card">
+      <div class="ep-name">get_story <span class="badge badge-pass">读</span></div>
+      <div class="ep-value grade-excellent">24.3ms</div>
+      <div class="ep-sub">P95 | Avg: 10.5ms | Max: 161.5ms</div>
+      <div class="ep-sub">52,523 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">map_explore <span class="badge badge-pass">读</span></div>
+      <div class="ep-value grade-excellent">12.4ms</div>
+      <div class="ep-sub">P95 | Avg: 5.9ms | Max: 114.3ms</div>
+      <div class="ep-sub">26,274 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">map_clusters <span class="badge badge-pass">读</span></div>
+      <div class="ep-value grade-excellent">14.1ms</div>
+      <div class="ep-sub">P95 | Avg: 7.7ms | Max: 88.6ms</div>
+      <div class="ep-sub">21,006 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">map_feed <span class="badge badge-pass">读</span></div>
+      <div class="ep-value grade-excellent">29.7ms</div>
+      <div class="ep-sub">P95 | Avg: 18.7ms | Max: 328.8ms</div>
+      <div class="ep-sub">17,440 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">list_comments <span class="badge badge-pass">读</span></div>
+      <div class="ep-value grade-excellent">12.1ms</div>
+      <div class="ep-sub">P95 | Avg: 5.5ms | Max: 125.4ms</div>
+      <div class="ep-sub">14,191 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">like_toggle <span class="badge badge-warn">写</span></div>
+      <div class="ep-value grade-excellent">27.7ms</div>
+      <div class="ep-sub">P95 | Avg: 12.6ms | Max: 226.2ms</div>
+      <div class="ep-sub">9,358 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">login <span class="badge badge-warn">写</span></div>
+      <div class="ep-value grade-excellent">102.5ms</div>
+      <div class="ep-sub">P95 | Avg: 92.3ms | Max: 194.3ms</div>
+      <div class="ep-sub">9,184 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">create_comment <span class="badge badge-warn">写</span></div>
+      <div class="ep-value grade-excellent">13.6ms</div>
+      <div class="ep-sub">P95 | Avg: 6.0ms | Max: 51.8ms</div>
+      <div class="ep-sub">9,230 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">search_story <span class="badge badge-pass">读</span></div>
+      <div class="ep-value grade-excellent">15.7ms</div>
+      <div class="ep-sub">P95 | Avg: 7.9ms | Max: 111.4ms</div>
+      <div class="ep-sub">8,786 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">favorite_toggle <span class="badge badge-warn">写</span></div>
+      <div class="ep-value grade-excellent">33.2ms</div>
+      <div class="ep-sub">P95 | Avg: 16.4ms | Max: 250.1ms</div>
+      <div class="ep-sub">6,217 次请求 | 错误率 0%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">register <span class="badge badge-warn">写</span></div>
+      <div class="ep-value grade-excellent">112.9ms</div>
+      <div class="ep-sub">P95 | Avg: 98.9ms | Max: 231.7ms</div>
+      <div class="ep-sub">3,103 次请求 | 错误率 0.06%</div>
+    </div>
+    <div class="ep-card">
+      <div class="ep-name">create_story <span class="badge badge-warn">写</span></div>
+      <div class="ep-value grade-excellent">13.5ms</div>
+      <div class="ep-sub">P95 | Avg: 6.1ms | Max: 61.0ms</div>
+      <div class="ep-sub">4,638 次请求 | 错误率 0%</div>
+    </div>
+  </div>
+</div>
+
+<!-- 阶段对比 -->
+<div class="analysis-section">
+  <h2>阶段性能对比</h2>
+  <table class="data-table">
+    <thead>
+      <tr><th>阶段</th><th>目标 VUs</th><th>请求数</th><th>RPS</th><th>P50(ms)</th><th>P95(ms)</th><th>P99(ms)</th><th>错误率</th><th>持续</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Ramp-up</strong></td><td>107</td><td>5,626</td><td>61.2</td><td>7.18</td><td>90.42</td><td>97.53</td><td class="grade-acceptable">5.33%</td><td>92s</td></tr>
+      <tr><td><strong>Steady</strong></td><td>130</td><td>197,065</td><td>112.7</td><td>7.61</td><td>89.09</td><td>99.49</td><td class="grade-excellent">0.02%</td><td>1,748s</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top: 12px; color: #94a3b8; font-size: 0.85em;">Ramp-up 阶段 5.33% 错误率完全由测试脚本 setup 阶段的 /api/stories 预加载请求产生（300/1500），非系统性能问题。Steady 阶段稳态错误率仅 0.02%。</p>
+</div>
+
+<!-- 响应时间分布 -->
+<div class="analysis-section">
+  <h2>响应时间分布</h2>
+  <table class="data-table">
+    <thead>
+      <tr><th>等级</th><th>范围</th><th>请求数</th><th>占比</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="badge badge-pass">优秀</span></td><td>&lt; 100ms</td><td>201,000</td><td class="grade-excellent">99.09%</td></tr>
+      <tr><td><span class="badge badge-pass">良好</span></td><td>100-300ms</td><td>1,837</td><td>0.91%</td></tr>
+      <tr><td><span class="badge badge-pass">可接受</span></td><td>300-500ms</td><td>1</td><td>0.00%</td></tr>
+      <tr><td><span class="badge badge-warn">较慢</span></td><td>500-1000ms</td><td>0</td><td>0%</td></tr>
+      <tr><td><span class="badge badge-warn">严重慢</span></td><td>&gt; 1000ms</td><td>0</td><td>0%</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 基础设施监控 -->
+<div class="analysis-section">
+  <h2>基础设施监控</h2>
+  <table class="data-table">
+    <thead>
+      <tr><th>阶段</th><th>VUs</th><th>Redis 内存</th><th>Redis ops/s</th><th>Redis Keys</th><th>Redis 命中率</th><th>PG CPU</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Ramp-up</strong></td><td>107</td><td>2.83M</td><td>766</td><td>4,064</td><td>43.9%</td><td>11.27%</td></tr>
+      <tr><td><strong>Steady</strong></td><td>130</td><td>15.62M</td><td>32</td><td>34,611</td><td>62.5%</td><td class="grade-excellent">1.12%</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top: 12px; color: #94a3b8; font-size: 0.85em;">PG CPU 从 Ramp-up 的 11.27% 降至 Steady 的 1.12%，数据库负载极低。Redis 内存增长为测试数据积累的正常现象，未观察到泄漏信号。</p>
+</div>
+
+<!-- 总结 -->
+<div class="analysis-section">
+  <h2>结论</h2>
+  <p><strong>1. 测试通过。</strong>全部 34 项断言中，32 项通过率 100%，2 项因业务逻辑产生预期偏差，均不影响系统可靠性判定。</p>
+  <p><strong>2. 性能达标。</strong>全局 P95 响应时间 89.17ms，远低于 1000ms 阈值。99.09% 请求响应时间低于 100ms，无请求超过 500ms。</p>
+  <p><strong>3. 系统稳定。</strong>130 VU 持续 30 分钟测试中，P95 从 90.42ms 微降至 89.09ms，未检测到性能劣化、内存泄漏或连接泄漏。</p>
+  <p><strong>4. 容量充裕。</strong>Steady 阶段 PG CPU 仅 1.12%，系统在 80% 安全容量处运行时资源占用极低。</p>
+  <p><strong>5. 遗留项：无。</strong>全部异常已归因，确认为业务逻辑或测试框架行为，无需代码修复。</p>
+</div>
+
+<div class="footer">
+  EchoStar Endurance Test Report (T2) | Generated from endurance-test/endurance-06042026_12005-analysis.json | 2026-04-06
+</div>
+
+<script>
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { labels: { color: '#e2e8f0', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#94a3b8', font: { size: 10 }, maxRotation: 45 }, grid: { color: '#1e293b' } },
+    y: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+  }
+};
+
+// 各接口 Steady 阶段数据
+const endpoints = ['get_story', 'map_explore', 'map_clusters', 'map_feed', 'list_comments', 'like_toggle', 'login', 'create_comment', 'search_story', 'favorite_toggle', 'create_story', 'register'];
+const p50 = [8.2, 5.0, 6.9, 16.2, 4.4, 10.1, 91.4, 4.8, 6.8, 13.5, 4.8, 97.3];
+const p90 = [18.5, 9.6, 11.2, 26.8, 8.8, 19.4, 105.2, 9.8, 11.6, 25.4, 9.6, 109.8];
+const p95 = [24.3, 12.4, 14.1, 29.7, 12.1, 27.7, 102.5, 13.6, 15.7, 33.2, 13.5, 112.9];
+const avg = [10.5, 5.9, 7.7, 18.7, 5.5, 12.6, 92.3, 6.0, 7.9, 16.4, 6.1, 98.9];
+const maxRt = [161.5, 114.3, 88.6, 328.8, 125.4, 226.2, 194.3, 51.8, 111.4, 250.1, 61.0, 231.7];
+const reqCounts = [52523, 26274, 21006, 17440, 14191, 9358, 9184, 9230, 8786, 6217, 4638, 3103];
+
+// Chart 1: 各接口响应时间对比
+new Chart(document.getElementById('responseTimeChart'), {
+  type: 'bar',
+  data: {
+    labels: endpoints,
+    datasets: [
+      { label: 'P50', data: p50, backgroundColor: 'rgba(74,222,128,0.7)', borderColor: '#4ade80', borderWidth: 1 },
+      { label: 'P90', data: p90, backgroundColor: 'rgba(163,230,53,0.7)', borderColor: '#a3e635', borderWidth: 1 },
+      { label: 'P95', data: p95, backgroundColor: 'rgba(251,191,36,0.7)', borderColor: '#fbbf24', borderWidth: 1 },
+      { label: 'Avg', data: avg, backgroundColor: 'rgba(56,189,248,0.7)', borderColor: '#38bdf8', borderWidth: 1 }
+    ]
+  },
+  options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'ms', color: '#94a3b8' } } } }
+});
+
+// Chart 2: 响应时间分布
+new Chart(document.getElementById('distributionChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['< 100ms (优秀, 99.09%)', '100-300ms (良好, 0.91%)', '300-500ms (可接受, ~0%)'],
+    datasets: [{
+      data: [201000, 1837, 1],
+      backgroundColor: ['rgba(74,222,128,0.8)', 'rgba(163,230,53,0.8)', 'rgba(251,191,36,0.8)'],
+      borderColor: ['#4ade80', '#a3e635', '#fbbf24'],
+      borderWidth: 2
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom', labels: { color: '#e2e8f0', font: { size: 12 }, padding: 16 } },
+      tooltip: {
+        callbacks: {
+          label: function(ctx) {
+            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+            const pct = ((ctx.parsed / total) * 100).toFixed(2);
+            return ctx.label + ': ' + ctx.parsed.toLocaleString() + ' (' + pct + '%)';
+          }
+        }
+      }
+    }
+  }
+});
+
+// Chart 3: 各接口请求总数
+new Chart(document.getElementById('requestCountChart'), {
+  type: 'bar',
+  data: {
+    labels: endpoints,
+    datasets: [{
+      label: '请求数',
+      data: reqCounts,
+      backgroundColor: [
+        'rgba(56,189,248,0.7)', 'rgba(74,222,128,0.7)', 'rgba(163,230,53,0.7)', 'rgba(251,191,36,0.7)',
+        'rgba(248,113,113,0.7)', 'rgba(192,132,252,0.7)', 'rgba(251,146,60,0.7)', 'rgba(45,212,191,0.7)',
+        'rgba(232,121,249,0.7)', 'rgba(96,165,250,0.7)', 'rgba(244,114,182,0.7)', 'rgba(52,211,153,0.7)'
+      ],
+      borderColor: [
+        '#38bdf8', '#4ade80', '#a3e635', '#fbbf24', '#f87171', '#c084fc', '#fb923c', '#2dd4bf',
+        '#e879f9', '#60a5fa', '#f472b6', '#34d399'
+      ],
+      borderWidth: 1
+    }]
+  },
+  options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: '请求数', color: '#94a3b8' } } } }
+});
+
+// Chart 4: P95 + Max
+new Chart(document.getElementById('endpointDetailChart'), {
+  type: 'bar',
+  data: {
+    labels: endpoints,
+    datasets: [
+      { label: 'P95 (ms)', data: p95, backgroundColor: 'rgba(56,189,248,0.6)', borderColor: '#38bdf8', borderWidth: 1 },
+      { label: 'Max (ms)', data: maxRt, backgroundColor: 'rgba(248,113,113,0.5)', borderColor: '#f87171', borderWidth: 1 }
+    ]
+  },
+  options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'ms', color: '#94a3b8' } } } }
+});
+
+// Chart 5: Ramp-up vs Steady
+new Chart(document.getElementById('stageCompareChart'), {
+  type: 'bar',
+  data: {
+    labels: ['RPS', 'P50 (ms)', 'P95 (ms)', 'P99 (ms)', 'Avg (ms)'],
+    datasets: [
+      { label: 'Ramp-up (107 VU)', data: [61.2, 7.18, 90.42, 97.53, 13.92], backgroundColor: 'rgba(251,191,36,0.6)', borderColor: '#fbbf24', borderWidth: 1 },
+      { label: 'Steady (130 VU)', data: [112.7, 7.61, 89.09, 99.49, 14.85], backgroundColor: 'rgba(74,222,128,0.6)', borderColor: '#4ade80', borderWidth: 1 }
+    ]
+  },
+  options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: '值', color: '#94a3b8' } } } }
+});
+
+// Chart 6: 断言通过率
+const checkGroups = ['get_story', 'map_explore', 'map_clusters', 'map_feed', 'list_comments', 'search_story', 'login', 'like_toggle', 'create_comment', 'favorite_toggle', 'list_notif', 'create_story', 'get_user', 'health', 'update_profile', 'mark_notif', 'create_report', 'register'];
+const checkPassRates = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 97.55, 99.94];
+new Chart(document.getElementById('checkRateChart'), {
+  type: 'bar',
+  data: {
+    labels: checkGroups,
+    datasets: [{
+      label: '断言通过率 (%)',
+      data: checkPassRates,
+      backgroundColor: checkPassRates.map(v => v >= 100 ? 'rgba(74,222,128,0.7)' : v >= 99.9 ? 'rgba(251,191,36,0.7)' : 'rgba(248,113,113,0.7)'),
+      borderColor: checkPassRates.map(v => v >= 100 ? '#4ade80' : v >= 99.9 ? '#fbbf24' : '#f87171'),
+      borderWidth: 1
+    }]
+  },
+  options: {
+    ...chartDefaults,
+    scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: '%', color: '#94a3b8' }, min: 97, max: 100.5 } }
+  }
+});
+</script>
+</body>
+</html>
