@@ -1,0 +1,3522 @@
+{
+  "metadata": {
+    "generatedAt": "2026-04-05T07:46:37.563Z",
+    "startTime": "2026-04-05T07:22:42.523Z",
+    "endTime": "2026-04-05T07:46:01.966Z",
+    "totalRequests": 426518,
+    "testDurationSec": 1399.443
+  },
+  "stages": [
+    {
+      "name": "52vus",
+      "targetVus": 52,
+      "startSec": 10.82,
+      "endSec": 93.819,
+      "durationSec": 82.999,
+      "requestCount": 6543,
+      "rps": 78.83,
+      "errorRate": 6.1134,
+      "p50": 5.56,
+      "p90": 13.34,
+      "p95": 52.99,
+      "p99": 61.27,
+      "avg": 9.28,
+      "endpoints": {
+        "http://localhost:3000/api/auth/register_2": {
+          "count": 328,
+          "p95": 63.25,
+          "p99": 65.59,
+          "avg": 59.81,
+          "errorRate": 0
+        },
+        "http://localhost:3000/api/stories": {
+          "count": 2000,
+          "p95": 8.36,
+          "p99": 10.8,
+          "avg": 5.12,
+          "errorRate": 20
+        },
+        "http://localhost:3000/api/comments": {
+          "count": 200,
+          "p95": 10.64,
+          "p99": 13.13,
+          "avg": 7.83,
+          "errorRate": 0
+        },
+        "http://localhost:3000/api/likes": {
+          "count": 200,
+          "p95": 15.02,
+          "p99": 22.1,
+          "avg": 11.14,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 651,
+          "p95": 6.67,
+          "p99": 12.84,
+          "avg": 4.33,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 341,
+          "p95": 6.46,
+          "p99": 8.07,
+          "avg": 3.87,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 10,
+          "p95": 14.16,
+          "p99": 14.16,
+          "avg": 10.29,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 1252,
+          "p95": 19.38,
+          "p99": 29.54,
+          "avg": 10.02,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 207,
+          "p95": 9.85,
+          "p99": 12.51,
+          "avg": 6.15,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 497,
+          "p95": 6.98,
+          "p99": 9.35,
+          "avg": 4.6,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 60,
+          "p95": 10.2,
+          "p99": 12.87,
+          "avg": 5.45,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 415,
+          "p95": 14.68,
+          "p99": 16.68,
+          "avg": 10.95,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 43,
+          "p95": 2.82,
+          "p99": 9.05,
+          "avg": 1.59,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 113,
+          "p95": 6.83,
+          "p99": 9.35,
+          "avg": 4.46,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 84,
+          "p95": 11.02,
+          "p99": 19.16,
+          "avg": 6.76,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 128,
+          "p95": 8.19,
+          "p99": 10.83,
+          "avg": 4.39,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 14,
+          "p95": 13.16,
+          "p99": 13.16,
+          "avg": 10.1,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "63vus",
+      "targetVus": 63,
+      "startSec": 93.819,
+      "endSec": 124.82,
+      "durationSec": 31.00099999999999,
+      "requestCount": 5058,
+      "rps": 163.16,
+      "errorRate": 0,
+      "p50": 5.25,
+      "p90": 11.47,
+      "p95": 14.18,
+      "p99": 24.43,
+      "avg": 6.61,
+      "endpoints": {
+        "map_explore": {
+          "count": 830,
+          "p95": 7.24,
+          "p99": 12.16,
+          "avg": 4.22,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 1703,
+          "p95": 19.34,
+          "p99": 32.43,
+          "avg": 8.99,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 296,
+          "p95": 9.2,
+          "p99": 14.69,
+          "avg": 5.48,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 508,
+          "p95": 13.45,
+          "p99": 21.2,
+          "avg": 10.4,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 70,
+          "p95": 2.25,
+          "p99": 2.95,
+          "avg": 1.21,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 144,
+          "p95": 8.56,
+          "p99": 11.71,
+          "avg": 4.82,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 672,
+          "p95": 7.5,
+          "p99": 14.07,
+          "avg": 4.51,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 431,
+          "p95": 7.32,
+          "p99": 9.95,
+          "avg": 3.81,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 178,
+          "p95": 9.43,
+          "p99": 16.28,
+          "avg": 4.61,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 124,
+          "p95": 10.36,
+          "p99": 13.19,
+          "avg": 5.55,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 70,
+          "p95": 11.59,
+          "p99": 37.13,
+          "avg": 5.16,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 20,
+          "p95": 25.44,
+          "p99": 29.98,
+          "avg": 10.82,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 12,
+          "p95": 20.22,
+          "p99": 20.22,
+          "avg": 14.27,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "81vus",
+      "targetVus": 81,
+      "startSec": 124.82,
+      "endSec": 155.821,
+      "durationSec": 31.001000000000005,
+      "requestCount": 6397,
+      "rps": 206.35,
+      "errorRate": 0,
+      "p50": 5.53,
+      "p90": 12.06,
+      "p95": 15.28,
+      "p99": 23.99,
+      "avg": 6.81,
+      "endpoints": {
+        "map_explore": {
+          "count": 1072,
+          "p95": 9.09,
+          "p99": 13.44,
+          "avg": 4.52,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 732,
+          "p95": 13.87,
+          "p99": 18.81,
+          "avg": 9.49,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 2047,
+          "p95": 21.09,
+          "p99": 28.05,
+          "avg": 9.3,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 364,
+          "p95": 11.89,
+          "p99": 16.61,
+          "avg": 5.95,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 862,
+          "p95": 8.94,
+          "p99": 13.79,
+          "avg": 4.9,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 213,
+          "p95": 10.09,
+          "p99": 16.01,
+          "avg": 4.97,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 577,
+          "p95": 8.83,
+          "p99": 14.36,
+          "avg": 4.2,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 127,
+          "p95": 11.24,
+          "p99": 17.02,
+          "avg": 5.56,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 67,
+          "p95": 4.72,
+          "p99": 8.62,
+          "avg": 1.65,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 194,
+          "p95": 10.31,
+          "p99": 14.63,
+          "avg": 4.98,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 87,
+          "p95": 12.16,
+          "p99": 14.04,
+          "avg": 5.49,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 32,
+          "p95": 23.39,
+          "p99": 31.13,
+          "avg": 9.39,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 23,
+          "p95": 27.31,
+          "p99": 29.52,
+          "avg": 14.54,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "98vus",
+      "targetVus": 98,
+      "startSec": 155.821,
+      "endSec": 186.82,
+      "durationSec": 30.998999999999995,
+      "requestCount": 7744,
+      "rps": 249.81,
+      "errorRate": 0,
+      "p50": 5.99,
+      "p90": 13.84,
+      "p95": 17.5,
+      "p99": 27.75,
+      "avg": 7.54,
+      "endpoints": {
+        "list_comments": {
+          "count": 692,
+          "p95": 10.72,
+          "p99": 16.31,
+          "avg": 4.63,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 222,
+          "p95": 13.32,
+          "p99": 22.18,
+          "avg": 5.9,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 1268,
+          "p95": 10.5,
+          "p99": 14.83,
+          "avg": 4.92,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 1069,
+          "p95": 11.28,
+          "p99": 16.67,
+          "avg": 5.5,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 2553,
+          "p95": 23.18,
+          "p99": 34.75,
+          "avg": 10.52,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 406,
+          "p95": 12.57,
+          "p99": 16.61,
+          "avg": 6.44,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 843,
+          "p95": 14.68,
+          "p99": 21.69,
+          "avg": 9.69,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 175,
+          "p95": 12.85,
+          "p99": 20.31,
+          "avg": 5.92,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 98,
+          "p95": 6.45,
+          "p99": 9.38,
+          "avg": 1.94,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 261,
+          "p95": 13.91,
+          "p99": 22.62,
+          "avg": 6.03,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 106,
+          "p95": 13.08,
+          "p99": 20.22,
+          "avg": 6.13,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 32,
+          "p95": 30.6,
+          "p99": 44.03,
+          "avg": 13.16,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 19,
+          "p95": 38.1,
+          "p99": 38.1,
+          "avg": 15.74,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "116vus",
+      "targetVus": 116,
+      "startSec": 186.82,
+      "endSec": 217.82,
+      "durationSec": 31,
+      "requestCount": 9083,
+      "rps": 293,
+      "errorRate": 0,
+      "p50": 6.84,
+      "p90": 16.07,
+      "p95": 20.58,
+      "p99": 32.73,
+      "avg": 8.54,
+      "endpoints": {
+        "map_clusters": {
+          "count": 1156,
+          "p95": 14.31,
+          "p99": 21.32,
+          "avg": 6.41,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 3021,
+          "p95": 27.06,
+          "p99": 40.1,
+          "avg": 11.76,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 45,
+          "p95": 21.63,
+          "p99": 28.2,
+          "avg": 13.38,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 1466,
+          "p95": 13.14,
+          "p99": 19.78,
+          "avg": 5.83,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 973,
+          "p95": 17.73,
+          "p99": 23.47,
+          "avg": 10.4,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 482,
+          "p95": 15.55,
+          "p99": 22.75,
+          "avg": 7.17,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 325,
+          "p95": 20.07,
+          "p99": 27.6,
+          "avg": 7.35,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 28,
+          "p95": 43.58,
+          "p99": 52.71,
+          "avg": 19.06,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 204,
+          "p95": 17.33,
+          "p99": 26.4,
+          "avg": 6.96,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 126,
+          "p95": 16.58,
+          "p99": 24.47,
+          "avg": 7.1,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 848,
+          "p95": 13.49,
+          "p99": 18.95,
+          "avg": 5.42,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 118,
+          "p95": 5.93,
+          "p99": 7.63,
+          "avg": 2.06,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 291,
+          "p95": 14.4,
+          "p99": 17.48,
+          "avg": 6.33,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "132vus",
+      "targetVus": 132,
+      "startSec": 217.82,
+      "endSec": 248.82,
+      "durationSec": 31,
+      "requestCount": 10145,
+      "rps": 327.26,
+      "errorRate": 0,
+      "p50": 7.72,
+      "p90": 19.46,
+      "p95": 24.79,
+      "p99": 39.08,
+      "avg": 9.91,
+      "endpoints": {
+        "map_feed": {
+          "count": 1089,
+          "p95": 20.79,
+          "p99": 26.12,
+          "avg": 11.27,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 3387,
+          "p95": 32.61,
+          "p99": 47.46,
+          "avg": 13.5,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 139,
+          "p95": 18.09,
+          "p99": 26.09,
+          "avg": 7.29,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 1404,
+          "p95": 18.07,
+          "p99": 28.03,
+          "avg": 7.56,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 902,
+          "p95": 17.02,
+          "p99": 22.86,
+          "avg": 6.51,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 529,
+          "p95": 18.15,
+          "p99": 23.86,
+          "avg": 8.65,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 1673,
+          "p95": 17.56,
+          "p99": 24.14,
+          "avg": 6.84,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 247,
+          "p95": 23.49,
+          "p99": 29.81,
+          "avg": 9.08,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 315,
+          "p95": 22.14,
+          "p99": 33.66,
+          "avg": 8.42,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 46,
+          "p95": 56.54,
+          "p99": 101.12,
+          "avg": 26.23,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 292,
+          "p95": 17.61,
+          "p99": 25.36,
+          "avg": 7.17,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 94,
+          "p95": 7.55,
+          "p99": 13.14,
+          "avg": 2.65,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 28,
+          "p95": 49,
+          "p99": 79.19,
+          "avg": 20.18,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "152vus",
+      "targetVus": 152,
+      "startSec": 248.82,
+      "endSec": 291.819,
+      "durationSec": 42.999000000000024,
+      "requestCount": 14573,
+      "rps": 338.91,
+      "errorRate": 0,
+      "p50": 35.65,
+      "p90": 100.24,
+      "p95": 122.66,
+      "p99": 175.13,
+      "avg": 45.97,
+      "endpoints": {
+        "map_explore": {
+          "count": 2440,
+          "p95": 100.99,
+          "p99": 134.13,
+          "avg": 37.23,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 478,
+          "p95": 116.82,
+          "p99": 163.42,
+          "avg": 42.48,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 169,
+          "p95": 107.87,
+          "p99": 147.58,
+          "avg": 36.48,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 4867,
+          "p95": 142.74,
+          "p99": 196.66,
+          "avg": 56.74,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 1948,
+          "p95": 106.96,
+          "p99": 140.14,
+          "avg": 39.84,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 1661,
+          "p95": 112.99,
+          "p99": 144.63,
+          "avg": 44.75,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 150,
+          "p95": 52.08,
+          "p99": 66.5,
+          "avg": 18.85,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1295,
+          "p95": 107.75,
+          "p99": 138.15,
+          "avg": 38.74,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 751,
+          "p95": 115.75,
+          "p99": 147.38,
+          "avg": 42.37,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 421,
+          "p95": 96.33,
+          "p99": 134.43,
+          "avg": 35.96,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 299,
+          "p95": 139.25,
+          "p99": 239.74,
+          "avg": 52.07,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 42,
+          "p95": 301.87,
+          "p99": 373.35,
+          "avg": 120.63,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 52,
+          "p95": 179.11,
+          "p99": 210.56,
+          "avg": 75.61,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "162vus",
+      "targetVus": 162,
+      "startSec": 291.819,
+      "endSec": 343.819,
+      "durationSec": 52,
+      "requestCount": 17872,
+      "rps": 343.69,
+      "errorRate": 0,
+      "p50": 70.84,
+      "p90": 126.37,
+      "p95": 146.95,
+      "p99": 194.61,
+      "avg": 76.48,
+      "endpoints": {
+        "map_clusters": {
+          "count": 2379,
+          "p95": 124.97,
+          "p99": 152.23,
+          "avg": 67.94,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 1910,
+          "p95": 129.7,
+          "p99": 159.33,
+          "avg": 73.94,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 515,
+          "p95": 119.25,
+          "p99": 150.92,
+          "avg": 61.51,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 239,
+          "p95": 115.74,
+          "p99": 178.08,
+          "avg": 62.36,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 5903,
+          "p95": 168.18,
+          "p99": 221.5,
+          "avg": 89.67,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 398,
+          "p95": 170.25,
+          "p99": 251.13,
+          "avg": 86.87,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3028,
+          "p95": 122.31,
+          "p99": 156.38,
+          "avg": 66.97,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1018,
+          "p95": 142.11,
+          "p99": 174.77,
+          "avg": 75.82,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 592,
+          "p95": 162.32,
+          "p99": 197.83,
+          "avg": 74.03,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1553,
+          "p95": 126.93,
+          "p99": 158.27,
+          "avg": 67.5,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 205,
+          "p95": 58.88,
+          "p99": 66.54,
+          "avg": 32.64,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 60,
+          "p95": 177.58,
+          "p99": 258.32,
+          "avg": 108.78,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 72,
+          "p95": 321.89,
+          "p99": 416.89,
+          "avg": 163.43,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "177vus",
+      "targetVus": 177,
+      "startSec": 343.819,
+      "endSec": 404.819,
+      "durationSec": 61,
+      "requestCount": 20914,
+      "rps": 342.85,
+      "errorRate": 0,
+      "p50": 104.82,
+      "p90": 174.47,
+      "p95": 197.55,
+      "p99": 253.94,
+      "avg": 112.17,
+      "endpoints": {
+        "map_feed": {
+          "count": 2295,
+          "p95": 184.01,
+          "p99": 206.94,
+          "avg": 110.54,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1174,
+          "p95": 186.61,
+          "p99": 231.57,
+          "avg": 111.94,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 253,
+          "p95": 174.2,
+          "p99": 211.89,
+          "avg": 97.71,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2777,
+          "p95": 170.96,
+          "p99": 193.68,
+          "avg": 102.25,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3452,
+          "p95": 171.08,
+          "p99": 195.44,
+          "avg": 100.31,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 232,
+          "p95": 87.07,
+          "p99": 95.73,
+          "avg": 49.81,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6864,
+          "p95": 227.42,
+          "p99": 295.84,
+          "avg": 127.89,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 670,
+          "p95": 172.69,
+          "p99": 215.47,
+          "avg": 92.69,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 711,
+          "p95": 209.1,
+          "p99": 261.17,
+          "avg": 107.27,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1877,
+          "p95": 174.21,
+          "p99": 194.76,
+          "avg": 102.14,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 457,
+          "p95": 226.12,
+          "p99": 273.34,
+          "avg": 130.06,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 83,
+          "p95": 225.74,
+          "p99": 287.81,
+          "avg": 141.61,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 69,
+          "p95": 332.76,
+          "p99": 376.6,
+          "avg": 219.25,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "191vus",
+      "targetVus": 191,
+      "startSec": 404.819,
+      "endSec": 465.82,
+      "durationSec": 61.000999999999976,
+      "requestCount": 20671,
+      "rps": 338.86,
+      "errorRate": 0,
+      "p50": 156.34,
+      "p90": 239.21,
+      "p95": 267.23,
+      "p99": 337,
+      "avg": 163.28,
+      "endpoints": {
+        "map_clusters": {
+          "count": 2815,
+          "p95": 242.11,
+          "p99": 273.48,
+          "avg": 155.96,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1173,
+          "p95": 280.67,
+          "p99": 320.28,
+          "avg": 175.15,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 458,
+          "p95": 313.69,
+          "p99": 389.42,
+          "avg": 204.89,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 709,
+          "p95": 299.18,
+          "p99": 389.31,
+          "avg": 166.46,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6799,
+          "p95": 286.97,
+          "p99": 369.76,
+          "avg": 166.81,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3435,
+          "p95": 244.53,
+          "p99": 279.25,
+          "avg": 155.38,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 2280,
+          "p95": 259.55,
+          "p99": 297.71,
+          "avg": 173.75,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1735,
+          "p95": 245.46,
+          "p99": 278.43,
+          "avg": 158.92,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 600,
+          "p95": 217.49,
+          "p99": 261.36,
+          "avg": 134.06,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 269,
+          "p95": 224.59,
+          "p99": 278.24,
+          "avg": 131.53,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 91,
+          "p95": 346.6,
+          "p99": 539.07,
+          "avg": 223.51,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 221,
+          "p95": 100.78,
+          "p99": 116.2,
+          "avg": 69.95,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 86,
+          "p95": 479.22,
+          "p99": 533.38,
+          "avg": 320.1,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "206vus",
+      "targetVus": 206,
+      "startSec": 465.82,
+      "endSec": 526.82,
+      "durationSec": 61.00000000000006,
+      "requestCount": 19820,
+      "rps": 324.92,
+      "errorRate": 0,
+      "p50": 228.81,
+      "p90": 335.87,
+      "p95": 377.66,
+      "p99": 501.49,
+      "avg": 235.11,
+      "endpoints": {
+        "map_feed": {
+          "count": 2152,
+          "p95": 377.42,
+          "p99": 473.58,
+          "avg": 263.03,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1763,
+          "p95": 353.43,
+          "p99": 443.05,
+          "avg": 243.51,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3270,
+          "p95": 358.84,
+          "p99": 441.83,
+          "avg": 243.68,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2668,
+          "p95": 356.46,
+          "p99": 441.07,
+          "avg": 240.59,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 437,
+          "p95": 459.52,
+          "p99": 569.99,
+          "avg": 292.87,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 579,
+          "p95": 274.45,
+          "p99": 328.66,
+          "avg": 173.87,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6624,
+          "p95": 390.71,
+          "p99": 502.19,
+          "avg": 219.04,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1091,
+          "p95": 395.55,
+          "p99": 586.71,
+          "avg": 267.38,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 197,
+          "p95": 122.03,
+          "p99": 173.22,
+          "avg": 85.01,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 256,
+          "p95": 268.45,
+          "p99": 314.79,
+          "avg": 172.67,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 646,
+          "p95": 425.72,
+          "p99": 512.04,
+          "avg": 220.69,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 77,
+          "p95": 493.66,
+          "p99": 583.82,
+          "avg": 283.4,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 60,
+          "p95": 741.25,
+          "p99": 931.78,
+          "avg": 484.71,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "218vus",
+      "targetVus": 218,
+      "startSec": 526.82,
+      "endSec": 579.82,
+      "durationSec": 53,
+      "requestCount": 17636,
+      "rps": 332.75,
+      "errorRate": 0,
+      "p50": 260.33,
+      "p90": 376.23,
+      "p95": 401.76,
+      "p99": 465.04,
+      "avg": 258.35,
+      "endpoints": {
+        "list_notifications": {
+          "count": 616,
+          "p95": 474.56,
+          "p99": 531.34,
+          "avg": 243.37,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 1942,
+          "p95": 416.11,
+          "p99": 441.97,
+          "avg": 311.5,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 964,
+          "p95": 427.07,
+          "p99": 470.02,
+          "avg": 310.58,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2354,
+          "p95": 394.27,
+          "p99": 422.38,
+          "avg": 289.34,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 2960,
+          "p95": 396.55,
+          "p99": 424.61,
+          "avg": 287.12,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 5740,
+          "p95": 350.53,
+          "p99": 469.25,
+          "avg": 207.87,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1582,
+          "p95": 394.25,
+          "p99": 419.34,
+          "avg": 287.79,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 392,
+          "p95": 466.92,
+          "p99": 625.41,
+          "avg": 334.68,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 532,
+          "p95": 259.74,
+          "p99": 303.76,
+          "avg": 162.84,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 70,
+          "p95": 354.79,
+          "p99": 406.11,
+          "avg": 246.61,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 246,
+          "p95": 269.66,
+          "p99": 285.8,
+          "avg": 166.9,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 65,
+          "p95": 675.56,
+          "p99": 841.09,
+          "avg": 493.35,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 173,
+          "p95": 122.51,
+          "p99": 138.67,
+          "avg": 82.42,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "233vus",
+      "targetVus": 233,
+      "startSec": 579.82,
+      "endSec": 641.82,
+      "durationSec": 62,
+      "requestCount": 20766,
+      "rps": 334.94,
+      "errorRate": 0,
+      "p50": 303.18,
+      "p90": 426.99,
+      "p95": 462.28,
+      "p99": 530.33,
+      "avg": 295.35,
+      "endpoints": {
+        "map_feed": {
+          "count": 2348,
+          "p95": 480.48,
+          "p99": 523.53,
+          "avg": 368.59,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1825,
+          "p95": 463.4,
+          "p99": 500.36,
+          "avg": 344.09,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3366,
+          "p95": 461.04,
+          "p99": 501.5,
+          "avg": 343.97,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2806,
+          "p95": 463.71,
+          "p99": 501.62,
+          "avg": 342.84,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6964,
+          "p95": 374.06,
+          "p99": 540.71,
+          "avg": 220.25,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 663,
+          "p95": 508.53,
+          "p99": 601.59,
+          "avg": 258.41,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 591,
+          "p95": 267.78,
+          "p99": 311.59,
+          "avg": 168.87,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 477,
+          "p95": 525.05,
+          "p99": 746.95,
+          "avg": 384.49,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1103,
+          "p95": 487.13,
+          "p99": 520.3,
+          "avg": 367.28,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 81,
+          "p95": 756.42,
+          "p99": 901.57,
+          "avg": 579.48,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 248,
+          "p95": 258.47,
+          "p99": 305.7,
+          "avg": 168.4,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 218,
+          "p95": 120.69,
+          "p99": 132.8,
+          "avg": 86.55,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 76,
+          "p95": 382.32,
+          "p99": 531.98,
+          "avg": 250.66,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "248vus",
+      "targetVus": 248,
+      "startSec": 641.82,
+      "endSec": 702.819,
+      "durationSec": 60.99899999999991,
+      "requestCount": 20390,
+      "rps": 334.27,
+      "errorRate": 0,
+      "p50": 383.96,
+      "p90": 496.34,
+      "p95": 529.71,
+      "p99": 613.28,
+      "avg": 346.37,
+      "endpoints": {
+        "map_clusters": {
+          "count": 2742,
+          "p95": 523.91,
+          "p99": 564.25,
+          "avg": 422.83,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 670,
+          "p95": 596.33,
+          "p99": 684.49,
+          "avg": 300.31,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 607,
+          "p95": 255.8,
+          "p99": 283.04,
+          "avg": 166.63,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6673,
+          "p95": 414.09,
+          "p99": 669.96,
+          "avg": 228.9,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1095,
+          "p95": 555.92,
+          "p99": 608.41,
+          "avg": 447.07,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 2221,
+          "p95": 537.08,
+          "p99": 574.38,
+          "avg": 444.94,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1770,
+          "p95": 519.41,
+          "p99": 562.38,
+          "avg": 426.33,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3488,
+          "p95": 520.52,
+          "p99": 562.14,
+          "avg": 423.06,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 265,
+          "p95": 247.98,
+          "p99": 287.69,
+          "avg": 166.64,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 497,
+          "p95": 611.55,
+          "p99": 874.02,
+          "avg": 469.4,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 211,
+          "p95": 109.21,
+          "p99": 122.17,
+          "avg": 81.8,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 81,
+          "p95": 846.04,
+          "p99": 911.48,
+          "avg": 632.99,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 70,
+          "p95": 481.25,
+          "p99": 909.43,
+          "avg": 276.45,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "263vus",
+      "targetVus": 263,
+      "startSec": 702.819,
+      "endSec": 764.82,
+      "durationSec": 62.00100000000009,
+      "requestCount": 20832,
+      "rps": 335.99,
+      "errorRate": 0,
+      "p50": 441.24,
+      "p90": 553.2,
+      "p95": 580.37,
+      "p99": 675.9,
+      "avg": 380.44,
+      "endpoints": {
+        "create_comment": {
+          "count": 269,
+          "p95": 253.58,
+          "p99": 298.59,
+          "avg": 167.24,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 7006,
+          "p95": 460.99,
+          "p99": 735.42,
+          "avg": 230.94,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 2276,
+          "p95": 587.79,
+          "p99": 619.17,
+          "avg": 505.69,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2725,
+          "p95": 566.8,
+          "p99": 605.09,
+          "avg": 482.8,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3456,
+          "p95": 571.91,
+          "p99": 606.5,
+          "avg": 484.18,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 228,
+          "p95": 120.99,
+          "p99": 135.36,
+          "avg": 87.07,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1143,
+          "p95": 596.62,
+          "p99": 643.51,
+          "avg": 508.18,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1836,
+          "p95": 572.55,
+          "p99": 607.49,
+          "avg": 487.9,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 632,
+          "p95": 658.01,
+          "p99": 719.46,
+          "avg": 324.65,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 447,
+          "p95": 636.46,
+          "p99": 888.28,
+          "avg": 525.85,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 635,
+          "p95": 273.23,
+          "p99": 303.05,
+          "avg": 168.72,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 106,
+          "p95": 396.17,
+          "p99": 789.79,
+          "avg": 265.02,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 73,
+          "p95": 858.53,
+          "p99": 878.72,
+          "avg": 693.25,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "277vus",
+      "targetVus": 277,
+      "startSec": 764.82,
+      "endSec": 826.82,
+      "durationSec": 62,
+      "requestCount": 20839,
+      "rps": 336.11,
+      "errorRate": 0,
+      "p50": 512.44,
+      "p90": 633.5,
+      "p95": 665.8,
+      "p99": 738.24,
+      "avg": 425.87,
+      "endpoints": {
+        "map_feed": {
+          "count": 2296,
+          "p95": 677.72,
+          "p99": 710.98,
+          "avg": 584.43,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1855,
+          "p95": 665.17,
+          "p99": 706.17,
+          "avg": 566.34,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3493,
+          "p95": 660.45,
+          "p99": 693.35,
+          "avg": 562.87,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2713,
+          "p95": 660.22,
+          "p99": 696.72,
+          "avg": 562.21,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 675,
+          "p95": 745.01,
+          "p99": 822,
+          "avg": 365.01,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 7013,
+          "p95": 382.94,
+          "p99": 745.48,
+          "avg": 224.86,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1110,
+          "p95": 692.99,
+          "p99": 741.98,
+          "avg": 590.02,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 222,
+          "p95": 116.98,
+          "p99": 139.88,
+          "avg": 87.08,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 614,
+          "p95": 269.03,
+          "p99": 302.33,
+          "avg": 169.97,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 79,
+          "p95": 949.44,
+          "p99": 1020.05,
+          "avg": 772.76,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 439,
+          "p95": 741.13,
+          "p99": 1077.07,
+          "avg": 608.1,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 69,
+          "p95": 486.35,
+          "p99": 803.91,
+          "avg": 273.89,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 261,
+          "p95": 246,
+          "p99": 276.65,
+          "avg": 161.4,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "292vus",
+      "targetVus": 292,
+      "startSec": 826.82,
+      "endSec": 888.82,
+      "durationSec": 62,
+      "requestCount": 20437,
+      "rps": 329.63,
+      "errorRate": 0,
+      "p50": 588.7,
+      "p90": 732.33,
+      "p95": 768.06,
+      "p99": 872.65,
+      "avg": 480.03,
+      "endpoints": {
+        "map_feed": {
+          "count": 2254,
+          "p95": 788.99,
+          "p99": 871.36,
+          "avg": 666.33,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1821,
+          "p95": 765.27,
+          "p99": 855.89,
+          "avg": 649.24,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 729,
+          "p95": 849.01,
+          "p99": 936.72,
+          "avg": 417.06,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3340,
+          "p95": 771.34,
+          "p99": 857.84,
+          "avg": 647.29,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2683,
+          "p95": 768.08,
+          "p99": 852.16,
+          "avg": 644.91,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1116,
+          "p95": 801.91,
+          "p99": 894.96,
+          "avg": 672.59,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 618,
+          "p95": 267.72,
+          "p99": 297.05,
+          "avg": 168.7,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 248,
+          "p95": 286.9,
+          "p99": 335.25,
+          "avg": 175.17,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6797,
+          "p95": 429.71,
+          "p99": 781.28,
+          "avg": 238.73,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 441,
+          "p95": 817.14,
+          "p99": 1232.71,
+          "avg": 690.35,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 86,
+          "p95": 493.11,
+          "p99": 1198.61,
+          "avg": 276.81,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 234,
+          "p95": 124.79,
+          "p99": 150.83,
+          "avg": 87.98,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 70,
+          "p95": 1043.96,
+          "p99": 1137.17,
+          "avg": 860.05,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "304vus",
+      "targetVus": 304,
+      "startSec": 888.82,
+      "endSec": 940.82,
+      "durationSec": 52,
+      "requestCount": 17374,
+      "rps": 334.12,
+      "errorRate": 0,
+      "p50": 641.63,
+      "p90": 812.7,
+      "p95": 852.58,
+      "p99": 927.89,
+      "avg": 515.91,
+      "endpoints": {
+        "list_comments": {
+          "count": 1560,
+          "p95": 857.26,
+          "p99": 918.86,
+          "avg": 714.71,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 2871,
+          "p95": 860.54,
+          "p99": 899.16,
+          "avg": 716.12,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 1919,
+          "p95": 881.6,
+          "p99": 937.66,
+          "avg": 738.08,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 983,
+          "p95": 886.56,
+          "p99": 941.12,
+          "avg": 738.25,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 588,
+          "p95": 915.83,
+          "p99": 1017.85,
+          "avg": 432.03,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 523,
+          "p95": 267.77,
+          "p99": 321.01,
+          "avg": 170.35,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 5768,
+          "p95": 387.43,
+          "p99": 768.66,
+          "avg": 224.24,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 63,
+          "p95": 1135.43,
+          "p99": 1187.63,
+          "avg": 939.11,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2227,
+          "p95": 855.17,
+          "p99": 921.82,
+          "avg": 713.37,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 175,
+          "p95": 114.99,
+          "p99": 131.47,
+          "avg": 84.32,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 387,
+          "p95": 913.97,
+          "p99": 1007.55,
+          "avg": 756.85,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 234,
+          "p95": 261.5,
+          "p99": 303.74,
+          "avg": 164.47,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 76,
+          "p95": 415.8,
+          "p99": 906.18,
+          "avg": 261.33,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "319vus",
+      "targetVus": 319,
+      "startSec": 940.82,
+      "endSec": 1001.82,
+      "durationSec": 61,
+      "requestCount": 20335,
+      "rps": 333.36,
+      "errorRate": 0,
+      "p50": 712.59,
+      "p90": 844.26,
+      "p95": 881.09,
+      "p99": 962.21,
+      "avg": 555.23,
+      "endpoints": {
+        "health_check": {
+          "count": 214,
+          "p95": 120.12,
+          "p99": 139.98,
+          "avg": 86.62,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 2248,
+          "p95": 893.99,
+          "p99": 928.13,
+          "avg": 785.87,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3447,
+          "p95": 871.78,
+          "p99": 915.68,
+          "avg": 764.71,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2676,
+          "p95": 872.45,
+          "p99": 910.51,
+          "avg": 763.37,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1763,
+          "p95": 875.52,
+          "p99": 916.76,
+          "avg": 768.44,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1148,
+          "p95": 898.84,
+          "p99": 950.48,
+          "avg": 787.39,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 434,
+          "p95": 942,
+          "p99": 992.2,
+          "avg": 800.52,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 660,
+          "p95": 960.72,
+          "p99": 1014.02,
+          "avg": 495.88,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 575,
+          "p95": 267.85,
+          "p99": 309.14,
+          "avg": 172.04,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6759,
+          "p95": 456.51,
+          "p99": 1017.81,
+          "avg": 245.39,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 246,
+          "p95": 255.82,
+          "p99": 289.17,
+          "avg": 162.7,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 87,
+          "p95": 385.84,
+          "p99": 403.66,
+          "avg": 251.62,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 78,
+          "p95": 1146.39,
+          "p99": 1240.62,
+          "avg": 948.7,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "331vus",
+      "targetVus": 331,
+      "startSec": 1001.82,
+      "endSec": 1054.82,
+      "durationSec": 52.999999999999886,
+      "requestCount": 17416,
+      "rps": 328.6,
+      "errorRate": 0,
+      "p50": 789.9,
+      "p90": 952.95,
+      "p95": 995.63,
+      "p99": 1087.58,
+      "avg": 611.24,
+      "endpoints": {
+        "map_feed": {
+          "count": 1938,
+          "p95": 1012.97,
+          "p99": 1055.26,
+          "avg": 878.47,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1531,
+          "p95": 985.04,
+          "p99": 1031.97,
+          "avg": 853.82,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 2837,
+          "p95": 994.85,
+          "p99": 1037.35,
+          "avg": 854.61,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2282,
+          "p95": 991.88,
+          "p99": 1048.44,
+          "avg": 849.27,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 907,
+          "p95": 1030.72,
+          "p99": 1089.12,
+          "avg": 886.35,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 5845,
+          "p95": 510.92,
+          "p99": 1145.17,
+          "avg": 269.29,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 211,
+          "p95": 279.41,
+          "p99": 305,
+          "avg": 175.25,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 396,
+          "p95": 1065.83,
+          "p99": 1135.87,
+          "avg": 895.02,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 542,
+          "p95": 274.13,
+          "p99": 315.87,
+          "avg": 173.06,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 202,
+          "p95": 119.52,
+          "p99": 138.66,
+          "avg": 88.91,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 605,
+          "p95": 1083.91,
+          "p99": 1178.84,
+          "avg": 528.44,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 48,
+          "p95": 1322.64,
+          "p99": 1349.89,
+          "avg": 1079.98,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 72,
+          "p95": 469.48,
+          "p99": 507.18,
+          "avg": 283.86,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "346vus",
+      "targetVus": 346,
+      "startSec": 1054.82,
+      "endSec": 1115.82,
+      "durationSec": 61,
+      "requestCount": 20123,
+      "rps": 329.89,
+      "errorRate": 0,
+      "p50": 868.25,
+      "p90": 1004.92,
+      "p95": 1042.38,
+      "p99": 1122.15,
+      "avg": 648.53,
+      "endpoints": {
+        "map_feed": {
+          "count": 2241,
+          "p95": 1052.05,
+          "p99": 1107.25,
+          "avg": 944.52,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1059,
+          "p95": 1075.85,
+          "p99": 1116.4,
+          "avg": 949.04,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3354,
+          "p95": 1037.45,
+          "p99": 1084.77,
+          "avg": 919.75,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 253,
+          "p95": 123.12,
+          "p99": 137.57,
+          "avg": 88.24,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1801,
+          "p95": 1039.8,
+          "p99": 1090.52,
+          "avg": 926.06,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2613,
+          "p95": 1034.1,
+          "p99": 1085.72,
+          "avg": 918.05,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 630,
+          "p95": 273.3,
+          "p99": 293.18,
+          "avg": 171.08,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 247,
+          "p95": 265.63,
+          "p99": 331.62,
+          "avg": 175.3,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6707,
+          "p95": 482.09,
+          "p99": 1203.03,
+          "avg": 257.62,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 658,
+          "p95": 1120.47,
+          "p99": 1182.64,
+          "avg": 584.21,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 417,
+          "p95": 1099.51,
+          "p99": 1164.57,
+          "avg": 963.06,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 59,
+          "p95": 1350.47,
+          "p99": 1433.62,
+          "avg": 1136.65,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 84,
+          "p95": 427.79,
+          "p99": 1213.91,
+          "avg": 271.99,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "361vus",
+      "targetVus": 361,
+      "startSec": 1115.82,
+      "endSec": 1177.82,
+      "durationSec": 62,
+      "requestCount": 20258,
+      "rps": 326.74,
+      "errorRate": 0,
+      "p50": 945.82,
+      "p90": 1102.81,
+      "p95": 1142.93,
+      "p99": 1221.84,
+      "avg": 702.51,
+      "endpoints": {
+        "map_feed": {
+          "count": 2311,
+          "p95": 1158.97,
+          "p99": 1221.84,
+          "avg": 1035.87,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1900,
+          "p95": 1146.92,
+          "p99": 1204.41,
+          "avg": 1013.51,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3296,
+          "p95": 1141.95,
+          "p99": 1205.84,
+          "avg": 1013.48,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2683,
+          "p95": 1142.13,
+          "p99": 1199.78,
+          "avg": 1012.48,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 406,
+          "p95": 1190.32,
+          "p99": 1254.7,
+          "avg": 1046.36,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1090,
+          "p95": 1168.5,
+          "p99": 1222.51,
+          "avg": 1034.06,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 567,
+          "p95": 279.46,
+          "p99": 310.45,
+          "avg": 174.63,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6719,
+          "p95": 409.54,
+          "p99": 1203.55,
+          "avg": 243.34,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 65,
+          "p95": 1483.27,
+          "p99": 1669.46,
+          "avg": 1241.9,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 245,
+          "p95": 120.65,
+          "p99": 149.87,
+          "avg": 88.58,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 249,
+          "p95": 308.78,
+          "p99": 348.28,
+          "avg": 176.51,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 640,
+          "p95": 1206.59,
+          "p99": 1297.44,
+          "avg": 617.32,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 87,
+          "p95": 491.74,
+          "p99": 1504.04,
+          "avg": 316.8,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "376vus",
+      "targetVus": 376,
+      "startSec": 1177.82,
+      "endSec": 1239.82,
+      "durationSec": 62,
+      "requestCount": 20532,
+      "rps": 331.16,
+      "errorRate": 0,
+      "p50": 999.54,
+      "p90": 1142.76,
+      "p95": 1186.1,
+      "p99": 1268.91,
+      "avg": 730.02,
+      "endpoints": {
+        "map_clusters": {
+          "count": 2676,
+          "p95": 1189.21,
+          "p99": 1255.28,
+          "avg": 1057.59,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1833,
+          "p95": 1195.07,
+          "p99": 1263.61,
+          "avg": 1061.27,
+          "errorRate": 0
+        },
+        "map_explore": {
+          "count": 3429,
+          "p95": 1186.46,
+          "p99": 1256.32,
+          "avg": 1055.99,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 2315,
+          "p95": 1207.18,
+          "p99": 1271.66,
+          "avg": 1077.82,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 455,
+          "p95": 1239.4,
+          "p99": 1288.83,
+          "avg": 1093.77,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1150,
+          "p95": 1221.71,
+          "p99": 1277.8,
+          "avg": 1084.92,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 73,
+          "p95": 448.79,
+          "p99": 611.64,
+          "avg": 253.49,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 6845,
+          "p95": 401.8,
+          "p99": 1228.6,
+          "avg": 237.43,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 643,
+          "p95": 1259.44,
+          "p99": 1347.22,
+          "avg": 718.39,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 576,
+          "p95": 260.76,
+          "p99": 313.66,
+          "avg": 168.18,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 242,
+          "p95": 275.18,
+          "p99": 317.34,
+          "avg": 175.41,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 225,
+          "p95": 122.62,
+          "p99": 134.11,
+          "avg": 86.45,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 70,
+          "p95": 1482.92,
+          "p99": 1510.38,
+          "avg": 1249.18,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "388vus",
+      "targetVus": 388,
+      "startSec": 1239.82,
+      "endSec": 1293.819,
+      "durationSec": 53.999000000000024,
+      "requestCount": 17854,
+      "rps": 330.64,
+      "errorRate": 0,
+      "p50": 1062.79,
+      "p90": 1211.07,
+      "p95": 1239.11,
+      "p99": 1329.4,
+      "avg": 778.96,
+      "endpoints": {
+        "map_explore": {
+          "count": 2900,
+          "p95": 1230.78,
+          "p99": 1261.36,
+          "avg": 1122.58,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 2359,
+          "p95": 1224.77,
+          "p99": 1256.6,
+          "avg": 1119.64,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 1994,
+          "p95": 1245.91,
+          "p99": 1275.85,
+          "avg": 1143.85,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 1654,
+          "p95": 1230.75,
+          "p99": 1260.57,
+          "avg": 1123.54,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 533,
+          "p95": 267.51,
+          "p99": 309.43,
+          "avg": 169.92,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 564,
+          "p95": 1338.22,
+          "p99": 1393.95,
+          "avg": 750.5,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 71,
+          "p95": 497.79,
+          "p99": 1477.11,
+          "avg": 289.86,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 5912,
+          "p95": 1073.62,
+          "p99": 1367.02,
+          "avg": 273.07,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 995,
+          "p95": 1266.59,
+          "p99": 1306.98,
+          "avg": 1145.5,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 218,
+          "p95": 263.16,
+          "p99": 290.49,
+          "avg": 168.01,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 77,
+          "p95": 1538.47,
+          "p99": 1687.73,
+          "avg": 1329.68,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 368,
+          "p95": 1287.34,
+          "p99": 1337.81,
+          "avg": 1157.86,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 209,
+          "p95": 118.82,
+          "p99": 143.26,
+          "avg": 85.83,
+          "errorRate": 0
+        }
+      }
+    },
+    {
+      "name": "400vus",
+      "targetVus": 400,
+      "startSec": 1293.819,
+      "endSec": 1401.819,
+      "durationSec": 108,
+      "requestCount": 32734,
+      "rps": 303.09,
+      "errorRate": 0,
+      "p50": 908.53,
+      "p90": 1253.66,
+      "p95": 1289.03,
+      "p99": 1386.36,
+      "avg": 710.28,
+      "endpoints": {
+        "map_explore": {
+          "count": 5439,
+          "p95": 1286.54,
+          "p99": 1358.49,
+          "avg": 1018.53,
+          "errorRate": 0
+        },
+        "map_feed": {
+          "count": 3591,
+          "p95": 1301.44,
+          "p99": 1362.58,
+          "avg": 1048.07,
+          "errorRate": 0
+        },
+        "search_story": {
+          "count": 1817,
+          "p95": 1321.03,
+          "p99": 1373.27,
+          "avg": 1041.11,
+          "errorRate": 0
+        },
+        "list_comments": {
+          "count": 2879,
+          "p95": 1285.08,
+          "p99": 1351.72,
+          "avg": 1019.89,
+          "errorRate": 0
+        },
+        "map_clusters": {
+          "count": 4415,
+          "p95": 1283.44,
+          "p99": 1346.54,
+          "avg": 1018.21,
+          "errorRate": 0
+        },
+        "health_check": {
+          "count": 357,
+          "p95": 119.44,
+          "p99": 134.5,
+          "avg": 81.09,
+          "errorRate": 0
+        },
+        "get_user": {
+          "count": 736,
+          "p95": 1339.71,
+          "p99": 1404.08,
+          "avg": 1073.62,
+          "errorRate": 0
+        },
+        "list_notifications": {
+          "count": 1093,
+          "p95": 1379.36,
+          "p99": 1462.7,
+          "avg": 691.84,
+          "errorRate": 0
+        },
+        "create_comment": {
+          "count": 398,
+          "p95": 266.14,
+          "p99": 308.08,
+          "avg": 165.55,
+          "errorRate": 0
+        },
+        "create_story": {
+          "count": 962,
+          "p95": 264.6,
+          "p99": 299.22,
+          "avg": 163.89,
+          "errorRate": 0
+        },
+        "get_story": {
+          "count": 10786,
+          "p95": 433.95,
+          "p99": 1404.28,
+          "avg": 246.19,
+          "errorRate": 0
+        },
+        "favorite_toggle": {
+          "count": 102,
+          "p95": 1626.78,
+          "p99": 1740.37,
+          "avg": 1276.53,
+          "errorRate": 0
+        },
+        "like_toggle": {
+          "count": 159,
+          "p95": 426.42,
+          "p99": 597.92,
+          "avg": 245.9,
+          "errorRate": 0
+        }
+      }
+    }
+  ],
+  "inflectionPoints": [],
+  "endpointTrends": {
+    "map_explore": {
+      "firstHalfP95": "121.5",
+      "secondHalfP95": "892.0",
+      "change": "633.9",
+      "trend": "degrading",
+      "statusCounts": [
+        651,
+        830,
+        1072,
+        1268,
+        1466,
+        1673,
+        2440,
+        3028,
+        3452,
+        3435,
+        3270,
+        2960,
+        3366,
+        3488,
+        3456,
+        3493,
+        3340,
+        2871,
+        3447,
+        2837,
+        3354,
+        3296,
+        3429,
+        2900,
+        5439
+      ],
+      "p95Series": [
+        6.7,
+        7.2,
+        9.1,
+        10.5,
+        13.1,
+        17.6,
+        101,
+        122.3,
+        171.1,
+        244.5,
+        358.8,
+        396.6,
+        461,
+        520.5,
+        571.9,
+        660.5,
+        771.3,
+        860.5,
+        871.8,
+        994.9,
+        1037.5,
+        1141.9,
+        1186.5,
+        1230.8,
+        1286.5
+      ]
+    },
+    "list_comments": {
+      "firstHalfP95": "122.2",
+      "secondHalfP95": "892.4",
+      "change": "630.5",
+      "trend": "degrading",
+      "statusCounts": [
+        341,
+        431,
+        577,
+        692,
+        848,
+        902,
+        1295,
+        1553,
+        1877,
+        1735,
+        1763,
+        1582,
+        1825,
+        1770,
+        1836,
+        1855,
+        1821,
+        1560,
+        1763,
+        1531,
+        1801,
+        1900,
+        1833,
+        1654,
+        2879
+      ],
+      "p95Series": [
+        6.5,
+        7.3,
+        8.8,
+        10.7,
+        13.5,
+        17,
+        107.8,
+        126.9,
+        174.2,
+        245.5,
+        353.4,
+        394.3,
+        463.4,
+        519.4,
+        572.6,
+        665.2,
+        765.3,
+        857.3,
+        875.5,
+        985,
+        1039.8,
+        1146.9,
+        1195.1,
+        1230.8,
+        1285.1
+      ]
+    },
+    "favorite_toggle": {
+      "firstHalfP95": "254.4",
+      "secondHalfP95": "1195.4",
+      "change": "370.0",
+      "trend": "degrading",
+      "statusCounts": [
+        10,
+        12,
+        23,
+        19,
+        28,
+        46,
+        42,
+        72,
+        69,
+        86,
+        60,
+        65,
+        81,
+        81,
+        73,
+        79,
+        70,
+        63,
+        78,
+        48,
+        59,
+        65,
+        70,
+        77,
+        102
+      ],
+      "p95Series": [
+        14.2,
+        20.2,
+        27.3,
+        38.1,
+        43.6,
+        56.5,
+        301.9,
+        321.9,
+        332.8,
+        479.2,
+        741.2,
+        675.6,
+        756.4,
+        846,
+        858.5,
+        949.4,
+        1044,
+        1135.4,
+        1146.4,
+        1322.6,
+        1350.5,
+        1483.3,
+        1482.9,
+        1538.5,
+        1626.8
+      ]
+    },
+    "get_story": {
+      "firstHalfP95": "142.4",
+      "secondHalfP95": "478.3",
+      "change": "235.8",
+      "trend": "degrading",
+      "statusCounts": [
+        1252,
+        1703,
+        2047,
+        2553,
+        3021,
+        3387,
+        4867,
+        5903,
+        6864,
+        6799,
+        6624,
+        5740,
+        6964,
+        6673,
+        7006,
+        7013,
+        6797,
+        5768,
+        6759,
+        5845,
+        6707,
+        6719,
+        6845,
+        5912,
+        10786
+      ],
+      "p95Series": [
+        19.4,
+        19.3,
+        21.1,
+        23.2,
+        27.1,
+        32.6,
+        142.7,
+        168.2,
+        227.4,
+        287,
+        390.7,
+        350.5,
+        374.1,
+        414.1,
+        461,
+        382.9,
+        429.7,
+        387.4,
+        456.5,
+        510.9,
+        482.1,
+        409.5,
+        401.8,
+        1073.6,
+        433.9
+      ]
+    },
+    "search_story": {
+      "firstHalfP95": "135.4",
+      "secondHalfP95": "923.4",
+      "change": "581.9",
+      "trend": "degrading",
+      "statusCounts": [
+        207,
+        296,
+        364,
+        406,
+        482,
+        529,
+        751,
+        1018,
+        1174,
+        1173,
+        1091,
+        964,
+        1103,
+        1095,
+        1143,
+        1110,
+        1116,
+        983,
+        1148,
+        907,
+        1059,
+        1090,
+        1150,
+        995,
+        1817
+      ],
+      "p95Series": [
+        9.9,
+        9.2,
+        11.9,
+        12.6,
+        15.5,
+        18.2,
+        115.7,
+        142.1,
+        186.6,
+        280.7,
+        395.5,
+        427.1,
+        487.1,
+        555.9,
+        596.6,
+        693,
+        801.9,
+        886.6,
+        898.8,
+        1030.7,
+        1075.9,
+        1168.5,
+        1221.7,
+        1266.6,
+        1321
+      ]
+    },
+    "map_clusters": {
+      "firstHalfP95": "121.9",
+      "secondHalfP95": "890.5",
+      "change": "630.5",
+      "trend": "degrading",
+      "statusCounts": [
+        497,
+        672,
+        862,
+        1069,
+        1156,
+        1404,
+        1948,
+        2379,
+        2777,
+        2815,
+        2668,
+        2354,
+        2806,
+        2742,
+        2725,
+        2713,
+        2683,
+        2227,
+        2676,
+        2282,
+        2613,
+        2683,
+        2676,
+        2359,
+        4415
+      ],
+      "p95Series": [
+        7,
+        7.5,
+        8.9,
+        11.3,
+        14.3,
+        18.1,
+        107,
+        125,
+        171,
+        242.1,
+        356.5,
+        394.3,
+        463.7,
+        523.9,
+        566.8,
+        660.2,
+        768.1,
+        855.2,
+        872.5,
+        991.9,
+        1034.1,
+        1142.1,
+        1189.2,
+        1224.8,
+        1283.4
+      ]
+    },
+    "create_comment": {
+      "firstHalfP95": "103.5",
+      "secondHalfP95": "266.8",
+      "change": "157.7",
+      "trend": "degrading",
+      "statusCounts": [
+        60,
+        70,
+        87,
+        106,
+        126,
+        139,
+        169,
+        239,
+        253,
+        269,
+        256,
+        246,
+        248,
+        265,
+        269,
+        261,
+        248,
+        234,
+        246,
+        211,
+        247,
+        249,
+        242,
+        218,
+        398
+      ],
+      "p95Series": [
+        10.2,
+        11.6,
+        12.2,
+        13.1,
+        16.6,
+        18.1,
+        107.9,
+        115.7,
+        174.2,
+        224.6,
+        268.5,
+        269.7,
+        258.5,
+        248,
+        253.6,
+        246,
+        286.9,
+        261.5,
+        255.8,
+        279.4,
+        265.6,
+        308.8,
+        275.2,
+        263.2,
+        266.1
+      ]
+    },
+    "map_feed": {
+      "firstHalfP95": "131.2",
+      "secondHalfP95": "909.7",
+      "change": "593.1",
+      "trend": "degrading",
+      "statusCounts": [
+        415,
+        508,
+        732,
+        843,
+        973,
+        1089,
+        1661,
+        1910,
+        2295,
+        2280,
+        2152,
+        1942,
+        2348,
+        2221,
+        2276,
+        2296,
+        2254,
+        1919,
+        2248,
+        1938,
+        2241,
+        2311,
+        2315,
+        1994,
+        3591
+      ],
+      "p95Series": [
+        14.7,
+        13.4,
+        13.9,
+        14.7,
+        17.7,
+        20.8,
+        113,
+        129.7,
+        184,
+        259.6,
+        377.4,
+        416.1,
+        480.5,
+        537.1,
+        587.8,
+        677.7,
+        789,
+        881.6,
+        894,
+        1013,
+        1052.1,
+        1159,
+        1207.2,
+        1245.9,
+        1301.4
+      ]
+    },
+    "health_check": {
+      "firstHalfP95": "47.8",
+      "secondHalfP95": "119.4",
+      "change": "150.0",
+      "trend": "degrading",
+      "statusCounts": [
+        43,
+        70,
+        67,
+        98,
+        118,
+        94,
+        150,
+        205,
+        232,
+        221,
+        197,
+        173,
+        218,
+        211,
+        228,
+        222,
+        234,
+        175,
+        214,
+        202,
+        253,
+        245,
+        225,
+        209,
+        357
+      ],
+      "p95Series": [
+        2.8,
+        2.2,
+        4.7,
+        6.5,
+        5.9,
+        7.5,
+        52.1,
+        58.9,
+        87.1,
+        100.8,
+        122,
+        122.5,
+        120.7,
+        109.2,
+        121,
+        117,
+        124.8,
+        115,
+        120.1,
+        119.5,
+        123.1,
+        120.6,
+        122.6,
+        118.8,
+        119.4
+      ]
+    },
+    "create_story": {
+      "firstHalfP95": "100.9",
+      "secondHalfP95": "268.4",
+      "change": "165.9",
+      "trend": "degrading",
+      "statusCounts": [
+        113,
+        144,
+        194,
+        222,
+        291,
+        292,
+        421,
+        515,
+        670,
+        600,
+        579,
+        532,
+        591,
+        607,
+        635,
+        614,
+        618,
+        523,
+        575,
+        542,
+        630,
+        567,
+        576,
+        533,
+        962
+      ],
+      "p95Series": [
+        6.8,
+        8.6,
+        10.3,
+        13.3,
+        14.4,
+        17.6,
+        96.3,
+        119.2,
+        172.7,
+        217.5,
+        274.4,
+        259.7,
+        267.8,
+        255.8,
+        273.2,
+        269,
+        267.7,
+        267.8,
+        267.9,
+        274.1,
+        273.3,
+        279.5,
+        260.8,
+        267.5,
+        264.6
+      ]
+    },
+    "get_user": {
+      "firstHalfP95": "155.2",
+      "secondHalfP95": "954.6",
+      "change": "515.2",
+      "trend": "degrading",
+      "statusCounts": [
+        84,
+        124,
+        127,
+        175,
+        204,
+        247,
+        299,
+        398,
+        457,
+        458,
+        437,
+        392,
+        477,
+        497,
+        447,
+        439,
+        441,
+        387,
+        434,
+        396,
+        417,
+        406,
+        455,
+        368,
+        736
+      ],
+      "p95Series": [
+        11,
+        10.4,
+        11.2,
+        12.8,
+        17.3,
+        23.5,
+        139.3,
+        170.2,
+        226.1,
+        313.7,
+        459.5,
+        466.9,
+        525.1,
+        611.6,
+        636.5,
+        741.1,
+        817.1,
+        914,
+        942,
+        1065.8,
+        1099.5,
+        1190.3,
+        1239.4,
+        1287.3,
+        1339.7
+      ]
+    },
+    "list_notifications": {
+      "firstHalfP95": "147.6",
+      "secondHalfP95": "970.9",
+      "change": "557.7",
+      "trend": "degrading",
+      "statusCounts": [
+        128,
+        178,
+        213,
+        261,
+        325,
+        315,
+        478,
+        592,
+        711,
+        709,
+        646,
+        616,
+        663,
+        670,
+        632,
+        675,
+        729,
+        588,
+        660,
+        605,
+        658,
+        640,
+        643,
+        564,
+        1093
+      ],
+      "p95Series": [
+        8.2,
+        9.4,
+        10.1,
+        13.9,
+        20.1,
+        22.1,
+        116.8,
+        162.3,
+        209.1,
+        299.2,
+        425.7,
+        474.6,
+        508.5,
+        596.3,
+        658,
+        745,
+        849,
+        915.8,
+        960.7,
+        1083.9,
+        1120.5,
+        1206.6,
+        1259.4,
+        1338.2,
+        1379.4
+      ]
+    },
+    "like_toggle": {
+      "firstHalfP95": "161.7",
+      "secondHalfP95": "446.4",
+      "change": "176.0",
+      "trend": "degrading",
+      "statusCounts": [
+        14,
+        20,
+        32,
+        32,
+        45,
+        28,
+        52,
+        60,
+        83,
+        91,
+        77,
+        70,
+        76,
+        70,
+        106,
+        69,
+        86,
+        76,
+        87,
+        72,
+        84,
+        87,
+        73,
+        71,
+        159
+      ],
+      "p95Series": [
+        13.2,
+        25.4,
+        23.4,
+        30.6,
+        21.6,
+        49,
+        179.1,
+        177.6,
+        225.7,
+        346.6,
+        493.7,
+        354.8,
+        382.3,
+        481.2,
+        396.2,
+        486.3,
+        493.1,
+        415.8,
+        385.8,
+        469.5,
+        427.8,
+        491.7,
+        448.8,
+        497.8,
+        426.4
+      ]
+    }
+  }
+}

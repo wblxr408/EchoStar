@@ -68,51 +68,23 @@ class FavoriteServiceClass {
       throw new Error('Story not found');
     }
 
-    try {
-      const isFavorited = await favoriteCacheUtil.isFavorited(userId, normalizedStoryId);
+    const isFavorited = await favoriteCacheUtil.isFavorited(userId, normalizedStoryId);
 
-      if (isFavorited) {
-        const result = await favoriteCacheUtil.unfavoriteStory(userId, normalizedStoryId);
-        return {
-          isFavorited: false,
-          favoriteCount: result.favoriteCount,
-          message: 'Favorite removed'
-        };
-      }
-
-      const result = await favoriteCacheUtil.favoriteStory(userId, normalizedStoryId);
+    if (isFavorited) {
+      const result = await favoriteCacheUtil.unfavoriteStory(userId, normalizedStoryId);
       return {
-        isFavorited: true,
+        isFavorited: false,
         favoriteCount: result.favoriteCount,
-        message: 'Favorite created'
+        message: 'Favorite removed'
       };
-    } catch (err) {
-      console.error(`[favorite-service] Redis操作失败，降级到数据库: storyId=${normalizedStoryId}`, err);
-      // 降级处理：直接操作数据库
-      const isFavorited = await Favorite.findOne({
-        where: { userId, storyId: normalizedStoryId }
-      });
-
-      if (isFavorited) {
-        await Favorite.destroy({ where: { userId, storyId: normalizedStoryId } });
-        const favoriteCount = await Favorite.count({ where: { storyId: normalizedStoryId } });
-
-        return {
-          isFavorited: false,
-          favoriteCount,
-          message: 'Favorite removed'
-        };
-      } else {
-        await Favorite.create({ userId, storyId: normalizedStoryId });
-        const favoriteCount = await Favorite.count({ where: { storyId: normalizedStoryId } });
-
-        return {
-          isFavorited: true,
-          favoriteCount,
-          message: 'Favorite created'
-        };
-      }
     }
+
+    const result = await favoriteCacheUtil.favoriteStory(userId, normalizedStoryId);
+    return {
+      isFavorited: true,
+      favoriteCount: result.favoriteCount,
+      message: 'Favorite created'
+    };
   }
 
   /**
@@ -127,37 +99,17 @@ class FavoriteServiceClass {
       throw new Error('Story not found');
     }
 
-    try {
-      const isFavorited = await favoriteCacheUtil.isFavorited(userId, normalizedStoryId);
-      if (isFavorited) {
-        throw new Error('Story already favorited');
-      }
-
-      const result = await favoriteCacheUtil.favoriteStory(userId, normalizedStoryId);
-
-      return {
-        isFavorited: result.isFavorited,
-        favoriteCount: result.favoriteCount
-      };
-    } catch (err) {
-      console.error(`[favorite-service] Redis操作失败，降级到数据库: storyId=${normalizedStoryId}`, err);
-      // 降级处理：直接操作数据库
-      const isFavorited = await Favorite.findOne({
-        where: { userId, storyId: normalizedStoryId }
-      });
-
-      if (isFavorited) {
-        throw new Error('Story already favorited');
-      }
-
-      await Favorite.create({ userId, storyId: normalizedStoryId });
-      const favoriteCount = await Favorite.count({ where: { storyId: normalizedStoryId } });
-
-      return {
-        isFavorited: true,
-        favoriteCount
-      };
+    const isFavorited = await favoriteCacheUtil.isFavorited(userId, normalizedStoryId);
+    if (isFavorited) {
+      throw new Error('Story already favorited');
     }
+
+    const result = await favoriteCacheUtil.favoriteStory(userId, normalizedStoryId);
+
+    return {
+      isFavorited: result.isFavorited,
+      favoriteCount: result.favoriteCount
+    };
   }
 
   /**
@@ -166,35 +118,17 @@ class FavoriteServiceClass {
   async deleteFavorite(storyId, userId) {
     const normalizedStoryId = normalizeStoryId(storyId);
 
-    try {
-      const isFavorited = await favoriteCacheUtil.isFavorited(userId, normalizedStoryId);
+    const isFavorited = await favoriteCacheUtil.isFavorited(userId, normalizedStoryId);
 
-      if (!isFavorited) {
-        throw new Error('Favorite record not found');
-      }
-
-      await favoriteCacheUtil.unfavoriteStory(userId, normalizedStoryId);
-      return {
-        success: true,
-        message: 'Favorite removed'
-      };
-    } catch (err) {
-      console.error(`[favorite-service] Redis操作失败，降级到数据库: storyId=${normalizedStoryId}`, err);
-      // 降级处理：直接操作数据库
-      const isFavorited = await Favorite.findOne({
-        where: { userId, storyId: normalizedStoryId }
-      });
-
-      if (!isFavorited) {
-        throw new Error('Favorite record not found');
-      }
-
-      await Favorite.destroy({ where: { userId, storyId: normalizedStoryId } });
-      return {
-        success: true,
-        message: 'Favorite removed'
-      };
+    if (!isFavorited) {
+      throw new Error('Favorite record not found');
     }
+
+    await favoriteCacheUtil.unfavoriteStory(userId, normalizedStoryId);
+    return {
+      success: true,
+      message: 'Favorite removed'
+    };
   }
 
   /**

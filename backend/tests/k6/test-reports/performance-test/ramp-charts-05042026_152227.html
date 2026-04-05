@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EchoStar 性能测试图表</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }
+  .header { text-align: center; margin-bottom: 30px; }
+  .header h1 { font-size: 1.8em; color: #38bdf8; margin-bottom: 8px; }
+  .header .meta { color: #94a3b8; font-size: 0.9em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(600px, 1fr)); gap: 20px; }
+  .card { background: #1e293b; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+  .card h2 { font-size: 1.1em; color: #38bdf8; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+  .chart-container { position: relative; height: 300px; }
+  .inflection-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .inflection-table th, .inflection-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+  .inflection-table th { color: #94a3b8; font-size: 0.85em; text-transform: uppercase; }
+  .inflection-table .warning { color: #fbbf24; }
+  .inflection-table .danger { color: #f87171; }
+  .summary-cards { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px; }
+  .summary-card { background: #1e293b; border-radius: 8px; padding: 15px 20px; flex: 1; min-width: 150px; }
+  .summary-card .value { font-size: 1.5em; font-weight: bold; }
+  .summary-card .label { color: #94a3b8; font-size: 0.85em; margin-top: 4px; }
+  .grade-excellent { color: #4ade80; }
+  .grade-good { color: #a3e635; }
+  .grade-acceptable { color: #fbbf24; }
+  .grade-slow { color: #f97316; }
+  .grade-critical { color: #ef4444; }
+  .card-full { grid-column: 1 / -1; }
+  .chart-container-tall { height: 550px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>EchoStar 性能测试图表</h1>
+  <div class="meta">
+    测试时间: 2026/4/5 15:22:42
+    &nbsp;|&nbsp; 总请求: 426,518
+    &nbsp;|&nbsp; 持续: 23.3 分钟
+  </div>
+</div>
+
+<div class="summary-cards">
+  
+    <div class="summary-card">
+      <div class="value">344</div>
+      <div class="label">峰值吞吐量 (req/s)</div>
+    </div>
+    <div class="summary-card">
+      <div class="value grade-critical">1289ms</div>
+      <div class="label">最终阶段 P95</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">400</div>
+      <div class="label">最大并发 VUs</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">426,346</div>
+      <div class="label">总请求数</div>
+    </div>
+    <div class="summary-card">
+      <div class="value">0.00%</div>
+      <div class="label">最终阶段错误率</div>
+    </div>
+  
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>响应时间 P50 / P95 / P99 随 VUs 变化</h2>
+    <div class="chart-container"><canvas id="responseTimeChart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>吞吐量 (RPS) 随 VUs 变化</h2>
+    <div class="chart-container"><canvas id="rpsChart"></canvas></div>
+  </div>
+
+  
+  <div class="card card-full">
+    <h2>各接口 P95 响应时间对比</h2>
+    <div class="chart-container chart-container-tall"><canvas id="endpointChart"></canvas></div>
+  </div>
+
+  
+</div>
+
+<script>
+// 响应时间图表
+const ctx1 = document.getElementById('responseTimeChart');
+if (ctx1) new Chart(ctx1, {
+  type: 'line',
+  data: {
+    labels: ["52vus (1m)","63vus (1m)","81vus (1m)","98vus (1m)","116vus (1m)","132vus (1m)","152vus (1m)","162vus (1m)","177vus (1m)","191vus (1m)","206vus (1m)","218vus (1m)","233vus (1m)","248vus (1m)","263vus (1m)","277vus (1m)","292vus (1m)","304vus (1m)","319vus (1m)","331vus (1m)","346vus (1m)","361vus (1m)","376vus (1m)","388vus (1m)","400vus (2m)"],
+    datasets: [
+      { label: 'P50', data: [5.56,5.25,5.53,5.99,6.84,7.72,35.65,70.84,104.82,156.34,228.81,260.33,303.18,383.96,441.24,512.44,588.7,641.63,712.59,789.9,868.25,945.82,999.54,1062.79,908.53], borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,0.1)', fill: true, tension: 0.3 },
+      { label: 'P95', data: [52.99,14.18,15.28,17.5,20.58,24.79,122.66,146.95,197.55,267.23,377.66,401.76,462.28,529.71,580.37,665.8,768.06,852.58,881.09,995.63,1042.38,1142.93,1186.1,1239.11,1289.03], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.1)', fill: true, tension: 0.3 },
+      { label: 'P99', data: [61.27,24.43,23.99,27.75,32.73,39.08,175.13,194.61,253.94,337,501.49,465.04,530.33,613.28,675.9,738.24,872.65,927.89,962.21,1087.58,1122.15,1221.84,1268.91,1329.4,1386.36], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.1)', fill: true, tension: 0.3 },
+      { label: 'Avg', data: [9.28,6.61,6.81,7.54,8.54,9.91,45.97,76.48,112.17,163.28,235.11,258.35,295.35,346.37,380.44,425.87,480.03,515.91,555.23,611.24,648.53,702.51,730.02,778.96,710.28], borderColor: '#38bdf8', borderDash: [5,5], tension: 0.3 },
+    ]
+  },
+  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e2e8f0' } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { title: { display: true, text: 'ms', color: '#94a3b8' }, ticks: { color: '#94a3b8' } } } }
+});
+
+// 吞吐量图表
+const ctx2 = document.getElementById('rpsChart');
+if (ctx2) new Chart(ctx2, {
+  type: 'bar',
+  data: {
+    labels: ["52vus (1m)","63vus (1m)","81vus (1m)","98vus (1m)","116vus (1m)","132vus (1m)","152vus (1m)","162vus (1m)","177vus (1m)","191vus (1m)","206vus (1m)","218vus (1m)","233vus (1m)","248vus (1m)","263vus (1m)","277vus (1m)","292vus (1m)","304vus (1m)","319vus (1m)","331vus (1m)","346vus (1m)","361vus (1m)","376vus (1m)","388vus (1m)","400vus (2m)"],
+    datasets: [
+      { label: 'RPS', data: [78.83,163.16,206.35,249.81,293,327.26,338.91,343.69,342.85,338.86,324.92,332.75,334.94,334.27,335.99,336.11,329.63,334.12,333.36,328.6,329.89,326.74,331.16,330.64,303.09], backgroundColor: 'rgba(56,189,248,0.6)', borderColor: '#38bdf8', borderWidth: 1 },
+    ]
+  },
+  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e2e8f0' } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { title: { display: true, text: 'req/s', color: '#94a3b8' }, ticks: { color: '#94a3b8' } } } }
+});
+
+
+// 各接口 P95 对比
+const ctx3 = document.getElementById('endpointChart');
+if (ctx3) new Chart(ctx3, {
+  type: 'line',
+  data: {
+    labels: ["52vus (1m)","63vus (1m)","81vus (1m)","98vus (1m)","116vus (1m)","132vus (1m)","152vus (1m)","162vus (1m)","177vus (1m)","191vus (1m)","206vus (1m)","218vus (1m)","233vus (1m)","248vus (1m)","263vus (1m)","277vus (1m)","292vus (1m)","304vus (1m)","319vus (1m)","331vus (1m)","346vus (1m)","361vus (1m)","376vus (1m)","388vus (1m)","400vus (2m)"],
+    datasets: [{"label":"http://localhost:3000/api/auth/register_2","data":[63.25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"borderColor":"#38bdf8","tension":0.3},{"label":"http://localhost:3000/api/stories","data":[8.36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"borderColor":"#4ade80","tension":0.3},{"label":"http://localhost:3000/api/comments","data":[10.64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"borderColor":"#fbbf24","tension":0.3},{"label":"http://localhost:3000/api/likes","data":[15.02,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"borderColor":"#f87171","tension":0.3},{"label":"map_explore","data":[6.67,7.24,9.09,10.5,13.14,17.56,100.99,122.31,171.08,244.53,358.84,396.55,461.04,520.52,571.91,660.45,771.34,860.54,871.78,994.85,1037.45,1141.95,1186.46,1230.78,1286.54],"borderColor":"#c084fc","tension":0.3},{"label":"list_comments","data":[6.46,7.32,8.83,10.72,13.49,17.02,107.75,126.93,174.21,245.46,353.43,394.25,463.4,519.41,572.55,665.17,765.27,857.26,875.52,985.04,1039.8,1146.92,1195.07,1230.75,1285.08],"borderColor":"#fb923c","tension":0.3},{"label":"favorite_toggle","data":[14.16,20.22,27.31,38.1,43.58,56.54,301.87,321.89,332.76,479.22,741.25,675.56,756.42,846.04,858.53,949.44,1043.96,1135.43,1146.39,1322.64,1350.47,1483.27,1482.92,1538.47,1626.78],"borderColor":"#2dd4bf","tension":0.3},{"label":"get_story","data":[19.38,19.34,21.09,23.18,27.06,32.61,142.74,168.18,227.42,286.97,390.71,350.53,374.06,414.09,460.99,382.94,429.71,387.43,456.51,510.92,482.09,409.54,401.8,1073.62,433.95],"borderColor":"#e879f9","tension":0.3},{"label":"search_story","data":[9.85,9.2,11.89,12.57,15.55,18.15,115.75,142.11,186.61,280.67,395.55,427.07,487.13,555.92,596.62,692.99,801.91,886.56,898.84,1030.72,1075.85,1168.5,1221.71,1266.59,1321.03],"borderColor":"#facc15","tension":0.3},{"label":"map_clusters","data":[6.98,7.5,8.94,11.28,14.31,18.07,106.96,124.97,170.96,242.11,356.46,394.27,463.71,523.91,566.8,660.22,768.08,855.17,872.45,991.88,1034.1,1142.13,1189.21,1224.77,1283.44],"borderColor":"#f472b6","tension":0.3},{"label":"create_comment","data":[10.2,11.59,12.16,13.08,16.58,18.09,107.87,115.74,174.2,224.59,268.45,269.66,258.47,247.98,253.58,246,286.9,261.5,255.82,279.41,265.63,308.78,275.18,263.16,266.14],"borderColor":"#38bdf8","tension":0.3},{"label":"map_feed","data":[14.68,13.45,13.87,14.68,17.73,20.79,112.99,129.7,184.01,259.55,377.42,416.11,480.48,537.08,587.79,677.72,788.99,881.6,893.99,1012.97,1052.05,1158.97,1207.18,1245.91,1301.44],"borderColor":"#4ade80","tension":0.3},{"label":"health_check","data":[2.82,2.25,4.72,6.45,5.93,7.55,52.08,58.88,87.07,100.78,122.03,122.51,120.69,109.21,120.99,116.98,124.79,114.99,120.12,119.52,123.12,120.65,122.62,118.82,119.44],"borderColor":"#fbbf24","tension":0.3},{"label":"create_story","data":[6.83,8.56,10.31,13.32,14.4,17.61,96.33,119.25,172.69,217.49,274.45,259.74,267.78,255.8,273.23,269.03,267.72,267.77,267.85,274.13,273.3,279.46,260.76,267.51,264.6],"borderColor":"#f87171","tension":0.3},{"label":"get_user","data":[11.02,10.36,11.24,12.85,17.33,23.49,139.25,170.25,226.12,313.69,459.52,466.92,525.05,611.55,636.46,741.13,817.14,913.97,942,1065.83,1099.51,1190.32,1239.4,1287.34,1339.71],"borderColor":"#c084fc","tension":0.3},{"label":"list_notifications","data":[8.19,9.43,10.09,13.91,20.07,22.14,116.82,162.32,209.1,299.18,425.72,474.56,508.53,596.33,658.01,745.01,849.01,915.83,960.72,1083.91,1120.47,1206.59,1259.44,1338.22,1379.36],"borderColor":"#fb923c","tension":0.3},{"label":"like_toggle","data":[13.16,25.44,23.39,30.6,21.63,49,179.11,177.58,225.74,346.6,493.66,354.79,382.32,481.25,396.17,486.35,493.11,415.8,385.84,469.48,427.79,491.74,448.79,497.79,426.42],"borderColor":"#2dd4bf","tension":0.3}]
+  },
+  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#e2e8f0' } } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { title: { display: true, text: 'P95 (ms)', color: '#94a3b8' }, ticks: { color: '#94a3b8', maxTicksLimit: 15 } } } }
+});
+</script>
+</body>
+</html>

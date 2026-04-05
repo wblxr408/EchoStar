@@ -107,6 +107,11 @@ if "%~1"=="--reset" (
     shift
     goto :parse_args
 )
+if "%~1"=="--cluster" (
+    set DO_CLUSTER=1
+    shift
+    goto :parse_args
+)
 if "%~1"=="--monitor" (
     set DO_MONITOR=1
     shift
@@ -181,6 +186,7 @@ echo   --duration T    Test duration (overrides profile)
 echo   --profile P     Use test profile: smoke/daily/peak/overload/endurance/ramp (default: peak)
 echo   --env K=V       Set environment variable (e.g., --env PROFILE=peak --env DIST=pareto)
 echo   --reset         Reset database before test (runs reset-env.js)
+echo   --cluster       Enable multi-process cluster mode (combine with --reset)
 echo   --help          Show this help message
 echo.
 echo Auto-generated reports (performance mode):
@@ -192,6 +198,7 @@ echo   - stage JSON: structured per-stage data for programmatic use
 echo.
 echo Examples:
 echo   %0 --mode performance --reset --env PROFILE=ramp
+echo   %0 --mode performance --reset --cluster --env PROFILE=ramp
 echo   %0 --mode performance --profile peak
 echo   %0 --mode rate-limit --vus 100 --no-full --no-monitor
 exit /b 0
@@ -237,7 +244,12 @@ if "%DO_RESET%"=="1" (
 
     if "%TEST_MODE%"=="performance" (
         echo [INFO] Starting server WITHOUT rate limiting...
-        node tests\unit\test-scripts\reset-env.js --no-limit
+        if "%DO_CLUSTER%"=="1" (
+            echo [INFO] Cluster mode ENABLED...
+            node tests\unit\test-scripts\reset-env.js --no-limit --cluster
+        ) else (
+            node tests\unit\test-scripts\reset-env.js --no-limit
+        )
     ) else (
         echo [INFO] Starting server WITH rate limiting...
         node tests\unit\test-scripts\reset-env.js
@@ -259,6 +271,7 @@ echo ========================================
 echo   Mode:            %TEST_MODE%
 echo   Profile:         %PROFILE%
 echo   Reset database:  %DO_RESET%
+echo   Cluster mode:    %DO_CLUSTER%
 echo   User count:      %USER_COUNT%
 echo   Story count:     %STORY_COUNT%
 echo   Concurrent VUs:  %LOAD_VUS%
@@ -370,8 +383,8 @@ if exist "%SUMMARY_EXPORT%" (
         if exist "%JSON_LINES_EXPORT%" (
             echo [REPORT] Running deep stage analysis...
             node tests\k6\test-scripts\parse-report.js "%SUMMARY_EXPORT%" "%JSON_LINES_EXPORT%" "%REPORT_DIR%"
-            REM Generate charts (parse-report.js produces {profile}-{timestamp}-analysis.json)
-            set STAGES_JSON=!REPORT_DIR!\!PROFILE!-!TIMESTAMP!-analysis.json
+            REM Generate charts (parse-report.js produces {profile}-analysis-{timestamp}.json)
+            set STAGES_JSON=!REPORT_DIR!\!PROFILE!-analysis-!TIMESTAMP!.json
             if exist "!STAGES_JSON!" (
                 echo [CHARTS] Generating visual charts...
                 node tests\k6\test-scripts\plot-stages.js "!STAGES_JSON!" "!REPORT_DIR!"

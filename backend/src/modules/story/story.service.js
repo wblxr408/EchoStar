@@ -219,20 +219,18 @@ class StoryServiceClass {
     }
 
     // ======================
-    // 实时计算总浏览量
-    // 数据库基数 + Redis增量
+    // 浏览量自增（fire-and-forget，不阻塞响应）
     // ======================
     const redis = redisClient.getClient();
     const viewCountKey = `story:views:${storyId}`;
-    const delta = await redis.incr(viewCountKey);  // 原子操作，返回自增后的值
-    const totalViewCount = (story.viewCount || 0) + delta - 1;
+    const viewDeltaPromise = redis.incr(viewCountKey).catch(() => 1);  // 失败时默认 +1
 
     // ======================
-    // 获取点赞数和评论数
+    // 获取点赞数和评论数（与浏览量并行）
     // ======================
     const { commentCacheUtil } = await import('../../common/utils/comment-cache.util.js');
     const { Comment } = await import('../comment/comment.model.js');
-    const [likeCount, commentCount] = await Promise.all([
+    const [likeCount, commentCount, viewDelta] = await Promise.all([
       likeCacheUtil.getLikeCount(storyId),
       commentCacheUtil.getCommentCount(storyId).then(async (r) => {
         if (r >= 0) return r;
@@ -240,8 +238,10 @@ class StoryServiceClass {
         const count = await Comment.count({ where: { storyId, status: 'active' } });
         await commentCacheUtil.setCommentCount(storyId, count);
         return count;
-      })
+      }),
+      viewDeltaPromise
     ]);
+    const totalViewCount = (story.viewCount || 0) + viewDelta - 1;
 
     // 格式化返回数据
     return {
@@ -336,11 +336,16 @@ class StoryServiceClass {
       throw new Error(`请求的页码超出范围，共 ${totalPages} 页`);
     }
 
-    // 批量获取真实浏览量
+    // 批量获取真实浏览量（单次 pipeline，替代 N 次独立 GET）
     const storyIds = rows.map(story => story.id);
-    const realViewCounts = await Promise.all(
-      storyIds.map(id => this.getRealViewCount(id, rows.find(s => s.id === id).viewCount))
-    );
+    const redis = redisClient.getClient();
+    const viewPipeline = redis.pipeline();
+    storyIds.forEach(id => viewPipeline.get(`story:views:${id}`));
+    const viewResults = await viewPipeline.exec();
+    const realViewCounts = rows.map((story, index) => {
+      const delta = parseInt(viewResults[index]?.[1]) || 0;
+      return (story.viewCount || 0) + delta;
+    });
 
     return {
       stories: rows.map((story, index) => ({
@@ -523,11 +528,16 @@ class StoryServiceClass {
       throw new Error(`请求的页码超出范围，共 ${totalPages} 页`);
     }
 
-    // 批量获取真实浏览量
+    // 批量获取真实浏览量（单次 pipeline，替代 N 次独立 GET）
     const storyIds = rows.map(story => story.id);
-    const realViewCounts = await Promise.all(
-      storyIds.map(id => this.getRealViewCount(id, rows.find(s => s.id === id).viewCount))
-    );
+    const redis2 = redisClient.getClient();
+    const viewPipeline = redis2.pipeline();
+    storyIds.forEach(id => viewPipeline.get(`story:views:${id}`));
+    const viewResults = await viewPipeline.exec();
+    const realViewCounts = rows.map((story, index) => {
+      const delta = parseInt(viewResults[index]?.[1]) || 0;
+      return (story.viewCount || 0) + delta;
+    });
 
     // PostGIS 坐标转换
     const storiesWithLocation = rows.map((story, index) => {
@@ -669,11 +679,16 @@ class StoryServiceClass {
       throw new Error(`请求的页码超出范围，共 ${totalPages} 页`);
     }
 
-    // 批量获取真实浏览量
+    // 批量获取真实浏览量（单次 pipeline，替代 N 次独立 GET）
     const storyIds = rows.map(story => story.id);
-    const realViewCounts = await Promise.all(
-      storyIds.map(id => this.getRealViewCount(id, rows.find(s => s.id === id).viewCount))
-    );
+    const redis3 = redisClient.getClient();
+    const viewPipeline = redis3.pipeline();
+    storyIds.forEach(id => viewPipeline.get(`story:views:${id}`));
+    const viewResults = await viewPipeline.exec();
+    const realViewCounts = rows.map((story, index) => {
+      const delta = parseInt(viewResults[index]?.[1]) || 0;
+      return (story.viewCount || 0) + delta;
+    });
 
     return {
       stories: rows.map((story, index) => ({

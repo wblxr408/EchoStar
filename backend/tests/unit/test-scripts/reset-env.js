@@ -140,6 +140,7 @@ async function main() {
 
     // 4. 启动开发服务器（在后台）
     const noLimitMode = process.argv.includes('--no-limit');
+    const clusterMode = process.argv.includes('--cluster');
     console.log('\n[STEP 4] 启动开发服务器...');
 
     // 设置测试环境变量（放宽速率限制）
@@ -152,7 +153,23 @@ async function main() {
 
     let serverProcess;
 
-    if (noLimitMode) {
+    if (noLimitMode && clusterMode) {
+      // 集群 + 关限流模式：使用 cluster.no-limit.js 启动
+      const clusterNoLimitPath = join(BACKEND_DIR, 'src', 'cluster.no-limit.js');
+      if (!fs.existsSync(clusterNoLimitPath)) {
+        console.error('[ERROR] 未找到 src/cluster.no-limit.js');
+        console.error('[ERROR] 请确保该文件存在（它应该在 .gitignore 中，不会被提交到仓库）');
+        process.exit(1);
+      }
+      serverProcess = spawn('node', [clusterNoLimitPath], {
+        cwd: BACKEND_DIR,
+        shell: true,
+        detached: true,
+        stdio: ['ignore', 'inherit', 'inherit'],
+        env: testEnv,
+      });
+      console.log('[INFO] 已启用集群 + 关限流测试模式（多进程 + 速率限制已禁用）');
+    } else if (noLimitMode) {
       // 关限流模式：使用 server.no-limit.js 启动（禁用所有限流中间件）
       const noLimitPath = join(BACKEND_DIR, 'src', 'server.no-limit.js');
       if (!fs.existsSync(noLimitPath)) {

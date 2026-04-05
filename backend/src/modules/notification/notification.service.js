@@ -148,20 +148,21 @@ class NotificationServiceClass {
     const start = offset;
     const end = offset + limit - 1;
 
-    // 获取所有未读ID（一次调用）
-    const unreadIds = await redis.smembers(`notice:unread:${userId}`);
+    // 合并为单次 pipeline：unread + 通知列表 + 总数（原来 4 次串行往返）
+    const initPipeline = redis.pipeline();
+    initPipeline.smembers(`notice:unread:${userId}`);
+    initPipeline.zrevrange(`notice:list:${userId}`, start, end);
+    initPipeline.zcard(`notice:list:${userId}`);
+    const [[, unreadIds], [, noticeIds], [, total]] = await initPipeline.exec();
 
     // 转成 Set，O(1) 判断
     const unreadSet = new Set(unreadIds);
-
-    // 获取通知ID列表（倒序）
-    const noticeIds = await redis.zrevrange(`notice:list:${userId}`, start, end);
 
     if (noticeIds.length === 0) {
       return {
         notifications: [],
         pagination: {
-          total: 0,
+          total: total || 0,
           page: parseInt(page),
           limit: parseInt(limit),
           totalPages: 0
@@ -169,39 +170,62 @@ class NotificationServiceClass {
       };
     }
 
-    // 批量获取通知详情
-    const noticePromises = noticeIds.map(async (noticeId) => {
-      const data = await redis.hgetall(`notice:data:${noticeId}`);
-      if (data && Object.keys(data).length > 0) {
-        // 获取触发用户完整信息（包含头像）
-        const fromUser = await this.getFromUserInfo(parseInt(data.fromUserId));
+    // 批量获取通知详情（1 次 pipeline 往返）
+    const noticePipeline = redis.pipeline();
+    noticeIds.forEach(noticeId => noticePipeline.hgetall(`notice:data:${noticeId}`));
+    const noticeResults = await noticePipeline.exec();
+
+    // 提取所有去重的 fromUserId，批量查询用户信息（N+1 → 1）
+    const fromUserIds = [...new Set(
+      noticeResults
+        .map(([, data]) => data?.fromUserId)
+        .filter(Boolean)
+        .map(Number)
+    )];
+
+    let userMap = new Map();
+    if (fromUserIds.length > 0) {
+      try {
+        const users = await User.findAll({
+          where: { id: fromUserIds },
+          attributes: ['id', 'username', 'avatarUrl']
+        });
+        userMap = new Map(users.map(u => [u.id, {
+          id: u.id,
+          username: u.username || '匿名用户',
+          avatar: u.avatarUrl || null
+        }]));
+      } catch (err) {
+        console.error('[notification-service] 批量查询用户失败:', err);
+      }
+    }
+
+    // 构建通知列表
+    const notifications = noticeResults
+      .map(([, data], idx) => {
+        if (!data || Object.keys(data).length === 0) return null;
+        const fromUserId = parseInt(data.fromUserId);
         return {
-          id: noticeId,
+          id: noticeIds[idx],
           type: data.type,
-          fromUserId: parseInt(data.fromUserId),
+          fromUserId,
           storyId: parseInt(data.storyId),
-          fromUser,  // ✅ 新增：完整的用户信息
-          fromUserName: data.fromUserName,  // 保留向后兼容
+          fromUser: userMap.get(fromUserId) || { id: fromUserId, username: '匿名用户', avatar: null },
+          fromUserName: data.fromUserName,
           content: data.content,
           createdAt: parseInt(data.createdAt),
-          isRead: !unreadSet.has(noticeId)  // O(1) 判断
+          isRead: !unreadSet.has(noticeIds[idx])
         };
-      }
-      return null;
-    });
-
-    const notifications = (await Promise.all(noticePromises)).filter(n => n !== null);
-
-    // 获取总数
-    const total = await redis.zcard(`notice:list:${userId}`);
+      })
+      .filter(n => n !== null);
 
     return {
       notifications,
       pagination: {
-        total,
+        total: total || 0,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil((total || 0) / limit)
       }
     };
   }

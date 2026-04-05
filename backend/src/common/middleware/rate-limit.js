@@ -13,11 +13,12 @@ export const generalLimiter = rateLimit({
     message: '请求过于频繁，请稍后再试'
   },
   standardHeaders: true,
-  legacyHeaders: false,
-  // 使用 Redis 存储（可选）
+  legacyHeaders: false
+  // 使用 Redis 存储（多进程共享限流计数）
+  // 需要先安装: npm install rate-limit-redis
   // store: new RedisStore({
-  //   client: redisClient.getClient(),
-  //   prefix: 'rl:'
+  //   sendCommand: (...args) => redisClient.getClient().call(...args),
+  //   prefix: 'rl:general:'
   // })
 });
 

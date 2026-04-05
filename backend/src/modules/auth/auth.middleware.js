@@ -31,8 +31,17 @@ export const authenticateJWT = async (req, res, next) => {
     const token = authHeader.substring(7);
     const redis = redisClient.getClient();
 
-    // ===================== 安全检查：Token 是否被拉黑 =====================
-    const isBlacklisted = await redis.get(`${REDIS_PREFIX.TOKEN_BL}:${token}`);
+    // 验证 Token 合法性 + 获取 userId
+    const decoded = jwt.verify(token, config.jwt.secret);
+    const userId = decoded.userId;
+    const userCacheKey = `${REDIS_PREFIX.USER}:${userId}`;
+
+    // ===================== 安全检查 + 用户缓存：合并为单次 pipeline =====================
+    const cachedPipeline = redis.pipeline();
+    cachedPipeline.get(`${REDIS_PREFIX.TOKEN_BL}:${token}`);
+    cachedPipeline.get(userCacheKey);
+    const [[, isBlacklisted], [, cachedUser]] = await cachedPipeline.exec();
+
     if (isBlacklisted) {
       return res.status(401).json({
         code: 4001,
@@ -40,14 +49,8 @@ export const authenticateJWT = async (req, res, next) => {
       });
     }
 
-    // 验证 Token 合法性 + 获取过期时间
-    const decoded = jwt.verify(token, config.jwt.secret);
-    const userId = decoded.userId;
-
     // ===================== 用户信息缓存 =====================
     let user;
-    const userCacheKey = `${REDIS_PREFIX.USER}:${userId}`;
-    const cachedUser = await redis.get(userCacheKey);
 
     if (cachedUser) {
       user = JSON.parse(cachedUser);
@@ -107,16 +110,20 @@ export const optionalAuth = async (req, res, next) => {
     const token = authHeader.substring(7);
     const redis = redisClient.getClient();
 
-    // 黑名单检查
-    const blacklisted = await redis.get(`${REDIS_PREFIX.TOKEN_BL}:${token}`);
-    if (blacklisted) return next();
-
+    // 验证 token（不阻塞无 token 请求）
     const decoded = jwt.verify(token, config.jwt.secret);
     const userId = decoded.userId;
     const userCacheKey = `${REDIS_PREFIX.USER}:${userId}`;
 
+    // 黑名单检查 + 用户缓存：合并为单次 pipeline
+    const pipeline = redis.pipeline();
+    pipeline.get(`${REDIS_PREFIX.TOKEN_BL}:${token}`);
+    pipeline.get(userCacheKey);
+    const [[, blacklisted], [, cached]] = await pipeline.exec();
+
+    if (blacklisted) return next();
+
     let user;
-    const cached = await redis.get(userCacheKey);
     if (cached) {
       user = JSON.parse(cached);
     } else {
@@ -127,8 +134,16 @@ export const optionalAuth = async (req, res, next) => {
     }
 
     if (user && user.status !== 'deleted') {
-      const banned = await Blacklist.findOne({ where: { email: user.email } });
-      if (!banned) req.user = user;
+      // 缓存黑名单检查结果（5 分钟 TTL），避免每次请求查 DB
+      const blCheckKey = `${REDIS_PREFIX.TOKEN_BL}:check:${user.id}`;
+      const cachedBl = await redis.get(blCheckKey);
+      if (cachedBl === '0') {
+        req.user = user;
+      } else if (cachedBl === null) {
+        const banned = await Blacklist.findOne({ where: { email: user.email } });
+        await redis.setex(blCheckKey, 300, banned ? '1' : '0');
+        if (!banned) req.user = user;
+      }
     }
 
     next();

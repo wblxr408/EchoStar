@@ -68,13 +68,14 @@ class LikeCacheUtil {
     const baseKey = this.getBaseKey(normalizedStoryId);
     const initKey = this.getInitKey(normalizedStoryId);
 
-    // 检查是否已初始化
-    const baseExists = await redis.exists(baseKey);
-    if (baseExists) return;
+    // 合并为单次 pipeline（原来 2 次串行 exists）
+    const pipeline = redis.pipeline();
+    pipeline.exists(baseKey);
+    pipeline.exists(initKey);
+    const [[, baseExists], [, initExists]] = await pipeline.exec();
 
-    const initExists = await redis.exists(initKey);
+    if (baseExists) return;
     if (initExists) {
-      // 有初始化标记但基准不存在，说明数据库中没有点赞记录
       await redis.expire(initKey, this.INIT_TTL);
       return;
     }

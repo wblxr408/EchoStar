@@ -71,14 +71,13 @@ class FavoriteCacheUtil {
     const baseKey = this.getBaseKey(normalizedStoryId);
     const initKey = this.getInitKey(normalizedStoryId);
 
-    // 基础集合已存在，直接返回
-    const baseExists = await redis.exists(baseKey);
-    if (baseExists) {
-      return;
-    }
+    // 合并为单次 pipeline（原来 2 次串行 exists）
+    const pipeline = redis.pipeline();
+    pipeline.exists(baseKey);
+    pipeline.exists(initKey);
+    const [[, baseExists], [, initExists]] = await pipeline.exec();
 
-    // 正在初始化中，刷新过期时间并返回
-    const initExists = await redis.exists(initKey);
+    if (baseExists) return;
     if (initExists) {
       await redis.expire(initKey, this.INIT_TTL);
       return;

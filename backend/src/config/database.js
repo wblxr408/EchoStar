@@ -15,9 +15,9 @@ export const sequelize = new Sequelize(
     dialect: 'postgres',
     logging: config.database.logging ? (msg) => logger.debug(msg) : false,
     pool: {
-      max: 50,
-      min: 0,
-      acquire: 30000,
+      max: 20,
+      min: 5,
+      acquire: 10000,
       idle: 10000
     },
     timezone: '+08:00', // 强制设置为东八区

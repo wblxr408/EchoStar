@@ -112,40 +112,43 @@ export function createApp() {
   });
 
   // ======================
-  // 定时任务
+  // 定时任务（仅主 worker 执行，避免多进程重复）
   // ======================
+  const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
 
-  // 定时任务：每小时同步浏览量到数据库
-  setInterval(() => {
+  if (isPrimaryWorker) {
+    // 定时任务：每小时同步浏览量到数据库
+    setInterval(() => {
+      syncStoryViewCount().catch(err => {
+        console.error('❌ 同步浏览量失败:', err);
+      });
+    }, 60 * 60 * 1000);  // 每小时执行一次
+
+    // 定时任务：每5秒同步点赞数据到数据库
+    setInterval(() => {
+      syncLikeToDatabase().catch(err => {
+        console.error('❌ 同步点赞数据失败:', err);
+      });
+    }, 5 * 1000);  // 每5秒执行一次
+
+    // 定时任务：每5s同步收藏数据到数据库
+    setInterval(() => {
+      syncFavoriteToDatabase().catch(err => {
+        console.error('❌ 同步收藏数据失败:', err);
+      });
+    }, 5 * 1000);
+
+    // 启动时执行一次（防止服务重启期间的数据丢失）
     syncStoryViewCount().catch(err => {
-      console.error('❌ 同步浏览量失败:', err);
+      console.error('❌ 启动时同步浏览量失败:', err);
     });
-  }, 60 * 60 * 1000);  // 每小时执行一次
-
-  // 定时任务：每5秒同步点赞数据到数据库
-  setInterval(() => {
     syncLikeToDatabase().catch(err => {
-      console.error('❌ 同步点赞数据失败:', err);
+      console.error('❌ 启动时同步点赞数据失败:', err);
     });
-  }, 5 * 1000);  // 每5秒执行一次
-
-  // 定时任务：每5s同步收藏数据到数据库
-  setInterval(() => {
     syncFavoriteToDatabase().catch(err => {
-      console.error('❌ 同步收藏数据失败:', err);
+      console.error('❌ 启动时同步收藏数据失败:', err);
     });
-  }, 5 * 1000);
-
-  // 启动时执行一次（防止服务重启期间的数据丢失）
-  syncStoryViewCount().catch(err => {
-    console.error('❌ 启动时同步浏览量失败:', err);
-  });
-  syncLikeToDatabase().catch(err => {
-    console.error('❌ 启动时同步点赞数据失败:', err);
-  });
-  syncFavoriteToDatabase().catch(err => {
-    console.error('❌ 启动时同步收藏数据失败:', err);
-  });
+  }
 
   return app;
 }
