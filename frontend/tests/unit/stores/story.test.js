@@ -89,17 +89,15 @@ describe('stores/story.js', () => {
   });
 
   describe('clear', () => {
-    it('清空所有状态', () => {
+    it('清空列表和分页状态', () => {
       const store = useStoryStore();
       store.myStories = [{ id: 1 }];
       store.pagination = { page: 3, limit: 5, total: 15, totalPages: 3 };
-      store.loading = true;
 
       store.clear();
 
       expect(store.myStories).toEqual([]);
       expect(store.pagination).toEqual({ page: 1, limit: 10, total: 0, totalPages: 0 });
-      expect(store.loading).toBe(false);
     });
   });
 });

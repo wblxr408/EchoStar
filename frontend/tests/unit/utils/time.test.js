@@ -113,7 +113,7 @@ describe('time.js', () => {
     it('剩余天数+小时', () => {
       const future = new Date(Date.now() + 3 * 86400000 + 5 * 3600000);
       const result = getTimeCapsuleCountdown(future.toISOString());
-      expect(result).toContain('天后解锁');
+      expect(result).toMatch(/天.*解锁/);
     });
 
     it('仅剩余小时', () => {

@@ -30,8 +30,10 @@ describe('ImageUploader.vue', () => {
 
     // 触发文件选择
     const input = wrapper.find('input[type="file"]');
-    const dataTransfer = { files: [file] };
-    Object.defineProperty(dataTransfer, 'files', { value: [file] });
+    Object.defineProperty(input.element, 'files', {
+      value: [file],
+      configurable: true
+    });
     await input.trigger('change');
 
     // v-model 应该更新为包含该 file 的数组
@@ -47,7 +49,7 @@ describe('ImageUploader.vue', () => {
     const input = wrapper.find('input[type="file"]');
     // 手动设置 files（浏览器环境中 input.files 只读）
     const nativeInput = wrapper.find('input[type="file"]').element;
-    Object.defineProperty(nativeInput, 'files', { value: [file], writable: false });
+    Object.defineProperty(nativeInput, 'files', { value: [file], configurable: true, writable: false });
     await input.trigger('change');
 
     expect(showToast).toHaveBeenCalledWith(
@@ -62,13 +64,13 @@ describe('ImageUploader.vue', () => {
     // 先添加一张有效图片
     const file1 = new File(['data'], 'a.jpg', { type: 'image/jpeg' });
     const input = wrapper.find('input[type="file"]');
-    Object.defineProperty(input.element, 'files', { value: [file1], writable: false });
+    Object.defineProperty(input.element, 'files', { value: [file1], configurable: true, writable: false });
     await input.trigger('change');
 
     // 再添加第二张
     vi.clearAllMocks();
     const file2 = new File(['data'], 'b.jpg', { type: 'image/jpeg' });
-    Object.defineProperty(input.element, 'files', { value: [file2], writable: false });
+    Object.defineProperty(input.element, 'files', { value: [file2], configurable: true, writable: false });
     await input.trigger('change');
 
     expect(showToast).toHaveBeenCalledWith(
