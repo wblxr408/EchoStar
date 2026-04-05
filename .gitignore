@@ -50,4 +50,5 @@ coverage/
 
 # Redis
 dump.rdb
-"backend/logic/" 
+"backend/logic/"
+backend/scripts/seed-data.js

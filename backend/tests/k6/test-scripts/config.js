@@ -71,18 +71,22 @@ export const profiles = {
     description: '3分钟快速验证，场景化行为模式覆盖全部18个接口（9读+9写）',
   },
   // 耐力测试 - 检测内存泄漏和连接泄漏
+  // T1 拐点分析（pareto-test5, 2核4G, max500VUs）:
+  //   139vus P95=64.8ms → 159vus P95=155.8ms (+140.5%)，判定拐点 ≈ 159VUs
+  //   安全容量（P95<500ms）≈ 256VUs，崩溃阈值（P95>2s）≈ 471VUs
+  //   endurance VUs = 159 × 0.8 ≈ 127，取整 130
   endurance: {
     name: '耐力测试',
-    vus: 120,          // 根据阶梯拐点测试结果调整（建议 = 拐点VUs × 0.8）
+    vus: 130,          // T1拐点159 × 0.8 = 127 → 取整130
     duration: '30m',
     stages: [
-      { duration: '1m', target: 120 },
-      { duration: '28m', target: 120 },
+      { duration: '1m', target: 130 },
+      { duration: '28m', target: 130 },
       { duration: '1m', target: 0 },
     ],
     dataScale: { users: 300, stories: 1500 },
     readWriteRatio: 0.85,
-    description: '长时间恒定压力，检测内存泄漏和连接泄漏（VUs 需根据 T1 结果调整）',
+    description: '长时间恒定压力，检测内存泄漏和连接泄漏（VUs 基于T1拐点159×0.8=130）',
   },
   // 冒烟测试 - 快速验证基本功能
   smoke: {

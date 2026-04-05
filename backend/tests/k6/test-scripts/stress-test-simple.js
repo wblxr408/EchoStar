@@ -756,7 +756,7 @@ function actionCreateReport(token, data) {
   }, 'create_report'));
 
   check(res, {
-    'create_report status 200': (r) => r.status === 200,
+    'create_report status 200 or 201': (r) => r.status === 200 || r.status === 201,
     'create_report < 1000ms': (r) => r.timings.duration < 1000,
   });
   recordMetrics('create_report', res);

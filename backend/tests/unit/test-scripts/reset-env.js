@@ -143,48 +143,34 @@ async function main() {
     const clusterMode = process.argv.includes('--cluster');
     console.log('\n[STEP 4] 启动开发服务器...');
 
-    // 设置测试环境变量（放宽速率限制）
-    const testEnv = {
-      ...process.env,
-      K6_TEST: 'true',
-    };
     // 确保 NODE_ENV 不被设为 test，否则 syncDatabase 会被跳过
-    delete testEnv.NODE_ENV;
+    const baseEnv = { ...process.env };
+    delete baseEnv.NODE_ENV;
+
+    // no-limit 模式下传 K6_TEST=true，由后端 rate-limit.js 跳过所有限流
+    const noLimitEnv = noLimitMode ? { ...baseEnv, K6_TEST: 'true' } : baseEnv;
 
     let serverProcess;
 
     if (noLimitMode && clusterMode) {
-      // 集群 + 关限流模式：使用 cluster.no-limit.js 启动
-      const clusterNoLimitPath = join(BACKEND_DIR, 'src', 'cluster.no-limit.js');
-      if (!fs.existsSync(clusterNoLimitPath)) {
-        console.error('[ERROR] 未找到 src/cluster.no-limit.js');
-        console.error('[ERROR] 请确保该文件存在（它应该在 .gitignore 中，不会被提交到仓库）');
-        process.exit(1);
-      }
-      serverProcess = spawn('node', [clusterNoLimitPath], {
+      const clusterPath = join(BACKEND_DIR, 'src', 'cluster.js');
+      serverProcess = spawn('node', [clusterPath], {
         cwd: BACKEND_DIR,
         shell: true,
         detached: true,
         stdio: ['ignore', 'inherit', 'inherit'],
-        env: testEnv,
+        env: noLimitEnv,
       });
-      console.log('[INFO] 已启用集群 + 关限流测试模式（多进程 + 速率限制已禁用）');
+      console.log('[INFO] 已启用集群测试模式（多进程, K6_TEST=true）');
     } else if (noLimitMode) {
-      // 关限流模式：使用 server.no-limit.js 启动（禁用所有限流中间件）
-      const noLimitPath = join(BACKEND_DIR, 'src', 'server.no-limit.js');
-      if (!fs.existsSync(noLimitPath)) {
-        console.error('[ERROR] 未找到 src/server.no-limit.js');
-        console.error('[ERROR] 请确保该文件存在（它应该在 .gitignore 中，不会被提交到仓库）');
-        process.exit(1);
-      }
-      serverProcess = spawn('node', [noLimitPath], {
+      serverProcess = spawn('node', [join(BACKEND_DIR, 'src', 'server.js')], {
         cwd: BACKEND_DIR,
         shell: true,
         detached: true,
         stdio: ['ignore', 'inherit', 'inherit'],
-        env: testEnv,
+        env: noLimitEnv,
       });
-      console.log('[INFO] 已启用关限流测试模式（所有速率限制已禁用）');
+      console.log('[INFO] 已启用关限流测试模式（K6_TEST=true）');
     } else {
       // 限流测试模式：使用正常服务器启动（保留限流功能）
       serverProcess = spawn('npm', ['run', 'dev'], {
@@ -192,7 +178,7 @@ async function main() {
         shell: true,
         detached: true,
         stdio: ['ignore', 'inherit', 'inherit'],
-        env: testEnv,
+        env: baseEnv,
       });
       console.log('[INFO] 已启用限流测试模式（速率限制保留）');
     }

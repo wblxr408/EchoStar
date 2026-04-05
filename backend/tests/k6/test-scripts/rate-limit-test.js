@@ -56,9 +56,12 @@ function tagParams(params, endpoint, limiter) {
 }
 
 // ===================== k6 配置 =====================
-const currentProfile = config.profile;
-const loadVus = config.concurrency.load;
-const loadDurationStr = config.duration.load;
+// 限流测试的 VUs 应为拐点 × 1.3（TEST-PLAN T3 建议）
+// T1 拐点 ≈ 159VUs（2核4G），159 × 1.3 ≈ 207，向上取整 300
+// 如果通过 --vus 传入了值则使用传入值，否则使用默认 300
+const RATE_LIMIT_DEFAULT_VUS = 300;
+const loadVus = parseInt(__ENV.LOAD_VUS) || RATE_LIMIT_DEFAULT_VUS;
+const loadDurationStr = __ENV.LOAD_DURATION || '2m';
 const loadDurationSec = parseDuration(loadDurationStr);
 
 export const options = {
@@ -428,7 +431,7 @@ function rlTestReport(data) {
     },
   }, 'report', 'general'));
   check(res, {
-    'report: 200 or 429': (r) => r.status === 200 || r.status === 429,
+    'report: 2xx or 429': (r) => r.status === 200 || r.status === 201 || r.status === 429,
     'report: 429 format': (r) => checkRateLimitResponse(r),
   });
   recordRLResponse(res);

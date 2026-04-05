@@ -1,14 +1,13 @@
-# EchoStar 后端测试总览
-
-本目录包含 EchoStar 后端 API 的所有测试，分为单元/集成测试（`unit/`）和 K6 压力测试（`k6/`）两大类。
+# EchoStar 后端测试
 
 ## 目录结构
 
 ```
 backend/tests/
-├── unit/                        # 单元/集成测试（详见 unit/README.md）
-├── k6/                          # K6 压力测试（详见 k6/README.md）
-└── README.md                    # 本文件
+├── unit/                        # 单元/集成测试
+├── k6/                          # 性能/压力测试（k6）
+├── regression/                  # 回归测试
+└── README.md
 ```
 
 ## unit/ — 单元/集成测试
@@ -26,50 +25,49 @@ unit/
 
 覆盖模块：Admin、Auth、Comment、Favorite、Like、Map、Notification、Recommendation、Report、Story、Update User Info
 
-> 详细使用说明请参阅 [unit/README.md](unit/README.md)
+> 详细说明参阅 [unit/README.md](unit/README.md)
 
-## k6/ — 压力/性能测试
+## k6/ — 性能/压力测试
 
-使用 [k6](https://k6.io/) 进行 API 性能测试，模拟高并发场景。
+使用 [k6](https://k6.io/) 进行 API 性能测试，支持阶梯拐点探测、耐力验证、限流验证。
 
 ```
 k6/
-├── test-scripts/                # 测试脚本（简化版 + 完整版）
-├── test-reports/                # 测试报告（JSON + 摘要）
-└── README.md                    # 详细文档
+├── test-scripts/                # 测试脚本、配置、报告工具
+├── test-reports/                # 测试报告（JSON + Markdown + HTML）
+├── README.md                    # 使用说明
+└── TEST-PLAN.md                 # 测试计划与执行矩阵
 ```
 
-包含简化测试（100 用户 / 500 故事）和完整测试（5000 用户 / 25000 故事），覆盖认证、故事、评论、点赞、收藏、地图、管理员等模块。
+> 详细说明参阅 [k6/README.md](k6/README.md)
 
-> 详细使用说明请参阅 [k6/README.md](k6/README.md)
+## regression/ — 回归测试
 
-## 通用环境准备
+代码变更后快速验证所有模块功能，复用 unit 测试脚本，结果独立保存。
 
-所有测试都需要先启动数据库和后端服务：
+```
+regression/
+├── test-scripts/                # 回归调度器 + 专项测试
+├── problems/                    # 回归发现的问题记录
+└── test-results/                # 回归测试报告
+```
 
-### 1. 启动 Docker 数据库
+> 详细说明参阅 [regression/README.md](regression/README.md)
+
+## 环境准备
+
+所有测试需要 Docker（PostgreSQL + Redis）和后端服务运行：
 
 ```bash
 cd backend
-docker-compose up -d
-docker ps  # 验证服务运行
-```
-
-### 2. 确保环境变量配置正确
-
-`.env` 中需包含数据库和 Redis 连接信息。
-
-### 3. 安装依赖并启动服务
-
-```bash
-cd backend
-npm install
-npm run dev
+docker compose up -d            # 启动数据库
+npm install                     # 安装依赖
+npm run dev                     # 启动后端服务
 ```
 
 ## 注意事项
 
-1. **单元测试**：建议按顺序运行，部分测试依赖前置数据；不建议并发运行多个测试脚本
-2. **压力测试**：测试环境需放宽速率限制（设置 `K6_TEST=true`），否则会被限流中间件拦截
-3. **Redis 依赖**：Notification 模块测试依赖 Redis 服务正常运行
-4. **测试数据**：可通过 `reset-env.js` 脚本一键重置测试环境（重建数据库 + 重启服务）
+1. 测试脚本按顺序运行，部分测试依赖前置数据，不建议并发执行
+2. k6 性能测试使用 `--reset` 参数时，会自动重启后端服务并设置 `K6_TEST=true`
+3. Notification 模块测试依赖 Redis 服务
+4. 可通过 `reset-env.js` 一键重置测试环境（重建数据库 + 重启服务）
