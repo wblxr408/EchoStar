@@ -113,7 +113,7 @@
 <!-- 图表 -->
 <div class="grid">
   <div class="card">
-    <h2>各接口响应时间对比（P50 / P90 / P95 / Avg）</h2>
+    <h2>各接口响应时间对比（P50 / P95 / P99 / Avg）</h2>
     <div class="chart-container"><canvas id="responseTimeChart"></canvas></div>
   </div>
 
@@ -297,8 +297,8 @@ const chartDefaults = {
 // 各接口 Steady 阶段数据
 const endpoints = ['get_story', 'map_explore', 'map_clusters', 'map_feed', 'list_comments', 'like_toggle', 'login', 'create_comment', 'search_story', 'favorite_toggle', 'create_story', 'register'];
 const p50 = [8.2, 5.0, 6.9, 16.2, 4.4, 10.1, 91.4, 4.8, 6.8, 13.5, 4.8, 97.3];
-const p90 = [18.5, 9.6, 11.2, 26.8, 8.8, 19.4, 105.2, 9.8, 11.6, 25.4, 9.6, 109.8];
 const p95 = [24.3, 12.4, 14.1, 29.7, 12.1, 27.7, 102.5, 13.6, 15.7, 33.2, 13.5, 112.9];
+const p99 = [35.7, 20.1, 21.2, 40.3, 19.7, 40.4, 113.6, 22.0, 23.8, 47.6, 21.9, 129.4];
 const avg = [10.5, 5.9, 7.7, 18.7, 5.5, 12.6, 92.3, 6.0, 7.9, 16.4, 6.1, 98.9];
 const maxRt = [161.5, 114.3, 88.6, 328.8, 125.4, 226.2, 194.3, 51.8, 111.4, 250.1, 61.0, 231.7];
 const reqCounts = [52523, 26274, 21006, 17440, 14191, 9358, 9184, 9230, 8786, 6217, 4638, 3103];
@@ -310,8 +310,8 @@ new Chart(document.getElementById('responseTimeChart'), {
     labels: endpoints,
     datasets: [
       { label: 'P50', data: p50, backgroundColor: 'rgba(74,222,128,0.7)', borderColor: '#4ade80', borderWidth: 1 },
-      { label: 'P90', data: p90, backgroundColor: 'rgba(163,230,53,0.7)', borderColor: '#a3e635', borderWidth: 1 },
       { label: 'P95', data: p95, backgroundColor: 'rgba(251,191,36,0.7)', borderColor: '#fbbf24', borderWidth: 1 },
+      { label: 'P99', data: p99, backgroundColor: 'rgba(248,113,113,0.7)', borderColor: '#f87171', borderWidth: 1 },
       { label: 'Avg', data: avg, backgroundColor: 'rgba(56,189,248,0.7)', borderColor: '#38bdf8', borderWidth: 1 }
     ]
   },
