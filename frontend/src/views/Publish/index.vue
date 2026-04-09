@@ -54,7 +54,7 @@ import { useMapStore } from '../../stores/map';
 import ImageUploader from '../../components/ImageUploader.vue';
 import EmotionSelector from '../../components/EmotionSelector.vue';
 import { uploadImages, validateImage } from '../../utils/upload';
-import { showToast } from '../composables/useToast.js';
+import { showToast } from '../../composables/useToast.js';
 
 const router = useRouter();
 const storyStore = useStoryStore();
