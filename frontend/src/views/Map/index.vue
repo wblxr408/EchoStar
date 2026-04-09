@@ -8673,23 +8673,27 @@ onUnmounted(() => {
 }
 
 .likes-panel .item-footer,
+.posts-panel .item-footer,
 .favorites-panel .item-footer {
   justify-content: flex-start;
   gap: 14px;
 }
 
 .likes-panel .item-location,
+.posts-panel .item-location,
 .favorites-panel .item-location {
   flex: 1;
   min-width: 0;
 }
 
 .likes-panel .item-likes,
+.posts-panel .item-likes,
 .favorites-panel .item-likes {
   white-space: nowrap;
 }
 
 .likes-panel .item-likes + .item-likes,
+.posts-panel .item-likes + .item-likes,
 .favorites-panel .item-likes + .item-likes {
   margin-left: 10px;
 }
