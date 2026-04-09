@@ -4,24 +4,23 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue';
-import { useUserStore } from './stores/user';
-import AppToast from './components/AppToast.vue';
+import { onMounted } from "vue";
+import { useUserStore } from "./stores/user";
+import AppToast from "./components/AppToast.vue";
 
 const userStore = useUserStore();
 
-// 启动时获取用户信息
 onMounted(async () => {
   if (userStore.isLoggedIn) {
     try {
       await userStore.fetchUser();
     } catch (error) {
-      console.error('Failed to fetch user:', error);
+      console.error("Failed to fetch user:", error);
     }
   }
 });
 </script>
 
 <style>
-@import './styles/global.scss';
+@import "./styles/global.scss";
 </style>

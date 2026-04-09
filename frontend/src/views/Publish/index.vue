@@ -11,7 +11,6 @@
     </header>
 
     <div class="publish-form">
-      <!-- 内容输入 -->
       <div class="form-section">
         <textarea
           v-model="form.content"
@@ -21,13 +20,10 @@
         <span class="char-count">{{ form.content.length }}/500</span>
       </div>
 
-      <!-- 图片上传 -->
       <ImageUploader v-model="form.images" />
 
-      <!-- 情绪选择 -->
       <EmotionSelector v-model="form.emotion" />
 
-      <!-- 时光胶囊选项 -->
       <div class="form-section">
         <label class="checkbox">
           <input v-model="form.isTimeCapsule" type="checkbox" />
@@ -47,81 +43,70 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useStoryStore } from '../../stores/story';
-import { useMapStore } from '../../stores/map';
-import ImageUploader from '../../components/ImageUploader.vue';
-import EmotionSelector from '../../components/EmotionSelector.vue';
-import { uploadImages, validateImage } from '../../utils/upload';
-import { showToast } from '../composables/useToast.js';
+import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useStoryStore } from "../../stores/story";
+import { useMapStore } from "../../stores/map";
+import ImageUploader from "../../components/ImageUploader.vue";
+import EmotionSelector from "../../components/EmotionSelector.vue";
+import { uploadImages, validateImage } from "../../utils/upload";
+import { showToast } from "../../composables/useToast.js";
 
 const router = useRouter();
 const storyStore = useStoryStore();
 const mapStore = useMapStore();
 
-// 调试：监听路由变化
 onMounted(() => {
-  console.log('Publish 页面已挂载');
-  console.log('当前路由:', router.currentRoute.value.path);
-  console.log('路由对象:', router);
+  console.log("Publish 页面已挂载");
+  console.log("当前路由:", router.currentRoute.value.path);
+  console.log("路由对象:", router);
 });
 
 const form = ref({
-  content: '',
+  content: "",
   images: [],
   emotion: null,
   isTimeCapsule: false,
-  unlockAt: ''
+  unlockAt: "",
 });
 
-// 表单是否有效
 const isValid = computed(() => {
   return form.value.content.trim().length > 0;
 });
 
-// 返回上一页
 function handleBack(event) {
-  console.log('=== handleBack 被调用 ===');
-  console.log('当前路由:', router.currentRoute.value.path);
-  console.log('准备跳转到: /map');
+  console.log("=== handleBack 被调用 ===");
+  console.log("当前路由:", router.currentRoute.value.path);
+  console.log("准备跳转到: /map");
 
-  // 阻止事件冒泡
   if (event) {
     event.preventDefault();
     event.stopPropagation();
   }
 
-  // 使用 window.location 强制跳转
-  console.log('使用 window.location.href 跳转');
-  window.location.href = '/map';
+  console.log("使用 window.location.href 跳转");
+  window.location.href = "/map";
 }
 
-// 提交发布
 async function handleSubmit() {
   try {
-    // 获取当前位置
     if (!mapStore.userLocation) {
-      // 如果没有获取到位置,使用地图中心
       mapStore.setUserLocation(
         mapStore.center.latitude,
-        mapStore.center.longitude
+        mapStore.center.longitude,
       );
     }
 
-    // 上传图片到 OSS
     let imageUrls = [];
     if (form.value.images && form.value.images.length > 0) {
-      // 验证并上传图片
       for (const file of form.value.images) {
         const validation = validateImage(file);
         if (!validation.valid) {
-          showToast(validation.error, 'warning');
+          showToast(validation.error, "warning");
           return;
         }
       }
-      
-      // 上传所有图片
+
       imageUrls = await uploadImages(form.value.images);
     }
 
@@ -131,18 +116,18 @@ async function handleSubmit() {
       location: {
         lat: mapStore.userLocation.latitude,
         lng: mapStore.userLocation.longitude,
-        address: '当前位置'
+        address: "当前位置",
       },
       emotion: form.value.emotion,
       isTimeCapsule: form.value.isTimeCapsule,
-      unlockAt: form.value.unlockAt
+      unlockAt: form.value.unlockAt,
     });
 
-    showToast('发布成功！', 'success');
-    router.push('/map');
+    showToast("发布成功！", "success");
+    router.push("/map");
   } catch (error) {
-    console.error('发布失败:', error);
-    showToast('发布失败，请重试', 'error');
+    console.error("发布失败:", error);
+    showToast("发布失败，请重试", "error");
   }
 }
 </script>

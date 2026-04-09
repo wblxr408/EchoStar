@@ -1,22 +1,19 @@
-import api from './index';
-import { favoriteApiProxy } from './mockProxy';
+import api from "./index";
+import { favoriteApiProxy } from "./mockProxy";
 
 function normalizeStoryId(storyId) {
-  return typeof storyId === 'bigint'
+  return typeof storyId === "bigint"
     ? storyId.toString()
     : String(storyId).trim();
 }
 
-/**
- * 收藏相关 API
- */
 export const favoriteApi = {
   toggle(storyId) {
     const normalizedStoryId = normalizeStoryId(storyId);
     if (favoriteApiProxy) {
       return favoriteApiProxy.toggle(normalizedStoryId);
     }
-    return api.post('/v1/favorites', { storyId: normalizedStoryId });
+    return api.post("/v1/favorites", { storyId: normalizedStoryId });
   },
 
   create(storyId) {
@@ -24,7 +21,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.create(normalizedStoryId);
     }
-    return api.post('/v1/favorites/create', { storyId: normalizedStoryId });
+    return api.post("/v1/favorites/create", { storyId: normalizedStoryId });
   },
 
   remove(storyId) {
@@ -63,7 +60,7 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.getMyFavorites(params);
     }
-    return api.get('/v1/favorites/me', { params });
+    return api.get("/v1/favorites/me", { params });
   },
 
   checkMultiple(storyIds) {
@@ -73,6 +70,8 @@ export const favoriteApi = {
     if (favoriteApiProxy) {
       return favoriteApiProxy.checkMultiple(normalizedStoryIds);
     }
-    return api.post('/v1/favorites/check-multiple', { storyIds: normalizedStoryIds });
-  }
+    return api.post("/v1/favorites/check-multiple", {
+      storyIds: normalizedStoryIds,
+    });
+  },
 };
