@@ -10,7 +10,7 @@
       <h3 v-else>时光胶囊</h3>
 
       <p class="unlock-time">
-        {{ isUnlocked ? '解锁于 ' + formatUnlockTime : countdown }}
+        {{ isUnlocked ? "解锁于 " + formatUnlockTime : countdown }}
       </p>
     </div>
 
@@ -24,39 +24,39 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { formatDateTime, getTimeCapsuleCountdown, isTimeCapsuleUnlocked } from '../utils/time';
+import { computed, ref, onMounted, onUnmounted } from "vue";
+import {
+  formatDateTime,
+  getTimeCapsuleCountdown,
+  isTimeCapsuleUnlocked,
+} from "../utils/time";
 
 const props = defineProps({
   unlockAt: {
     type: String,
-    required: true
+    required: true,
   },
   createdAt: {
     type: String,
-    required: true
-  }
+    required: true,
+  },
 });
 
 const now = ref(new Date());
 let timer = null;
 
-// 是否已解锁
 const isUnlocked = computed(() => {
   return isTimeCapsuleUnlocked(props.unlockAt);
 });
 
-// 倒计时
 const countdown = computed(() => {
   return getTimeCapsuleCountdown(props.unlockAt);
 });
 
-// 格式化解锁时间
 const formatUnlockTime = computed(() => {
-  return formatDateTime(props.unlockAt, 'YYYY-MM-DD HH:mm');
+  return formatDateTime(props.unlockAt, "YYYY-MM-DD HH:mm");
 });
 
-// 进度百分比
 const progress = computed(() => {
   const created = new Date(props.createdAt).getTime();
   const unlock = new Date(props.unlockAt).getTime();
@@ -68,7 +68,6 @@ const progress = computed(() => {
   return ((current - created) / (unlock - created)) * 100;
 });
 
-// 定时更新
 onMounted(() => {
   timer = setInterval(() => {
     now.value = new Date();

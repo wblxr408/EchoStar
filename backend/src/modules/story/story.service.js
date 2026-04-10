@@ -7,6 +7,7 @@ import { rocketmqClient, StoryOperation, MessageModule } from '../../common/util
 import { snowflake } from '../../common/utils/snowflake.js';
 import { Op } from 'sequelize';
 import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
+import { favoriteCacheUtil } from '../../common/utils/favorite-cache.util.js';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
 
 function parseStoryLocationValue(locationValue) {
@@ -341,7 +342,11 @@ class StoryServiceClass {
     const redis = redisClient.getClient();
     const viewPipeline = redis.pipeline();
     storyIds.forEach(id => viewPipeline.get(`story:views:${id}`));
-    const viewResults = await viewPipeline.exec();
+    const [viewResults, likeCounts, favoriteCounts] = await Promise.all([
+      viewPipeline.exec(),
+      Promise.all(storyIds.map((id) => likeCacheUtil.getLikeCount(id).catch(() => 0))),
+      Promise.all(storyIds.map((id) => favoriteCacheUtil.getFavoriteCount(id).catch(() => 0)))
+    ]);
     const realViewCounts = rows.map((story, index) => {
       const delta = parseInt(viewResults[index]?.[1]) || 0;
       return (story.viewCount || 0) + delta;
@@ -354,6 +359,8 @@ class StoryServiceClass {
         images: story.images,
         createdAt: story.createdAt,
         viewCount: realViewCounts[index],
+        likeCount: likeCounts[index] || 0,
+        favoriteCount: favoriteCounts[index] || 0,
         visibility: story.visibility,
         location: parseStoryLocationValue(story.location),
         locationName: story.locationName,

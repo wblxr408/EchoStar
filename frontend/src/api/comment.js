@@ -1,36 +1,33 @@
-import api from './index';
-import { commentApiProxy } from './mockProxy';
+import api from "./index";
+import { commentApiProxy } from "./mockProxy";
 
 function normalizeStoryId(storyId) {
-  return typeof storyId === 'bigint'
+  return typeof storyId === "bigint"
     ? storyId.toString()
     : String(storyId).trim();
 }
 
-/**
- * 评论相关 API
- */
 export const commentApi = {
   create(storyId, content) {
     const normalizedStoryId = normalizeStoryId(storyId);
     if (commentApiProxy) {
       return commentApiProxy.create(normalizedStoryId, content);
     }
-    return api.post('/v1/comments', { storyId: normalizedStoryId, content });
+    return api.post("/v1/comments", { storyId: normalizedStoryId, content });
   },
 
   search(keyword, params = {}) {
     if (commentApiProxy) {
       return commentApiProxy.search(keyword, params);
     }
-    return api.get('/v1/comments/search', { params: { keyword, ...params } });
+    return api.get("/v1/comments/search", { params: { keyword, ...params } });
   },
 
   getMyComments(params = {}) {
     if (commentApiProxy) {
       return commentApiProxy.getMyComments(params);
     }
-    return api.get('/v1/comments/me', { params });
+    return api.get("/v1/comments/me", { params });
   },
 
   getStoryComments(storyId, params = {}) {
@@ -54,5 +51,5 @@ export const commentApi = {
       return commentApiProxy.delete(id);
     }
     return api.delete(`/v1/comments/${id}`);
-  }
+  },
 };

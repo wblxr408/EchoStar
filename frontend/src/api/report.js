@@ -1,71 +1,53 @@
-import api from './index';
-import { reportApiProxy } from './mockProxy';
+import api from "./index";
+import { reportApiProxy } from "./mockProxy";
 
 function normalizeTargetId(targetId) {
-  return typeof targetId === 'bigint'
+  return typeof targetId === "bigint"
     ? targetId.toString()
     : String(targetId).trim();
 }
 
-/**
- * 举报相关 API
- */
 export const reportApi = {
-  /**
-   * 创建举报
-   */
   create(targetType, targetId, reason) {
     const normalizedTargetId = normalizeTargetId(targetId);
     if (reportApiProxy) {
       return reportApiProxy.create(targetType, normalizedTargetId, reason);
     }
-    return api.post('/v1/reports', { targetType, targetId: normalizedTargetId, reason });
+    return api.post("/v1/reports", {
+      targetType,
+      targetId: normalizedTargetId,
+      reason,
+    });
   },
 
-  /**
-   * 获取我的举报列表
-   */
   getMyReports(params = {}) {
     if (reportApiProxy) {
       return reportApiProxy.getMyReports(params);
     }
-    return api.get('/v1/reports/me', { params });
+    return api.get("/v1/reports/me", { params });
   },
 
-  /**
-   * 获取举报列表（管理员）
-   * @param {Object} params - { targetType: 'story'|'comment', status?: 'pending'|'approved'|'rejected', page?: number, limit?: number }
-   */
   getReports(params = {}) {
     if (reportApiProxy) {
       return reportApiProxy.getReports(params);
     }
-    return api.get('/v1/reports', { params });
+    return api.get("/v1/reports", { params });
   },
 
-  /**
-   * 获取故事举报列表（管理员）
-   */
   getStoryReports(params = {}) {
     if (reportApiProxy) {
       return reportApiProxy.getStoryReports(params);
     }
-    return api.get('/v1/reports/stories', { params });
+    return api.get("/v1/reports/stories", { params });
   },
 
-  /**
-   * 获取评论举报列表（管理员）
-   */
   getCommentReports(params = {}) {
     if (reportApiProxy) {
       return reportApiProxy.getCommentReports(params);
     }
-    return api.get('/v1/reports/comments', { params });
+    return api.get("/v1/reports/comments", { params });
   },
 
-  /**
-   * 处理举报（管理员）
-   */
   handle(reportId, action) {
     if (reportApiProxy) {
       return reportApiProxy.handle(reportId, action);
@@ -73,13 +55,10 @@ export const reportApi = {
     return api.post(`/v1/reports/${reportId}/handle`, { action });
   },
 
-  /**
-   * 获取举报统计（管理员）
-   */
   getStatistics() {
     if (reportApiProxy) {
       return reportApiProxy.getStatistics();
     }
-    return api.get('/v1/reports/statistics');
-  }
+    return api.get("/v1/reports/statistics");
+  },
 };

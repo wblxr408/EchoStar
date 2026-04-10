@@ -1,6 +1,5 @@
 <template>
   <div class="image-uploader">
-    <!-- 拖拽上传区域 -->
     <div
       class="upload-area"
       :class="{ 'drag-over': isDragOver }"
@@ -13,31 +12,34 @@
           v-for="(image, index) in previewImages"
           :key="index"
           class="image-item"
-          :class="{ 'uploading': image.uploading, 'error': image.error }"
+          :class="{ uploading: image.uploading, error: image.error }"
           :style="{ transform: `rotate(${image.rotation || 0}deg)` }"
         >
           <img :src="image.preview" alt="预览图" @click="previewImage(index)" />
 
-          <!-- 上传进度条 -->
           <div v-if="image.uploading" class="upload-progress">
-            <div class="progress-bar" :style="{ width: image.progress + '%' }"></div>
+            <div
+              class="progress-bar"
+              :style="{ width: image.progress + '%' }"
+            ></div>
             <span class="progress-text">{{ image.progress }}%</span>
           </div>
 
-          <!-- 错误提示 -->
           <div v-if="image.error" class="error-overlay">
             <span class="error-icon">⚠️</span>
             <span class="error-text">上传失败</span>
           </div>
 
-          <!-- 删除按钮 -->
           <button class="remove-btn" @click="removeImage(index)">
             <i class="icon-close">×</i>
           </button>
 
-          <!-- 图片操作按钮 -->
           <div class="image-actions">
-            <button class="action-btn" @click="previewImage(index)" title="预览">
+            <button
+              class="action-btn"
+              @click="previewImage(index)"
+              title="预览"
+            >
               <span>👁️</span>
             </button>
             <button class="action-btn" @click="rotateImage(index)" title="旋转">
@@ -46,11 +48,10 @@
           </div>
         </div>
 
-        <!-- 添加图片按钮 -->
         <label
           v-if="previewImages.length < maxImages"
           class="upload-btn"
-          :class="{ 'pulse': isDragOver }"
+          :class="{ pulse: isDragOver }"
         >
           <input
             ref="fileInput"
@@ -59,22 +60,29 @@
             multiple
             @change="handleFileSelect"
           />
-          <div class="upload-icon" :class="{ 'animate': isDragOver }">
-            {{ isDragOver ? '📥' : '📷' }}
+          <div class="upload-icon" :class="{ animate: isDragOver }">
+            {{ isDragOver ? "📥" : "📷" }}
           </div>
-          <div class="upload-text">{{ isDragOver ? '松开上传' : '添加图片' }}</div>
+          <div class="upload-text">
+            {{ isDragOver ? "松开上传" : "添加图片" }}
+          </div>
           <div class="upload-hint">或拖拽图片到这里</div>
         </label>
       </div>
     </div>
 
-    <!-- 图片预览弹窗 -->
-    <div v-if="previewingImage !== null" class="preview-modal" @click="closePreview">
+    <div
+      v-if="previewingImage !== null"
+      class="preview-modal"
+      @click="closePreview"
+    >
       <div class="preview-content" @click.stop>
         <button class="close-preview-btn" @click="closePreview">×</button>
         <img :src="previewImages[previewingImage]?.preview" alt="预览" />
         <div class="preview-info">
-          <span>图片 {{ previewingImage + 1 }} / {{ previewImages.length }}</span>
+          <span
+            >图片 {{ previewingImage + 1 }} / {{ previewImages.length }}</span
+          >
         </div>
         <div class="preview-nav">
           <button
@@ -103,95 +111,88 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
-import { validateImageFile, createPreviewURL, revokePreviewURL } from '../utils/image';
-import { showToast } from '../composables/useToast.js';
+import { ref, watch } from "vue";
+import {
+  validateImageFile,
+  createPreviewURL,
+  revokePreviewURL,
+} from "../utils/image";
+import { showToast } from "../composables/useToast.js";
 
 const props = defineProps({
   modelValue: {
     type: Array,
-    default: () => []
+    default: () => [],
   },
   maxImages: {
     type: Number,
-    default: 9
-  }
+    default: 9,
+  },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(["update:modelValue"]);
 
 const fileInput = ref(null);
 const previewImages = ref([]);
 const isDragOver = ref(false);
 const previewingImage = ref(null);
 
-// 处理文件选择
 function handleFileSelect(event) {
   const files = Array.from(event.target.files);
   addFiles(files);
 
-  // 清空 input
-  event.target.value = '';
+  event.target.value = "";
 }
 
-// 添加文件
 function addFiles(files) {
   files.forEach((file) => {
-    // 验证文件
     const { valid, error } = validateImageFile(file);
     if (!valid) {
-      showToast(error, 'warning');
+      showToast(error, "warning");
       return;
     }
 
-    // 检查数量限制
     if (previewImages.value.length >= props.maxImages) {
-      showToast(`最多只能上传 ${props.maxImages} 张图片`, 'warning');
+      showToast(`最多只能上传 ${props.maxImages} 张图片`, "warning");
       return;
     }
 
-    // 添加预览
     previewImages.value.push({
       file,
       preview: createPreviewURL(file),
       uploading: false,
       progress: 0,
       error: false,
-      rotation: 0
+      rotation: 0,
     });
   });
 
-  // 更新 v-model
   updateModelValue();
 }
 
-// 处理拖放
 function handleDrop(event) {
   isDragOver.value = false;
   const files = Array.from(event.dataTransfer.files);
 
-  // 过滤图片文件
   const imageFiles = files.filter((file) => {
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     return validTypes.includes(file.type);
   });
 
   if (imageFiles.length === 0) {
-    showToast('请上传图片文件', 'warning');
+    showToast("请上传图片文件", "warning");
     return;
   }
 
   addFiles(imageFiles);
 }
 
-// 移除图片
 function removeImage(index) {
   const removed = previewImages.value.splice(index, 1)[0];
   revokePreviewURL(removed.preview);
   updateModelValue();
 }
 
-// 旋转图片
 function rotateImage(index) {
   const image = previewImages.value[index];
   image.rotation = (image.rotation || 0) + 90;
@@ -200,17 +201,14 @@ function rotateImage(index) {
   }
 }
 
-// 预览图片
 function previewImage(index) {
   previewingImage.value = index;
 }
 
-// 关闭预览
 function closePreview() {
   previewingImage.value = null;
 }
 
-// 导航预览
 function navigatePreview(delta) {
   const newIndex = previewingImage.value + delta;
   if (newIndex >= 0 && newIndex < previewImages.value.length) {
@@ -218,21 +216,21 @@ function navigatePreview(delta) {
   }
 }
 
-// 更新 v-model
 function updateModelValue() {
-  emit('update:modelValue', previewImages.value.map((img) => img.file));
+  emit(
+    "update:modelValue",
+    previewImages.value.map((img) => img.file),
+  );
 }
 
-// 监听外部变化
 watch(
   () => props.modelValue,
   (newFiles) => {
     if (newFiles.length === 0 && previewImages.value.length > 0) {
-      // 清空预览
       previewImages.value.forEach((img) => revokePreviewURL(img.preview));
       previewImages.value = [];
     }
-  }
+  },
 );
 </script>
 
@@ -444,7 +442,8 @@ watch(
 }
 
 @keyframes bounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
   }
   50% {

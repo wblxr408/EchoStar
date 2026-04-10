@@ -1,71 +1,84 @@
 ﻿<template>
-  <div class="amap-container" :class="{ 'dark-mode': isDarkMode }" ref="mapContainer"></div>
+  <div
+    class="amap-container"
+    :class="{ 'dark-mode': isDarkMode }"
+    ref="mapContainer"
+  ></div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
-import { fromEmotionTag, getEmotionEmoji } from '../utils/emotion';
+import { ref, onMounted, onUnmounted, watch } from "vue";
+import { fromEmotionTag, getEmotionEmoji } from "../utils/emotion";
 
 const props = defineProps({
   stories: {
     type: Array,
-    default: () => []
+    default: () => [],
   },
   clusters: {
     type: Array,
-    default: () => []
+    default: () => [],
   },
   userLocation: {
     type: Object,
-    default: null
+    default: null,
   },
   center: {
     type: Object,
-    default: () => ({ latitude: 39.9042, longitude: 116.4074 })
+    default: () => ({ latitude: 39.9042, longitude: 116.4074 }),
   },
   zoom: {
     type: Number,
-    default: 12
+    default: 12,
   },
   theme: {
     type: String,
-    default: 'light'
+    default: "light",
   },
   pointPickMode: {
     type: Boolean,
-    default: false
+    default: false,
   },
   tempPickedLocation: {
     type: Object,
-    default: null
-  }
+    default: null,
+  },
 });
 
-const emit = defineEmits(['marker-click', 'map-move', 'theme-change', 'map-click', 'cluster-click']);
+const emit = defineEmits([
+  "marker-click",
+  "map-move",
+  "theme-change",
+  "map-click",
+  "cluster-click",
+]);
 
 const mapContainer = ref(null);
-const DEFAULT_CENTER = Object.freeze({ latitude: 39.9042, longitude: 116.4074 });
+const DEFAULT_CENTER = Object.freeze({
+  latitude: 39.9042,
+  longitude: 116.4074,
+});
 const emotionColors = {
-  happy: '#ffd93d',
-  sad: '#6bceff',
-  neutral: '#c8d6e5',
-  excited: '#ff6b9d',
-  peaceful: '#a8e6cf'
+  happy: "#ffd93d",
+  sad: "#6bceff",
+  neutral: "#c8d6e5",
+  excited: "#ff6b9d",
+  peaceful: "#a8e6cf",
 };
 const emotionColorsDark = {
-  happy: '#ffd93d',
-  sad: '#6bceff',
-  neutral: '#b8c5cc',
-  excited: '#ff6b9d',
-  peaceful: '#9ae6d9'
+  happy: "#ffd93d",
+  sad: "#6bceff",
+  neutral: "#b8c5cc",
+  excited: "#ff6b9d",
+  peaceful: "#9ae6d9",
 };
 
 let map = null;
 let markers = [];
-let clusterMarkers = []; // 鑱氬悎鏍囪
+let clusterMarkers = [];
 let userLocationMarker = null;
 let tempPickedMarker = null;
-const isDarkMode = ref(props.theme === 'dark');
+const isDarkMode = ref(props.theme === "dark");
 const isSidebarHidden = ref(false);
 const isPublishSidebarOpen = ref(false);
 
@@ -75,7 +88,7 @@ function toFiniteNumber(value) {
 }
 
 function readCoordinate(valueOrGetter) {
-  if (typeof valueOrGetter === 'function') {
+  if (typeof valueOrGetter === "function") {
     try {
       return toFiniteNumber(valueOrGetter());
     } catch {
@@ -87,7 +100,7 @@ function readCoordinate(valueOrGetter) {
 }
 
 function resolveLngLatPoint(point) {
-  if (!point || typeof point !== 'object') {
+  if (!point || typeof point !== "object") {
     return null;
   }
 
@@ -103,7 +116,7 @@ function resolveLngLatPoint(point) {
 
 function resolveCoordinates(source) {
   const candidates = [source, source?.location].filter(
-    (item) => item && typeof item === 'object'
+    (item) => item && typeof item === "object",
   );
 
   for (const item of candidates) {
@@ -115,7 +128,7 @@ function resolveCoordinates(source) {
         latitude,
         longitude,
         lat: latitude,
-        lng: longitude
+        lng: longitude,
       };
     }
   }
@@ -152,7 +165,10 @@ function resolveClusterCount(cluster) {
 }
 
 function isClusterEntry(entry) {
-  return (entry?.type === 'cluster' || resolveClusterCount(entry) > 1) && !!resolveCoordinates(entry);
+  return (
+    (entry?.type === "cluster" || resolveClusterCount(entry) > 1) &&
+    !!resolveCoordinates(entry)
+  );
 }
 
 function isPointEntry(entry) {
@@ -173,17 +189,17 @@ function createMarkerStoryFromPoint(point, storyLookup) {
   return {
     ...point,
     id: point?.id ?? `cluster-point-${coords.latitude}-${coords.longitude}`,
-    content: point?.content || point?.preview || '',
-    preview: point?.preview || point?.content || '',
+    content: point?.content || point?.preview || "",
+    preview: point?.preview || point?.content || "",
     images: Array.isArray(point?.images) ? point.images : [],
-    emotion: point?.emotion || point?.emotionTag || '',
-    emotionTag: point?.emotionTag || point?.emotion || '',
+    emotion: point?.emotion || point?.emotionTag || "",
+    emotionTag: point?.emotionTag || point?.emotion || "",
     location: {
       latitude: coords.latitude,
       longitude: coords.longitude,
       lat: coords.latitude,
-      lng: coords.longitude
-    }
+      lng: coords.longitude,
+    },
   };
 }
 
@@ -230,7 +246,7 @@ function addMapControls() {
     return;
   }
 
-  window.AMap.plugin(['AMap.Scale', 'AMap.ToolBar'], () => {
+  window.AMap.plugin(["AMap.Scale", "AMap.ToolBar"], () => {
     if (!map) {
       return;
     }
@@ -250,37 +266,39 @@ function updateMapCursor() {
     return;
   }
 
-  const cursor = props.pointPickMode ? 'crosshair' : '';
+  const cursor = props.pointPickMode ? "crosshair" : "";
   mapContainer.value.style.cursor = cursor;
 
   if (map?.setDefaultCursor) {
-    map.setDefaultCursor(props.pointPickMode ? 'crosshair' : 'default');
+    map.setDefaultCursor(props.pointPickMode ? "crosshair" : "default");
   }
 }
 
 function initMap() {
   if (!window.AMap || !mapContainer.value) {
-    console.error('[AMap] Failed to initialize map instance.');
+    console.error("[AMap] Failed to initialize map instance.");
     return;
   }
 
-  const mapStyle = isDarkMode.value ? 'amap://styles/dark' : 'amap://styles/whitesmoke';
+  const mapStyle = isDarkMode.value
+    ? "amap://styles/dark"
+    : "amap://styles/whitesmoke";
   const initialCenter = resolveCoordinates(props.center) || DEFAULT_CENTER;
 
   map = new window.AMap.Map(mapContainer.value, {
     zoom: Math.max(Number(props.zoom) || 4, 4),
     center: [initialCenter.longitude, initialCenter.latitude],
     mapStyle,
-    viewMode: '2D',
+    viewMode: "2D",
     showLabel: true,
     resizeEnable: true,
     expandZoomRange: true,
     zooms: [4, 20],
     dragEnable: true,
-    scrollWheel: true
+    scrollWheel: true,
   });
 
-  map.on('move', () => {
+  map.on("move", () => {
     if (!map) {
       return;
     }
@@ -303,51 +321,53 @@ function initMap() {
     }
   });
 
-  map.on('moveend', () => {
+  map.on("moveend", () => {
     if (!map) {
       return;
     }
 
     const center = map.getCenter();
-    emit('map-move', {
+    emit("map-move", {
       latitude: center.getLat(),
       longitude: center.getLng(),
-      zoom: map.getZoom()
+      zoom: map.getZoom(),
     });
   });
 
-  map.on('zoomend', () => {
+  map.on("zoomend", () => {
     if (!map) {
       return;
     }
 
     const center = map.getCenter();
-    emit('map-move', {
+    emit("map-move", {
       latitude: center.getLat(),
       longitude: center.getLng(),
-      zoom: map.getZoom()
+      zoom: map.getZoom(),
     });
   });
 
-  map.on('click', (event) => {
+  map.on("click", (event) => {
     const lngLat = event?.lnglat;
     const pixel = event?.pixel;
     const latitude = toFiniteNumber(lngLat?.getLat?.());
     const longitude = toFiniteNumber(lngLat?.getLng?.());
-    const screenX = toFiniteNumber(pixel?.getX?.() ?? pixel?.x) ?? window.innerWidth / 2;
-    const screenY = toFiniteNumber(pixel?.getY?.() ?? pixel?.y) ?? window.innerHeight / 2;
+    const screenX =
+      toFiniteNumber(pixel?.getX?.() ?? pixel?.x) ?? window.innerWidth / 2;
+    const screenY =
+      toFiniteNumber(pixel?.getY?.() ?? pixel?.y) ?? window.innerHeight / 2;
 
     if (latitude === null || longitude === null) {
       return;
     }
 
-    emit('map-click', {
+    emit("map-click", {
       latitude,
       longitude,
       lat: latitude,
       lng: longitude,
       screenX,
-      screenY
+      screenY,
     });
   });
 
@@ -409,15 +429,15 @@ function createUserLocationMarker(location) {
       icon: new window.AMap.Icon({
         size: new window.AMap.Size(30, 40),
         image: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(dropletSvg)}`,
-        imageSize: new window.AMap.Size(30, 40)
+        imageSize: new window.AMap.Size(30, 40),
       }),
       offset: new window.AMap.Pixel(-15, -38),
-      zIndex: 1200
+      zIndex: 1200,
     });
   }
 
-  const content = document.createElement('div');
-  content.className = 'user-location-marker';
+  const content = document.createElement("div");
+  content.className = "user-location-marker";
   content.innerHTML = `
     <div class="user-location-pulse"></div>
     <div class="user-location-dot"></div>
@@ -427,7 +447,7 @@ function createUserLocationMarker(location) {
     position: [coords.longitude, coords.latitude],
     content,
     offset: new window.AMap.Pixel(-14, -14),
-    zIndex: 1000
+    zIndex: 1000,
   });
 }
 
@@ -474,15 +494,15 @@ function createTempPickedMarker(location) {
       icon: new window.AMap.Icon({
         size: new window.AMap.Size(30, 40),
         image: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(dropletSvg)}`,
-        imageSize: new window.AMap.Size(30, 40)
+        imageSize: new window.AMap.Size(30, 40),
       }),
       offset: new window.AMap.Pixel(-15, -38),
-      zIndex: 1200
+      zIndex: 1200,
     });
   }
 
-  const content = document.createElement('div');
-  content.className = 'temp-picked-marker';
+  const content = document.createElement("div");
+  content.className = "temp-picked-marker";
   content.innerHTML = `
     <div class="temp-picked-flag">
       <span class="temp-picked-flag-icon">锟?/span>
@@ -494,7 +514,7 @@ function createTempPickedMarker(location) {
     position: [coords.longitude, coords.latitude],
     content,
     offset: new window.AMap.Pixel(-16, -42),
-    zIndex: 1200
+    zIndex: 1200,
   });
 }
 
@@ -528,21 +548,21 @@ function createMarker(story) {
   const coords = resolveCoordinates(story);
 
   if (!coords) {
-    console.warn('[AMap] Skip story with invalid coordinates:', story);
+    console.warn("[AMap] Skip story with invalid coordinates:", story);
     return null;
   }
 
-  const content = document.createElement('div');
-  content.className = 'custom-marker';
+  const content = document.createElement("div");
+  content.className = "custom-marker";
 
   const colors = isDarkMode.value ? emotionColorsDark : emotionColors;
   const emotion = fromEmotionTag(story.emotionTag) || story.emotion;
-  const color = colors[emotion] || '#667eea';
+  const color = colors[emotion] || "#667eea";
   const isLocked = story.isTimeCapsule && !story.isUnlocked;
 
   content.innerHTML = `
-    <div class="marker-wrapper" style="background: ${color}; ${isLocked ? 'opacity: 0.6;' : ''}">
-      <div class="marker-emotion">${isLocked ? 'LOCK' : getEmotionEmoji(story.emotionTag || story.emotion)}</div>
+    <div class="marker-wrapper" style="background: ${color}; ${isLocked ? "opacity: 0.6;" : ""}">
+      <div class="marker-emotion">${isLocked ? "LOCK" : getEmotionEmoji(story.emotionTag || story.emotion)}</div>
     </div>
   `;
 
@@ -550,11 +570,11 @@ function createMarker(story) {
     position: [coords.longitude, coords.latitude],
     content,
     offset: new window.AMap.Pixel(-25, -25),
-    title: (story.content || story.preview || '').substring(0, 50) + '...',
-    zIndex: story.isTimeCapsule ? 10 : 100
+    title: (story.content || story.preview || "").substring(0, 50) + "...",
+    zIndex: story.isTimeCapsule ? 10 : 100,
   });
 
-  marker.on('click', () => {
+  marker.on("click", () => {
     let screenX = window.innerWidth / 2;
     let screenY = window.innerHeight / 2;
 
@@ -568,24 +588,27 @@ function createMarker(story) {
         screenY = nextY;
       }
     } catch (error) {
-      console.warn('[AMap] Failed to resolve marker screen position:', error, story);
+      console.warn(
+        "[AMap] Failed to resolve marker screen position:",
+        error,
+        story,
+      );
     }
 
-    emit('marker-click', {
+    emit("marker-click", {
       story,
       screenX,
-      screenY
+      screenY,
     });
   });
 
   return marker;
 }
 
-// 璁＄畻鑱氬悎姘旀场鍗婂緞锛堥殢 count 澧炲ぇ閫艰繎涓婇檺浣嗘案杩滀笉杈惧埌锟?
 function calculateClusterRadius(count) {
-  const R_MIN = 25;   
-  const R_MAX = 80;   
-  const DECAY = 8;    
+  const R_MIN = 25;
+  const R_MAX = 80;
+  const DECAY = 8;
 
   return R_MIN + (R_MAX - R_MIN) * (count / (count + DECAY));
 }
@@ -631,18 +654,26 @@ function createStoryPixelState(story) {
     top: py - half,
     bottom: py + half,
     latitude: coords.latitude,
-    longitude: coords.longitude
+    longitude: coords.longitude,
   };
 }
 
 function getStoryMarkerOverlapRatio(a, b) {
-  const overlapWidth = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-  const overlapHeight = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  const overlapWidth = Math.max(
+    0,
+    Math.min(a.right, b.right) - Math.max(a.left, b.left),
+  );
+  const overlapHeight = Math.max(
+    0,
+    Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top),
+  );
   if (overlapWidth <= 0 || overlapHeight <= 0) {
     return 0;
   }
 
-  return (overlapWidth * overlapHeight) / (STORY_MARKER_SIZE * STORY_MARKER_SIZE);
+  return (
+    (overlapWidth * overlapHeight) / (STORY_MARKER_SIZE * STORY_MARKER_SIZE)
+  );
 }
 
 function createLowZoomRenderableEntity(entry, storyLookup) {
@@ -653,11 +684,11 @@ function createLowZoomRenderableEntity(entry, storyLookup) {
     }
 
     return {
-      kind: 'cluster',
+      kind: "cluster",
       latitude: coords.latitude,
       longitude: coords.longitude,
       count: resolveClusterCount(entry),
-      pointIds: dedupePointIds(entry?.pointIds || [])
+      pointIds: dedupePointIds(entry?.pointIds || []),
     };
   }
 
@@ -671,12 +702,12 @@ function createLowZoomRenderableEntity(entry, storyLookup) {
   }
 
   return {
-    kind: 'point',
+    kind: "point",
     latitude: story.location.latitude,
     longitude: story.location.longitude,
     count: 1,
     pointIds: story?.id === undefined || story?.id === null ? [] : [story.id],
-    story
+    story,
   };
 }
 
@@ -698,9 +729,10 @@ function createLowZoomEntityState(entity) {
     return null;
   }
 
-  const halfSize = entity.kind === 'cluster'
-    ? calculateClusterRadius(entity.count)
-    : STORY_MARKER_SIZE / 2;
+  const halfSize =
+    entity.kind === "cluster"
+      ? calculateClusterRadius(entity.count)
+      : STORY_MARKER_SIZE / 2;
 
   return {
     entity,
@@ -710,13 +742,19 @@ function createLowZoomEntityState(entity) {
     right: px + halfSize,
     top: py - halfSize,
     bottom: py + halfSize,
-    area: Math.pow(halfSize * 2, 2)
+    area: Math.pow(halfSize * 2, 2),
   };
 }
 
 function getLowZoomEntityOverlapRatio(a, b) {
-  const overlapWidth = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-  const overlapHeight = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  const overlapWidth = Math.max(
+    0,
+    Math.min(a.right, b.right) - Math.max(a.left, b.left),
+  );
+  const overlapHeight = Math.max(
+    0,
+    Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top),
+  );
   if (overlapWidth <= 0 || overlapHeight <= 0) {
     return 0;
   }
@@ -731,7 +769,7 @@ function getLowZoomEntityOverlapRatio(a, b) {
 }
 
 function getLowZoomEntityOverlapThreshold(a, b) {
-  if (a.entity.kind === 'cluster' && b.entity.kind === 'cluster') {
+  if (a.entity.kind === "cluster" && b.entity.kind === "cluster") {
     return CLUSTER_CLUSTER_OVERLAP_THRESHOLD;
   }
 
@@ -740,17 +778,18 @@ function getLowZoomEntityOverlapThreshold(a, b) {
 
 function resolveMergedLowZoomCount(entities) {
   const explicitPointIds = dedupePointIds(
-    entities.flatMap((entity) => entity.pointIds || [])
+    entities.flatMap((entity) => entity.pointIds || []),
   );
 
   const opaqueCount = entities.reduce((sum, entity) => {
-    const hasExplicitPointIds = Array.isArray(entity.pointIds) && entity.pointIds.length > 0;
+    const hasExplicitPointIds =
+      Array.isArray(entity.pointIds) && entity.pointIds.length > 0;
     return sum + (hasExplicitPointIds ? 0 : entity.count);
   }, 0);
 
   return {
     count: Math.max(opaqueCount + explicitPointIds.length, 1),
-    pointIds: explicitPointIds
+    pointIds: explicitPointIds,
   };
 }
 
@@ -777,9 +816,7 @@ function buildLowZoomRenderableData(clusterList, storyList = []) {
     return { clusters: [], points: [] };
   }
 
-  const items = entities
-    .map(createLowZoomEntityState)
-    .filter(Boolean);
+  const items = entities.map(createLowZoomEntityState).filter(Boolean);
 
   if (items.length === 0) {
     return { clusters: [], points: [] };
@@ -802,7 +839,10 @@ function buildLowZoomRenderableData(clusterList, storyList = []) {
 
   for (let i = 0; i < items.length; i++) {
     for (let j = i + 1; j < items.length; j++) {
-      if (getLowZoomEntityOverlapRatio(items[i], items[j]) >= getLowZoomEntityOverlapThreshold(items[i], items[j])) {
+      if (
+        getLowZoomEntityOverlapRatio(items[i], items[j]) >=
+        getLowZoomEntityOverlapThreshold(items[i], items[j])
+      ) {
         union(i, j);
       }
     }
@@ -828,26 +868,35 @@ function buildLowZoomRenderableData(clusterList, storyList = []) {
     }
 
     const { count, pointIds } = resolveMergedLowZoomCount(group);
-    if (count <= 1 && group.length === 1 && group[0].kind === 'point' && group[0].story) {
+    if (
+      count <= 1 &&
+      group.length === 1 &&
+      group[0].kind === "point" &&
+      group[0].story
+    ) {
       points.push(group[0].story);
       return;
     }
 
-    const latitude = group.reduce((sum, entity) => sum + entity.latitude * entity.count, 0) / totalWeight;
-    const longitude = group.reduce((sum, entity) => sum + entity.longitude * entity.count, 0) / totalWeight;
+    const latitude =
+      group.reduce((sum, entity) => sum + entity.latitude * entity.count, 0) /
+      totalWeight;
+    const longitude =
+      group.reduce((sum, entity) => sum + entity.longitude * entity.count, 0) /
+      totalWeight;
 
     clusters.push({
-      type: 'cluster',
+      type: "cluster",
       latitude,
       longitude,
       count,
-      pointIds
+      pointIds,
     });
   });
 
   return {
     clusters,
-    points: dedupeStories(points)
+    points: dedupeStories(points),
   };
 }
 
@@ -881,7 +930,10 @@ function buildForcedStoryClusters(stories, excludedStoryIdKeys = new Set()) {
 
   for (let i = 0; i < items.length; i++) {
     for (let j = i + 1; j < items.length; j++) {
-      if (getStoryMarkerOverlapRatio(items[i], items[j]) >= FORCED_STORY_CLUSTER_OVERLAP_RATIO) {
+      if (
+        getStoryMarkerOverlapRatio(items[i], items[j]) >=
+        FORCED_STORY_CLUSTER_OVERLAP_RATIO
+      ) {
         union(i, j);
       }
     }
@@ -915,11 +967,11 @@ function buildForcedStoryClusters(stories, excludedStoryIdKeys = new Set()) {
     });
 
     clusters.push({
-      type: 'cluster',
+      type: "cluster",
       latitude: latitude / group.length,
       longitude: longitude / group.length,
       count: pointIds.length || group.length,
-      pointIds
+      pointIds,
     });
   });
 
@@ -955,11 +1007,11 @@ function createPixelClusterState(cluster) {
 
   return {
     cluster: {
-      type: 'cluster',
+      type: "cluster",
       latitude: coords.latitude,
       longitude: coords.longitude,
       count,
-      pointIds
+      pointIds,
     },
     pointIdKeys: new Set(pointIds.map(getStoryIdKey).filter(Boolean)),
     px,
@@ -967,64 +1019,68 @@ function createPixelClusterState(cluster) {
     radius: calculateClusterRadius(count),
     latitude: coords.latitude,
     longitude: coords.longitude,
-    count
+    count,
   };
 }
 
-// 妫€鏌ヤ袱涓皵娉℃槸鍚﹂噸鍙犺秴杩囬槇锟?
 function isOverlapping(m1, m2, threshold) {
   const dx = m1.px - m2.px;
   const dy = m1.py - m2.py;
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist >= m1.radius + m2.radius) return false;
   if (dist <= 0) return true;
-  // 閲嶅彔姣斾緥 = 涓ゅ渾閲嶅彔閮ㄥ垎鐨勫锟?/ 杈冨皬鍦嗙洿寰勭殑杩戜技
   const overlap = m1.radius + m2.radius - dist;
   const minDiameter = 2 * Math.min(m1.radius, m2.radius);
-  return (overlap / minDiameter) > threshold;
+  return overlap / minDiameter > threshold;
 }
 
-// 鍚堝苟閲嶅彔鐨勮仛鍚堟皵娉★紙鍩轰簬鍍忕礌鍧愭爣妫€娴嬶紝>20% 閲嶅彔鍒欏悎骞讹級
 function mergeOverlappingClusters(clusterList) {
   if (!map || clusterList.length <= 1) return clusterList;
 
-  // 杞崲涓哄儚绱犲潗鏍囧苟璁＄畻鍗婂緞
   let items = clusterList.map(createPixelClusterState).filter(Boolean);
 
-  if (items.length <= 1) return items.map(i => i.cluster);
+  if (items.length <= 1) return items.map((i) => i.cluster);
 
-  // 杩唬鍚堝苟锛岀洿鍒版病鏈夋柊鐨勯噸锟?
   let changed = true;
   while (changed) {
     changed = false;
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {
         if (isOverlapping(items[i], items[j], 0.2)) {
-          // 鍚堝苟锛氭寜 count 鍔犳潈骞冲潎浣嶇疆锛宑ount 锟?pointIds 绱姞
           const pointIds = dedupePointIds([
             ...(items[i].cluster.pointIds || []),
-            ...(items[j].cluster.pointIds || [])
+            ...(items[j].cluster.pointIds || []),
           ]);
           const weightTotal = items[i].count + items[j].count;
           const total = Math.max(weightTotal, pointIds.length, 1);
-          const newLat = (items[i].latitude * items[i].count + items[j].latitude * items[j].count) / weightTotal;
-          const newLng = (items[i].longitude * items[i].count + items[j].longitude * items[j].count) / weightTotal;
+          const newLat =
+            (items[i].latitude * items[i].count +
+              items[j].latitude * items[j].count) /
+            weightTotal;
+          const newLng =
+            (items[i].longitude * items[i].count +
+              items[j].longitude * items[j].count) /
+            weightTotal;
           const mergedCluster = {
-            type: 'cluster',
+            type: "cluster",
             latitude: newLat,
             longitude: newLng,
             count: total,
-            pointIds
+            pointIds,
           };
           items[i] = {
             cluster: mergedCluster,
             pointIdKeys: new Set(pointIds.map(getStoryIdKey).filter(Boolean)),
-            px: (items[i].px * items[i].count + items[j].px * items[j].count) / weightTotal,
-            py: (items[i].py * items[i].count + items[j].py * items[j].count) / weightTotal,
+            px:
+              (items[i].px * items[i].count + items[j].px * items[j].count) /
+              weightTotal,
+            py:
+              (items[i].py * items[i].count + items[j].py * items[j].count) /
+              weightTotal,
             radius: calculateClusterRadius(total),
             latitude: newLat,
             longitude: newLng,
-            count: total
+            count: total,
           };
           items.splice(j, 1);
           changed = true;
@@ -1035,23 +1091,26 @@ function mergeOverlappingClusters(clusterList) {
     }
   }
 
-  return items.map(item => item.cluster);
+  return items.map((item) => item.cluster);
 }
 
-// 鍒涘缓鑱氬悎鏍囪
 function createClusterMarker(cluster) {
   if (!map || !window.AMap) {
     return null;
   }
 
-  // 鍏煎涓嶅悓鍧愭爣鏍煎紡
-  const coords = resolveCoordinates(cluster) || resolveCoordinates({
-    latitude: cluster.latitude ?? cluster.location?.lat,
-    longitude: cluster.longitude ?? cluster.location?.lng
-  });
+  const coords =
+    resolveCoordinates(cluster) ||
+    resolveCoordinates({
+      latitude: cluster.latitude ?? cluster.location?.lat,
+      longitude: cluster.longitude ?? cluster.location?.lng,
+    });
 
   if (!coords) {
-    console.warn('[AMap] createClusterMarker: invalid coords for cluster:', cluster);
+    console.warn(
+      "[AMap] createClusterMarker: invalid coords for cluster:",
+      cluster,
+    );
     return null;
   }
 
@@ -1059,8 +1118,8 @@ function createClusterMarker(cluster) {
   const radius = calculateClusterRadius(count);
   const size = Math.round(radius * 2);
 
-  const content = document.createElement('div');
-  content.className = 'cluster-marker';
+  const content = document.createElement("div");
+  content.className = "cluster-marker";
   content.style.cssText = `
     width: ${size}px;
     height: ${size}px;
@@ -1071,8 +1130,8 @@ function createClusterMarker(cluster) {
     transition: transform 0.2s ease, filter 0.2s ease;
   `;
 
-  const img = document.createElement('img');
-  img.src = '/images/star.png';
+  const img = document.createElement("img");
+  img.src = "/images/star.png";
   img.alt = count;
   img.style.cssText = `
     width: 100%;
@@ -1083,8 +1142,8 @@ function createClusterMarker(cluster) {
   `;
   content.appendChild(img);
 
-  const countSpan = document.createElement('span');
-  countSpan.className = 'cluster-count';
+  const countSpan = document.createElement("span");
+  countSpan.className = "cluster-count";
   countSpan.textContent = count;
   countSpan.style.cssText = `
     position: absolute;
@@ -1095,36 +1154,34 @@ function createClusterMarker(cluster) {
   `;
   content.appendChild(countSpan);
 
-  // Hover 鏁堟灉
-  content.addEventListener('mouseenter', () => {
-    content.style.transform = 'scale(1.15)';
-    img.style.filter = 'drop-shadow(0 6px 16px rgba(218, 165, 32, 0.7))';
+  content.addEventListener("mouseenter", () => {
+    content.style.transform = "scale(1.15)";
+    img.style.filter = "drop-shadow(0 6px 16px rgba(218, 165, 32, 0.7))";
   });
-  content.addEventListener('mouseleave', () => {
-    content.style.transform = 'scale(1)';
-    img.style.filter = 'drop-shadow(0 4px 8px rgba(218, 165, 32, 0.5))';
+  content.addEventListener("mouseleave", () => {
+    content.style.transform = "scale(1)";
+    img.style.filter = "drop-shadow(0 4px 8px rgba(218, 165, 32, 0.5))";
   });
 
   const marker = new window.AMap.Marker({
     position: [coords.longitude, coords.latitude],
     content,
     offset: new window.AMap.Pixel(-radius, -radius),
-    zIndex: 50
+    zIndex: 50,
   });
 
-  marker.on('click', () => {
-    emit('cluster-click', {
+  marker.on("click", () => {
+    emit("cluster-click", {
       cluster,
       latitude: coords.latitude,
       longitude: coords.longitude,
-      count
+      count,
     });
   });
 
   return marker;
 }
 
-// 淇濆瓨琚仛鍚堟皵娉″惛鏀剁殑鍗曠偣鏁呬簨 ID锛堝墠绔噸鍙犲惛鏀讹級
 let absorbedStoryIds = new Set();
 
 function updateClusterMarkers() {
@@ -1137,12 +1194,18 @@ function updateClusterMarkers() {
 
   {
     const currentZoom = Number(props.zoom);
-    if (Number.isFinite(currentZoom) && currentZoom >= CLUSTER_RENDER_ZOOM_THRESHOLD) {
+    if (
+      Number.isFinite(currentZoom) &&
+      currentZoom >= CLUSTER_RENDER_ZOOM_THRESHOLD
+    ) {
       return;
     }
 
     const clusterEntries = Array.isArray(props.clusters) ? props.clusters : [];
-    const lowZoomRenderData = buildLowZoomRenderableData(clusterEntries, props.stories);
+    const lowZoomRenderData = buildLowZoomRenderableData(
+      clusterEntries,
+      props.stories,
+    );
     const mergedClusters = lowZoomRenderData.clusters;
 
     mergedClusters.forEach((cluster) => {
@@ -1189,23 +1252,26 @@ function updateClusterMarkers() {
     }
   });
 
-  const forcedStoryClustersResult = buildForcedStoryClusters(renderableStories, clusteredStoryIdKeys);
-  const validClusters = clusterList.filter((cluster) => isClusterEntry(cluster));
+  const forcedStoryClustersResult = buildForcedStoryClusters(
+    renderableStories,
+    clusteredStoryIdKeys,
+  );
+  const validClusters = clusterList.filter((cluster) =>
+    isClusterEntry(cluster),
+  );
 
-  // 鍓嶇閲嶅彔妫€娴嬩笌鍚堝苟
   let merged = mergeOverlappingClusters([
     ...validClusters,
-    ...forcedStoryClustersResult.clusters
+    ...forcedStoryClustersResult.clusters,
   ]);
 
-  // 鑱氬悎姘旀场鍚告敹闄勮繎鐨勫崟涓晠浜嬬偣
+  // Absorb single markers that visually fall into a cluster bubble.
   merged = absorbNearbyStories(merged, renderableStories);
 
   forcedStoryClustersResult.absorbedIds.forEach((id) => {
     absorbedStoryIds.add(id);
   });
 
-  // 鏍规嵁鍚告敹鍚庣殑鏈€锟?count 閲嶆柊璁＄畻骞跺垱寤烘爣锟?
   merged.forEach((cluster) => {
     const marker = createClusterMarker(cluster);
     if (marker) {
@@ -1218,7 +1284,6 @@ function updateClusterMarkers() {
   }
 }
 
-// 鑱氬悎姘旀场鍚告敹琚叾鏄剧ず鑼冨洿瑕嗙洊鐨勫崟涓晠浜嬬偣
 function absorbNearbyStories(clusters, stories) {
   if (!map || !clusters.length || !stories.length) return clusters;
 
@@ -1232,13 +1297,14 @@ function absorbNearbyStories(clusters, stories) {
     });
   });
 
-  // 灏嗚仛鍚堟皵娉¤浆涓哄儚绱犲潗鏍囷紙娣辨嫹璐濋伩鍏嶄慨锟?props锟?
   const pixelClusters = clusters.map(createPixelClusterState).filter(Boolean);
 
-  // 妫€鏌ユ瘡涓崟鐐规槸鍚﹀湪鏌愪釜姘旀场鑼冨洿锟?
-  stories.forEach(story => {
+  stories.forEach((story) => {
     const storyIdKey = getStoryIdKey(story?.id);
-    if ((storyIdKey && clusteredStoryIdKeys.has(storyIdKey)) || (storyIdKey && absorbedStoryIds.has(storyIdKey))) {
+    if (
+      (storyIdKey && clusteredStoryIdKeys.has(storyIdKey)) ||
+      (storyIdKey && absorbedStoryIds.has(storyIdKey))
+    ) {
       return;
     }
 
@@ -1265,17 +1331,20 @@ function absorbNearbyStories(clusters, stories) {
       const dy = spy - pc.py;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // 鍗曠偣鍦ㄦ皵娉¤寖鍥村唴锛堝儚绱犺窛锟?<= 姘旀场鍗婂緞锟?
       if (dist <= pc.radius) {
         const previousCount = pc.count;
-        const hadExactPointIds = Array.isArray(pc.cluster.pointIds) && pc.cluster.pointIds.length > 0;
+        const hadExactPointIds =
+          Array.isArray(pc.cluster.pointIds) && pc.cluster.pointIds.length > 0;
 
         if (storyIdKey) {
           absorbedStoryIds.add(storyIdKey);
         }
 
         if (storyIdKey && hadExactPointIds) {
-          const pointIds = dedupePointIds([...(pc.cluster.pointIds || []), story.id]);
+          const pointIds = dedupePointIds([
+            ...(pc.cluster.pointIds || []),
+            story.id,
+          ]);
           pc.pointIdKeys = new Set(pointIds.map(getStoryIdKey).filter(Boolean));
           pc.cluster.pointIds = pointIds;
           pc.count = Math.max(previousCount, pointIds.length);
@@ -1289,16 +1358,17 @@ function absorbNearbyStories(clusters, stories) {
           pc.radius = calculateClusterRadius(pc.count);
           const total = pc.count;
           pc.latitude = (pc.latitude * previousCount + coords.latitude) / total;
-          pc.longitude = (pc.longitude * previousCount + coords.longitude) / total;
+          pc.longitude =
+            (pc.longitude * previousCount + coords.longitude) / total;
           pc.cluster.latitude = pc.latitude;
           pc.cluster.longitude = pc.longitude;
         }
         break;
       }
-      }
+    }
   });
 
-  return pixelClusters.map(pc => pc.cluster);
+  return pixelClusters.map((pc) => pc.cluster);
 }
 
 function updateMarkers() {
@@ -1312,9 +1382,11 @@ function updateMarkers() {
     const currentZoom = Number(props.zoom);
     const clusterEntries = Array.isArray(props.clusters) ? props.clusters : [];
     const storyEntries = Array.isArray(props.stories) ? props.stories : [];
-    const renderableStories = Number.isFinite(currentZoom) && currentZoom < CLUSTER_RENDER_ZOOM_THRESHOLD
-      ? buildLowZoomRenderableData(clusterEntries, storyEntries).points
-      : dedupeStories(storyEntries);
+    const renderableStories =
+      Number.isFinite(currentZoom) &&
+      currentZoom < CLUSTER_RENDER_ZOOM_THRESHOLD
+        ? buildLowZoomRenderableData(clusterEntries, storyEntries).points
+        : dedupeStories(storyEntries);
 
     renderableStories.forEach((story) => {
       const marker = createMarker(story);
@@ -1329,12 +1401,11 @@ function updateMarkers() {
     return;
   }
 
-  // 鑾峰彇宸茶鑱氬悎鐨勬晠锟?ID 闆嗗悎
   const clusterList = Array.isArray(props.clusters) ? props.clusters : [];
   const clusteredStoryIds = new Set();
-  clusterList.forEach(cluster => {
+  clusterList.forEach((cluster) => {
     if (isClusterEntry(cluster) && cluster.pointIds) {
-      dedupePointIds(cluster.pointIds).forEach(id => {
+      dedupePointIds(cluster.pointIds).forEach((id) => {
         const key = getStoryIdKey(id);
         if (key) {
           clusteredStoryIds.add(key);
@@ -1363,7 +1434,10 @@ function updateMarkers() {
 
   renderableStories.forEach((story) => {
     const storyIdKey = getStoryIdKey(story?.id);
-    if ((storyIdKey && clusteredStoryIds.has(storyIdKey)) || (storyIdKey && absorbedStoryIds.has(storyIdKey))) {
+    if (
+      (storyIdKey && clusteredStoryIds.has(storyIdKey)) ||
+      (storyIdKey && absorbedStoryIds.has(storyIdKey))
+    ) {
       return;
     }
     const marker = createMarker(story);
@@ -1401,42 +1475,43 @@ defineExpose({
   addNewStoryMarker,
   getMap: () => map,
   getBounds: () => {
-    console.log('[AMap] getBounds called, map:', !!map);
+    console.log("[AMap] getBounds called, map:", !!map);
     if (!map) {
-      console.log('[AMap] getBounds: no map');
+      console.log("[AMap] getBounds: no map");
       return null;
     }
     try {
       const bounds = map.getBounds();
-      console.log('[AMap] getBounds result:', bounds);
+      console.log("[AMap] getBounds result:", bounds);
       if (!bounds) {
-        console.log('[AMap] getBounds: no bounds');
+        console.log("[AMap] getBounds: no bounds");
         return null;
       }
       const ne = bounds.getNorthEast();
       const sw = bounds.getSouthWest();
 
       if (!ne || !sw) {
-        console.warn('[AMap] getBounds: invalid bounds points', bounds);
+        console.warn("[AMap] getBounds: invalid bounds points", bounds);
         return null;
       }
 
-
-      // 鍏煎涓嶅悓鐗堟湰鐨勯珮寰峰湴锟?API锛坙at/lng 鍙兘鏄睘鎬ф垨鏂规硶锟?
-      const getLat = (obj) => typeof obj.lat === 'function' ? obj.lat() : obj.lat;
-      const getLng = (obj) => typeof obj.lng === 'function' ? obj.lng() : obj.lng;
+      // Some AMap builds expose lat/lng as methods, others as plain values.
+      const getLat = (obj) =>
+        typeof obj.lat === "function" ? obj.lat() : obj.lat;
+      const getLng = (obj) =>
+        typeof obj.lng === "function" ? obj.lng() : obj.lng;
 
       const result = {
         northEast: { lat: getLat(ne), lng: getLng(ne) },
-        southWest: { lat: getLat(sw), lng: getLng(sw) }
+        southWest: { lat: getLat(sw), lng: getLng(sw) },
       };
-      console.log('[AMap] getBounds returning:', result);
+      console.log("[AMap] getBounds returning:", result);
       return result;
     } catch (e) {
-      console.error('[AMap] getBounds error:', e);
+      console.error("[AMap] getBounds error:", e);
       return null;
     }
-  }
+  },
 });
 
 function loadAMapScript() {
@@ -1446,25 +1521,27 @@ function loadAMapScript() {
       return;
     }
 
-    const existingScript = document.querySelector('script[data-amap-script="true"]');
+    const existingScript = document.querySelector(
+      'script[data-amap-script="true"]',
+    );
     if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(), { once: true });
-      existingScript.addEventListener('error', reject, { once: true });
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener("error", reject, { once: true });
       return;
     }
 
-    const key = import.meta.env.VITE_AMAP_KEY || 'test_key';
+    const key = import.meta.env.VITE_AMAP_KEY || "test_key";
     const securityJsCode = import.meta.env.VITE_AMAP_SECURITY_JS_CODE;
 
     if (securityJsCode) {
       window._AMapSecurityConfig = {
         ...(window._AMapSecurityConfig || {}),
-        securityJsCode
+        securityJsCode,
       };
     }
 
-    const script = document.createElement('script');
-    script.dataset.amapScript = 'true';
+    const script = document.createElement("script");
+    script.dataset.amapScript = "true";
     script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}&plugin=AMap.Scale,AMap.ToolBar`;
     script.onload = () => resolve();
     script.onerror = reject;
@@ -1481,10 +1558,13 @@ onMounted(async () => {
     updateUserLocationMarker();
     updateTempPickedMarker();
 
-    window.addEventListener('sidebar-toggle', handleSidebarToggle);
-    window.addEventListener('publish-sidebar-toggle', handlePublishSidebarToggle);
+    window.addEventListener("sidebar-toggle", handleSidebarToggle);
+    window.addEventListener(
+      "publish-sidebar-toggle",
+      handlePublishSidebarToggle,
+    );
   } catch (error) {
-    console.error('[AMap] Failed to initialize map resources:', error);
+    console.error("[AMap] Failed to initialize map resources:", error);
   }
 });
 
@@ -1499,8 +1579,11 @@ onUnmounted(() => {
     map = null;
   }
 
-  window.removeEventListener('sidebar-toggle', handleSidebarToggle);
-  window.removeEventListener('publish-sidebar-toggle', handlePublishSidebarToggle);
+  window.removeEventListener("sidebar-toggle", handleSidebarToggle);
+  window.removeEventListener(
+    "publish-sidebar-toggle",
+    handlePublishSidebarToggle,
+  );
 });
 
 function handleSidebarToggle(event) {
@@ -1515,72 +1598,106 @@ function toggleTheme() {
   isDarkMode.value = !isDarkMode.value;
 
   if (map) {
-    const newStyle = isDarkMode.value ? 'amap://styles/dark' : 'amap://styles/whitesmoke';
+    const newStyle = isDarkMode.value
+      ? "amap://styles/dark"
+      : "amap://styles/whitesmoke";
     map.setMapStyle(newStyle);
-    emit('theme-change', isDarkMode.value ? 'dark' : 'light');
+    emit("theme-change", isDarkMode.value ? "dark" : "light");
     updateMarkers();
   }
 }
 
-watch(() => props.stories, () => {
-  updateClusterMarkers();
-  updateMarkers();
-}, { deep: true, flush: 'post' });
-
-watch(() => props.clusters, () => {
-  updateClusterMarkers();
-  updateMarkers();
-}, { deep: true, flush: 'post' });
-
-watch(() => props.userLocation, (newLocation) => {
-  updateUserLocationMarker(newLocation);
-}, { deep: true });
-
-watch(() => props.center, (newCenter) => {
-  if (!map) {
-    return;
-  }
-
-  const coords = resolveCoordinates(newCenter);
-  if (!coords) {
-    console.warn('[AMap] Skip invalid map center:', newCenter);
-    return;
-  }
-
-  const currentCenter = map.getCenter?.();
-  const sameCenter = currentCenter
-    && Math.abs(currentCenter.getLat() - coords.latitude) < 0.000001
-    && Math.abs(currentCenter.getLng() - coords.longitude) < 0.000001;
-
-  if (!sameCenter) {
-    map.setCenter([coords.longitude, coords.latitude]);
-  }
-}, { deep: true });
-
-watch(() => props.zoom, (newZoom) => {
-  const zoom = Number(newZoom);
-
-  if (map && Number.isFinite(zoom)) {
-    map.setZoom(zoom);
-  }
-});
-
-watch(() => props.theme, (newTheme) => {
-  isDarkMode.value = newTheme === 'dark';
-  if (map) {
-    const newStyle = isDarkMode.value ? 'amap://styles/dark' : 'amap://styles/whitesmoke';
-    map.setMapStyle(newStyle);
+watch(
+  () => props.stories,
+  () => {
+    updateClusterMarkers();
     updateMarkers();
-  }
-});
+  },
+  { deep: true, flush: "post" },
+);
 
-watch(() => props.pointPickMode, () => {
-  updateMapCursor();
-});
+watch(
+  () => props.clusters,
+  () => {
+    updateClusterMarkers();
+    updateMarkers();
+  },
+  { deep: true, flush: "post" },
+);
 
-watch(() => props.tempPickedLocation, (newLocation) => {
-  updateTempPickedMarker(newLocation);
-}, { deep: true });
+watch(
+  () => props.userLocation,
+  (newLocation) => {
+    updateUserLocationMarker(newLocation);
+  },
+  { deep: true },
+);
+
+watch(
+  () => props.center,
+  (newCenter) => {
+    if (!map) {
+      return;
+    }
+
+    const coords = resolveCoordinates(newCenter);
+    if (!coords) {
+      console.warn("[AMap] Skip invalid map center:", newCenter);
+      return;
+    }
+
+    const currentCenter = map.getCenter?.();
+    const sameCenter =
+      currentCenter &&
+      Math.abs(currentCenter.getLat() - coords.latitude) < 0.000001 &&
+      Math.abs(currentCenter.getLng() - coords.longitude) < 0.000001;
+
+    if (!sameCenter) {
+      map.setCenter([coords.longitude, coords.latitude]);
+    }
+  },
+  { deep: true },
+);
+
+watch(
+  () => props.zoom,
+  (newZoom) => {
+    const zoom = Number(newZoom);
+
+    if (map && Number.isFinite(zoom)) {
+      map.setZoom(zoom);
+    }
+  },
+);
+
+watch(
+  () => props.theme,
+  (newTheme) => {
+    isDarkMode.value = newTheme === "dark";
+    if (map) {
+      const newStyle = isDarkMode.value
+        ? "amap://styles/dark"
+        : "amap://styles/whitesmoke";
+      map.setMapStyle(newStyle);
+      updateMarkers();
+    }
+  },
+);
+
+watch(
+  () => props.pointPickMode,
+  () => {
+    updateMapCursor();
+  },
+);
+
+watch(
+  () => props.tempPickedLocation,
+  (newLocation) => {
+    updateTempPickedMarker(newLocation);
+  },
+  { deep: true },
+);
 </script>
 
 <style scoped>
@@ -1639,13 +1756,15 @@ watch(() => props.tempPickedLocation, (newLocation) => {
   width: 26px;
   height: 36px;
   transform: translateX(-50%);
-  clip-path: path('M13 36C13 36 22 26.6 22 18.8C22 12.7 18 8.5 13 8.5C8 8.5 4 12.7 4 18.8C4 26.6 13 36 13 36Z');
+  clip-path: path(
+    "M13 36C13 36 22 26.6 22 18.8C22 12.7 18 8.5 13 8.5C8 8.5 4 12.7 4 18.8C4 26.6 13 36 13 36Z"
+  );
   background: #2e86ff;
   box-shadow: 0 10px 18px -12px rgba(46, 134, 255, 0.72);
 }
 
 :deep(.user-location-dot::after) {
-  content: '';
+  content: "";
   position: absolute;
   left: 50%;
   top: 11px;
@@ -1665,7 +1784,9 @@ watch(() => props.tempPickedLocation, (newLocation) => {
   position: relative;
   width: 26px;
   height: 36px;
-  clip-path: path('M13 36C13 36 22 26.6 22 18.8C22 12.7 18 8.5 13 8.5C8 8.5 4 12.7 4 18.8C4 26.6 13 36 13 36Z');
+  clip-path: path(
+    "M13 36C13 36 22 26.6 22 18.8C22 12.7 18 8.5 13 8.5C8 8.5 4 12.7 4 18.8C4 26.6 13 36 13 36Z"
+  );
   background: #e34c43;
   box-shadow: 0 10px 18px -12px rgba(227, 76, 67, 0.72);
 }
@@ -1699,9 +1820,11 @@ watch(() => props.tempPickedLocation, (newLocation) => {
   overflow: hidden;
 }
 
-/* 澶滈棿妯″紡锛氭爣璁扮偣濡傚绌烘槦锟?*/
 :deep(.amap-container.dark-mode .marker-wrapper) {
-  box-shadow: 0 0 12px currentColor, 0 0 24px rgba(255, 255, 255, 0.3), 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 0 12px currentColor,
+    0 0 24px rgba(255, 255, 255, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 :deep(.marker-emotion) {
@@ -1733,4 +1856,3 @@ watch(() => props.tempPickedLocation, (newLocation) => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 </style>
-

@@ -1,5 +1,6 @@
 import { Favorite } from './favorite.model.js';
 import { User } from '../auth/auth.model.js';
+import { Story } from '../story/story.model.js';
 import { StoryService } from '../story/story.service.js';
 import { Op } from 'sequelize';
 import { favoriteCacheUtil } from '../../common/utils/favorite-cache.util.js';

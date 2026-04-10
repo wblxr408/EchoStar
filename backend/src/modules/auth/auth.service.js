@@ -16,7 +16,7 @@ const AuthServiceImpl = {
   /**
    * 发送验证码到邮箱
    */
-   async sendVerificationCode(email) {
+    async sendVerificationCode(email) {
     const code = Math.floor(10000 + Math.random() * 90000).toString();
     const fixedEmail = email.trim().toLowerCase();
     const codeKey = `verification_code:${fixedEmail}`;
@@ -225,12 +225,12 @@ const AuthServiceImpl = {
     const token = this.generateToken(user.id);
 
     return {
-      accessToken: token,  // ✅ 修改为 accessToken
+      accessToken: token,  
       user: {
         id: user.id,
         email: user.email,
         username: user.username,
-        avatar: user.avatarUrl  // ✅ 映射为 avatar
+        avatar: user.avatarUrl 
       }
     };
   },

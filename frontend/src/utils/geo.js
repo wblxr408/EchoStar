@@ -1,17 +1,5 @@
-/**
- * 地理位置工具函数
- */
-
-/**
- * 计算两点之间的距离（Haversine 公式）
- * @param {Number} lat1 - 纬度1
- * @param {Number} lng1 - 经度1
- * @param {Number} lat2 - 纬度2
- * @param {Number} lng2 - 经度2
- * @returns {Number} 距离（单位：米）
- */
 export function calculateDistance(lat1, lng1, lat2, lng2) {
-  const R = 6371e3; // 地球半径（米）
+  const R = 6371e3;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
   const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -26,11 +14,6 @@ export function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
-/**
- * 格式化距离显示
- * @param {Number} meters - 距离（米）
- * @returns {String} 格式化后的距离字符串
- */
 export function formatDistance(meters) {
   if (meters < 1000) {
     return `${Math.round(meters)}m`;
@@ -38,14 +21,10 @@ export function formatDistance(meters) {
   return `${(meters / 1000).toFixed(1)}km`;
 }
 
-/**
- * 获取用户当前位置
- * @returns {Promise<{latitude: number, longitude: number}>}
- */
 export function getCurrentPosition() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('浏览器不支持地理定位'));
+      reject(new Error("浏览器不支持地理定位"));
       return;
     }
 
@@ -53,7 +32,7 @@ export function getCurrentPosition() {
       (position) => {
         resolve({
           latitude: position.coords.latitude,
-          longitude: position.coords.longitude
+          longitude: position.coords.longitude,
         });
       },
       (error) => {
@@ -62,8 +41,8 @@ export function getCurrentPosition() {
       {
         enableHighAccuracy: true,
         timeout: 5000,
-        maximumAge: 0
-      }
+        maximumAge: 0,
+      },
     );
   });
 }

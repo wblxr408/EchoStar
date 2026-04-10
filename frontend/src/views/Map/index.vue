@@ -36,7 +36,6 @@
       />
     </div>
 
-    <!-- 故事列表弹窗 -->
     <transition name="publish-modal">
       <div
         v-if="showSidebar"
@@ -45,192 +44,242 @@
       >
         <div
           class="story-sidebar"
-          :class="{ 'show-sidebar': showSidebar, dark: effectiveMapTheme === 'dark' }"
+          :class="{
+            'show-sidebar': showSidebar,
+            dark: effectiveMapTheme === 'dark',
+          }"
           @click.stop
         >
-      <div class="sidebar-header">
-        <div class="sidebar-tabs">
-          <button
-            class="tab-btn"
-            :class="{ 'active': sidebarTab === 'nearby' }"
-            @click="sidebarTab = 'nearby'"
-          >附近故事</button>
-          <button 
-            class="tab-btn" 
-            :class="{ 'active': sidebarTab === 'featured' }"
-            @click="sidebarTab = 'featured'; loadFeaturedStories()"
-          >精选推荐</button>
-          <button
-            class="tab-btn"
-            :class="{ 'active': sidebarTab === 'recommend' }"
-            @click="sidebarTab = 'recommend'; loadRecommendationFeed()"
-          >为你推荐</button>
-        </div>
-        <button class="close-btn" @click.stop="closeStoryPanel"><span>×</span></button>
-      </div>
+          <div class="sidebar-header">
+            <div class="sidebar-tabs">
+              <button
+                class="tab-btn"
+                :class="{ active: sidebarTab === 'nearby' }"
+                @click="sidebarTab = 'nearby'"
+              >
+                附近故事
+              </button>
+              <button
+                class="tab-btn"
+                :class="{ active: sidebarTab === 'featured' }"
+                @click="
+                  sidebarTab = 'featured';
+                  loadFeaturedStories();
+                "
+              >
+                精选推荐
+              </button>
+              <button
+                class="tab-btn"
+                :class="{ active: sidebarTab === 'recommend' }"
+                @click="
+                  sidebarTab = 'recommend';
+                  loadRecommendationFeed();
+                "
+              >
+                为你推荐
+              </button>
+            </div>
+            <button class="close-btn" @click.stop="closeStoryPanel">
+              <span>×</span>
+            </button>
+          </div>
 
-      <div class="sidebar-content">
-        <!-- 附近故事 -->
-        <div v-if="sidebarTab === 'nearby'">
-          <section class="nearby-search-panel">
-            <div class="nearby-search-panel__heading">
-              <div>
-                <p class="nearby-search-panel__kicker">Place Search</p>
-                <h3>搜索附近地点</h3>
-                <p class="nearby-search-panel__summary">
-                  {{ nearbyCenterSummary }}
+          <div class="sidebar-content">
+            <div v-if="sidebarTab === 'nearby'">
+              <section class="nearby-search-panel">
+                <div class="nearby-search-panel__heading">
+                  <div>
+                    <p class="nearby-search-panel__kicker">Place Search</p>
+                    <h3>搜索附近地点</h3>
+                    <p class="nearby-search-panel__summary">
+                      {{ nearbyCenterSummary }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="nearby-search-panel__ghost-btn"
+                    @click="handleLocate"
+                  >
+                    我的定位
+                  </button>
+                </div>
+
+                <div class="nearby-search-panel__controls">
+                  <input
+                    v-model="nearbySearchQuery"
+                    type="text"
+                    class="nearby-search-panel__input"
+                    placeholder="搜索商圈、地标、街道或店铺"
+                    @keyup.enter="performNearbyPoiSearch"
+                  />
+                  <button
+                    type="button"
+                    class="nearby-search-panel__submit"
+                    :disabled="
+                      nearbySearching || nearbySearchQuery.trim().length < 2
+                    "
+                    @click="performNearbyPoiSearch"
+                  >
+                    {{ nearbySearching ? "搜索中..." : "搜索地点" }}
+                  </button>
+                </div>
+
+                <div class="nearby-search-panel__actions">
+                  <button
+                    v-if="
+                      nearbySearchQuery ||
+                      nearbySearchResults.length > 0 ||
+                      nearbySearchError
+                    "
+                    type="button"
+                    class="nearby-search-panel__text-btn"
+                    @click="clearNearbyPoiSearch"
+                  >
+                    清空搜索
+                  </button>
+                  <span class="nearby-search-panel__tip"
+                    >会优先参考附近结果，但明确地标也能跳出本地</span
+                  >
+                </div>
+
+                <p
+                  v-if="nearbySearchError"
+                  class="nearby-search-panel__feedback nearby-search-panel__feedback--error"
+                >
+                  {{ nearbySearchError }}
+                </p>
+                <p
+                  v-else-if="nearbySearching"
+                  class="nearby-search-panel__feedback"
+                >
+                  正在查找相关地点...
+                </p>
+                <p
+                  v-else-if="
+                    nearbyHasSearched && nearbySearchResults.length === 0
+                  "
+                  class="nearby-search-panel__feedback"
+                >
+                  没找到匹配地点，可以换个关键词，或者直接拖动地图继续找。
+                </p>
+
+                <div
+                  v-if="nearbySearchResults.length > 0"
+                  class="nearby-search-panel__results"
+                >
+                  <button
+                    v-for="poi in nearbySearchResults"
+                    :key="poi.id"
+                    type="button"
+                    class="nearby-search-panel__result"
+                    @click="focusNearbyStoriesOnPoi(poi)"
+                  >
+                    <div class="nearby-search-panel__result-copy">
+                      <strong>{{ poi.name }}</strong>
+                      <span>{{ poi.address }}</span>
+                    </div>
+                    <div class="nearby-search-panel__result-meta">
+                      <span>{{ formatPoiDistrictLabel(poi) }}</span>
+                    </div>
+                  </button>
+                </div>
+              </section>
+
+              <div v-if="loading" class="loading">加载中...</div>
+              <div v-else-if="stories.length === 0" class="empty">
+                <p>附近还没有故事</p>
+                <p class="hint">点击发布按钮,留下你的第一个故事吧</p>
+              </div>
+              <div v-else class="story-list">
+                <StoryCard
+                  v-for="story in stories"
+                  :key="story.id"
+                  :story="story"
+                  @preview-image="handlePreviewImage"
+                  @select-story="openStoryFromCollection"
+                />
+              </div>
+            </div>
+
+            <div v-if="sidebarTab === 'recommend'">
+              <div v-if="feedLoading" class="loading">加载中...</div>
+              <div v-else-if="feedStories.length === 0" class="empty">
+                <p>暂无推荐内容</p>
+                <p class="hint">
+                  发布故事或点赞更多内容，会为你推荐更懂你的故事
                 </p>
               </div>
-              <button
-                type="button"
-                class="nearby-search-panel__ghost-btn"
-                @click="handleLocate"
-              >
-                我的定位
-              </button>
-            </div>
-
-            <div class="nearby-search-panel__controls">
-              <input
-                v-model="nearbySearchQuery"
-                type="text"
-                class="nearby-search-panel__input"
-                placeholder="搜索商圈、地标、街道或店铺"
-                @keyup.enter="performNearbyPoiSearch"
-              />
-              <button
-                type="button"
-                class="nearby-search-panel__submit"
-                :disabled="nearbySearching || nearbySearchQuery.trim().length < 2"
-                @click="performNearbyPoiSearch"
-              >
-                {{ nearbySearching ? '搜索中...' : '搜索地点' }}
-              </button>
-            </div>
-
-            <div class="nearby-search-panel__actions">
-              <button
-                v-if="nearbySearchQuery || nearbySearchResults.length > 0 || nearbySearchError"
-                type="button"
-                class="nearby-search-panel__text-btn"
-                @click="clearNearbyPoiSearch"
-              >
-                清空搜索
-              </button>
-              <span class="nearby-search-panel__tip">会优先参考附近结果，但明确地标也能跳出本地</span>
-            </div>
-
-            <p v-if="nearbySearchError" class="nearby-search-panel__feedback nearby-search-panel__feedback--error">
-              {{ nearbySearchError }}
-            </p>
-            <p v-else-if="nearbySearching" class="nearby-search-panel__feedback">
-              正在查找相关地点...
-            </p>
-            <p v-else-if="nearbyHasSearched && nearbySearchResults.length === 0" class="nearby-search-panel__feedback">
-              没找到匹配地点，可以换个关键词，或者直接拖动地图继续找。
-            </p>
-
-            <div v-if="nearbySearchResults.length > 0" class="nearby-search-panel__results">
-              <button
-                v-for="poi in nearbySearchResults"
-                :key="poi.id"
-                type="button"
-                class="nearby-search-panel__result"
-                @click="focusNearbyStoriesOnPoi(poi)"
-              >
-                <div class="nearby-search-panel__result-copy">
-                  <strong>{{ poi.name }}</strong>
-                  <span>{{ poi.address }}</span>
-                </div>
-                <div class="nearby-search-panel__result-meta">
-                  <span>{{ formatPoiDistrictLabel(poi) }}</span>
-                </div>
-              </button>
-            </div>
-          </section>
-
-          <div v-if="loading" class="loading">加载中...</div>
-          <div v-else-if="stories.length === 0" class="empty">
-            <p>附近还没有故事</p>
-            <p class="hint">点击发布按钮,留下你的第一个故事吧</p>
-          </div>
-          <div v-else class="story-list">
-            <StoryCard
-              v-for="story in stories"
-              :key="story.id"
-              :story="story"
-              @preview-image="handlePreviewImage"
-              @select-story="openStoryFromCollection"
-            />
-          </div>
-        </div>
-
-        <!-- 为你推荐（加权推荐流） -->
-        <div v-if="sidebarTab === 'recommend'">
-          <div v-if="feedLoading" class="loading">加载中...</div>
-          <div v-else-if="feedStories.length === 0" class="empty">
-            <p>暂无推荐内容</p>
-            <p class="hint">发布故事或点赞更多内容，会为你推荐更懂你的故事</p>
-          </div>
-          <div v-else class="story-list">
-            <StoryCard
-              v-for="story in feedStories"
-              :key="story.id"
-              :story="story"
-              @preview-image="handlePreviewImage"
-              @select-story="openStoryFromCollection"
-            />
-            <div v-if="feedHasMore" class="load-more-wrap">
-              <button class="load-more-btn" :disabled="feedLoadingMore" @click="loadMoreFeed">
-                {{ feedLoadingMore ? '加载中...' : '加载更多' }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 精选推荐 -->
-        <div v-if="sidebarTab === 'featured'">
-          <div v-if="featuredStories.length === 0" class="empty">
-            <p>暂无精选内容</p>
-            <p class="hint">管理员会定期挑选优质内容展示在这里</p>
-          </div>
-          <div v-else class="story-list">
-            <div 
-              v-for="story in featuredStories" 
-              :key="story.id"
-              class="featured-story-card"
-              @click="openFeaturedStory(story)"
-            >
-              <div v-if="story.images?.length" class="featured-image">
-                <img :src="story.images[0]" alt="故事图片">
-                <div class="featured-badges">
-                  <span v-if="story.isPinned" class="badge pinned">📌</span>
+              <div v-else class="story-list">
+                <StoryCard
+                  v-for="story in feedStories"
+                  :key="story.id"
+                  :story="story"
+                  @preview-image="handlePreviewImage"
+                  @select-story="openStoryFromCollection"
+                />
+                <div v-if="feedHasMore" class="load-more-wrap">
+                  <button
+                    class="load-more-btn"
+                    :disabled="feedLoadingMore"
+                    @click="loadMoreFeed"
+                  >
+                    {{ feedLoadingMore ? "加载中..." : "加载更多" }}
+                  </button>
                 </div>
               </div>
-              <div class="featured-content">
-                <div class="featured-author">
-                  <div class="featured-author-avatar">
-                    <img v-if="getStoryAuthorAvatar(story)" :src="getStoryAuthorAvatar(story)" :alt="getStoryAuthorName(story)">
-                    <span v-else>{{ getStoryAuthorInitial(story) }}</span>
+            </div>
+
+            <div v-if="sidebarTab === 'featured'">
+              <div v-if="featuredStories.length === 0" class="empty">
+                <p>暂无精选内容</p>
+                <p class="hint">管理员会定期挑选优质内容展示在这里</p>
+              </div>
+              <div v-else class="story-list">
+                <div
+                  v-for="story in featuredStories"
+                  :key="story.id"
+                  class="featured-story-card"
+                  @click="openFeaturedStory(story)"
+                >
+                  <div v-if="story.images?.length" class="featured-image">
+                    <img :src="story.images[0]" alt="故事图片" />
+                    <div class="featured-badges">
+                      <span v-if="story.isPinned" class="badge pinned">📌</span>
+                    </div>
                   </div>
-                  <span class="featured-author-name">{{ getStoryAuthorName(story) }}</span>
-                </div>
-                <p class="featured-text">{{ story.content }}</p>
-                <div class="featured-meta">
-                  <span class="emotion">{{ getEmotionEmoji(story.emotionTag || story.emotion) }}</span>
-                  <span class="stats">❤️ {{ story.likeCount || story.likes || 0 }}</span>
+                  <div class="featured-content">
+                    <div class="featured-author">
+                      <div class="featured-author-avatar">
+                        <img
+                          v-if="getStoryAuthorAvatar(story)"
+                          :src="getStoryAuthorAvatar(story)"
+                          :alt="getStoryAuthorName(story)"
+                        />
+                        <span v-else>{{ getStoryAuthorInitial(story) }}</span>
+                      </div>
+                      <span class="featured-author-name">{{
+                        getStoryAuthorName(story)
+                      }}</span>
+                    </div>
+                    <p class="featured-text">{{ story.content }}</p>
+                    <div class="featured-meta">
+                      <span class="emotion">{{
+                        getEmotionEmoji(story.emotionTag || story.emotion)
+                      }}</span>
+                      <span class="stats"
+                        >❤️ {{ story.likeCount || story.likes || 0 }}</span
+                      >
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-
-      </div>
         </div>
       </div>
     </transition>
 
-    <!-- Dock 栏 -->
     <div
       :class="[
         'dock-container',
@@ -238,33 +287,42 @@
         {
           'show-publish-sidebar': showPublishSidebar,
           'show-user-sidebar': showUserSidebar,
-          'expanded': isDockExpanded,
-          'locked': isPickingPublishLocation
-        }
+          expanded: isDockExpanded,
+          locked: isPickingPublishLocation,
+        },
       ]"
       @click.stop
     >
       <button
         class="dock-main"
-        :class="{ 'expanded': isDockExpanded }"
+        :class="{ expanded: isDockExpanded }"
         :disabled="isPickingPublishLocation"
         type="button"
         @click.stop="toggleDock"
       >
-        <span class="dock-main-symbol">{{ isDockExpanded ? '✦' : '☰' }}</span>
-        <span class="dock-main-text">{{ isDockExpanded ? '收起卡组' : '功能卡组' }}</span>
+        <span class="dock-main-symbol">{{ isDockExpanded ? "✦" : "☰" }}</span>
+        <span class="dock-main-text">{{
+          isDockExpanded ? "收起卡组" : "功能卡组"
+        }}</span>
       </button>
 
-      <div class="dock-menu" :class="{ 'expanded': isDockExpanded }">
+      <div class="dock-menu" :class="{ expanded: isDockExpanded }">
         <div
           class="dock-card-stack"
-          :class="{ 'selection-motion': Boolean(selectedDockCard || drawingDockCard || liftingDockCard || returningDockCard) }"
+          :class="{
+            'selection-motion': Boolean(
+              selectedDockCard ||
+              drawingDockCard ||
+              liftingDockCard ||
+              returningDockCard,
+            ),
+          }"
           :style="getDockStackStyle(visibleDockActions.length)"
           @mouseleave="scheduleClearDockHover"
         >
           <div
             class="dock-card-info"
-            :class="{ 'visible': isDockExpanded }"
+            :class="{ visible: isDockExpanded }"
             :style="getDockInfoStyle(visibleDockActions.length)"
           >
             <template v-if="activeDockAction">
@@ -275,15 +333,22 @@
             <template v-else>
               <p class="dock-card-info-kicker">Card Select</p>
               <h4>功能卡组</h4>
-              <p>把鼠标停在卡牌上，像卡牌游戏选牌一样查看功能，再点击执行原有操作。</p>
+              <p>
+                把鼠标停在卡牌上，像卡牌游戏选牌一样查看功能，再点击执行原有操作。
+              </p>
             </template>
           </div>
 
-          <template v-for="(action, index) in visibleDockActions" :key="action.key">
+          <template
+            v-for="(action, index) in visibleDockActions"
+            :key="action.key"
+          >
             <span
               v-if="shouldRenderDockAnchor(action.key)"
               class="dock-card-anchor"
-              :style="getDockCardStyle(index, visibleDockActions.length, action)"
+              :style="
+                getDockCardStyle(index, visibleDockActions.length, action)
+              "
               aria-hidden="true"
               @mouseenter="setDockHover(action.key)"
               @mouseleave="scheduleClearDockHover"
@@ -292,14 +357,16 @@
             <button
               class="dock-card"
               :class="{
-                'drawing': drawingDockCard === action.key,
-                'lifting': liftingDockCard === action.key,
-                'active': selectedDockCard === action.key,
-                'returning': returningDockCard === action.key,
-                'disabled': action.disabled,
-                'rippling': ripplingDockCard === action.key
+                drawing: drawingDockCard === action.key,
+                lifting: liftingDockCard === action.key,
+                active: selectedDockCard === action.key,
+                returning: returningDockCard === action.key,
+                disabled: action.disabled,
+                rippling: ripplingDockCard === action.key,
               }"
-              :style="getDockCardStyle(index, visibleDockActions.length, action)"
+              :style="
+                getDockCardStyle(index, visibleDockActions.length, action)
+              "
               :disabled="action.disabled || isPickingPublishLocation"
               :title="action.title"
               type="button"
@@ -309,7 +376,9 @@
             >
               <div class="dock-card-body">
                 <span class="dock-card-suit suit-top">{{ action.suit }}</span>
-                <span class="dock-card-order">{{ String(index + 1).padStart(2, '0') }}</span>
+                <span class="dock-card-order">{{
+                  String(index + 1).padStart(2, "0")
+                }}</span>
                 <span class="dock-card-corner corner-top-right"></span>
                 <span class="dock-card-corner corner-bottom-left"></span>
 
@@ -320,7 +389,9 @@
                   <span class="dock-card-subtitle">{{ action.subtitle }}</span>
                 </div>
 
-                <span class="dock-card-suit suit-bottom">{{ action.suit }}</span>
+                <span class="dock-card-suit suit-bottom">{{
+                  action.suit
+                }}</span>
               </div>
               <span class="dock-card-ripple"></span>
             </button>
@@ -329,7 +400,6 @@
       </div>
     </div>
 
-    <!-- 发布故事居中弹层 -->
     <transition name="publish-modal">
       <div
         v-if="showPublishSidebar"
@@ -339,7 +409,10 @@
       >
         <div
           class="publish-modal"
-          :class="{ dark: effectiveMapTheme === 'dark', collapsed: isPickingPublishLocation }"
+          :class="{
+            dark: effectiveMapTheme === 'dark',
+            collapsed: isPickingPublishLocation,
+          }"
           @click.stop
         >
           <button
@@ -354,19 +427,23 @@
           </button>
 
           <template v-else>
-            <button class="publish-modal-close" type="button" @click="closePublishPanel">
+            <button
+              class="publish-modal-close"
+              type="button"
+              @click="closePublishPanel"
+            >
               <span class="close-icon">×</span>
               <span class="close-text">关闭</span>
             </button>
             <div class="publish-modal-scroll">
-            <PublishForm
-              :visible="showPublishSidebar"
-              :map-center="mapStore.center"
-              :user-location="mapStore.userLocation"
-              :suggested-locations="suggestedPublishLocations"
-              :picked-map-location="pickedPublishLocation"
-              :is-picking-location="isPickingPublishLocation"
-              :map-theme="effectiveMapTheme"
+              <PublishForm
+                :visible="showPublishSidebar"
+                :map-center="mapStore.center"
+                :user-location="mapStore.userLocation"
+                :suggested-locations="suggestedPublishLocations"
+                :picked-map-location="pickedPublishLocation"
+                :is-picking-location="isPickingPublishLocation"
+                :map-theme="effectiveMapTheme"
                 @submit="handlePublishSubmit"
                 @request-map-pick="startPublishMapPick"
                 @cancel-map-pick="cancelPublishMapPick"
@@ -384,215 +461,320 @@
         >
           <p>是否在这附近搜索？</p>
           <div class="publish-pick-confirm-actions">
-            <button type="button" class="confirm-btn" @click="confirmPublishNearbySearch">是</button>
-            <button type="button" class="cancel-btn" @click="rejectPublishNearbySearch">否</button>
+            <button
+              type="button"
+              class="confirm-btn"
+              @click="confirmPublishNearbySearch"
+            >
+              是
+            </button>
+            <button
+              type="button"
+              class="cancel-btn"
+              @click="rejectPublishNearbySearch"
+            >
+              否
+            </button>
           </div>
         </div>
       </div>
     </transition>
 
-    <!-- 用户个人信息弹窗 -->
     <transition name="publish-modal">
-      <div
-        v-if="showUserSidebar"
-        class="user-modal-shell"
-      >
+      <div v-if="showUserSidebar" class="user-modal-shell">
         <div
           class="user-sidebar"
-          :class="{ 'show-sidebar': showUserSidebar, dark: effectiveMapTheme === 'dark' }"
+          :class="{
+            'show-sidebar': showUserSidebar,
+            dark: effectiveMapTheme === 'dark',
+          }"
         >
-      <div class="user-sidebar-header">
-        <h3>个人信息</h3>
-        <button class="close-btn" @click.stop="closeUserPanel"><span>×</span></button>
-      </div>
-      
-      <!-- 未登录/游客状态 -->
-      <div v-if="!userStore.isLoggedIn || userStore.isGuest" class="user-sidebar-content">
-        <div class="guest-profile">
-          <div class="guest-avatar">
-            <span>👤</span>
+          <div class="user-sidebar-header">
+            <h3>个人信息</h3>
+            <button class="close-btn" @click.stop="closeUserPanel">
+              <span>×</span>
+            </button>
           </div>
-          <div class="guest-info">
-            <h4>{{ userStore.isGuest ? '游客用户' : '未登录' }}</h4>
-            <p>{{ userStore.isGuest ? '登录后可体验完整功能' : '请登录以使用完整功能' }}</p>
-          </div>
-        </div>
-        <div class="guest-actions">
-          <button class="guest-action-btn login-btn" @click="handleGuestLoginClick">
-            <span class="btn-icon">🔑</span>
-            <span class="btn-text">{{ userStore.isGuest ? '登录账号' : '登录' }}</span>
-          </button>
-          <button v-if="!userStore.isLoggedIn" class="guest-action-btn guest-btn" @click="handleEnterGuestMode">
-            <span class="btn-icon">🚶</span>
-            <span class="btn-text">游客体验</span>
-          </button>
-          <button v-if="userStore.isGuest" class="guest-action-btn logout-btn" @click="handleGuestLogout">
-            <span class="btn-icon">🚪</span>
-            <span class="btn-text">退出</span>
-          </button>
-        </div>
-      </div>
-      
-      <!-- 已登录状态 -->
-      <div v-else class="user-sidebar-content">
-        <div class="user-profile">
-          <div class="user-avatar-wrapper">
-            <div class="user-avatar-large" @click="triggerAvatarUpload">
-              <img :src="avatarPreview || userStore.user?.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
-              <div class="avatar-overlay">
-                <span class="avatar-edit-icon">📷</span>
-                <span class="avatar-edit-text">更换头像</span>
+
+          <div
+            v-if="!userStore.isLoggedIn || userStore.isGuest"
+            class="user-sidebar-content"
+          >
+            <div class="guest-profile">
+              <div class="guest-avatar">
+                <span>👤</span>
+              </div>
+              <div class="guest-info">
+                <h4>{{ userStore.isGuest ? "游客用户" : "未登录" }}</h4>
+                <p>
+                  {{
+                    userStore.isGuest
+                      ? "登录后可体验完整功能"
+                      : "请登录以使用完整功能"
+                  }}
+                </p>
               </div>
             </div>
-            <input
-              ref="avatarInput"
-              type="file"
-              accept="image/*"
-              style="display: none"
-              @change="handleAvatarChange"
-            />
-            <div v-if="avatarUploading" class="avatar-upload-status">
-              <span class="upload-spinner">⌛</span>
-              <span>上传中...</span>
+            <div class="guest-actions">
+              <button
+                class="guest-action-btn login-btn"
+                @click="handleGuestLoginClick"
+              >
+                <span class="btn-icon">🔑</span>
+                <span class="btn-text">{{
+                  userStore.isGuest ? "登录账号" : "登录"
+                }}</span>
+              </button>
+              <button
+                v-if="!userStore.isLoggedIn"
+                class="guest-action-btn guest-btn"
+                @click="handleEnterGuestMode"
+              >
+                <span class="btn-icon">🚶</span>
+                <span class="btn-text">游客体验</span>
+              </button>
+              <button
+                v-if="userStore.isGuest"
+                class="guest-action-btn logout-btn"
+                @click="handleGuestLogout"
+              >
+                <span class="btn-icon">🚪</span>
+                <span class="btn-text">退出</span>
+              </button>
             </div>
-            <div v-if="avatarError" class="avatar-error">{{ avatarError }}</div>
           </div>
-          <div class="user-info-details">
-            <div class="info-item editable">
-              <span class="info-label">用户名</span>
-              <div v-if="!isEditingUsername" class="info-value-with-edit">
-                <span class="info-value">{{ userStore.user?.username || userStore.user?.name || '未设置' }}</span>
-                <button class="edit-btn" @click="startEditUsername" title="修改用户名">
-                  <span>✏️</span>
-                </button>
-              </div>
-              <div v-else class="username-edit-form">
+
+          <div v-else class="user-sidebar-content">
+            <div class="user-profile">
+              <div class="user-avatar-wrapper">
+                <div class="user-avatar-large" @click="triggerAvatarUpload">
+                  <img
+                    :src="
+                      avatarPreview ||
+                      userStore.user?.avatar ||
+                      'https://picsum.photos/80/80?random=1'
+                    "
+                    alt="用户头像"
+                  />
+                  <div class="avatar-overlay">
+                    <span class="avatar-edit-icon">📷</span>
+                    <span class="avatar-edit-text">更换头像</span>
+                  </div>
+                </div>
                 <input
-                  v-model="editingUsername"
-                  type="text"
-                  placeholder="输入新用户名"
-                  maxlength="20"
-                  @keyup.enter="saveUsername"
-                  @keyup.esc="cancelEditUsername"
+                  ref="avatarInput"
+                  type="file"
+                  accept="image/*"
+                  style="display: none"
+                  @change="handleAvatarChange"
                 />
-                <div class="username-actions">
-                  <button class="save-btn" :disabled="!canSaveUsername" @click="saveUsername">
-                    <span v-if="checkingUsername">⌛</span>
-                    <span v-else>✓</span>
-                  </button>
-                  <button class="cancel-btn" @click="cancelEditUsername">
-                    <span>✕</span>
-                  </button>
+                <div v-if="avatarUploading" class="avatar-upload-status">
+                  <span class="upload-spinner">⌛</span>
+                  <span>上传中...</span>
                 </div>
-                <div v-if="usernameError" class="username-error">{{ usernameError }}</div>
+                <div v-if="avatarError" class="avatar-error">
+                  {{ avatarError }}
+                </div>
+              </div>
+              <div class="user-info-details">
+                <div class="info-item editable">
+                  <span class="info-label">用户名</span>
+                  <div v-if="!isEditingUsername" class="info-value-with-edit">
+                    <span class="info-value">{{
+                      userStore.user?.username ||
+                      userStore.user?.name ||
+                      "未设置"
+                    }}</span>
+                    <button
+                      class="edit-btn"
+                      @click="startEditUsername"
+                      title="修改用户名"
+                    >
+                      <span>✏️</span>
+                    </button>
+                  </div>
+                  <div v-else class="username-edit-form">
+                    <input
+                      v-model="editingUsername"
+                      type="text"
+                      placeholder="输入新用户名"
+                      maxlength="20"
+                      @keyup.enter="saveUsername"
+                      @keyup.esc="cancelEditUsername"
+                    />
+                    <div class="username-actions">
+                      <button
+                        class="save-btn"
+                        :disabled="!canSaveUsername"
+                        @click="saveUsername"
+                      >
+                        <span v-if="checkingUsername">⌛</span>
+                        <span v-else>✓</span>
+                      </button>
+                      <button class="cancel-btn" @click="cancelEditUsername">
+                        <span>✕</span>
+                      </button>
+                    </div>
+                    <div v-if="usernameError" class="username-error">
+                      {{ usernameError }}
+                    </div>
+                  </div>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">用户ID</span>
+                  <span class="info-value">{{ userStore.user?.id ?? "" }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">邮箱</span>
+                  <span class="info-value">{{
+                    userStore.user?.email ?? ""
+                  }}</span>
+                </div>
+                <div class="info-item editable">
+                  <span class="info-label">密码</span>
+                  <div v-if="!isEditingPassword" class="info-value-with-edit">
+                    <span class="info-value">点击右侧按钮修改密码</span>
+                    <button
+                      class="edit-btn"
+                      @click="startEditPassword"
+                      title="修改密码"
+                    >
+                      <span>✏️</span>
+                    </button>
+                  </div>
+                  <div v-else class="password-edit-form">
+                    <div class="password-input-wrapper">
+                      <input
+                        v-model="passwordForm.currentPassword"
+                        :type="showCurrentPassword ? 'text' : 'password'"
+                        placeholder="当前密码"
+                        :class="{ 'input-error': currentPasswordError }"
+                      />
+                      <button
+                        class="eye-btn-small"
+                        @click="showCurrentPassword = !showCurrentPassword"
+                      >
+                        <span>{{ showCurrentPassword ? "🙈" : "👁️" }}</span>
+                      </button>
+                    </div>
+                    <div v-if="currentPasswordError" class="field-error">
+                      {{ currentPasswordError }}
+                    </div>
+                    <div class="password-input-wrapper">
+                      <input
+                        v-model="passwordForm.newPassword"
+                        :type="showNewPassword ? 'text' : 'password'"
+                        placeholder="新密码（至少6位）"
+                        minlength="6"
+                        :class="{ 'input-error': newPasswordError }"
+                      />
+                      <button
+                        class="eye-btn-small"
+                        @click="showNewPassword = !showNewPassword"
+                      >
+                        <span>{{ showNewPassword ? "🙈" : "👁️" }}</span>
+                      </button>
+                    </div>
+                    <div v-if="newPasswordError" class="field-error">
+                      {{ newPasswordError }}
+                    </div>
+                    <div class="password-input-wrapper">
+                      <input
+                        v-model="passwordForm.confirmPassword"
+                        :type="showConfirmPassword ? 'text' : 'password'"
+                        placeholder="确认新密码"
+                        minlength="6"
+                        :class="{ 'input-error': confirmPasswordError }"
+                        @keyup.enter="savePassword"
+                        @keyup.esc="cancelEditPassword"
+                      />
+                      <button
+                        class="eye-btn-small"
+                        @click="showConfirmPassword = !showConfirmPassword"
+                      >
+                        <span>{{ showConfirmPassword ? "🙈" : "👁️" }}</span>
+                      </button>
+                    </div>
+                    <div v-if="confirmPasswordError" class="field-error">
+                      {{ confirmPasswordError }}
+                    </div>
+                    <div class="password-actions">
+                      <button
+                        class="save-btn"
+                        :disabled="!canSavePassword || savingPassword"
+                        @click="savePassword"
+                      >
+                        <span v-if="savingPassword">⌛</span>
+                        <span v-else>✓</span>
+                      </button>
+                      <button class="cancel-btn" @click="cancelEditPassword">
+                        <span>✕</span>
+                      </button>
+                    </div>
+                    <div v-if="passwordError" class="password-error">
+                      {{ passwordError }}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="info-item">
-              <span class="info-label">用户ID</span>
-              <span class="info-value">{{ userStore.user?.id ?? '' }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">邮箱</span>
-              <span class="info-value">{{ userStore.user?.email ?? '' }}</span>
-            </div>
-            <div class="info-item editable">
-              <span class="info-label">密码</span>
-              <div v-if="!isEditingPassword" class="info-value-with-edit">
-                <span class="info-value">点击右侧按钮修改密码</span>
-                <button class="edit-btn" @click="startEditPassword" title="修改密码">
-                  <span>✏️</span>
-                </button>
-              </div>
-              <div v-else class="password-edit-form">
-                <div class="password-input-wrapper">
-                  <input
-                    v-model="passwordForm.currentPassword"
-                    :type="showCurrentPassword ? 'text' : 'password'"
-                    placeholder="当前密码"
-                    :class="{ 'input-error': currentPasswordError }"
-                  />
-                  <button class="eye-btn-small" @click="showCurrentPassword = !showCurrentPassword">
-                    <span>{{ showCurrentPassword ? '🙈' : '👁️' }}</span>
-                  </button>
-                </div>
-                <div v-if="currentPasswordError" class="field-error">{{ currentPasswordError }}</div>
-                <div class="password-input-wrapper">
-                  <input
-                    v-model="passwordForm.newPassword"
-                    :type="showNewPassword ? 'text' : 'password'"
-                    placeholder="新密码（至少6位）"
-                    minlength="6"
-                    :class="{ 'input-error': newPasswordError }"
-                  />
-                  <button class="eye-btn-small" @click="showNewPassword = !showNewPassword">
-                    <span>{{ showNewPassword ? '🙈' : '👁️' }}</span>
-                  </button>
-                </div>
-                <div v-if="newPasswordError" class="field-error">{{ newPasswordError }}</div>
-                <div class="password-input-wrapper">
-                  <input
-                    v-model="passwordForm.confirmPassword"
-                    :type="showConfirmPassword ? 'text' : 'password'"
-                    placeholder="确认新密码"
-                    minlength="6"
-                    :class="{ 'input-error': confirmPasswordError }"
-                    @keyup.enter="savePassword"
-                    @keyup.esc="cancelEditPassword"
-                  />
-                  <button class="eye-btn-small" @click="showConfirmPassword = !showConfirmPassword">
-                    <span>{{ showConfirmPassword ? '🙈' : '👁️' }}</span>
-                  </button>
-                </div>
-                <div v-if="confirmPasswordError" class="field-error">{{ confirmPasswordError }}</div>
-                <div class="password-actions">
-                  <button class="save-btn" :disabled="!canSavePassword || savingPassword" @click="savePassword">
-                    <span v-if="savingPassword">⌛</span>
-                    <span v-else>✓</span>
-                  </button>
-                  <button class="cancel-btn" @click="cancelEditPassword">
-                    <span>✕</span>
-                  </button>
-                </div>
-                <div v-if="passwordError" class="password-error">{{ passwordError }}</div>
-              </div>
+            <div class="user-actions">
+              <button
+                class="user-action-btn my-likes-btn"
+                :class="{ active: showLikesPanel }"
+                @click.stop="handleMyLikes"
+              >
+                <span class="btn-icon">❤️</span>
+                <span class="btn-text">我的点赞</span>
+              </button>
+              <button
+                class="user-action-btn my-favorites-btn"
+                :class="{ active: showFavoritesPanel }"
+                @click.stop="handleMyFavorites"
+              >
+                <span class="btn-icon">⭐</span>
+                <span class="btn-text">我的收藏</span>
+              </button>
+              <button
+                class="user-action-btn my-posts-btn"
+                :class="{ active: showPostsPanel }"
+                @click.stop="handleMyPosts"
+              >
+                <span class="btn-icon">📝</span>
+                <span class="btn-text">我的发布</span>
+              </button>
+              <button
+                class="user-action-btn logout-action-btn"
+                @click="handleLogout"
+              >
+                <span class="btn-icon">🚪</span>
+                <span class="btn-text">退出登录</span>
+              </button>
             </div>
           </div>
-        </div>
-        <div class="user-actions">
-          <button class="user-action-btn my-likes-btn" :class="{ active: showLikesPanel }" @click.stop="handleMyLikes">
-            <span class="btn-icon">❤️</span>
-            <span class="btn-text">我的点赞</span>
-          </button>
-          <button class="user-action-btn my-favorites-btn" :class="{ active: showFavoritesPanel }" @click.stop="handleMyFavorites">
-            <span class="btn-icon">⭐</span>
-            <span class="btn-text">我的收藏</span>
-          </button>
-          <button class="user-action-btn my-posts-btn" :class="{ active: showPostsPanel }" @click.stop="handleMyPosts">
-            <span class="btn-icon">📝</span>
-            <span class="btn-text">我的发布</span>
-          </button>
-          <button class="user-action-btn logout-action-btn" @click="handleLogout">
-            <span class="btn-icon">🚪</span>
-            <span class="btn-text">退出登录</span>
-          </button>
-        </div>
-      </div>
         </div>
       </div>
     </transition>
 
-    <!-- 我的点赞子侧边栏 -->
     <div
       class="user-sub-sidebar likes-panel"
-      :class="{ 'show-panel': showLikesPanel, dark: effectiveMapTheme === 'dark' }"
+      :class="{
+        'show-panel': showLikesPanel,
+        dark: effectiveMapTheme === 'dark',
+      }"
       @click.stop
     >
       <div class="sub-sidebar-header">
         <h4>我的点赞</h4>
-        <button class="close-btn" @click.stop="showLikesPanel = false"><span>×</span></button>
+        <button class="close-btn" @click.stop="showLikesPanel = false">
+          <span>×</span>
+        </button>
       </div>
       <div class="sub-sidebar-content" @scroll="handleLikesScroll">
-        <div v-if="likesLoading && likesList.length === 0" class="panel-loading">
+        <div
+          v-if="likesLoading && likesList.length === 0"
+          class="panel-loading"
+        >
           <span class="loading-spinner">⌛</span>
           <span>加载中...</span>
         </div>
@@ -601,15 +783,22 @@
           <span>还没有点赞任何故事</span>
         </div>
         <div v-else class="panel-list">
-          <div v-for="story in likesList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+          <div
+            v-for="story in likesList"
+            :key="story.id"
+            class="panel-item"
+            @click="handleStoryClick(story)"
+          >
             <div class="item-header">
               <img :src="story.avatar" class="item-avatar" alt="头像" />
               <div class="item-meta">
                 <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+                <span class="item-time">{{
+                  formatRelativeTime(story.createdAt)
+                }}</span>
               </div>
-              <button 
-                class="item-action-btn unlike-btn" 
+              <button
+                class="item-action-btn unlike-btn"
                 title="取消点赞"
                 @click.stop="handleUnlike(story)"
               >
@@ -621,8 +810,12 @@
               <img :src="story.images[0]" alt="配图" />
             </div>
             <div class="item-footer">
-              <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
-              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+              <span class="item-location"
+                >📍 {{ getStoryLocationText(story) }}</span
+              >
+              <span class="item-likes"
+                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
+              >
               <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
@@ -630,25 +823,35 @@
             <span class="loading-spinner">⌛</span>
             <span>加载更多...</span>
           </div>
-          <div v-if="!likesHasMore && likesList.length > 0" class="panel-no-more">
+          <div
+            v-if="!likesHasMore && likesList.length > 0"
+            class="panel-no-more"
+          >
             <span>没有更多了</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 我的发布子侧边栏 -->
     <div
       class="user-sub-sidebar posts-panel"
-      :class="{ 'show-panel': showPostsPanel, dark: effectiveMapTheme === 'dark' }"
+      :class="{
+        'show-panel': showPostsPanel,
+        dark: effectiveMapTheme === 'dark',
+      }"
       @click.stop
     >
       <div class="sub-sidebar-header">
         <h4>我的发布</h4>
-        <button class="close-btn" @click.stop="showPostsPanel = false"><span>×</span></button>
+        <button class="close-btn" @click.stop="showPostsPanel = false">
+          <span>×</span>
+        </button>
       </div>
       <div class="sub-sidebar-content" @scroll="handlePostsScroll">
-        <div v-if="postsLoading && postsList.length === 0" class="panel-loading">
+        <div
+          v-if="postsLoading && postsList.length === 0"
+          class="panel-loading"
+        >
           <span class="loading-spinner">⌛</span>
           <span>加载中...</span>
         </div>
@@ -657,15 +860,22 @@
           <span>还没有发布任何故事</span>
         </div>
         <div v-else class="panel-list">
-          <div v-for="story in postsList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+          <div
+            v-for="story in postsList"
+            :key="story.id"
+            class="panel-item"
+            @click="handleStoryClick(story)"
+          >
             <div class="item-header">
               <img :src="story.avatar" class="item-avatar" alt="头像" />
               <div class="item-meta">
                 <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+                <span class="item-time">{{
+                  formatRelativeTime(story.createdAt)
+                }}</span>
               </div>
-              <button 
-                class="item-action-btn delete-btn" 
+              <button
+                class="item-action-btn delete-btn"
                 title="删除故事"
                 @click.stop="handleDeleteStory(story)"
               >
@@ -677,8 +887,12 @@
               <img :src="story.images[0]" alt="配图" />
             </div>
             <div class="item-footer">
-              <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
-              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+              <span class="item-location"
+                >📍 {{ getStoryLocationText(story) }}</span
+              >
+              <span class="item-likes"
+                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
+              >
               <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
@@ -686,25 +900,35 @@
             <span class="loading-spinner">⌛</span>
             <span>加载更多...</span>
           </div>
-          <div v-if="!postsHasMore && postsList.length > 0" class="panel-no-more">
+          <div
+            v-if="!postsHasMore && postsList.length > 0"
+            class="panel-no-more"
+          >
             <span>没有更多了</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 我的收藏子侧边栏 -->
     <div
       class="user-sub-sidebar favorites-panel"
-      :class="{ 'show-panel': showFavoritesPanel, dark: effectiveMapTheme === 'dark' }"
+      :class="{
+        'show-panel': showFavoritesPanel,
+        dark: effectiveMapTheme === 'dark',
+      }"
       @click.stop
     >
       <div class="sub-sidebar-header">
         <h4>我的收藏</h4>
-        <button class="close-btn" @click.stop="showFavoritesPanel = false"><span>×</span></button>
+        <button class="close-btn" @click.stop="showFavoritesPanel = false">
+          <span>×</span>
+        </button>
       </div>
       <div class="sub-sidebar-content" @scroll="handleFavoritesScroll">
-        <div v-if="favoritesLoading && favoritesList.length === 0" class="panel-loading">
+        <div
+          v-if="favoritesLoading && favoritesList.length === 0"
+          class="panel-loading"
+        >
           <span class="loading-spinner">⌛</span>
           <span>加载中...</span>
         </div>
@@ -713,12 +937,19 @@
           <span>还没有收藏任何故事</span>
         </div>
         <div v-else class="panel-list">
-          <div v-for="story in favoritesList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+          <div
+            v-for="story in favoritesList"
+            :key="story.id"
+            class="panel-item"
+            @click="handleStoryClick(story)"
+          >
             <div class="item-header">
               <img :src="story.avatar" class="item-avatar" alt="头像" />
               <div class="item-meta">
                 <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+                <span class="item-time">{{
+                  formatRelativeTime(story.createdAt)
+                }}</span>
               </div>
               <button
                 class="item-action-btn unfavorite-btn"
@@ -726,7 +957,7 @@
                 :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
                 @click.stop="handleToggleFavoriteFromList(story)"
               >
-                <span>{{ story.isFavorited !== false ? '★' : '☆' }}</span>
+                <span>{{ story.isFavorited !== false ? "★" : "☆" }}</span>
               </button>
             </div>
             <p class="item-content">{{ story.content }}</p>
@@ -734,8 +965,12 @@
               <img :src="story.images[0]" alt="配图" />
             </div>
             <div class="item-footer">
-              <span class="item-location">📍 {{ getStoryLocationText(story) }}</span>
-              <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+              <span class="item-location"
+                >📍 {{ getStoryLocationText(story) }}</span
+              >
+              <span class="item-likes"
+                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
+              >
               <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
             </div>
           </div>
@@ -743,14 +978,16 @@
             <span class="loading-spinner">⌛</span>
             <span>加载更多...</span>
           </div>
-          <div v-if="!favoritesHasMore && favoritesList.length > 0" class="panel-no-more">
+          <div
+            v-if="!favoritesHasMore && favoritesList.length > 0"
+            class="panel-no-more"
+          >
             <span>没有更多了</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 项目标题 -->
     <div class="project-title"></div>
 
     <PaperPlaneStory
@@ -769,122 +1006,147 @@
       @report="handleStoryReport"
     />
 
-    <!-- 消息/公告面板呼出按钮 -->
     <div class="msg-trigger-wrapper">
       <button
         class="msg-trigger-btn"
-        :class="{ 'dark': effectiveMapTheme === 'dark' }"
+        :class="{ dark: effectiveMapTheme === 'dark' }"
         @click.stop="openMsgPanel"
-      >我的通知</button>
+      >
+        我的通知
+      </button>
       <span v-if="hasNotificationBadge" class="msg-badge-dot"></span>
     </div>
 
-    <!-- 登录模态框 -->
-    <!-- 通知栏 -->
     <transition name="notification-fade">
       <div
         v-if="showNotificationPanel"
         class="notification-backdrop"
         @click.self="closeNotificationPanel"
       >
-      <div
-        class="notification-panel"
-        :class="{ dark: effectiveMapTheme === 'dark' }"
-        @click.stop
-      >
-        <div class="notification-header">
-          <div class="notification-tabs">
-            <button
-              class="notification-tab-btn"
-              :class="{ active: notificationTab === 'messages' }"
-              @click="switchNotificationTab('messages')"
-            >
-              消息
-              <span v-if="notificationUnreadCount > 0" class="tab-badge">{{ notificationUnreadCount > 99 ? '99+' : notificationUnreadCount }}</span>
-            </button>
-            <button
-              class="notification-tab-btn"
-              :class="{ active: notificationTab === 'announcements' }"
-              @click="switchNotificationTab('announcements')"
-            >
-              公告
-              <span v-if="hasUnreadAnnouncements" class="tab-dot"></span>
-            </button>
+        <div
+          class="notification-panel"
+          :class="{ dark: effectiveMapTheme === 'dark' }"
+          @click.stop
+        >
+          <div class="notification-header">
+            <div class="notification-tabs">
+              <button
+                class="notification-tab-btn"
+                :class="{ active: notificationTab === 'messages' }"
+                @click="switchNotificationTab('messages')"
+              >
+                消息
+                <span v-if="notificationUnreadCount > 0" class="tab-badge">{{
+                  notificationUnreadCount > 99 ? "99+" : notificationUnreadCount
+                }}</span>
+              </button>
+              <button
+                class="notification-tab-btn"
+                :class="{ active: notificationTab === 'announcements' }"
+                @click="switchNotificationTab('announcements')"
+              >
+                公告
+                <span v-if="hasUnreadAnnouncements" class="tab-dot"></span>
+              </button>
+            </div>
+            <div class="notification-actions">
+              <template v-if="notificationTab === 'messages'">
+                <button
+                  v-if="notificationUnreadCount > 0"
+                  class="mark-read-btn"
+                  @click="markAllNotificationsRead"
+                >
+                  全部已读
+                </button>
+                <button
+                  v-if="notifications.length > 0"
+                  class="clear-all-btn"
+                  @click="clearAllNotifications"
+                >
+                  清空全部
+                </button>
+              </template>
+              <button class="close-btn" @click="closeNotificationPanel">
+                <span>×</span>
+              </button>
+            </div>
           </div>
-          <div class="notification-actions">
+          <div class="notification-content">
             <template v-if="notificationTab === 'messages'">
-              <button
-                v-if="notificationUnreadCount > 0"
-                class="mark-read-btn"
-                @click="markAllNotificationsRead"
-              >全部已读</button>
-              <button
-                v-if="notifications.length > 0"
-                class="clear-all-btn"
-                @click="clearAllNotifications"
-              >清空全部</button>
+              <div v-if="notificationsLoading" class="notification-loading">
+                <span class="loading-spinner">⌛</span>
+                <span>加载中...</span>
+              </div>
+              <div
+                v-else-if="notifications.length === 0"
+                class="notification-empty"
+              >
+                <span class="empty-icon">📭</span>
+                <span>暂无通知</span>
+              </div>
+              <div v-else class="notification-list">
+                <div
+                  v-for="notice in notifications"
+                  :key="notice.id"
+                  class="notification-item"
+                  :class="{ unread: !notice.isRead }"
+                >
+                  <div class="notice-avatar">
+                    <img
+                      v-if="notice.fromUser?.avatar"
+                      :src="notice.fromUser.avatar"
+                      alt=""
+                    />
+                    <span v-else>{{
+                      (notice.fromUser?.username ||
+                        notice.fromUserName ||
+                        "匿")[0]
+                    }}</span>
+                  </div>
+                  <div class="notice-body">
+                    <p class="notice-content">{{ notice.content }}</p>
+                    <span class="notice-time">{{
+                      formatRelativeTime(notice.createdAt)
+                    }}</span>
+                  </div>
+                  <span v-if="!notice.isRead" class="unread-dot"></span>
+                </div>
+              </div>
             </template>
-            <button class="close-btn" @click="closeNotificationPanel"><span>×</span></button>
+            <template v-if="notificationTab === 'announcements'">
+              <div v-if="announcementsLoading" class="notification-loading">
+                <span class="loading-spinner">⌛</span>
+                <span>加载中...</span>
+              </div>
+              <div
+                v-else-if="announcements.length === 0"
+                class="notification-empty"
+              >
+                <span class="empty-icon">📢</span>
+                <span>暂无公告</span>
+              </div>
+              <div v-else class="announcement-panel-list">
+                <div
+                  v-for="ann in announcements"
+                  :key="ann.id"
+                  class="np-announcement-card"
+                  :class="ann.type"
+                >
+                  <div class="np-ann-header">
+                    <span class="np-ann-type-badge">{{
+                      getAnnouncementTypeIcon(ann.type)
+                    }}</span>
+                    <span class="np-ann-time">{{
+                      formatRelativeTime(ann.createdAt)
+                    }}</span>
+                  </div>
+                  <h4 class="np-ann-title">{{ ann.title }}</h4>
+                  <p class="np-ann-content">{{ ann.content }}</p>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
-        <div class="notification-content">
-          <!-- 消息标签内容 -->
-          <template v-if="notificationTab === 'messages'">
-            <div v-if="notificationsLoading" class="notification-loading">
-              <span class="loading-spinner">⌛</span>
-              <span>加载中...</span>
-            </div>
-            <div v-else-if="notifications.length === 0" class="notification-empty">
-              <span class="empty-icon">📭</span>
-              <span>暂无通知</span>
-            </div>
-            <div v-else class="notification-list">
-              <div
-                v-for="notice in notifications"
-                :key="notice.id"
-                class="notification-item"
-                :class="{ unread: !notice.isRead }"
-              >
-                <div class="notice-avatar">
-                  <img v-if="notice.fromUser?.avatar" :src="notice.fromUser.avatar" alt="" />
-                  <span v-else>{{ (notice.fromUser?.username || notice.fromUserName || '匿')[0] }}</span>
-                </div>
-                <div class="notice-body">
-                  <p class="notice-content">{{ notice.content }}</p>
-                  <span class="notice-time">{{ formatRelativeTime(notice.createdAt) }}</span>
-                </div>
-                <span v-if="!notice.isRead" class="unread-dot"></span>
-              </div>
-            </div>
-          </template>
-          <!-- 公告标签内容 -->
-          <template v-if="notificationTab === 'announcements'">
-            <div v-if="announcementsLoading" class="notification-loading">
-              <span class="loading-spinner">⌛</span>
-              <span>加载中...</span>
-            </div>
-            <div v-else-if="announcements.length === 0" class="notification-empty">
-              <span class="empty-icon">📢</span>
-              <span>暂无公告</span>
-            </div>
-            <div v-else class="announcement-panel-list">
-              <div
-                v-for="ann in announcements"
-                :key="ann.id"
-                class="np-announcement-card"
-                :class="ann.type"
-              >
-                <div class="np-ann-header">
-                  <span class="np-ann-type-badge">{{ getAnnouncementTypeIcon(ann.type) }}</span>
-                  <span class="np-ann-time">{{ formatRelativeTime(ann.createdAt) }}</span>
-                </div>
-                <h4 class="np-ann-title">{{ ann.title }}</h4>
-                <p class="np-ann-content">{{ ann.content }}</p>
-              </div>
-            </div>
-          </template>
-        </div>
-      </div>
       </div>
     </transition>
 
@@ -893,34 +1155,33 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import { useMapStore } from '../../stores/map';
-import { useUserStore } from '../../stores/user';
-import PaperPlaneStory from '../../components/PaperPlaneStory.vue';
-import { mapApi } from '../../api/map';
-import { likeApi } from '../../api/like';
-import { commentApi } from '../../api/comment';
-import { storyApi } from '../../api/story';
-import { favoriteApi } from '../../api/favorite';
-import { authApi } from '../../api/auth';
-import { reportApi } from '../../api/report';
-import { notificationApi } from '../../api/notification';
-import { showToast, showConfirm } from '../../composables/useToast.js';
-import AMap from '../../components/AMap.vue';
-import StoryCard from '../../components/StoryCard.vue';
-import PublishForm from '../../components/PublishForm.vue';
-import LoginModal from '../Home/components/LoginModal.vue';
-import { formatRelativeTime } from '../../utils/time';
-import { getEmotionEmoji } from '../../utils/emotion';
-import { getAnnouncementTypeIcon } from '../../utils/announcement';
-import { searchPoisWithContext } from '../../utils/poiSearch';
-import { REPORT_TYPES } from '../../utils/report';
-import { uploadAvatar as uploadToOSS, validateImage } from '../../utils/upload';
+import { ref, onMounted, onUnmounted, computed, watch } from "vue";
+import { useMapStore } from "../../stores/map";
+import { useUserStore } from "../../stores/user";
+import PaperPlaneStory from "../../components/PaperPlaneStory.vue";
+import { mapApi } from "../../api/map";
+import { likeApi } from "../../api/like";
+import { commentApi } from "../../api/comment";
+import { storyApi } from "../../api/story";
+import { favoriteApi } from "../../api/favorite";
+import { authApi } from "../../api/auth";
+import { reportApi } from "../../api/report";
+import { notificationApi } from "../../api/notification";
+import { showToast, showConfirm } from "../../composables/useToast.js";
+import AMap from "../../components/AMap.vue";
+import StoryCard from "../../components/StoryCard.vue";
+import PublishForm from "../../components/PublishForm.vue";
+import LoginModal from "../Home/components/LoginModal.vue";
+import { formatRelativeTime } from "../../utils/time";
+import { getEmotionEmoji } from "../../utils/emotion";
+import { getAnnouncementTypeIcon } from "../../utils/announcement";
+import { searchPoisWithContext } from "../../utils/poiSearch";
+import { REPORT_TYPES } from "../../utils/report";
+import { uploadAvatar as uploadToOSS, validateImage } from "../../utils/upload";
 
 const mapStore = useMapStore();
 const userStore = useUserStore();
 
-// 聚合数据
 const clusters = ref([]);
 
 const showSidebar = ref(false);
@@ -932,63 +1193,67 @@ const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
 const showLoginModal = ref(false);
 const showNotificationPanel = ref(false);
-const notificationTab = ref('messages');
+const notificationTab = ref("messages");
 const notifications = ref([]);
 const notificationsLoading = ref(false);
 const notificationUnreadCount = ref(0);
 const announcementsLoading = ref(false);
 const loading = ref(false);
-const nearbySearchQuery = ref('');
+const nearbySearchQuery = ref("");
 const nearbySearchResults = ref([]);
 const nearbySearching = ref(false);
-const nearbySearchError = ref('');
+const nearbySearchError = ref("");
 const nearbyHasSearched = ref(false);
-const nearbyCenterLabel = ref('');
+const nearbyCenterLabel = ref("");
 const nearbyPinnedCenterLabel = ref(null);
-const currentUserLocationLabel = ref('');
+const currentUserLocationLabel = ref("");
 const currentUserSearchLocality = ref(null);
 const feedStories = ref([]);
 const feedLoading = ref(false);
 const feedLoadingMore = ref(false);
 const feedPage = ref(1);
 const feedPagination = ref({ total: 0, totalPages: 0 });
-const feedHasMore = computed(() => feedPage.value < feedPagination.value.totalPages);
+const feedHasMore = computed(
+  () => feedPage.value < feedPagination.value.totalPages,
+);
 const randomWalking = ref(false);
 const selectedStory = ref(null);
-const storyStartPosition = ref({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-const storyDirectOpen = ref(true); // true = 直接打开，false = 从起始位置飞入
-// 地图主题：'light' | 'dark' | 'auto'（跟随当地时间 06:00-18:00 白天/18:00-06:00 夜晚）
-const mapTheme = ref(localStorage.getItem('mapTheme') || 'auto');
+const storyStartPosition = ref({
+  x: window.innerWidth / 2,
+  y: window.innerHeight / 2,
+});
+const storyDirectOpen = ref(true); // `false` 时从地图起点飞入
+const mapTheme = ref(localStorage.getItem("mapTheme") || "auto");
 const amapRef = ref(null);
-const minuteTicker = ref(0); // 每分钟更新，用于自动主题在 06:00/18:00 切换
+const minuteTicker = ref(0);
 const isDockExpanded = ref(false);
 
 function getTimeBasedTheme() {
   const hour = new Date().getHours();
-  return (hour >= 6 && hour < 18) ? 'light' : 'dark';
+  return hour >= 6 && hour < 18 ? "light" : "dark";
 }
 const effectiveMapTheme = computed(() => {
-  void minuteTicker.value; // 依赖：每分钟刷新以在 06:00/18:00 自动切换
-  if (mapTheme.value === 'light' || mapTheme.value === 'dark') {
+  void minuteTicker.value;
+  if (mapTheme.value === "light" || mapTheme.value === "dark") {
     return mapTheme.value;
   }
   return getTimeBasedTheme();
 });
 const nearbyCenterSummary = computed(() => {
   if (!nearbyCenterLabel.value) {
-    return '会优先参考你附近的结果，遇到明确地标时也会保留全局最佳匹配。';
+    return "会优先参考你附近的结果，遇到明确地标时也会保留全局最佳匹配。";
   }
 
   return `当前显示的是 ${nearbyCenterLabel.value} 附近的故事。`;
 });
-const hoveredDockCard = ref('');
-const selectedDockCard = ref('');
-const drawingDockCard = ref('');
-const liftingDockCard = ref('');
-const returningDockCard = ref('');
-const ripplingDockCard = ref('');
+const hoveredDockCard = ref("");
+const selectedDockCard = ref("");
+const drawingDockCard = ref("");
+const liftingDockCard = ref("");
+const returningDockCard = ref("");
+const ripplingDockCard = ref("");
 const dockActionPending = ref(false);
-const isDarkMap = computed(() => effectiveMapTheme.value === 'dark');
+const isDarkMap = computed(() => effectiveMapTheme.value === "dark");
 let dockHoverClearTimer = null;
 let dockSelectionTimer = null;
 let nearbyPlaceSearchInstance = null;
@@ -1011,33 +1276,24 @@ const DOCK_CARD_RETURN_MS = 300;
 const STORY_MODAL_OPEN_DELAY_MS = 420;
 const POI_SEARCH_RADIUS_METERS = 50000;
 
-// --- 欢迎语相关状态 ---
-const showWelcomeOverlay = ref(true); 
+const showWelcomeOverlay = ref(true);
 const welcomeContentRef = ref(null);
 const welcomeTextRef = ref(null);
 const welcomeTextScale = ref(1);
 let welcomeOverlayTimer = null;
 let welcomeTextResizeFrame = 0;
 
-// 欢迎语语录库
 const welcomeQuotes = [
   "欢迎来到心灵栖息之所！",
   "今日もがんばったね、ほんとにお疲れ様",
   "Breathe. You are safe in this moment.",
   "在这颗星球的某个角落，总有故事与你共鸣。",
   "Quiet the mind, and the soul will speak.",
-  "前端怎么改？？？",
-  "原神牛逼",
-  "竟敢无视灯！"
 ];
 
-// 随机选择一句欢迎语
 const currentWelcomeQuote = ref(
-  welcomeQuotes[Math.floor(Math.random() * welcomeQuotes.length)]
+  welcomeQuotes[Math.floor(Math.random() * welcomeQuotes.length)],
 );
-// --- 欢迎语逻辑结束 ---
-
-// 用户名编辑相关
 function fitWelcomeTextToSingleLine() {
   if (!showWelcomeOverlay.value) {
     return;
@@ -1074,84 +1330,95 @@ function scheduleWelcomeTextFit() {
 }
 
 const isEditingUsername = ref(false);
-const editingUsername = ref('');
-const usernameError = ref('');
+const editingUsername = ref("");
+const usernameError = ref("");
 const checkingUsername = ref(false);
 
-// 计算属性：是否可以保存用户名
 const canSaveUsername = computed(() => {
   const trimmed = editingUsername.value.trim();
-  return trimmed.length >= 2 && trimmed.length <= 20 && !checkingUsername.value && !usernameError.value;
+  return (
+    trimmed.length >= 2 &&
+    trimmed.length <= 20 &&
+    !checkingUsername.value &&
+    !usernameError.value
+  );
 });
 
-// 头像上传相关
 const avatarInput = ref(null);
-const avatarPreview = ref('');
+const avatarPreview = ref("");
 const avatarUploading = ref(false);
-const avatarError = ref('');
+const avatarError = ref("");
 const currentAvatarFile = ref(null);
 
-// 密码相关
 const isEditingPassword = ref(false);
 const showCurrentPassword = ref(false);
 const showNewPassword = ref(false);
 const showConfirmPassword = ref(false);
 const savingPassword = ref(false);
-const passwordError = ref('');
+const passwordError = ref("");
 const passwordForm = ref({
-  currentPassword: '',
-  newPassword: '',
-  confirmPassword: ''
+  currentPassword: "",
+  newPassword: "",
+  confirmPassword: "",
 });
-// 实时验证错误
-const currentPasswordError = ref('');
-const newPasswordError = ref('');
-const confirmPasswordError = ref('');
+const currentPasswordError = ref("");
+const newPasswordError = ref("");
+const confirmPasswordError = ref("");
 
-// 计算属性：是否可以保存密码
 const canSavePassword = computed(() => {
-  return passwordForm.value.currentPassword.length > 0 &&
-         passwordForm.value.newPassword.length >= 6 &&
-         passwordForm.value.confirmPassword.length >= 6 &&
-         passwordForm.value.newPassword === passwordForm.value.confirmPassword &&
-         !savingPassword.value &&
-         !currentPasswordError.value &&
-         !newPasswordError.value &&
-         !confirmPasswordError.value;
+  return (
+    passwordForm.value.currentPassword.length > 0 &&
+    passwordForm.value.newPassword.length >= 6 &&
+    passwordForm.value.confirmPassword.length >= 6 &&
+    passwordForm.value.newPassword === passwordForm.value.confirmPassword &&
+    !savingPassword.value &&
+    !currentPasswordError.value &&
+    !newPasswordError.value &&
+    !confirmPasswordError.value
+  );
 });
 
-// 实时密码验证
-watch(() => passwordForm.value.currentPassword, (val) => {
-  if (!val) {
-    currentPasswordError.value = '请输入当前密码';
-  } else {
-    currentPasswordError.value = '';
-  }
-});
+watch(
+  () => passwordForm.value.currentPassword,
+  (val) => {
+    if (!val) {
+      currentPasswordError.value = "请输入当前密码";
+    } else {
+      currentPasswordError.value = "";
+    }
+  },
+);
 
-watch(() => passwordForm.value.newPassword, (val) => {
-  if (val && val.length < 6) {
-    newPasswordError.value = '新密码至少需要 6 位';
-  } else {
-    newPasswordError.value = '';
-  }
-  // 同时验证确认密码
-  if (passwordForm.value.confirmPassword) {
-    confirmPasswordError.value = val !== passwordForm.value.confirmPassword ? '两次输入的新密码不一致' : '';
-  }
-});
+watch(
+  () => passwordForm.value.newPassword,
+  (val) => {
+    if (val && val.length < 6) {
+      newPasswordError.value = "新密码至少需要 6 位";
+    } else {
+      newPasswordError.value = "";
+    }
+    if (passwordForm.value.confirmPassword) {
+      confirmPasswordError.value =
+        val !== passwordForm.value.confirmPassword
+          ? "两次输入的新密码不一致"
+          : "";
+    }
+  },
+);
 
-watch(() => passwordForm.value.confirmPassword, (val) => {
-  if (val && val !== passwordForm.value.newPassword) {
-    confirmPasswordError.value = '两次输入的新密码不一致';
-  } else if (val && val.length < 6) {
-    confirmPasswordError.value = '新密码至少需要 6 位';
-  } else {
-    confirmPasswordError.value = '';
-  }
-});
+watch(
+  () => passwordForm.value.confirmPassword,
+  (val) => {
+    if (val && val !== passwordForm.value.newPassword) {
+      confirmPasswordError.value = "两次输入的新密码不一致";
+    } else if (val && val.length < 6) {
+      confirmPasswordError.value = "新密码至少需要 6 位";
+    } else {
+      confirmPasswordError.value = "";
+    }
+  },
+);
 
-// 我的点赞/发布/收藏面板相关
 const showLikesPanel = ref(false);
 const showPostsPanel = ref(false);
 const showFavoritesPanel = ref(false);
@@ -1174,17 +1441,12 @@ const likesPageSize = 10;
 const postsPageSize = 10;
 const favoritesPageSize = 10;
 
-// 侧边栏标签
-const sidebarTab = ref('nearby');
-
-// 精选故事（从API获取）
+const sidebarTab = ref("nearby");
 const featuredStories = ref([]);
-
-// 公告（从API获取）
 const announcements = ref([]);
 
 const storyCommentComposerOpen = ref(false);
-const storyCommentDraft = ref('');
+const storyCommentDraft = ref("");
 const storyCommentSubmitting = ref(false);
 const storyComments = ref([]);
 const storyCommentsLoading = ref(false);
@@ -1195,58 +1457,82 @@ const storyIsFavorited = ref(false);
 const storyFavoriteCount = ref(0);
 const storyFavoritePending = ref(false);
 const storyReportPanelOpen = ref(false);
-const selectedStoryReportReason = ref('');
-const storyReportDescription = ref('');
-const storyReportError = ref('');
+const selectedStoryReportReason = ref("");
+const storyReportDescription = ref("");
+const storyReportError = ref("");
 const storyReportSubmitting = ref(false);
 const storyReportReasons = REPORT_TYPES;
 let storyOpenTimer = null;
 let activeStoryRequestToken = 0;
 
-const storyAuthorName = computed(() => firstNonEmptyString(
-  selectedStory.value?.username,
-  selectedStory.value?.author,
-  '匿名用户'
-));
-const storyAuthorInitial = computed(() => storyAuthorName.value.slice(0, 1).toUpperCase() || '匿');
-const storyAuthorAvatar = computed(() => firstNonEmptyString(selectedStory.value?.avatar));
-const storyPrimaryImage = computed(() => Array.isArray(selectedStory.value?.images) ? selectedStory.value.images[0] || '' : '');
-const storyGalleryImages = computed(() => Array.isArray(selectedStory.value?.images) ? selectedStory.value.images.slice(1) : []);
-const storyDisplayLocation = computed(() => selectedStory.value ? getStoryLocationText(selectedStory.value) : '未知地点');
+const storyAuthorName = computed(() =>
+  firstNonEmptyString(
+    selectedStory.value?.username,
+    selectedStory.value?.author,
+    "匿名用户",
+  ),
+);
+const storyAuthorInitial = computed(
+  () => storyAuthorName.value.slice(0, 1).toUpperCase() || "匿",
+);
+const storyAuthorAvatar = computed(() =>
+  firstNonEmptyString(selectedStory.value?.avatar),
+);
+const storyPrimaryImage = computed(() =>
+  Array.isArray(selectedStory.value?.images)
+    ? selectedStory.value.images[0] || ""
+    : "",
+);
+const storyGalleryImages = computed(() =>
+  Array.isArray(selectedStory.value?.images)
+    ? selectedStory.value.images.slice(1)
+    : [],
+);
+const storyDisplayLocation = computed(() =>
+  selectedStory.value ? getStoryLocationText(selectedStory.value) : "未知地点",
+);
 const storyCommentCount = computed(() => {
-  const fromList = Array.isArray(storyComments.value) ? storyComments.value.length : 0;
-  const fromStory = Number(selectedStory.value?.commentCount ?? selectedStory.value?.comments?.length ?? 0);
+  const fromList = Array.isArray(storyComments.value)
+    ? storyComments.value.length
+    : 0;
+  const fromStory = Number(
+    selectedStory.value?.commentCount ??
+      selectedStory.value?.comments?.length ??
+      0,
+  );
   return Math.max(fromList, Number.isFinite(fromStory) ? fromStory : 0);
 });
 const storyTarotKicker = computed(() => {
   if (selectedStory.value?.isFeatured) {
-    return '精选秘牌';
+    return "精选秘牌";
   }
   if (selectedStory.value?.isPinned) {
-    return '置顶回响';
+    return "置顶回响";
   }
-  return '故事显影';
+  return "故事显影";
 });
 const storyTarotTitle = computed(() => {
   const locationText = storyDisplayLocation.value;
-  return locationText && locationText !== '未知地点' ? locationText : '回响之牌';
+  return locationText && locationText !== "未知地点"
+    ? locationText
+    : "回响之牌";
 });
 const storyTarotSuit = computed(() => {
   const emotion = firstNonEmptyString(
     selectedStory.value?.emotionTag,
-    selectedStory.value?.emotion
+    selectedStory.value?.emotion,
   );
 
-  if (emotion.includes('喜') || emotion.includes('乐')) {
-    return '♦';
+  if (emotion.includes("喜") || emotion.includes("乐")) {
+    return "♦";
   }
-  if (emotion.includes('伤') || emotion.includes('悲')) {
-    return '♥';
+  if (emotion.includes("伤") || emotion.includes("悲")) {
+    return "♥";
   }
-  if (emotion.includes('怒') || emotion.includes('躁')) {
-    return '♠';
+  if (emotion.includes("怒") || emotion.includes("躁")) {
+    return "♠";
   }
-  return '✦';
+  return "✦";
 });
 
 watch(
@@ -1260,17 +1546,19 @@ watch(
       return;
     }
 
-    storyLikeCount.value = Number(selectedStory.value.likeCount ?? selectedStory.value.likes ?? 0);
+    storyLikeCount.value = Number(
+      selectedStory.value.likeCount ?? selectedStory.value.likes ?? 0,
+    );
     storyIsLiked.value = Boolean(selectedStory.value.isLiked);
     storyIsFavorited.value = Boolean(selectedStory.value.isFavorited);
     storyComments.value = normalizeStoryComments(selectedStory.value.comments);
     void hydrateSelectedStoryDetail(selectedStory.value, requestToken);
-  }
+  },
 );
 
 function resetStoryOverlayState() {
   storyCommentComposerOpen.value = false;
-  storyCommentDraft.value = '';
+  storyCommentDraft.value = "";
   storyCommentSubmitting.value = false;
   storyComments.value = [];
   storyCommentsLoading.value = false;
@@ -1281,24 +1569,23 @@ function resetStoryOverlayState() {
   storyFavoriteCount.value = 0;
   storyFavoritePending.value = false;
   storyReportPanelOpen.value = false;
-  selectedStoryReportReason.value = '';
-  storyReportDescription.value = '';
-  storyReportError.value = '';
+  selectedStoryReportReason.value = "";
+  storyReportDescription.value = "";
+  storyReportError.value = "";
   storyReportSubmitting.value = false;
 }
 
 function normalizeStoryComment(comment) {
-  if (!comment || typeof comment !== 'object') {
+  if (!comment || typeof comment !== "object") {
     return null;
   }
 
-  const commentUser = comment.user && typeof comment.user === 'object'
-    ? comment.user
-    : null;
+  const commentUser =
+    comment.user && typeof comment.user === "object" ? comment.user : null;
   const author = firstNonEmptyString(
     commentUser?.username,
     comment.author,
-    '匿名用户'
+    "匿名用户",
   );
 
   return {
@@ -1306,7 +1593,7 @@ function normalizeStoryComment(comment) {
     author,
     avatar: firstNonEmptyString(commentUser?.avatar, comment.avatar),
     content: firstNonEmptyString(comment.content),
-    createdAt: comment.createdAt || new Date().toISOString()
+    createdAt: comment.createdAt || new Date().toISOString(),
   };
 }
 
@@ -1321,14 +1608,14 @@ function normalizeStoryComments(comments) {
 }
 
 function getCommentInitial(author) {
-  return firstNonEmptyString(author, '匿').slice(0, 1).toUpperCase();
+  return firstNonEmptyString(author, "匿").slice(0, 1).toUpperCase();
 }
 
 function closeStoryReportPanel() {
   storyReportPanelOpen.value = false;
-  selectedStoryReportReason.value = '';
-  storyReportDescription.value = '';
-  storyReportError.value = '';
+  selectedStoryReportReason.value = "";
+  storyReportDescription.value = "";
+  storyReportError.value = "";
 }
 
 function normalizeStoryIdKey(storyId) {
@@ -1336,13 +1623,13 @@ function normalizeStoryIdKey(storyId) {
     return null;
   }
 
-  return typeof storyId === 'bigint'
+  return typeof storyId === "bigint"
     ? storyId.toString()
     : String(storyId).trim();
 }
 
 function mutateStoryReference(target, storyId, mutate) {
-  if (!target || typeof target !== 'object') {
+  if (!target || typeof target !== "object") {
     return false;
   }
 
@@ -1357,9 +1644,9 @@ function mutateStoryReference(target, storyId, mutate) {
   }
 
   if (
-    target.story
-    && typeof target.story === 'object'
-    && normalizeStoryIdKey(target.story.id) === normalizedStoryId
+    target.story &&
+    typeof target.story === "object" &&
+    normalizeStoryIdKey(target.story.id) === normalizedStoryId
   ) {
     mutate(target.story);
     return true;
@@ -1375,7 +1662,7 @@ function syncStoryAcrossCollections(storyId, mutate) {
     featuredStories,
     favoritesList,
     likesList,
-    postsList
+    postsList,
   ];
 
   collections.forEach((collection) => {
@@ -1392,7 +1679,9 @@ function syncStoryAcrossCollections(storyId, mutate) {
 }
 
 function syncCurrentUserProfileAcrossStories(nextUser) {
-  const normalizedUserId = normalizeStoryIdKey(nextUser?.id ?? userStore.user?.id);
+  const normalizedUserId = normalizeStoryIdKey(
+    nextUser?.id ?? userStore.user?.id,
+  );
   if (!normalizedUserId) {
     return;
   }
@@ -1405,21 +1694,21 @@ function syncCurrentUserProfileAcrossStories(nextUser) {
     featuredStories,
     favoritesList,
     likesList,
-    postsList
+    postsList,
   ];
 
   const applyUserProfile = (story) => {
-    if (!story || typeof story !== 'object') {
+    if (!story || typeof story !== "object") {
       return;
     }
 
     const author = resolveStoryAuthor(story);
     const storyAuthorId = normalizeStoryIdKey(
-      author.id
-      ?? story.author?.id
-      ?? story.user?.id
-      ?? story.authorId
-      ?? story.userId
+      author.id ??
+        story.author?.id ??
+        story.user?.id ??
+        story.authorId ??
+        story.userId,
     );
 
     if (storyAuthorId !== normalizedUserId) {
@@ -1435,20 +1724,30 @@ function syncCurrentUserProfileAcrossStories(nextUser) {
     }
 
     const nextAuthor = {
-      ...(story.author && typeof story.author === 'object' ? story.author : {}),
-      id: story.author?.id ?? story.user?.id ?? story.authorId ?? story.userId ?? nextUser?.id ?? null,
+      ...(story.author && typeof story.author === "object" ? story.author : {}),
+      id:
+        story.author?.id ??
+        story.user?.id ??
+        story.authorId ??
+        story.userId ??
+        nextUser?.id ??
+        null,
       username: nextUsername || author.username,
-      avatar: nextAvatar || author.avatar
+      avatar: nextAvatar || author.avatar,
     };
 
     story.author = nextAuthor;
 
-    if (story.user && typeof story.user === 'object') {
+    if (story.user && typeof story.user === "object") {
       story.user = {
         ...story.user,
         id: story.user.id ?? nextAuthor.id,
         username: nextUsername || story.user.username || author.username,
-        avatar: nextAvatar || story.user.avatar || story.user.avatarUrl || author.avatar
+        avatar:
+          nextAvatar ||
+          story.user.avatar ||
+          story.user.avatarUrl ||
+          author.avatar,
       };
     }
   };
@@ -1459,9 +1758,8 @@ function syncCurrentUserProfileAcrossStories(nextUser) {
     }
 
     collection.value.forEach((item) => {
-      const targetStory = item?.story && typeof item.story === 'object'
-        ? item.story
-        : item;
+      const targetStory =
+        item?.story && typeof item.story === "object" ? item.story : item;
       applyUserProfile(targetStory);
     });
   });
@@ -1477,21 +1775,23 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
 
   storyCommentsLoading.value = true;
   const detailFallbackAuthor = {
-    id: story?.author?.id ?? story?.user?.id ?? story?.authorId ?? story?.userId ?? null,
+    id:
+      story?.author?.id ??
+      story?.user?.id ??
+      story?.authorId ??
+      story?.userId ??
+      null,
     username: firstNonEmptyString(
       story?.username,
-      typeof story?.author === 'string' ? story.author : '',
-      story?.author?.username
+      typeof story?.author === "string" ? story.author : "",
+      story?.author?.username,
     ),
-    avatar: firstNonEmptyString(
-      story?.avatar,
-      story?.author?.avatar
-    )
+    avatar: firstNonEmptyString(story?.avatar, story?.author?.avatar),
   };
 
   const tasks = [
     storyApi.getStoryById(storyId),
-    commentApi.getStoryComments(storyId, { page: 1, limit: 20 })
+    commentApi.getStoryComments(storyId, { page: 1, limit: 20 }),
   ];
 
   if (userStore.isLoggedIn && !userStore.isGuest) {
@@ -1509,59 +1809,104 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
   tasks.push(favoriteApi.getCount(storyId));
 
   try {
-    const [detailResult, commentsResult, likeResult, favoriteResult, favCountResult] = await Promise.allSettled(tasks);
+    const [
+      detailResult,
+      commentsResult,
+      likeResult,
+      favoriteResult,
+      favCountResult,
+    ] = await Promise.allSettled(tasks);
     if (
-      requestToken !== activeStoryRequestToken
-      || normalizeStoryIdKey(selectedStory.value?.id) !== normalizeStoryIdKey(storyId)
+      requestToken !== activeStoryRequestToken ||
+      normalizeStoryIdKey(selectedStory.value?.id) !==
+        normalizeStoryIdKey(storyId)
     ) {
       return;
     }
 
-    if (detailResult.status === 'fulfilled' && detailResult.value) {
+    if (detailResult.status === "fulfilled" && detailResult.value) {
       const detailData = detailResult.value?.data ?? detailResult.value;
-      const normalizedDetail = normalizeUserPanelStory(detailData, detailFallbackAuthor);
+      const normalizedDetail = normalizeUserPanelStory(
+        detailData,
+        detailFallbackAuthor,
+      );
 
       if (normalizedDetail) {
-        const nextLikeCount = Number(normalizedDetail.likeCount ?? normalizedDetail.likes ?? 0);
-        const detailAuthor = resolveStoryAuthor(normalizedDetail, detailFallbackAuthor);
+        const nextLikeCount = Number(
+          normalizedDetail.likeCount ?? normalizedDetail.likes ?? 0,
+        );
+        const detailAuthor = resolveStoryAuthor(
+          normalizedDetail,
+          detailFallbackAuthor,
+        );
         syncStoryAcrossCollections(storyId, (item) => {
-          const existingLocationLabel = pickLocationText([
-            item.location?.address,
-            item.location?.formattedAddress,
-            item.location?.name,
-            item.locationName
-          ], false);
-          const detailLocationLabel = pickLocationText([
-            normalizedDetail.location?.address,
-            normalizedDetail.location?.formattedAddress,
-            normalizedDetail.location?.name,
-            normalizedDetail.locationName
-          ], false);
+          const existingLocationLabel = pickLocationText(
+            [
+              item.location?.address,
+              item.location?.formattedAddress,
+              item.location?.name,
+              item.locationName,
+            ],
+            false,
+          );
+          const detailLocationLabel = pickLocationText(
+            [
+              normalizedDetail.location?.address,
+              normalizedDetail.location?.formattedAddress,
+              normalizedDetail.location?.name,
+              normalizedDetail.locationName,
+            ],
+            false,
+          );
 
-          item.content = firstNonEmptyString(normalizedDetail.content, item.content);
+          item.content = firstNonEmptyString(
+            normalizedDetail.content,
+            item.content,
+          );
           item.createdAt = normalizedDetail.createdAt || item.createdAt;
-          item.username = firstNonEmptyString(detailAuthor.username, item.username, getStoryAuthorName(item));
-          item.avatar = firstNonEmptyString(detailAuthor.avatar, item.avatar, item.author?.avatar);
+          item.username = firstNonEmptyString(
+            detailAuthor.username,
+            item.username,
+            getStoryAuthorName(item),
+          );
+          item.avatar = firstNonEmptyString(
+            detailAuthor.avatar,
+            item.avatar,
+            item.author?.avatar,
+          );
           item.author = {
-            ...(item.author && typeof item.author === 'object' ? item.author : {}),
+            ...(item.author && typeof item.author === "object"
+              ? item.author
+              : {}),
             id: detailAuthor.id ?? item.author?.id ?? null,
             username: item.username,
-            avatar: item.avatar
+            avatar: item.avatar,
           };
-          item.images = Array.isArray(normalizedDetail.images) ? normalizedDetail.images : item.images;
-          item.emotion = firstNonEmptyString(normalizedDetail.emotion, item.emotion);
-          item.emotionTag = firstNonEmptyString(normalizedDetail.emotionTag, item.emotionTag);
+          item.images = Array.isArray(normalizedDetail.images)
+            ? normalizedDetail.images
+            : item.images;
+          item.emotion = firstNonEmptyString(
+            normalizedDetail.emotion,
+            item.emotion,
+          );
+          item.emotionTag = firstNonEmptyString(
+            normalizedDetail.emotionTag,
+            item.emotionTag,
+          );
 
           if (Number.isFinite(nextLikeCount)) {
             item.likes = nextLikeCount;
             item.likeCount = nextLikeCount;
           }
 
-          if (normalizedDetail.location && extractCoordinates(normalizedDetail.location)) {
+          if (
+            normalizedDetail.location &&
+            extractCoordinates(normalizedDetail.location)
+          ) {
             item.location = buildNormalizedStoryLocation(
               normalizedDetail,
               extractCoordinates(normalizedDetail.location),
-              existingLocationLabel ? item.location : null
+              existingLocationLabel ? item.location : null,
             );
           }
 
@@ -1569,18 +1914,18 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
             item.locationName = detailLocationLabel;
           }
 
-          if (typeof detailData?.isFeatured === 'boolean') {
+          if (typeof detailData?.isFeatured === "boolean") {
             item.isFeatured = detailData.isFeatured;
           }
 
-          if (typeof detailData?.isPinned === 'boolean') {
+          if (typeof detailData?.isPinned === "boolean") {
             item.isPinned = detailData.isPinned;
           }
         });
       }
     }
 
-    if (commentsResult.status === 'fulfilled') {
+    if (commentsResult.status === "fulfilled") {
       const commentsData = commentsResult.value?.data ?? commentsResult.value;
       const nextComments = normalizeStoryComments(commentsData?.comments);
       storyComments.value = nextComments;
@@ -1590,7 +1935,7 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
       });
     }
 
-    if (likeResult.status === 'fulfilled' && likeResult.value) {
+    if (likeResult.status === "fulfilled" && likeResult.value) {
       const likeData = likeResult.value?.data ?? likeResult.value;
       storyIsLiked.value = Boolean(likeData?.isLiked);
       syncStoryAcrossCollections(storyId, (item) => {
@@ -1598,7 +1943,7 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
       });
     }
 
-    if (favoriteResult.status === 'fulfilled' && favoriteResult.value) {
+    if (favoriteResult.status === "fulfilled" && favoriteResult.value) {
       const favoriteData = favoriteResult.value?.data ?? favoriteResult.value;
       storyIsFavorited.value = Boolean(favoriteData?.isFavorited);
       syncStoryAcrossCollections(storyId, (item) => {
@@ -1606,7 +1951,7 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
       });
     }
 
-    if (favCountResult.status === 'fulfilled' && favCountResult.value) {
+    if (favCountResult.status === "fulfilled" && favCountResult.value) {
       const favCountData = favCountResult.value?.data ?? favCountResult.value;
       const count = Number(favCountData?.favoriteCount ?? 0);
       storyFavoriteCount.value = Number.isFinite(count) ? count : 0;
@@ -1615,11 +1960,12 @@ async function hydrateSelectedStoryDetail(story, requestToken) {
       });
     }
   } catch (error) {
-    console.error('加载故事详情失败:', error);
+    console.error("加载故事详情失败:", error);
   } finally {
     if (
-      requestToken === activeStoryRequestToken
-      && normalizeStoryIdKey(selectedStory.value?.id) === normalizeStoryIdKey(storyId)
+      requestToken === activeStoryRequestToken &&
+      normalizeStoryIdKey(selectedStory.value?.id) ===
+        normalizeStoryIdKey(storyId)
     ) {
       storyCommentsLoading.value = false;
     }
@@ -1636,12 +1982,14 @@ function openStoryModal(story, delay = 0, options = {}) {
   clearTimeout(storyOpenTimer);
   const show = () => {
     storyOpenTimer = null;
-    // 设置动画参数
     storyDirectOpen.value = directOpen;
     if (startPosition) {
       storyStartPosition.value = startPosition;
     } else {
-      storyStartPosition.value = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      storyStartPosition.value = {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      };
     }
     selectedStory.value = story;
     void hydrateStoryLocations([story]);
@@ -1660,7 +2008,8 @@ function openStoryFromCollection(story) {
     return;
   }
 
-  const coords = extractCoordinates(story.location) || extractCoordinates(story);
+  const coords =
+    extractCoordinates(story.location) || extractCoordinates(story);
   const shouldAnimateAfterMove = Boolean(coords);
 
   if (coords) {
@@ -1669,10 +2018,14 @@ function openStoryFromCollection(story) {
     mapStore.updateZoom(16);
   }
 
-  openStoryModal(story, shouldAnimateAfterMove ? STORY_MODAL_OPEN_DELAY_MS : 0, {
-    directOpen: true,
-    startPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 }
-  });
+  openStoryModal(
+    story,
+    shouldAnimateAfterMove ? STORY_MODAL_OPEN_DELAY_MS : 0,
+    {
+      directOpen: true,
+      startPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    },
+  );
 }
 
 async function toggleStoryLike() {
@@ -1681,7 +2034,7 @@ async function toggleStoryLike() {
   }
 
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    showToast('请先登录后再点赞', 'warning');
+    showToast("请先登录后再点赞", "warning");
     return;
   }
 
@@ -1703,20 +2056,29 @@ async function toggleStoryLike() {
   try {
     const response = await likeApi.toggle(storyId);
     const result = response?.data ?? response;
-    const resolvedLiked = typeof result?.isLiked === 'boolean' ? result.isLiked : nextLiked;
+    const resolvedLiked =
+      typeof result?.isLiked === "boolean" ? result.isLiked : nextLiked;
     const resolvedLikeCount = Number.isFinite(Number(result?.likeCount))
       ? Number(result.likeCount)
       : nextCount;
 
     storyIsLiked.value = resolvedLiked;
     storyLikeCount.value = resolvedLikeCount;
-    handleStoryLike({ storyId, liked: resolvedLiked, likeCount: resolvedLikeCount });
+    handleStoryLike({
+      storyId,
+      liked: resolvedLiked,
+      likeCount: resolvedLikeCount,
+    });
   } catch (error) {
-    console.error('点赞失败:', error);
+    console.error("点赞失败:", error);
     storyIsLiked.value = previousLiked;
     storyLikeCount.value = previousCount;
-    handleStoryLike({ storyId, liked: previousLiked, likeCount: previousCount });
-    showToast(error.message || '点赞失败，请重试', 'error');
+    handleStoryLike({
+      storyId,
+      liked: previousLiked,
+      likeCount: previousCount,
+    });
+    showToast(error.message || "点赞失败，请重试", "error");
   } finally {
     storyLikePending.value = false;
   }
@@ -1724,7 +2086,7 @@ async function toggleStoryLike() {
 
 async function toggleStoryFavorite() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    showToast('请先登录后再收藏', 'warning');
+    showToast("请先登录后再收藏", "warning");
     return;
   }
   if (storyFavoritePending.value) return;
@@ -1735,16 +2097,26 @@ async function toggleStoryFavorite() {
 
   storyFavoritePending.value = true;
   storyIsFavorited.value = !previousFavorited;
-  handleStoryFavorite({ storyId, favorited: !previousFavorited, favoriteCount: previousFavoriteCount + (!previousFavorited ? 1 : -1) });
+  handleStoryFavorite({
+    storyId,
+    favorited: !previousFavorited,
+    favoriteCount: previousFavoriteCount + (!previousFavorited ? 1 : -1),
+  });
 
   try {
     const response = await favoriteApi.toggle(storyId);
     const result = response?.data ?? response;
-    const resolvedFavorited = typeof result?.isFavorited === 'boolean' ? result.isFavorited : !previousFavorited;
+    const resolvedFavorited =
+      typeof result?.isFavorited === "boolean"
+        ? result.isFavorited
+        : !previousFavorited;
     storyIsFavorited.value = resolvedFavorited;
-    handleStoryFavorite({ storyId, favorited: resolvedFavorited, favoriteCount: previousFavoriteCount + (resolvedFavorited ? 1 : -1) });
+    handleStoryFavorite({
+      storyId,
+      favorited: resolvedFavorited,
+      favoriteCount: previousFavoriteCount + (resolvedFavorited ? 1 : -1),
+    });
 
-    // 从后端刷新实际收藏数量
     try {
       const countResp = await favoriteApi.getCount(storyId);
       const countData = countResp?.data ?? countResp;
@@ -1755,13 +2127,17 @@ async function toggleStoryFavorite() {
           item.favoriteCount = count;
         });
       }
-    } catch (_e) { /* count refresh failure is non-critical */ }
+    } catch (_e) {}
   } catch (error) {
-    console.error('收藏操作失败:', error);
+    console.error("收藏操作失败:", error);
     storyIsFavorited.value = previousFavorited;
     storyFavoriteCount.value = previousFavoriteCount;
-    handleStoryFavorite({ storyId, favorited: previousFavorited, favoriteCount: previousFavoriteCount });
-    showToast(error.message || '收藏操作失败，请重试', 'error');
+    handleStoryFavorite({
+      storyId,
+      favorited: previousFavorited,
+      favoriteCount: previousFavoriteCount,
+    });
+    showToast(error.message || "收藏操作失败，请重试", "error");
   } finally {
     storyFavoritePending.value = false;
   }
@@ -1776,7 +2152,7 @@ async function submitStoryComment() {
   }
 
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    showToast('请先登录后再评论', 'warning');
+    showToast("请先登录后再评论", "warning");
     return;
   }
 
@@ -1793,17 +2169,17 @@ async function submitStoryComment() {
       content,
       user: {
         username: userStore.user?.username,
-        avatar: userStore.user?.avatar
-      }
+        avatar: userStore.user?.avatar,
+      },
     });
 
     storyComments.value = [newComment, ...storyComments.value];
     handleStoryComment({ storyId, comment: newComment });
-    storyCommentDraft.value = '';
+    storyCommentDraft.value = "";
     storyCommentComposerOpen.value = false;
   } catch (error) {
-    console.error('评论失败:', error);
-    showToast(error.message || '评论失败，请重试', 'error');
+    console.error("评论失败:", error);
+    showToast(error.message || "评论失败，请重试", "error");
   } finally {
     storyCommentSubmitting.value = false;
   }
@@ -1815,7 +2191,7 @@ async function handleSubmitCommentFromStory({ storyId, content }) {
   }
 
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    showToast('请先登录后再评论', 'warning');
+    showToast("请先登录后再评论", "warning");
     return;
   }
 
@@ -1832,15 +2208,15 @@ async function handleSubmitCommentFromStory({ storyId, content }) {
       content,
       user: {
         username: userStore.user?.username,
-        avatar: userStore.user?.avatar
-      }
+        avatar: userStore.user?.avatar,
+      },
     });
 
     storyComments.value = [newComment, ...storyComments.value];
     handleStoryComment({ storyId, comment: newComment });
   } catch (error) {
-    console.error('评论失败:', error);
-    showToast(error.message || '评论失败，请重试', 'error');
+    console.error("评论失败:", error);
+    showToast(error.message || "评论失败，请重试", "error");
   } finally {
     storyCommentSubmitting.value = false;
   }
@@ -1852,27 +2228,27 @@ async function submitStoryReport() {
   }
 
   if (!selectedStoryReportReason.value) {
-    storyReportError.value = '请选择举报原因';
+    storyReportError.value = "请选择举报原因";
     return;
   }
 
   if (storyReportDescription.value.trim().length < 10) {
-    storyReportError.value = '请至少输入 10 个字的举报说明';
+    storyReportError.value = "请至少输入 10 个字的举报说明";
     return;
   }
 
   storyReportSubmitting.value = true;
-  storyReportError.value = '';
+  storyReportError.value = "";
 
   try {
     await handleStoryReport({
       storyId: selectedStory.value.id,
       reason: selectedStoryReportReason.value,
-      description: storyReportDescription.value.trim()
+      description: storyReportDescription.value.trim(),
     });
     closeStoryReportPanel();
   } catch (error) {
-    storyReportError.value = error.message || '举报失败，请稍后再试';
+    storyReportError.value = error.message || "举报失败，请稍后再试";
   } finally {
     storyReportSubmitting.value = false;
   }
@@ -1880,134 +2256,144 @@ async function submitStoryReport() {
 
 const dockActions = computed(() => [
   {
-    key: 'publish',
-    tag: 'Create Story',
-    title: '发布故事',
-    subtitle: '落下一张新卡',
-    description: '打开发布面板，把此刻的情绪和位置写进地图里。',
-    icon: '✦',
-    suit: '♦',
-    accent: '#ff7a59',
-    accentSoft: 'rgba(255, 122, 89, 0.24)',
-    ink: isDarkMap.value ? '#eef3ff' : '#432013',
+    key: "publish",
+    tag: "Create Story",
+    title: "发布故事",
+    subtitle: "你有什么想说的？",
+    description: "打开发布面板，把此刻的情绪和位置写进地图里。",
+    icon: "✦",
+    suit: "♦",
+    accent: "#ff7a59",
+    accentSoft: "rgba(255, 122, 89, 0.24)",
+    ink: isDarkMap.value ? "#eef3ff" : "#432013",
     visible: !showPublishSidebar.value,
     disabled: false,
-    handler: handlePublishClick
+    handler: handlePublishClick,
   },
   {
-    key: 'stories',
-    tag: 'Story Wall',
-    title: '附近故事',
-    subtitle: '打开故事与公告',
-    description: '展开右侧故事墙，继续浏览附近故事、精选内容和公告。',
-    icon: '✉',
-    suit: '♣',
-    accent: '#5f7cff',
-    accentSoft: 'rgba(95, 124, 255, 0.25)',
-    ink: isDarkMap.value ? '#eef3ff' : '#172042',
+    key: "stories",
+    tag: "Story Wall",
+    title: "附近故事",
+    subtitle: "打开故事墙",
+    description: "展开右侧故事墙，继续浏览附近故事、精选内容和公告。",
+    icon: "✉",
+    suit: "♣",
+    accent: "#5f7cff",
+    accentSoft: "rgba(95, 124, 255, 0.25)",
+    ink: isDarkMap.value ? "#eef3ff" : "#172042",
     visible: true,
     disabled: false,
-    handler: handleStoriesClick
+    handler: handleStoriesClick,
   },
   {
-    key: 'random',
-    tag: 'Fate Draw',
-    title: randomWalking.value ? '随机漫游中' : '随机漫游',
-    subtitle: randomWalking.value ? '正在抽取新地点' : '抽一张未知地点',
+    key: "random",
+    tag: "Fate Draw",
+    title: randomWalking.value ? "随机漫游中" : "随机漫游",
+    subtitle: randomWalking.value ? "正在抽取新地点" : "抽一张未知地点",
     description: randomWalking.value
-      ? '正在为你寻找新的落点，请稍等片刻。'
-      : '随机去往一处新的位置，看看陌生角落里正在发生什么。',
-    icon: '✧',
-    suit: '♠',
-    accent: '#f2a93b',
-    accentSoft: 'rgba(242, 169, 59, 0.24)',
-    ink: isDarkMap.value ? '#eef3ff' : '#3e2811',
+      ? "正在为你寻找新的落点，请稍等片刻。"
+      : "随机去往一处新的位置，看看陌生角落里正在发生什么。",
+    icon: "✧",
+    suit: "♠",
+    accent: "#f2a93b",
+    accentSoft: "rgba(242, 169, 59, 0.24)",
+    ink: isDarkMap.value ? "#eef3ff" : "#3e2811",
     visible: true,
     disabled: randomWalking.value,
-    handler: handleRandomWalk
+    handler: handleRandomWalk,
   },
   {
-    key: 'locate',
-    tag: 'Position Sync',
-    title: '回到我的位置',
-    subtitle: '重新对准坐标',
-    description: '使用当前位置重新定位地图，把视角迅速拉回你所在的地方。',
-    icon: '◎',
-    suit: '♣',
-    accent: '#2cb67d',
-    accentSoft: 'rgba(44, 182, 125, 0.24)',
-    ink: isDarkMap.value ? '#eef3ff' : '#123127',
+    key: "locate",
+    tag: "Position Sync",
+    title: "回到我的位置",
+    subtitle: "重新对准当前位置",
+    description: "使用当前位置重新定位地图，把视角迅速拉回你所在的地方。",
+    icon: "◎",
+    suit: "♣",
+    accent: "#2cb67d",
+    accentSoft: "rgba(44, 182, 125, 0.24)",
+    ink: isDarkMap.value ? "#eef3ff" : "#123127",
     visible: true,
     disabled: false,
-    handler: handleLocate
+    handler: handleLocate,
   },
   {
-    key: 'theme',
-    tag: 'Theme Shift',
-    title: effectiveMapTheme.value === 'dark' ? '切到浅色地图' : '切到深色地图',
-    subtitle: '切换当前场景氛围',
-    description: effectiveMapTheme.value === 'dark'
-      ? '把地图切回更明亮的视觉主题。'
-      : '切到更沉浸的深色地图主题。',
-    icon: effectiveMapTheme.value === 'dark' ? '☀' : '☾',
-    suit: '♣',
-    accent: '#8e6cff',
-    accentSoft: 'rgba(142, 108, 255, 0.24)',
-    ink: isDarkMap.value ? '#eef3ff' : '#241a3f',
+    key: "theme",
+    tag: "Theme Shift",
+    title: effectiveMapTheme.value === "dark" ? "切到浅色地图" : "切到深色地图",
+    subtitle: "切换当前场景氛围",
+    description:
+      effectiveMapTheme.value === "dark"
+        ? "把地图切回更明亮的视觉主题。"
+        : "切到更沉浸的深色地图主题。",
+    icon: effectiveMapTheme.value === "dark" ? "☀" : "☾",
+    suit: "♣",
+    accent: "#8e6cff",
+    accentSoft: "rgba(142, 108, 255, 0.24)",
+    ink: isDarkMap.value ? "#eef3ff" : "#241a3f",
     visible: true,
     disabled: false,
-    handler: toggleTheme
+    handler: toggleTheme,
   },
   {
-    key: 'user',
-    tag: 'Profile',
-    title: '我的信息',
-    subtitle: '查看个人卡册',
-    description: '打开个人信息面板，查看头像、点赞、发布记录和账号设置。',
-    icon: '◈',
-    suit: '♥',
-    accent: '#35b4d8',
-    accentSoft: 'rgba(53, 180, 216, 0.24)',
-    ink: isDarkMap.value ? '#eef3ff' : '#112b34',
+    key: "user",
+    tag: "Profile",
+    title: "我的信息",
+    subtitle: "查看个人信息",
+    description: "打开个人信息面板，查看头像、点赞、发布记录和账号设置。",
+    icon: "◈",
+    suit: "♥",
+    accent: "#35b4d8",
+    accentSoft: "rgba(53, 180, 216, 0.24)",
+    ink: isDarkMap.value ? "#eef3ff" : "#112b34",
     visible: true,
     disabled: false,
-    handler: handleUserClick
+    handler: handleUserClick,
   },
   {
-    key: 'logout',
-    tag: 'System Exit',
-    title: '退出登录',
-    subtitle: userStore.isGuest ? '结束游客身份' : '返回首页',
+    key: "logout",
+    tag: "System Exit",
+    title: "退出登录",
+    subtitle: userStore.isGuest ? "结束游客身份" : "返回首页",
     description: userStore.isGuest
-      ? '结束当前游客体验并返回首页。'
-      : '安全退出当前账号并返回首页。',
-    icon: '↩',
-    suit: '♠',
-    accent: '#e0677f',
-    accentSoft: 'rgba(224, 103, 127, 0.26)',
-    ink: isDarkMap.value ? '#eef3ff' : '#341723',
+      ? "结束当前游客体验并返回首页。"
+      : "安全退出当前账号并返回首页。",
+    icon: "↩",
+    suit: "♠",
+    accent: "#e0677f",
+    accentSoft: "rgba(224, 103, 127, 0.26)",
+    ink: isDarkMap.value ? "#eef3ff" : "#341723",
     visible: true,
     disabled: false,
-    handler: handleLogout
-  }
+    handler: handleLogout,
+  },
 ]);
 
-const visibleDockActions = computed(() => dockActions.value.filter((action) => action.visible));
+const visibleDockActions = computed(() =>
+  dockActions.value.filter((action) => action.visible),
+);
 
 const activeDockAction = computed(() => {
   if (!isDockExpanded.value) {
     return null;
   }
 
-  return visibleDockActions.value.find((action) => action.key === hoveredDockCard.value) || null;
+  return (
+    visibleDockActions.value.find(
+      (action) => action.key === hoveredDockCard.value,
+    ) || null
+  );
 });
 
 const activeDockActionIndex = computed(() =>
-  visibleDockActions.value.findIndex((action) => action.key === hoveredDockCard.value)
+  visibleDockActions.value.findIndex(
+    (action) => action.key === hoveredDockCard.value,
+  ),
 );
 
 const dockGapCardIndex = computed(() => {
-  const gapKey = drawingDockCard.value || liftingDockCard.value || selectedDockCard.value;
+  const gapKey =
+    drawingDockCard.value || liftingDockCard.value || selectedDockCard.value;
   return visibleDockActions.value.findIndex((action) => action.key === gapKey);
 });
 
@@ -2020,10 +2406,10 @@ function clearDockSelectionTimer() {
 
 function resetDockSelectionMotion() {
   clearDockSelectionTimer();
-  selectedDockCard.value = '';
-  drawingDockCard.value = '';
-  liftingDockCard.value = '';
-  returningDockCard.value = '';
+  selectedDockCard.value = "";
+  drawingDockCard.value = "";
+  liftingDockCard.value = "";
+  returningDockCard.value = "";
 }
 
 function startDockReturn(key) {
@@ -2033,16 +2419,16 @@ function startDockReturn(key) {
   }
 
   clearDockSelectionTimer();
-  drawingDockCard.value = '';
-  liftingDockCard.value = '';
-  selectedDockCard.value = '';
+  drawingDockCard.value = "";
+  liftingDockCard.value = "";
+  selectedDockCard.value = "";
   returningDockCard.value = key;
 
   dockSelectionTimer = window.setTimeout(() => {
     dockSelectionTimer = null;
 
     if (returningDockCard.value === key) {
-      returningDockCard.value = '';
+      returningDockCard.value = "";
     }
 
     syncDockHoverSelection();
@@ -2056,9 +2442,9 @@ function startDockDraw(key) {
 
   clearDockSelectionTimer();
   drawingDockCard.value = key;
-  liftingDockCard.value = '';
-  selectedDockCard.value = '';
-  returningDockCard.value = '';
+  liftingDockCard.value = "";
+  selectedDockCard.value = "";
+  returningDockCard.value = "";
 
   dockSelectionTimer = window.setTimeout(() => {
     dockSelectionTimer = null;
@@ -2071,7 +2457,7 @@ function startDockDraw(key) {
     }
 
     if (drawingDockCard.value === key) {
-      drawingDockCard.value = '';
+      drawingDockCard.value = "";
       liftingDockCard.value = key;
 
       dockSelectionTimer = window.setTimeout(() => {
@@ -2085,7 +2471,7 @@ function startDockDraw(key) {
         }
 
         if (liftingDockCard.value === key) {
-          liftingDockCard.value = '';
+          liftingDockCard.value = "";
           selectedDockCard.value = key;
         }
       }, DOCK_CARD_DRAW_MS);
@@ -2152,7 +2538,7 @@ watch(isDockExpanded, (expanded) => {
     dockHoverClearTimer = null;
   }
 
-  hoveredDockCard.value = '';
+  hoveredDockCard.value = "";
   resetDockSelectionMotion();
 });
 
@@ -2160,23 +2546,23 @@ watch(visibleDockActions, (actions) => {
   const keys = new Set(actions.map((action) => action.key));
 
   if (!keys.has(hoveredDockCard.value)) {
-    hoveredDockCard.value = '';
+    hoveredDockCard.value = "";
   }
 
   if (!keys.has(selectedDockCard.value)) {
-    selectedDockCard.value = '';
+    selectedDockCard.value = "";
   }
 
   if (!keys.has(drawingDockCard.value)) {
-    drawingDockCard.value = '';
+    drawingDockCard.value = "";
   }
 
   if (!keys.has(liftingDockCard.value)) {
-    liftingDockCard.value = '';
+    liftingDockCard.value = "";
   }
 
   if (!keys.has(returningDockCard.value)) {
-    returningDockCard.value = '';
+    returningDockCard.value = "";
   }
 
   syncDockHoverSelection();
@@ -2198,7 +2584,9 @@ function setDockHover(key) {
 
   if (
     hoveredDockCard.value === key &&
-    (selectedDockCard.value === key || drawingDockCard.value === key || liftingDockCard.value === key)
+    (selectedDockCard.value === key ||
+      drawingDockCard.value === key ||
+      liftingDockCard.value === key)
   ) {
     return;
   }
@@ -2209,7 +2597,7 @@ function setDockHover(key) {
 
 function clearDockHover() {
   if (isPickingPublishLocation.value) {
-    hoveredDockCard.value = '';
+    hoveredDockCard.value = "";
     return;
   }
 
@@ -2222,13 +2610,13 @@ function clearDockHover() {
     dockHoverClearTimer = null;
   }
 
-  hoveredDockCard.value = '';
+  hoveredDockCard.value = "";
   syncDockHoverSelection();
 }
 
 function scheduleClearDockHover() {
   if (isPickingPublishLocation.value) {
-    hoveredDockCard.value = '';
+    hoveredDockCard.value = "";
     return;
   }
 
@@ -2241,7 +2629,7 @@ function scheduleClearDockHover() {
   }
 
   dockHoverClearTimer = window.setTimeout(() => {
-    hoveredDockCard.value = '';
+    hoveredDockCard.value = "";
     dockHoverClearTimer = null;
     syncDockHoverSelection();
   }, 70);
@@ -2274,14 +2662,14 @@ function handleDockCardClick(action) {
   ripplingDockCard.value = action.key;
 
   window.setTimeout(() => {
-    ripplingDockCard.value = '';
+    ripplingDockCard.value = "";
     dockActionPending.value = false;
     isDockExpanded.value = false;
     action.handler();
   }, 500);
 }
 
-function getDockLayoutMetrics(index, total, actionKey = '') {
+function getDockLayoutMetrics(index, total, actionKey = "") {
   const visibleCount = Math.max(total, 1);
   const cardWidth = 244;
   const cardStep = 148;
@@ -2292,7 +2680,8 @@ function getDockLayoutMetrics(index, total, actionKey = '') {
   const middleIndex = (visibleCount - 1) / 2;
   const distanceFromMiddle = index - middleIndex;
   const maxDistance = Math.max(middleIndex, 1);
-  const normalizedDistance = maxDistance === 0 ? 0 : Math.abs(distanceFromMiddle) / maxDistance;
+  const normalizedDistance =
+    maxDistance === 0 ? 0 : Math.abs(distanceFromMiddle) / maxDistance;
   const arcLift = Math.round((1 - Math.pow(normalizedDistance, 1.55)) * 74);
   const baseX = index * cardStep;
   const collapsedX = (stackWidth - cardWidth) / 2 + index * 2;
@@ -2310,19 +2699,24 @@ function getDockLayoutMetrics(index, total, actionKey = '') {
     const rightCount = visibleCount - gapIndex - 1;
     const maxLeftStart = baseX - cardWidth - gapClearance;
     const minRightStart = baseX + cardWidth + gapClearance;
-    const leftCompressedStep = leftCount > 1
-      ? Math.min(compressedStep, Math.max(maxLeftStart / (leftCount - 1), 0))
-      : compressedStep;
-    const rightCompressedStep = rightCount > 1
-      ? Math.min(
-          compressedStep,
-          Math.max((stackWidth - cardWidth - minRightStart) / (rightCount - 1), 0)
-        )
-      : compressedStep;
-    const rightStartX = stackWidth - cardWidth - (rightCount - 1) * rightCompressedStep;
+    const leftCompressedStep =
+      leftCount > 1
+        ? Math.min(compressedStep, Math.max(maxLeftStart / (leftCount - 1), 0))
+        : compressedStep;
+    const rightCompressedStep =
+      rightCount > 1
+        ? Math.min(
+            compressedStep,
+            Math.max(
+              (stackWidth - cardWidth - minRightStart) / (rightCount - 1),
+              0,
+            ),
+          )
+        : compressedStep;
+    const rightStartX =
+      stackWidth - cardWidth - (rightCount - 1) * rightCompressedStep;
 
-    // Pull the selected card toward the opening between its neighbors before lifting
-    // so it exits the fan instead of visually cutting through the adjacent card.
+    // Shift the selected card toward the nearest gap before lifting it out.
     if (index === gapIndex && leftCount > 0 && rightCount > 0) {
       const leftBoundary = (gapIndex - 1) * leftCompressedStep + cardWidth;
       const rightBoundary = rightStartX;
@@ -2347,29 +2741,30 @@ function getDockLayoutMetrics(index, total, actionKey = '') {
   const hoverX = drawX;
   const hoverY = drawY;
   const hoverRotate = drawRotate;
-  const motionState = actionKey === drawingDockCard.value
-    ? 'drawing'
-    : actionKey === liftingDockCard.value
-      ? 'lifting'
-    : actionKey === selectedDockCard.value
-      ? 'selected'
-      : actionKey === returningDockCard.value
-        ? 'returning'
-        : 'base';
+  const motionState =
+    actionKey === drawingDockCard.value
+      ? "drawing"
+      : actionKey === liftingDockCard.value
+        ? "lifting"
+        : actionKey === selectedDockCard.value
+          ? "selected"
+          : actionKey === returningDockCard.value
+            ? "returning"
+            : "base";
 
   let visualX = spreadX;
   let visualY = spreadY;
   let visualRotate = adjustedSpreadRotate;
 
-  if (motionState === 'drawing') {
+  if (motionState === "drawing") {
     visualX = prepX;
     visualY = prepY;
     visualRotate = prepRotate;
-  } else if (motionState === 'lifting') {
+  } else if (motionState === "lifting") {
     visualX = drawX;
     visualY = drawY;
     visualRotate = drawRotate;
-  } else if (motionState === 'selected') {
+  } else if (motionState === "selected") {
     visualX = hoverX;
     visualY = hoverY;
     visualRotate = hoverRotate;
@@ -2398,7 +2793,7 @@ function getDockLayoutMetrics(index, total, actionKey = '') {
     visualX,
     visualY,
     visualRotate,
-    motionState
+    motionState,
   };
 }
 
@@ -2408,7 +2803,7 @@ function getDockStackStyle(total) {
 
   return {
     width: `${stackWidth}px`,
-    height: `${492 + Math.max(0, visibleCount - 1) * 8}px`
+    height: `${492 + Math.max(0, visibleCount - 1) * 8}px`,
   };
 }
 
@@ -2427,33 +2822,33 @@ function getDockCardStyle(index, total, action) {
     drawRotate,
     hoverX,
     hoverY,
-    hoverRotate
+    hoverRotate,
   } = getDockLayoutMetrics(index, total, action.key);
 
   return {
-    '--index': index,
-    '--peek-x': `${collapsedX}px`,
-    '--peek-y': `${collapsedY}px`,
-    '--peek-rotate': '0deg',
-    '--spread-x': `${spreadX}px`,
-    '--spread-y': `${spreadY}px`,
-    '--spread-rotate': `${spreadRotate}deg`,
-    '--prep-x': `${prepX}px`,
-    '--prep-y': `${prepY}px`,
-    '--prep-rotate': `${prepRotate}deg`,
-    '--prep-scale': '1.008',
-    '--draw-x': `${drawX}px`,
-    '--draw-y': `${drawY}px`,
-    '--draw-rotate': `${drawRotate}deg`,
-    '--draw-scale': '1.02',
-    '--hover-x': `${hoverX}px`,
-    '--hover-y': `${hoverY}px`,
-    '--hover-rotate': `${hoverRotate}deg`,
-    '--hover-scale': '1.02',
-    '--card-z': `${total - index}`,
-    '--card-accent': action.accent,
-    '--card-accent-soft': action.accentSoft,
-    '--card-ink': action.ink
+    "--index": index,
+    "--peek-x": `${collapsedX}px`,
+    "--peek-y": `${collapsedY}px`,
+    "--peek-rotate": "0deg",
+    "--spread-x": `${spreadX}px`,
+    "--spread-y": `${spreadY}px`,
+    "--spread-rotate": `${spreadRotate}deg`,
+    "--prep-x": `${prepX}px`,
+    "--prep-y": `${prepY}px`,
+    "--prep-rotate": `${prepRotate}deg`,
+    "--prep-scale": "1.008",
+    "--draw-x": `${drawX}px`,
+    "--draw-y": `${drawY}px`,
+    "--draw-rotate": `${drawRotate}deg`,
+    "--draw-scale": "1.02",
+    "--hover-x": `${hoverX}px`,
+    "--hover-y": `${hoverY}px`,
+    "--hover-rotate": `${hoverRotate}deg`,
+    "--hover-scale": "1.02",
+    "--card-z": `${total - index}`,
+    "--card-accent": action.accent,
+    "--card-accent-soft": action.accentSoft,
+    "--card-ink": action.ink,
   };
 }
 
@@ -2466,39 +2861,47 @@ function getDockInfoStyle(total) {
     return {
       width: `${infoWidth}px`,
       left: `${Math.max((stackWidth - infoWidth) / 2, 0)}px`,
-      top: '-118px'
+      top: "-118px",
     };
   }
 
   const action = visibleDockActions.value[infoIndex];
-  const { distanceFromMiddle, visualX, visualY } = getDockLayoutMetrics(infoIndex, total, action?.key);
+  const { distanceFromMiddle, visualX, visualY } = getDockLayoutMetrics(
+    infoIndex,
+    total,
+    action?.key,
+  );
   const cardCenterX = visualX + cardWidth / 2;
   const safeLeft = Math.min(
     Math.max(cardCenterX - infoWidth / 2, 0),
-    Math.max(stackWidth - infoWidth, 0)
+    Math.max(stackWidth - infoWidth, 0),
   );
-  const topOffset = Math.min(-146 + Math.abs(distanceFromMiddle) * 10, visualY - 104);
+  const topOffset = Math.min(
+    -146 + Math.abs(distanceFromMiddle) * 10,
+    visualY - 104,
+  );
 
   return {
     width: `${infoWidth}px`,
     left: `${safeLeft}px`,
-    top: `${topOffset}px`
+    top: `${topOffset}px`,
   };
 }
 
-// 监听侧边栏状态变化
 watch(showSidebar, (newValue) => {
-  window.dispatchEvent(new CustomEvent('sidebar-toggle', {
-    detail: { isOpen: newValue }
-  }));
+  window.dispatchEvent(
+    new CustomEvent("sidebar-toggle", {
+      detail: { isOpen: newValue },
+    }),
+  );
 
-  if (newValue && sidebarTab.value === 'nearby') {
+  if (newValue && sidebarTab.value === "nearby") {
     ensureNearbyPlaceSearch().catch(() => {});
   }
 });
 
 watch(sidebarTab, (tab) => {
-  if (showSidebar.value && tab === 'nearby') {
+  if (showSidebar.value && tab === "nearby") {
     ensureNearbyPlaceSearch().catch(() => {});
   }
 });
@@ -2514,7 +2917,7 @@ watch(nearbySearchQuery, (query) => {
   const keyword = query.trim();
   if (!keyword) {
     nearbySearchResults.value = [];
-    nearbySearchError.value = '';
+    nearbySearchError.value = "";
     nearbyHasSearched.value = false;
     activeNearbySearchToken += 1;
     nearbySearching.value = false;
@@ -2523,7 +2926,7 @@ watch(nearbySearchQuery, (query) => {
 
   if (keyword.length < 2) {
     nearbySearchResults.value = [];
-    nearbySearchError.value = '';
+    nearbySearchError.value = "";
     nearbyHasSearched.value = false;
     return;
   }
@@ -2538,7 +2941,7 @@ watch(
   () => {
     scheduleNearbyCenterLabelRefresh();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
@@ -2546,23 +2949,28 @@ watch(
   () => {
     const userCoords = extractCoordinates(mapStore.userLocation);
     if (!userCoords) {
-      currentUserLocationLabel.value = '';
+      currentUserLocationLabel.value = "";
       return;
     }
 
     void refreshCurrentUserLocationLabel();
 
     if (coordinatesRoughlyEqual(mapStore.center, userCoords)) {
-      scheduleNearbyCenterLabelRefresh(currentUserLocationLabel.value || '当前位置', 120);
+      scheduleNearbyCenterLabelRefresh(
+        currentUserLocationLabel.value || "当前位置",
+        120,
+      );
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(showPublishSidebar, (newValue) => {
-  window.dispatchEvent(new CustomEvent('publish-sidebar-toggle', {
-    detail: { isOpen: newValue }
-  }));
+  window.dispatchEvent(
+    new CustomEvent("publish-sidebar-toggle", {
+      detail: { isOpen: newValue },
+    }),
+  );
 });
 
 watch(showUserSidebar, (newValue) => {
@@ -2616,20 +3024,16 @@ function restorePublishPanelFromPick() {
   isPickingPublishLocation.value = false;
 }
 
-// 处理发布按钮点击
 function handlePublishClick() {
-  // 检查是否登录（游客不能发布）
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    showToast('请先登录后再发布故事', 'warning');
+    showToast("请先登录后再发布故事", "warning");
     showLoginModal.value = true;
     isDockExpanded.value = false;
     return;
   }
-  // 如果故事侧边栏是打开的，先关闭它
   if (showSidebar.value) {
     closeStoryPanel();
   }
-  // 如果用户侧边栏是打开的，先关闭它
   if (showUserSidebar.value) {
     closeUserPanel();
   }
@@ -2638,7 +3042,6 @@ function handlePublishClick() {
   pickedPublishLocation.value = null;
   isPickingPublishLocation.value = false;
   isDockExpanded.value = false;
-  // 延迟一点再打开发布弹层，确保关闭其他面板时过渡更顺
   setTimeout(() => {
     showPublishSidebar.value = true;
   }, 100);
@@ -2655,17 +3058,17 @@ function toFiniteNumber(value) {
 
 function firstNonEmptyString(...values) {
   for (const value of values.flat()) {
-    if (typeof value === 'string' && value.trim()) {
+    if (typeof value === "string" && value.trim()) {
       return value.trim();
     }
   }
 
-  return '';
+  return "";
 }
 
 function buildLocationDistrictLabel(source) {
-  if (!source || typeof source !== 'object') {
-    return '';
+  if (!source || typeof source !== "object") {
+    return "";
   }
 
   const city = firstNonEmptyString(source.city);
@@ -2676,7 +3079,7 @@ function buildLocationDistrictLabel(source) {
     return district.includes(city) ? district : `${city} ${district}`;
   }
 
-  return district || city || province || '';
+  return district || city || province || "";
 }
 
 function buildLocationAddressLabel(source, latitude, longitude) {
@@ -2684,7 +3087,7 @@ function buildLocationAddressLabel(source, latitude, longitude) {
   const rawAddress = firstNonEmptyString(
     source?.address,
     source?.formattedAddress,
-    source?.name
+    source?.name,
   );
 
   if (rawAddress) {
@@ -2699,65 +3102,79 @@ function buildLocationAddressLabel(source, latitude, longitude) {
 }
 
 function formatPoiDistrictLabel(poi) {
-  if (!poi || typeof poi !== 'object') {
-    return '已解析位置';
+  if (!poi || typeof poi !== "object") {
+    return "已解析位置";
   }
 
-  return buildLocationDistrictLabel(poi) || '已解析位置';
+  return buildLocationDistrictLabel(poi) || "已解析位置";
 }
 
 function resolveStoryAuthor(source, fallbackAuthor = null) {
-  if (!source || typeof source !== 'object') {
+  if (!source || typeof source !== "object") {
     return {
       id: fallbackAuthor?.id ?? null,
-      username: firstNonEmptyString(fallbackAuthor?.username, '\u533f\u540d\u7528\u6237'),
-      avatar: firstNonEmptyString(fallbackAuthor?.avatar)
+      username: firstNonEmptyString(
+        fallbackAuthor?.username,
+        "\u533f\u540d\u7528\u6237",
+      ),
+      avatar: firstNonEmptyString(fallbackAuthor?.avatar),
     };
   }
 
-  const authorObject = source.author && typeof source.author === 'object'
-    ? source.author
-    : null;
-  const userObject = source.user && typeof source.user === 'object'
-    ? source.user
-    : null;
+  const authorObject =
+    source.author && typeof source.author === "object" ? source.author : null;
+  const userObject =
+    source.user && typeof source.user === "object" ? source.user : null;
   const storyAuthorId = normalizeStoryIdKey(
-    authorObject?.id
-    ?? userObject?.id
-    ?? fallbackAuthor?.id
-    ?? source.authorId
-    ?? source.userId
-    ?? null
+    authorObject?.id ??
+      userObject?.id ??
+      fallbackAuthor?.id ??
+      source.authorId ??
+      source.userId ??
+      null,
   );
   const currentUserId = normalizeStoryIdKey(userStore.user?.id);
-  const useCurrentUserProfile = Boolean(currentUserId && storyAuthorId && currentUserId === storyAuthorId);
+  const useCurrentUserProfile = Boolean(
+    currentUserId && storyAuthorId && currentUserId === storyAuthorId,
+  );
 
   return {
     id: useCurrentUserProfile
-      ? userStore.user?.id ?? authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null
-      : authorObject?.id ?? userObject?.id ?? fallbackAuthor?.id ?? source.authorId ?? source.userId ?? null,
+      ? (userStore.user?.id ??
+        authorObject?.id ??
+        userObject?.id ??
+        fallbackAuthor?.id ??
+        source.authorId ??
+        source.userId ??
+        null)
+      : (authorObject?.id ??
+        userObject?.id ??
+        fallbackAuthor?.id ??
+        source.authorId ??
+        source.userId ??
+        null),
     username: firstNonEmptyString(
-      useCurrentUserProfile ? userStore.user?.username : '',
-      useCurrentUserProfile ? userStore.user?.name : '',
+      useCurrentUserProfile ? userStore.user?.username : "",
+      useCurrentUserProfile ? userStore.user?.name : "",
       authorObject?.username,
       userObject?.username,
-      typeof source.author === 'string' ? source.author : '',
+      typeof source.author === "string" ? source.author : "",
       source.username,
       source.userName,
       fallbackAuthor?.username,
-      '\u533f\u540d\u7528\u6237'
+      "\u533f\u540d\u7528\u6237",
     ),
     avatar: firstNonEmptyString(
-      useCurrentUserProfile ? userStore.user?.avatar : '',
-      useCurrentUserProfile ? userStore.user?.avatarUrl : '',
+      useCurrentUserProfile ? userStore.user?.avatar : "",
+      useCurrentUserProfile ? userStore.user?.avatarUrl : "",
       authorObject?.avatar,
       authorObject?.avatarUrl,
       userObject?.avatar,
       userObject?.avatarUrl,
       source.avatar,
       source.avatarUrl,
-      fallbackAuthor?.avatar
-    )
+      fallbackAuthor?.avatar,
+    ),
   };
 }
 
@@ -2770,23 +3187,26 @@ function getStoryAuthorAvatar(story) {
 }
 
 function getStoryAuthorInitial(story) {
-  return getStoryAuthorName(story).slice(0, 1).toUpperCase() || '\u533f';
+  return getStoryAuthorName(story).slice(0, 1).toUpperCase() || "\u533f";
 }
 
 function isCoordinateOnlyLocationLabel(value) {
-  if (typeof value !== 'string') {
+  if (typeof value !== "string") {
     return false;
   }
 
   const normalized = value.trim();
-  return normalized.startsWith('经度 ') || /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(normalized);
+  return (
+    normalized.startsWith("经度 ") ||
+    /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(normalized)
+  );
 }
 
 function pickLocationText(candidates, allowCoordinateFallback = true) {
-  let coordinateFallback = '';
+  let coordinateFallback = "";
 
   for (const value of candidates) {
-    if (typeof value !== 'string' || !value.trim()) {
+    if (typeof value !== "string" || !value.trim()) {
       continue;
     }
 
@@ -2801,23 +3221,28 @@ function pickLocationText(candidates, allowCoordinateFallback = true) {
     return normalized;
   }
 
-  return allowCoordinateFallback ? coordinateFallback : '';
+  return allowCoordinateFallback ? coordinateFallback : "";
 }
 
 function isGenericLocationPlaceholder(value) {
-  if (typeof value !== 'string') {
+  if (typeof value !== "string") {
     return false;
   }
 
-  return ['Map Pick', 'Map Center', 'Current Location', 'Nearby Place'].includes(value.trim());
+  return [
+    "Map Pick",
+    "Map Center",
+    "Current Location",
+    "Nearby Place",
+  ].includes(value.trim());
 }
 
-function getStoryLocationText(story, fallback = '未知位置') {
+function getStoryLocationText(story, fallback = "未知位置") {
   const label = pickLocationText([
     story?.location?.address,
     story?.location?.formattedAddress,
     story?.location?.name,
-    story?.locationName
+    story?.locationName,
   ]);
 
   return label || fallback;
@@ -2825,12 +3250,15 @@ function getStoryLocationText(story, fallback = '未知位置') {
 
 function hasResolvedStoryLocation(story) {
   return Boolean(
-    pickLocationText([
-      story?.location?.address,
-      story?.location?.formattedAddress,
-      story?.location?.name,
-      story?.locationName
-    ], false)
+    pickLocationText(
+      [
+        story?.location?.address,
+        story?.location?.formattedAddress,
+        story?.location?.name,
+        story?.locationName,
+      ],
+      false,
+    ),
   );
 }
 
@@ -2843,21 +3271,25 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
   const district = buildLocationDistrictLabel({
     city,
     district: firstNonEmptyString(overrides.district),
-    province: firstNonEmptyString(overrides.province)
+    province: firstNonEmptyString(overrides.province),
   });
   const province = firstNonEmptyString(overrides.province);
   const name = pickLocationText([
     overrides.name,
     overrides.address,
-    'Map Pick'
+    "Map Pick",
   ]);
-  const address = buildLocationAddressLabel({
-    ...overrides,
-    city,
-    district,
-    province,
-    name
-  }, latitude, longitude);
+  const address = buildLocationAddressLabel(
+    {
+      ...overrides,
+      city,
+      district,
+      province,
+      name,
+    },
+    latitude,
+    longitude,
+  );
 
   return {
     id: overrides.id || `map-pick-${longitude}-${latitude}`,
@@ -2869,20 +3301,20 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
     district,
     adcode: firstNonEmptyString(overrides.adcode),
     province,
-    type: firstNonEmptyString(overrides.type, 'map-click'),
-    nearbyPois: Array.isArray(overrides.nearbyPois) ? overrides.nearbyPois : []
+    type: firstNonEmptyString(overrides.type, "map-click"),
+    nearbyPois: Array.isArray(overrides.nearbyPois) ? overrides.nearbyPois : [],
   };
 }
 
-function pickLocationDisplayName(location, fallback = '') {
-  if (!location || typeof location !== 'object') {
+function pickLocationDisplayName(location, fallback = "") {
+  if (!location || typeof location !== "object") {
     return fallback;
   }
 
   const candidates = [
     location.name,
     location.district,
-    location.address
+    location.address,
   ].filter((value) => !isGenericLocationPlaceholder(value));
 
   return pickLocationText(candidates, false) || fallback;
@@ -2895,11 +3327,13 @@ function coordinatesRoughlyEqual(left, right) {
     return false;
   }
 
-  return Math.abs(leftCoords.latitude - rightCoords.latitude) < 0.0008
-    && Math.abs(leftCoords.longitude - rightCoords.longitude) < 0.0008;
+  return (
+    Math.abs(leftCoords.latitude - rightCoords.latitude) < 0.0008 &&
+    Math.abs(leftCoords.longitude - rightCoords.longitude) < 0.0008
+  );
 }
 
-function setNearbyPinnedCenterLabel(location, fallback = '') {
+function setNearbyPinnedCenterLabel(location, fallback = "") {
   const coords = extractCoordinates(location);
   const label = pickLocationDisplayName(location, fallback);
 
@@ -2910,7 +3344,7 @@ function setNearbyPinnedCenterLabel(location, fallback = '') {
 
   nearbyPinnedCenterLabel.value = {
     key: getCoordinateCacheKey(coords.latitude, coords.longitude),
-    label
+    label,
   };
   nearbyCenterLabel.value = label;
 }
@@ -2922,10 +3356,10 @@ function clearNearbyCenterLabelTimer() {
   }
 }
 
-async function refreshCurrentUserLocationLabel(preferredLabel = '') {
+async function refreshCurrentUserLocationLabel(preferredLabel = "") {
   const coords = extractCoordinates(mapStore.userLocation);
   if (!coords) {
-    currentUserLocationLabel.value = '';
+    currentUserLocationLabel.value = "";
     currentUserSearchLocality.value = null;
     return;
   }
@@ -2937,54 +3371,67 @@ async function refreshCurrentUserLocationLabel(preferredLabel = '') {
   const currentToken = ++activeUserLocationLabelToken;
 
   try {
-    const resolvedLocation = await reverseGeocodeLocationDetail(coords.latitude, coords.longitude);
+    const resolvedLocation = await reverseGeocodeLocationDetail(
+      coords.latitude,
+      coords.longitude,
+    );
     if (currentToken !== activeUserLocationLabelToken) {
       return;
     }
 
     currentUserLocationLabel.value = pickLocationDisplayName(
       resolvedLocation,
-      currentUserLocationLabel.value || preferredLabel || '当前位置'
+      currentUserLocationLabel.value || preferredLabel || "当前位置",
     );
     currentUserSearchLocality.value = {
       city: firstNonEmptyString(resolvedLocation?.city),
       district: firstNonEmptyString(resolvedLocation?.district),
       adcode: firstNonEmptyString(resolvedLocation?.adcode),
-      province: firstNonEmptyString(resolvedLocation?.province)
+      province: firstNonEmptyString(resolvedLocation?.province),
     };
   } catch (error) {
     if (currentToken !== activeUserLocationLabelToken) {
       return;
     }
 
-    currentUserLocationLabel.value = currentUserLocationLabel.value || preferredLabel || '当前位置';
+    currentUserLocationLabel.value =
+      currentUserLocationLabel.value || preferredLabel || "当前位置";
     currentUserSearchLocality.value = null;
   }
 }
 
-async function resolveNearbyCenterLabel(preferredLabel = '') {
-  const center = extractCoordinates(mapStore.center) || extractCoordinates(mapStore.userLocation);
+async function resolveNearbyCenterLabel(preferredLabel = "") {
+  const center =
+    extractCoordinates(mapStore.center) ||
+    extractCoordinates(mapStore.userLocation);
   if (!center) {
-    nearbyCenterLabel.value = '';
+    nearbyCenterLabel.value = "";
     nearbyPinnedCenterLabel.value = null;
     return;
   }
 
   const centerKey = getCoordinateCacheKey(center.latitude, center.longitude);
-  const pinnedLabel = nearbyPinnedCenterLabel.value?.key === centerKey
-    ? nearbyPinnedCenterLabel.value.label
-    : '';
+  const pinnedLabel =
+    nearbyPinnedCenterLabel.value?.key === centerKey
+      ? nearbyPinnedCenterLabel.value.label
+      : "";
 
-  if (nearbyPinnedCenterLabel.value && nearbyPinnedCenterLabel.value.key !== centerKey) {
+  if (
+    nearbyPinnedCenterLabel.value &&
+    nearbyPinnedCenterLabel.value.key !== centerKey
+  ) {
     nearbyPinnedCenterLabel.value = null;
   }
 
   const atUserLocation = coordinatesRoughlyEqual(center, mapStore.userLocation);
-  const optimisticLabel = pickLocationText([
-    preferredLabel,
-    pinnedLabel,
-    atUserLocation ? currentUserLocationLabel.value : ''
-  ], false);
+  const optimisticLabel = pickLocationText(
+    [
+      preferredLabel,
+      pinnedLabel,
+      atUserLocation ? currentUserLocationLabel.value : "",
+    ],
+    false,
+  );
 
   if (optimisticLabel) {
     nearbyCenterLabel.value = optimisticLabel;
@@ -2993,23 +3440,31 @@ async function resolveNearbyCenterLabel(preferredLabel = '') {
   const currentToken = ++activeNearbyCenterLabelToken;
 
   try {
-    const resolvedLocation = await reverseGeocodeLocationDetail(center.latitude, center.longitude);
+    const resolvedLocation = await reverseGeocodeLocationDetail(
+      center.latitude,
+      center.longitude,
+    );
     if (currentToken !== activeNearbyCenterLabelToken) {
       return;
     }
 
     nearbyCenterLabel.value = pickLocationDisplayName(
       {
-        name: pickLocationText([
-          preferredLabel,
-          pinnedLabel,
-          atUserLocation ? currentUserLocationLabel.value : '',
-          resolvedLocation?.name
-        ], false),
+        name: pickLocationText(
+          [
+            preferredLabel,
+            pinnedLabel,
+            atUserLocation ? currentUserLocationLabel.value : "",
+            resolvedLocation?.name,
+          ],
+          false,
+        ),
         district: resolvedLocation?.district,
-        address: resolvedLocation?.address
+        address: resolvedLocation?.address,
       },
-      atUserLocation ? currentUserLocationLabel.value || '当前位置' : '地图中心附近'
+      atUserLocation
+        ? currentUserLocationLabel.value || "当前位置"
+        : "地图中心附近",
     );
 
     if (atUserLocation && !currentUserLocationLabel.value) {
@@ -3020,25 +3475,36 @@ async function resolveNearbyCenterLabel(preferredLabel = '') {
       return;
     }
 
-    nearbyCenterLabel.value = optimisticLabel || (atUserLocation ? currentUserLocationLabel.value || '当前位置' : '地图中心附近');
+    nearbyCenterLabel.value =
+      optimisticLabel ||
+      (atUserLocation
+        ? currentUserLocationLabel.value || "当前位置"
+        : "地图中心附近");
   }
 }
 
-function scheduleNearbyCenterLabelRefresh(preferredLabel = '', delay = 320) {
+function scheduleNearbyCenterLabelRefresh(preferredLabel = "", delay = 320) {
   clearNearbyCenterLabelTimer();
   nearbyCenterLabelTimer = window.setTimeout(() => {
     void resolveNearbyCenterLabel(preferredLabel);
   }, delay);
 }
 
-function buildNormalizedStoryLocation(story, coords = null, fallbackLocation = null) {
-  const sourceLocation = story?.location && typeof story.location === 'object'
-    ? story.location
-    : {};
-  const fallback = fallbackLocation && typeof fallbackLocation === 'object'
-    ? fallbackLocation
-    : {};
-  const normalizedCoords = coords || extractCoordinates(sourceLocation) || extractCoordinates(fallback);
+function buildNormalizedStoryLocation(
+  story,
+  coords = null,
+  fallbackLocation = null,
+) {
+  const sourceLocation =
+    story?.location && typeof story.location === "object" ? story.location : {};
+  const fallback =
+    fallbackLocation && typeof fallbackLocation === "object"
+      ? fallbackLocation
+      : {};
+  const normalizedCoords =
+    coords ||
+    extractCoordinates(sourceLocation) ||
+    extractCoordinates(fallback);
   const address = pickLocationText([
     story?.locationName,
     sourceLocation.name,
@@ -3046,16 +3512,24 @@ function buildNormalizedStoryLocation(story, coords = null, fallbackLocation = n
     sourceLocation.address,
     sourceLocation.formattedAddress,
     fallback.address,
-    normalizedCoords ? formatMapPickAddress(normalizedCoords.latitude, normalizedCoords.longitude) : ''
+    normalizedCoords
+      ? formatMapPickAddress(
+          normalizedCoords.latitude,
+          normalizedCoords.longitude,
+        )
+      : "",
   ]);
   const name = pickLocationText([
     story?.locationName,
     sourceLocation.name,
     fallback.name,
     sourceLocation.address,
-    fallback.address
+    fallback.address,
   ]);
-  const district = firstNonEmptyString(sourceLocation.district, fallback.district);
+  const district = firstNonEmptyString(
+    sourceLocation.district,
+    fallback.district,
+  );
   const type = firstNonEmptyString(sourceLocation.type, fallback.type);
 
   if (!normalizedCoords && !address && !name && !district && !type) {
@@ -3064,7 +3538,7 @@ function buildNormalizedStoryLocation(story, coords = null, fallbackLocation = n
 
   const normalizedLocation = {
     ...fallback,
-    ...sourceLocation
+    ...sourceLocation,
   };
 
   if (normalizedCoords) {
@@ -3102,7 +3576,10 @@ function getSuggestedLocationDistance(location, originLocation) {
     return Number.MAX_SAFE_INTEGER;
   }
 
-  return Math.pow(coords.latitude - origin.latitude, 2) + Math.pow(coords.longitude - origin.longitude, 2);
+  return (
+    Math.pow(coords.latitude - origin.latitude, 2) +
+    Math.pow(coords.longitude - origin.longitude, 2)
+  );
 }
 
 function clearNearbySearchTimer() {
@@ -3120,9 +3597,9 @@ function setNearbySearchQuerySilently(value) {
 function clearNearbyPoiSearch() {
   clearNearbySearchTimer();
   activeNearbySearchToken += 1;
-  setNearbySearchQuerySilently('');
+  setNearbySearchQuerySilently("");
   nearbySearchResults.value = [];
-  nearbySearchError.value = '';
+  nearbySearchError.value = "";
   nearbyHasSearched.value = false;
   nearbySearching.value = false;
 }
@@ -3147,21 +3624,21 @@ function ensureNearbyPlaceSearch() {
   nearbyPlaceSearchPromise = new Promise((resolve, reject) => {
     if (!window.AMap?.plugin) {
       nearbyPlaceSearchPromise = null;
-      reject(new Error('AMap is not ready.'));
+      reject(new Error("AMap is not ready."));
       return;
     }
 
-    window.AMap.plugin(['AMap.PlaceSearch'], () => {
+    window.AMap.plugin(["AMap.PlaceSearch"], () => {
       if (!window.AMap?.PlaceSearch) {
         nearbyPlaceSearchPromise = null;
-        reject(new Error('AMap PlaceSearch is unavailable.'));
+        reject(new Error("AMap PlaceSearch is unavailable."));
         return;
       }
 
       nearbyPlaceSearchInstance = new window.AMap.PlaceSearch({
         pageSize: 10,
         pageIndex: 1,
-        extensions: 'all'
+        extensions: "all",
       });
 
       resolve(nearbyPlaceSearchInstance);
@@ -3175,33 +3652,36 @@ async function performNearbyPoiSearch() {
   const keyword = nearbySearchQuery.value.trim();
   if (keyword.length < 2) {
     nearbySearchResults.value = [];
-    nearbySearchError.value = '至少输入 2 个字再搜索地点。';
+    nearbySearchError.value = "至少输入 2 个字再搜索地点。";
     nearbyHasSearched.value = false;
     return;
   }
 
   const currentToken = ++activeNearbySearchToken;
   nearbySearching.value = true;
-  nearbySearchError.value = '';
+  nearbySearchError.value = "";
   nearbyHasSearched.value = true;
 
   try {
     await ensureNearbyPlaceSearch();
-    const anchor = extractCoordinates(mapStore.userLocation) || extractCoordinates(mapStore.center);
+    const anchor =
+      extractCoordinates(mapStore.userLocation) ||
+      extractCoordinates(mapStore.center);
     const sortAnchor = extractCoordinates(mapStore.userLocation) || anchor;
     const { pois, errorMessage } = await searchPoisWithContext({
-      createPlaceSearch: (options = {}) => new window.AMap.PlaceSearch({
-        pageSize: 10,
-        pageIndex: 1,
-        extensions: 'all',
-        ...options
-      }),
+      createPlaceSearch: (options = {}) =>
+        new window.AMap.PlaceSearch({
+          pageSize: 10,
+          pageIndex: 1,
+          extensions: "all",
+          ...options,
+        }),
       keyword,
       anchor,
       sortAnchor,
       locality: currentUserSearchLocality.value,
       radius: POI_SEARCH_RADIUS_METERS,
-      normalizePoi: normalizeNearbyPoiFromGeocode
+      normalizePoi: normalizeNearbyPoiFromGeocode,
     });
 
     if (currentToken !== activeNearbySearchToken) {
@@ -3218,8 +3698,8 @@ async function performNearbyPoiSearch() {
 
     nearbySearching.value = false;
     nearbySearchResults.value = [];
-    nearbySearchError.value = '地点服务暂时不可用，请确认地图脚本已正确加载。';
-    console.error('[Map] Failed to search nearby POI:', error);
+    nearbySearchError.value = "地点服务暂时不可用，请确认地图脚本已正确加载。";
+    console.error("[Map] Failed to search nearby POI:", error);
   }
 }
 
@@ -3231,16 +3711,21 @@ function focusNearbyStoriesOnPoi(poi) {
 
   clearNearbySearchTimer();
   activeNearbySearchToken += 1;
-  setNearbySearchQuerySilently(firstNonEmptyString(poi?.name, nearbySearchQuery.value));
+  setNearbySearchQuerySilently(
+    firstNonEmptyString(poi?.name, nearbySearchQuery.value),
+  );
   nearbySearchResults.value = [];
-  nearbySearchError.value = '';
+  nearbySearchError.value = "";
   nearbyHasSearched.value = false;
-  setNearbyPinnedCenterLabel(poi, '已选地点');
+  setNearbyPinnedCenterLabel(poi, "已选地点");
 
   suppressMapReloadUntil = Date.now() + 1200;
   mapStore.updateCenter(coords.latitude, coords.longitude);
   mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
-  scheduleNearbyCenterLabelRefresh(nearbyPinnedCenterLabel.value?.label || '', 80);
+  scheduleNearbyCenterLabelRefresh(
+    nearbyPinnedCenterLabel.value?.label || "",
+    80,
+  );
   scheduleNearbyStoriesReload();
 }
 
@@ -3256,18 +3741,18 @@ function ensureGeocoder() {
   geocoderPromise = new Promise((resolve, reject) => {
     if (!window.AMap?.plugin) {
       geocoderPromise = null;
-      reject(new Error('AMap is not ready.'));
+      reject(new Error("AMap is not ready."));
       return;
     }
 
-    window.AMap.plugin(['AMap.Geocoder'], () => {
+    window.AMap.plugin(["AMap.Geocoder"], () => {
       if (!window.AMap?.Geocoder) {
         geocoderPromise = null;
-        reject(new Error('AMap Geocoder is unavailable.'));
+        reject(new Error("AMap Geocoder is unavailable."));
         return;
       }
 
-      geocoderInstance = new window.AMap.Geocoder({ extensions: 'all' });
+      geocoderInstance = new window.AMap.Geocoder({ extensions: "all" });
       resolve(geocoderInstance);
     });
   });
@@ -3290,7 +3775,7 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
       const geocoder = await ensureGeocoder();
       const result = await new Promise((resolve) => {
         geocoder.getAddress([longitude, latitude], (status, geocodeResult) => {
-          resolve(status === 'complete' ? geocodeResult : null);
+          resolve(status === "complete" ? geocodeResult : null);
         });
       });
 
@@ -3298,18 +3783,22 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
       const district = [
         regeocode.addressComponent?.city,
         regeocode.addressComponent?.district,
-        regeocode.addressComponent?.township
-      ].filter(Boolean).join(' ');
+        regeocode.addressComponent?.township,
+      ]
+        .filter(Boolean)
+        .join(" ");
       const city = firstNonEmptyString(
         regeocode.addressComponent?.city,
-        regeocode.addressComponent?.province
+        regeocode.addressComponent?.province,
       );
-      const province = firstNonEmptyString(regeocode.addressComponent?.province);
+      const province = firstNonEmptyString(
+        regeocode.addressComponent?.province,
+      );
       const locality = {
         city,
         district,
         adcode: firstNonEmptyString(regeocode.addressComponent?.adcode),
-        province
+        province,
       };
       const firstPoi = Array.isArray(regeocode.pois)
         ? normalizeNearbyPoiFromGeocode(regeocode.pois[0], locality)
@@ -3319,20 +3808,23 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         name: pickLocationText([
           firstPoi?.name,
           regeocode.formattedAddress,
-          'Map Pick'
+          "Map Pick",
         ]),
         address: pickLocationText([
           firstPoi?.address,
           regeocode.formattedAddress,
           firstPoi?.name,
-          formatMapPickAddress(latitude, longitude)
+          formatMapPickAddress(latitude, longitude),
         ]),
         city: firstNonEmptyString(firstPoi?.city, city),
         district: firstNonEmptyString(firstPoi?.district, district),
-        adcode: firstNonEmptyString(firstPoi?.adcode, regeocode.addressComponent?.adcode),
+        adcode: firstNonEmptyString(
+          firstPoi?.adcode,
+          regeocode.addressComponent?.adcode,
+        ),
         province: firstNonEmptyString(firstPoi?.province, province),
-        type: firstNonEmptyString(firstPoi?.type, 'map-click'),
-        nearbyPois: Array.isArray(regeocode.pois) ? regeocode.pois : []
+        type: firstNonEmptyString(firstPoi?.type, "map-click"),
+        nearbyPois: Array.isArray(regeocode.pois) ? regeocode.pois : [],
       });
 
       reverseGeocodeCache.set(cacheKey, resolvedLocation);
@@ -3353,8 +3845,12 @@ function normalizeNearbyPoiFromGeocode(poi, locality = null) {
     return null;
   }
 
-  const latitude = toFiniteNumber(poi.location?.getLat?.() ?? poi.location?.lat);
-  const longitude = toFiniteNumber(poi.location?.getLng?.() ?? poi.location?.lng);
+  const latitude = toFiniteNumber(
+    poi.location?.getLat?.() ?? poi.location?.lat,
+  );
+  const longitude = toFiniteNumber(
+    poi.location?.getLng?.() ?? poi.location?.lng,
+  );
   if (latitude === null || longitude === null) {
     return null;
   }
@@ -3363,30 +3859,34 @@ function normalizeNearbyPoiFromGeocode(poi, locality = null) {
     poi.cityname,
     poi.city,
     locality?.city,
-    locality?.province
+    locality?.province,
   );
   const province = firstNonEmptyString(
     poi.pname,
     poi.province,
-    locality?.province
+    locality?.province,
   );
   const district = buildLocationDistrictLabel({
     city,
     district: firstNonEmptyString(poi.adname, poi.district, locality?.district),
-    province
-  });
-  const address = buildLocationAddressLabel({
-    city,
-    district,
     province,
-    address: firstNonEmptyString(poi.address),
-    formattedAddress: firstNonEmptyString(poi.formattedAddress),
-    name: poi.name || 'Nearby Place'
-  }, latitude, longitude);
+  });
+  const address = buildLocationAddressLabel(
+    {
+      city,
+      district,
+      province,
+      address: firstNonEmptyString(poi.address),
+      formattedAddress: firstNonEmptyString(poi.formattedAddress),
+      name: poi.name || "Nearby Place",
+    },
+    latitude,
+    longitude,
+  );
 
   return {
-    id: poi.id || `nearby-${longitude}-${latitude}-${poi.name || 'poi'}`,
-    name: poi.name || 'Nearby Place',
+    id: poi.id || `nearby-${longitude}-${latitude}-${poi.name || "poi"}`,
+    name: poi.name || "Nearby Place",
     address: address || poi.name || formatMapPickAddress(latitude, longitude),
     latitude,
     longitude,
@@ -3394,8 +3894,8 @@ function normalizeNearbyPoiFromGeocode(poi, locality = null) {
     district,
     adcode: firstNonEmptyString(poi.adcode, locality?.adcode),
     province,
-    type: poi.type || 'nearby-poi',
-    distance: toFiniteNumber(poi.distance)
+    type: poi.type || "nearby-poi",
+    distance: toFiniteNumber(poi.distance),
   };
 }
 
@@ -3407,8 +3907,15 @@ function buildSuggestedLocations(rawLocation, nearbyPois = []) {
   const normalizedPois = nearbyPois
     .map((poi) => normalizeNearbyPoiFromGeocode(poi, rawLocation))
     .filter(Boolean)
-    .filter((poi, index, list) => list.findIndex((item) => item.id === poi.id) === index)
-    .sort((left, right) => getSuggestedLocationDistance(left, rawLocation) - getSuggestedLocationDistance(right, rawLocation))
+    .filter(
+      (poi, index, list) =>
+        list.findIndex((item) => item.id === poi.id) === index,
+    )
+    .sort(
+      (left, right) =>
+        getSuggestedLocationDistance(left, rawLocation) -
+        getSuggestedLocationDistance(right, rawLocation),
+    )
     .slice(0, 8);
 
   if (normalizedPois.length > 0) {
@@ -3416,7 +3923,9 @@ function buildSuggestedLocations(rawLocation, nearbyPois = []) {
   }
 
   const coords = extractCoordinates(rawLocation);
-  return coords ? [buildFallbackLocation(coords.latitude, coords.longitude, rawLocation)] : [];
+  return coords
+    ? [buildFallbackLocation(coords.latitude, coords.longitude, rawLocation)]
+    : [];
 }
 
 function getPublishPickPromptStyle(prompt) {
@@ -3427,16 +3936,16 @@ function getPublishPickPromptStyle(prompt) {
   const screenY = toFiniteNumber(prompt?.screenY) ?? viewportHeight / 2;
   const left = Math.min(
     Math.max(screenX - promptWidth / 2, 16),
-    Math.max(viewportWidth - promptWidth - 16, 16)
+    Math.max(viewportWidth - promptWidth - 16, 16),
   );
   const top = Math.min(
     Math.max(screenY + 18, 16),
-    Math.max(viewportHeight - 132, 16)
+    Math.max(viewportHeight - 132, 16),
   );
 
   return {
     left: `${left}px`,
-    top: `${top}px`
+    top: `${top}px`,
   };
 }
 
@@ -3449,7 +3958,7 @@ function confirmPublishNearbySearch() {
 
   const suggestedLocations = buildSuggestedLocations(
     prompt.location,
-    prompt.location.nearbyPois || []
+    prompt.location.nearbyPois || [],
   );
   suggestedPublishLocations.value = suggestedLocations;
   pickedPublishLocation.value = suggestedLocations[0] || prompt.location;
@@ -3479,26 +3988,25 @@ async function handlePublishMapClick(point) {
   }
 
   suggestedPublishLocations.value = [];
-  const pickedLocation = await reverseGeocodePickedLocation(coords.latitude, coords.longitude);
+  const pickedLocation = await reverseGeocodePickedLocation(
+    coords.latitude,
+    coords.longitude,
+  );
   pickedPublishLocation.value = pickedLocation;
   publishPickPrompt.value = {
     location: pickedLocation,
     screenX: point?.screenX,
-    screenY: point?.screenY
+    screenY: point?.screenY,
   };
 }
 
-// 处理用户按钮点击
 function handleUserClick() {
-  // 如果发布侧边栏是打开的，先关闭它
   if (showPublishSidebar.value) {
     closePublishPanel();
   }
-  // 如果故事侧边栏是打开的，先关闭它
   if (showSidebar.value) {
     closeStoryPanel();
   }
-  // 延迟一点再打开用户侧边栏，确保动画流畅
   setTimeout(() => {
     showUserSidebar.value = true;
   }, 100);
@@ -3506,12 +4014,11 @@ function handleUserClick() {
 
   if (userStore.isLoggedIn && !userStore.isGuest) {
     userStore.fetchUser().catch((error) => {
-      console.error('刷新用户信息失败:', error);
+      console.error("刷新用户信息失败:", error);
     });
   }
 }
 
-// 处理我的点赞按钮点击
 function handleMyLikes() {
   if (showPostsPanel.value) showPostsPanel.value = false;
   if (showFavoritesPanel.value) showFavoritesPanel.value = false;
@@ -3522,7 +4029,6 @@ function handleMyLikes() {
   }
 }
 
-// 处理我的收藏按钮点击
 function handleMyFavorites() {
   if (showLikesPanel.value) showLikesPanel.value = false;
   if (showPostsPanel.value) showPostsPanel.value = false;
@@ -3533,7 +4039,6 @@ function handleMyFavorites() {
   }
 }
 
-// 处理我的发布按钮点击
 function handleMyPosts() {
   if (showLikesPanel.value) showLikesPanel.value = false;
   if (showFavoritesPanel.value) showFavoritesPanel.value = false;
@@ -3544,7 +4049,6 @@ function handleMyPosts() {
   }
 }
 
-// 加载点赞数据
 async function loadLikesData(isLoadMore = false) {
   if (isLoadMore) {
     if (likesLoadingMore.value || !likesHasMore.value) return;
@@ -3557,10 +4061,9 @@ async function loadLikesData(isLoadMore = false) {
   }
 
   try {
-    // 调用实际API
     const result = await likeApi.getMyLikes({
       page: isLoadMore ? likesPage.value + 1 : 1,
-      limit: likesPageSize
+      limit: likesPageSize,
     });
 
     const data = result.data || result;
@@ -3592,19 +4095,17 @@ async function loadLikesData(isLoadMore = false) {
 
     void hydrateStoryLocations(stories);
 
-    // 检查是否还有更多数据
     if (stories.length < likesPageSize) {
       likesHasMore.value = false;
     }
   } catch (error) {
-    console.error('加载点赞数据失败:', error);
+    console.error("加载点赞数据失败:", error);
   } finally {
     likesLoading.value = false;
     likesLoadingMore.value = false;
   }
 }
 
-// 加载发布数据
 async function loadPostsData(isLoadMore = false) {
   if (isLoadMore) {
     if (postsLoadingMore.value || !postsHasMore.value) return;
@@ -3617,10 +4118,9 @@ async function loadPostsData(isLoadMore = false) {
   }
 
   try {
-    // 调用实际API
     const result = await storyApi.getMyStories({
       page: isLoadMore ? postsPage.value + 1 : 1,
-      limit: postsPageSize
+      limit: postsPageSize,
     });
 
     const data = result.data || result;
@@ -3632,8 +4132,8 @@ async function loadPostsData(isLoadMore = false) {
           ? data
           : [];
     const fallbackAuthor = {
-      username: userStore.user?.username || userStore.user?.name || '我',
-      avatar: userStore.user?.avatar || ''
+      username: userStore.user?.username || userStore.user?.name || "我",
+      avatar: userStore.user?.avatar || "",
     };
     const stories = rawStories
       .map((item) => normalizeUserPanelStory(item, fallbackAuthor))
@@ -3648,28 +4148,24 @@ async function loadPostsData(isLoadMore = false) {
 
     void hydrateStoryLocations(stories);
 
-    // 检查是否还有更多数据
     if (stories.length < postsPageSize) {
       postsHasMore.value = false;
     }
   } catch (error) {
-    console.error('加载发布数据失败:', error);
+    console.error("加载发布数据失败:", error);
   } finally {
     postsLoading.value = false;
     postsLoadingMore.value = false;
   }
 }
 
-// 处理点赞列表滚动
 function handleLikesScroll(event) {
   const { scrollTop, scrollHeight, clientHeight } = event.target;
-  // 距离底部 50px 时加载更多
   if (scrollHeight - scrollTop - clientHeight < 50) {
     loadLikesData(true);
   }
 }
 
-// 处理发布列表滚动
 function handlePostsScroll(event) {
   const { scrollTop, scrollHeight, clientHeight } = event.target;
   if (scrollHeight - scrollTop - clientHeight < 50) {
@@ -3677,7 +4173,6 @@ function handlePostsScroll(event) {
   }
 }
 
-// 加载收藏数据（通过二次请求获取完整故事信息）
 async function loadFavoritesData(isLoadMore = false) {
   if (isLoadMore) {
     if (favoritesLoadingMore.value || !favoritesHasMore.value) return;
@@ -3692,7 +4187,7 @@ async function loadFavoritesData(isLoadMore = false) {
   try {
     const result = await favoriteApi.getMyFavorites({
       page: isLoadMore ? favoritesPage.value + 1 : 1,
-      limit: favoritesPageSize
+      limit: favoritesPageSize,
     });
 
     const data = result.data || result;
@@ -3702,7 +4197,6 @@ async function loadFavoritesData(isLoadMore = false) {
         ? data.items
         : [];
 
-    // 从收藏列表中提取基本故事数据
     const basicStories = rawFavorites
       .map((item) => {
         const storyData = item.story || item;
@@ -3725,14 +4219,13 @@ async function loadFavoritesData(isLoadMore = false) {
       favoritesHasMore.value = false;
     }
   } catch (error) {
-    console.error('加载收藏数据失败:', error);
+    console.error("加载收藏数据失败:", error);
   } finally {
     favoritesLoading.value = false;
     favoritesLoadingMore.value = false;
   }
 }
 
-// 处理收藏列表滚动
 function handleFavoritesScroll(event) {
   const { scrollTop, scrollHeight, clientHeight } = event.target;
   if (scrollHeight - scrollTop - clientHeight < 50) {
@@ -3740,29 +4233,27 @@ function handleFavoritesScroll(event) {
   }
 }
 
-// 在收藏列表中切换收藏状态（取消收藏/重新收藏）
 async function handleToggleFavoriteFromList(story) {
   const isCurrentlyFavorited = story.isFavorited !== false;
 
   try {
     if (isCurrentlyFavorited) {
-      if (!(await showConfirm('确定要取消收藏吗？'))) return;
+      if (!(await showConfirm("确定要取消收藏吗？"))) return;
       await favoriteApi.remove(story.id);
       handleStoryFavorite({
         storyId: story.id,
         favorited: false,
-        favoriteCount: Math.max(0, Number(story.favoriteCount ?? 0) - 1)
+        favoriteCount: Math.max(0, Number(story.favoriteCount ?? 0) - 1),
       });
     } else {
       await favoriteApi.create(story.id);
       handleStoryFavorite({
         storyId: story.id,
         favorited: true,
-        favoriteCount: Number(story.favoriteCount ?? 0) + 1
+        favoriteCount: Number(story.favoriteCount ?? 0) + 1,
       });
     }
 
-    // 刷新收藏数量
     try {
       const countResp = await favoriteApi.getCount(story.id);
       const countData = countResp?.data ?? countResp;
@@ -3773,14 +4264,13 @@ async function handleToggleFavoriteFromList(story) {
           item.favoriteCount = count;
         });
       }
-    } catch (_e) { /* count refresh is non-critical */ }
+    } catch (_e) {}
   } catch (error) {
-    console.error('收藏操作失败:', error);
-    showToast(error.message || '操作失败，请重试', 'error');
+    console.error("收藏操作失败:", error);
+    showToast(error.message || "操作失败，请重试", "error");
   }
 }
 
-// 处理故事点击（从我的发布/我的点赞/我的收藏列表点击）
 function handleStoryClick(story) {
   showFavoritesPanel.value = false;
   showLikesPanel.value = false;
@@ -3789,77 +4279,66 @@ function handleStoryClick(story) {
 }
 
 async function handleUnlike(story) {
-  if (!(await showConfirm('确定要取消点赞吗？'))) {
+  if (!(await showConfirm("确定要取消点赞吗？"))) {
     return;
   }
 
   try {
-    // 调用取消点赞API
     await likeApi.remove(story.id);
-
-    // 从列表中移除
     const index = likesList.value.findIndex(
-      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id)
+      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id),
     );
     if (index > -1) {
       likesList.value.splice(index, 1);
     }
 
-    console.log('已取消点赞:', story.id);
+    console.log("已取消点赞:", story.id);
   } catch (error) {
-    console.error('取消点赞失败:', error);
-    showToast('取消点赞失败，请重试', 'error');
+    console.error("取消点赞失败:", error);
+    showToast("取消点赞失败，请重试", "error");
   }
 }
 
 async function handleDeleteStory(story) {
-  if (!(await showConfirm('确定要删除这个故事吗？此操作不可恢复。'))) {
+  if (!(await showConfirm("确定要删除这个故事吗？此操作不可恢复。"))) {
     return;
   }
 
   try {
-    // 调用删除故事API
     await storyApi.deleteStory(story.id);
-
-    // 从列表中移除
     const index = postsList.value.findIndex(
-      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id)
+      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id),
     );
     if (index > -1) {
       postsList.value.splice(index, 1);
     }
 
-    console.log('已删除故事:', story.id);
+    console.log("已删除故事:", story.id);
   } catch (error) {
-    console.error('删除故事失败:', error);
-    showToast('删除失败，请重试', 'error');
+    console.error("删除故事失败:", error);
+    showToast("删除失败，请重试", "error");
   }
 }
 
-// 开始编辑用户名
 function startEditUsername() {
-  editingUsername.value = userStore.user?.username || userStore.user?.name || '';
+  editingUsername.value =
+    userStore.user?.username || userStore.user?.name || "";
   isEditingUsername.value = true;
-  usernameError.value = '';
+  usernameError.value = "";
 }
 
-// 取消编辑用户名
 function cancelEditUsername() {
   isEditingUsername.value = false;
-  editingUsername.value = '';
-  usernameError.value = '';
+  editingUsername.value = "";
+  usernameError.value = "";
 }
 
-// 检查用户名是否可用
 async function checkUsernameAvailability(username) {
-  // 模拟API调用检查用户名是否重复
-  // 实际项目中应该调用后端API
   return new Promise((resolve) => {
     setTimeout(() => {
-      // 模拟：用户名为 'admin', 'test', 'user' 时认为已被占用
-      const reservedUsernames = ['admin', 'test', 'user', 'system', 'root'];
+      const reservedUsernames = ["admin", "test", "user", "system", "root"];
       if (reservedUsernames.includes(username.toLowerCase())) {
-        resolve({ available: false, message: '该用户名已被使用' });
+        resolve({ available: false, message: "该用户名已被使用" });
       } else {
         resolve({ available: true });
       }
@@ -3867,210 +4346,186 @@ async function checkUsernameAvailability(username) {
   });
 }
 
-// 保存用户名
 async function saveUsername() {
   const trimmedUsername = editingUsername.value.trim();
 
   if (trimmedUsername.length < 2) {
-    usernameError.value = '用户名至少需要 2 个字符';
+    usernameError.value = "用户名至少需要 2 个字符";
     return;
   }
   if (trimmedUsername.length > 20) {
-    usernameError.value = '用户名最多 20 个字符';
+    usernameError.value = "用户名最多 20 个字符";
     return;
   }
-  // 只允许字母、数字、中文、下划线和连字符
+  // 用户名限制在常见可读字符范围内。
   if (!/^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/.test(trimmedUsername)) {
-    usernameError.value = '用户名只能包含字母、数字、中文、下划线和连字符';
+    usernameError.value = "用户名只能包含字母、数字、中文、下划线和连字符";
     return;
   }
 
   checkingUsername.value = true;
-  usernameError.value = '';
+  usernameError.value = "";
 
   try {
-    // 检查是否与当前用户名相同
     const currentUsername = userStore.user?.username || userStore.user?.name;
     if (trimmedUsername === currentUsername) {
       cancelEditUsername();
       return;
     }
 
-    // 调用API检查用户名是否可用
     const result = await checkUsernameAvailability(trimmedUsername);
 
     if (!result.available) {
-      usernameError.value = result.message || '该用户名已被使用';
+      usernameError.value = result.message || "该用户名已被使用";
       return;
     }
 
     const response = await authApi.updateProfile({
-      username: trimmedUsername
+      username: trimmedUsername,
     });
     const updatedUser = response?.data ?? response;
     userStore.updateUser(updatedUser);
     syncCurrentUserProfileAcrossStories({
       ...(userStore.user || {}),
-      ...(updatedUser || {})
+      ...(updatedUser || {}),
     });
 
-    // 退出编辑模式
     isEditingUsername.value = false;
-    editingUsername.value = '';
-    usernameError.value = '';
+    editingUsername.value = "";
+    usernameError.value = "";
 
-    console.log('用户名已更新:', trimmedUsername);
+    console.log("用户名已更新:", trimmedUsername);
   } catch (error) {
-    usernameError.value = '保存失败，请重试';
-    console.error('保存用户名失败:', error);
+    usernameError.value = "保存失败，请重试";
+    console.error("保存用户名失败:", error);
   } finally {
     checkingUsername.value = false;
   }
 }
 
-// 触发头像文件选择
 function triggerAvatarUpload() {
   if (avatarUploading.value) return;
   avatarInput.value?.click();
 }
 
-// 处理头像文件选择
 function handleAvatarChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
-  // 验证文件类型
-  if (!file.type.startsWith('image/')) {
-    avatarError.value = '请选择图片文件';
+  if (!file.type.startsWith("image/")) {
+    avatarError.value = "请选择图片文件";
     return;
   }
 
-  // 验证文件大小（最大 5MB）
   if (file.size > 5 * 1024 * 1024) {
-    avatarError.value = '图片大小不能超过 5MB';
+    avatarError.value = "图片大小不能超过 5MB";
     return;
   }
 
-  avatarError.value = '';
+  avatarError.value = "";
 
-  // 保存文件引用
   currentAvatarFile.value = file;
-
-  // 生成预览
   const reader = new FileReader();
   reader.onload = (e) => {
     avatarPreview.value = e.target?.result;
-    // 自动开始上传
     uploadAvatar(file);
   };
   reader.readAsDataURL(file);
-
-  // 清空 input，允许重复选择同一文件
-  event.target.value = '';
+  event.target.value = "";
 }
 
-// 上传头像
 async function uploadAvatar(file) {
   if (!file) {
     file = currentAvatarFile.value;
   }
   if (!file) {
-    avatarError.value = '未选择文件';
+    avatarError.value = "未选择文件";
     return;
   }
 
   avatarUploading.value = true;
-  avatarError.value = '';
+  avatarError.value = "";
 
   try {
-    // 验证文件
     const validation = validateImage(file);
     if (!validation.valid) {
       avatarError.value = validation.error;
       return;
     }
 
-    // 上传到 OSS
     const uploadedUrl = await uploadToOSS(file);
-
-    // 更新用户信息
     const response = await authApi.updateProfile({
-      avatarUrl: uploadedUrl
+      avatarUrl: uploadedUrl,
     });
     const updatedUser = response?.data ?? response;
     userStore.updateUser(updatedUser);
 
-    // 同步更新故事列表中的头像
-    // 清除预览
     syncCurrentUserProfileAcrossStories({
       ...(userStore.user || {}),
-      ...(updatedUser || {})
+      ...(updatedUser || {}),
     });
-    avatarPreview.value = '';
+    avatarPreview.value = "";
     currentAvatarFile.value = null;
-    console.log('头像已更新:', uploadedUrl);
+    console.log("头像已更新:", uploadedUrl);
   } catch (error) {
-    avatarError.value = error.message || '上传失败，请重试';
-    avatarPreview.value = '';
-    console.error('上传头像失败:', error);
+    avatarError.value = error.message || "上传失败，请重试";
+    avatarPreview.value = "";
+    console.error("上传头像失败:", error);
   } finally {
     avatarUploading.value = false;
   }
 }
 
-// 开始编辑密码
 function startEditPassword() {
   isEditingPassword.value = true;
-  passwordError.value = '';
-  currentPasswordError.value = '';
-  newPasswordError.value = '';
-  confirmPasswordError.value = '';
+  passwordError.value = "";
+  currentPasswordError.value = "";
+  newPasswordError.value = "";
+  confirmPasswordError.value = "";
   passwordForm.value = {
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
   };
   showCurrentPassword.value = false;
   showNewPassword.value = false;
   showConfirmPassword.value = false;
 }
 
-// 取消编辑密码
 function cancelEditPassword() {
   isEditingPassword.value = false;
-  passwordError.value = '';
-  currentPasswordError.value = '';
-  newPasswordError.value = '';
-  confirmPasswordError.value = '';
+  passwordError.value = "";
+  currentPasswordError.value = "";
+  newPasswordError.value = "";
+  confirmPasswordError.value = "";
   passwordForm.value = {
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
   };
   showCurrentPassword.value = false;
   showNewPassword.value = false;
   showConfirmPassword.value = false;
 }
 
-// 保存密码
 async function savePassword() {
   const { currentPassword, newPassword, confirmPassword } = passwordForm.value;
 
   if (!currentPassword) {
-    passwordError.value = '请输入当前密码';
+    passwordError.value = "请输入当前密码";
     return;
   }
   if (newPassword.length < 6) {
-    passwordError.value = '新密码至少需要 6 位';
+    passwordError.value = "新密码至少需要 6 位";
     return;
   }
   if (newPassword !== confirmPassword) {
-    passwordError.value = '两次输入的新密码不一致';
+    passwordError.value = "两次输入的新密码不一致";
     return;
   }
 
   savingPassword.value = true;
-  passwordError.value = '';
+  passwordError.value = "";
 
   try {
     await authApi.changePassword(currentPassword, newPassword);
@@ -4080,35 +4535,30 @@ async function savePassword() {
       ? error.response.data.details
           .map((item) => item?.message || item)
           .filter(Boolean)
-          .join('；')
-      : '';
+          .join("；")
+      : "";
     passwordError.value =
       error?.response?.data?.message ||
       error?.response?.data?.error ||
       detailMessage ||
-      '修改失败，请检查当前密码是否正确';
-    console.error('修改密码失败:', error);
+      "修改失败，请检查当前密码是否正确";
+    console.error("修改密码失败:", error);
   } finally {
     savingPassword.value = false;
   }
 }
 
-// 处理附近故事按钮点击
 function handleStoriesClick() {
-  // 如果发布侧边栏是打开的，先关闭它
   if (showPublishSidebar.value) {
     closePublishPanel();
   }
-  // 如果用户侧边栏是打开的，先关闭它
   if (showUserSidebar.value) {
     closeUserPanel();
   }
-  // 切换故事侧边栏
   showSidebar.value = !showSidebar.value;
   isDockExpanded.value = false;
 }
 
-// 处理定位按钮点击
 function handleLocate() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
@@ -4116,73 +4566,69 @@ function handleLocate() {
         const { latitude, longitude } = position.coords;
         mapStore.setUserLocation(latitude, longitude);
         mapStore.updateCenter(latitude, longitude);
-        mapStore.updateZoom(15); // 自动缩放到街区级别
+        mapStore.updateZoom(15);
         nearbyPinnedCenterLabel.value = null;
-        nearbyCenterLabel.value = currentUserLocationLabel.value || '当前位置';
+        nearbyCenterLabel.value = currentUserLocationLabel.value || "当前位置";
         void refreshCurrentUserLocationLabel(nearbyCenterLabel.value);
         scheduleNearbyCenterLabelRefresh(nearbyCenterLabel.value, 80);
         isDockExpanded.value = false;
       },
       (error) => {
-        console.error('获取位置失败:', error);
-        showToast('获取位置失败，请检查定位权限', 'error');
+        console.error("获取位置失败:", error);
+        showToast("获取位置失败，请检查定位权限", "error");
         isDockExpanded.value = false;
-      }
+      },
     );
   } else {
-    showToast('您的浏览器不支持地理定位', 'error');
+    showToast("您的浏览器不支持地理定位", "error");
     isDockExpanded.value = false;
   }
 }
 
-// 处理发布提交
 async function handlePublishSubmit(storyData) {
   try {
     const selectedLocation = extractCoordinates(storyData.location);
     if (!selectedLocation) {
-      showToast('请先选择一个地点后再发布故事', 'warning');
+      showToast("请先选择一个地点后再发布故事", "warning");
       return;
     }
 
     if (!storyData.emotion) {
-      showToast('请先选择一个情绪标签', 'warning');
+      showToast("请先选择一个情绪标签", "warning");
       return;
     }
 
     if (storyData.isTimeCapsule && !storyData.unlockAt) {
-      showToast('请为时光胶囊选择解锁时间', 'warning');
+      showToast("请为时光胶囊选择解锁时间", "warning");
       return;
     }
 
     const location = {
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
-      address: storyData.location?.address || storyData.location?.name || '已选地点',
-      name: storyData.location?.name || storyData.location?.address || '已选地点'
+      address:
+        storyData.location?.address || storyData.location?.name || "已选地点",
+      name:
+        storyData.location?.name || storyData.location?.address || "已选地点",
     };
 
-    // 情绪标签直接使用（前端已与后端一致）
     const finalEmotionTag = storyData.emotion;
-
-    // 调用后端API创建故事
-    const { storyApi } = await import('../../api/story');
-    const { uploadImages, validateImage } = await import('../../utils/upload');
-
-    // 上传图片到 OSS
+    const { storyApi } = await import("../../api/story");
+    const { uploadImages, validateImage } = await import("../../utils/upload");
     let imageUrls = [];
     if (storyData.images && storyData.images.length > 0) {
       for (const file of storyData.images) {
         const validation = validateImage(file);
         if (!validation.valid) {
-          console.warn('图片验证失败:', validation.error);
+          console.warn("图片验证失败:", validation.error);
           continue;
         }
       }
       try {
         imageUrls = await uploadImages(storyData.images);
-        console.log('图片上传成功:', imageUrls);
+        console.log("图片上传成功:", imageUrls);
       } catch (error) {
-        console.error('图片上传失败:', error);
+        console.error("图片上传失败:", error);
       }
     }
 
@@ -4191,56 +4637,54 @@ async function handlePublishSubmit(storyData) {
       images: imageUrls,
       location: {
         lng: location.longitude,
-        lat: location.latitude
+        lat: location.latitude,
       },
       locationName: location.name,
       emotionTag: finalEmotionTag,
       isTimeCapsule: storyData.isTimeCapsule,
       unlockAt: storyData.unlockAt || null,
-      visibility: storyData.visibility || 'public',
+      visibility: storyData.visibility || "public",
       visibilityStartTime: storyData.visibilityStartTime || null,
-      visibilityEndTime: storyData.visibilityEndTime || null
+      visibilityEndTime: storyData.visibilityEndTime || null,
     });
 
-    // 适配后端响应格式
     const newStory = response.data || response;
     const normalizedNewStory = normalizeStoryForMap(newStory, location);
 
-    console.log('发布故事成功:', newStory);
+    console.log("发布故事成功:", newStory);
 
-    // 添加到地图标记
     if (normalizedNewStory && amapRef.value) {
       amapRef.value.addNewStoryMarker(normalizedNewStory);
     }
 
-    // 添加到故事列表
     if (normalizedNewStory) {
       mapStore.updateStories([...mapStore.stories, normalizedNewStory]);
       void hydrateStoryLocations([normalizedNewStory]);
     } else {
-      console.warn('[Map] Created story is missing valid coordinates:', newStory);
+      console.warn(
+        "[Map] Created story is missing valid coordinates:",
+        newStory,
+      );
       await loadStories();
     }
 
     mapStore.updateCenter(location.latitude, location.longitude);
     mapStore.updateZoom(15);
 
-    showToast('发布成功！', 'success');
+    showToast("发布成功！", "success");
     closePublishPanel();
   } catch (error) {
-    console.error('发布失败:', error);
-    showToast('发布失败，请重试', 'error');
+    console.error("发布失败:", error);
+    showToast("发布失败，请重试", "error");
   }
 }
 
-// 切换地图主题（用户手动选择后保存为显式偏好，覆盖自动）
 function toggleTheme() {
-  const next = effectiveMapTheme.value === 'dark' ? 'light' : 'dark';
+  const next = effectiveMapTheme.value === "dark" ? "light" : "dark";
   handleThemeChange(next);
   isDockExpanded.value = false;
 }
 
-// 切换 Dock 菜单
 function toggleDock() {
   if (isPickingPublishLocation.value) {
     isDockExpanded.value = false;
@@ -4250,35 +4694,30 @@ function toggleDock() {
   isDockExpanded.value = !isDockExpanded.value;
 }
 
-// 退出登录
 async function handleLogout() {
-  if (await showConfirm('确定要退出登录吗？')) {
+  if (await showConfirm("确定要退出登录吗？")) {
     showUserSidebar.value = false;
     userStore.logout();
-    window.location.href = '/';
+    window.location.href = "/";
   }
   isDockExpanded.value = false;
 }
 
-// 游客模式：点击登录按钮
 function handleGuestLoginClick() {
   showUserSidebar.value = false;
   showLoginModal.value = true;
 }
 
-// 进入游客模式
 function handleEnterGuestMode() {
   userStore.loginAsGuest();
   showUserSidebar.value = false;
 }
 
-// 游客退出
 function handleGuestLogout() {
   userStore.exitGuestMode();
   showUserSidebar.value = false;
 }
 
-// 点击页面空白区域关闭侧边栏
 function handlePageClick(event) {
   if (showPublishSidebar.value && isPickingPublishLocation.value) {
     return;
@@ -4289,25 +4728,24 @@ function handlePageClick(event) {
     return;
   }
 
-  // 检查点击目标是否在侧边栏或dock容器内
-  const storySidebar = document.querySelector('.story-sidebar');
-  const storyTarotShell = document.querySelector('.story-tarot-shell');
-  const publishModal = document.querySelector('.publish-modal');
-  const userSidebar = document.querySelector('.user-sidebar');
-  const userModalShell = document.querySelector('.user-modal-shell');
-  const likesPanel = document.querySelector('.likes-panel');
-  const postsPanel = document.querySelector('.posts-panel');
-  const favoritesPanel = document.querySelector('.favorites-panel');
-  const dockContainer = document.querySelector('.dock-container');
+  const storySidebar = document.querySelector(".story-sidebar");
+  const storyTarotShell = document.querySelector(".story-tarot-shell");
+  const publishModal = document.querySelector(".publish-modal");
+  const userSidebar = document.querySelector(".user-sidebar");
+  const userModalShell = document.querySelector(".user-modal-shell");
+  const likesPanel = document.querySelector(".likes-panel");
+  const postsPanel = document.querySelector(".posts-panel");
+  const favoritesPanel = document.querySelector(".favorites-panel");
+  const dockContainer = document.querySelector(".dock-container");
 
-  // 如果点击的是子面板内部，不处理
-  if (likesPanel?.contains(target) ||
-      postsPanel?.contains(target) ||
-      favoritesPanel?.contains(target)) {
+  if (
+    likesPanel?.contains(target) ||
+    postsPanel?.contains(target) ||
+    favoritesPanel?.contains(target)
+  ) {
     return;
   }
 
-  // 如果点击的是用户侧边栏或其遮罩层内部（但不是子面板），只关闭子面板
   if (userSidebar?.contains(target) || userModalShell?.contains(target)) {
     showLikesPanel.value = false;
     showPostsPanel.value = false;
@@ -4315,29 +4753,30 @@ function handlePageClick(event) {
     return;
   }
 
-  // 如果点击的是其他侧边栏内部或dock区域，不处理
-  if (storySidebar?.contains(target) ||
-      storyTarotShell?.contains(target) ||
-      publishModal?.contains(target) ||
-      dockContainer?.contains(target)) {
+  if (
+    storySidebar?.contains(target) ||
+    storyTarotShell?.contains(target) ||
+    publishModal?.contains(target) ||
+    dockContainer?.contains(target)
+  ) {
     return;
   }
 
-  // 关闭其他侧边栏（不关闭用户侧边栏）
   closeStoryPanel();
   closePublishPanel();
 }
 
-// 故事列表
 const stories = computed(() => mapStore.stories);
 
-// 加载附近故事
 async function loadStories() {
   loading.value = true;
   try {
     const center = extractCoordinates(mapStore.center);
     if (!center) {
-      console.warn('[Map] Skip loadStories because center is invalid:', mapStore.center);
+      console.warn(
+        "[Map] Skip loadStories because center is invalid:",
+        mapStore.center,
+      );
       mapStore.updateStories([]);
       return;
     }
@@ -4345,14 +4784,16 @@ async function loadStories() {
     const response = await mapApi.exploreStories(
       center.latitude,
       center.longitude,
-      5000 // 5km 范围
+      5000,
     );
-    // 适配后端响应格式 { code, data: { stories } }
-    console.log('[Map] exploreStories response:', response);
+    console.log("[Map] exploreStories response:", response);
 
     const stories = extractStoriesFromResponse(response);
     if (!stories) {
-      console.error('[Map] exploreStories returned an unexpected payload:', response);
+      console.error(
+        "[Map] exploreStories returned an unexpected payload:",
+        response,
+      );
       mapStore.updateStories([]);
       return;
     }
@@ -4361,18 +4802,17 @@ async function loadStories() {
       .map((story) => normalizeStoryForMap(story))
       .filter(Boolean);
 
-    console.log('[Map] normalized stories:', normalizedStories);
+    console.log("[Map] normalized stories:", normalizedStories);
     mapStore.updateStories(normalizedStories);
     void hydrateStoryLocations(normalizedStories);
   } catch (error) {
-    console.error('加载故事失败:', error);
+    console.error("加载故事失败:", error);
     mapStore.updateStories([]);
   } finally {
     loading.value = false;
   }
 }
 
-// 聚合显示的 zoom 阈值，超过此值显示原始标记点
 const CLUSTER_ZOOM_THRESHOLD = 16;
 
 function padBounds(bounds, paddingRatio = 0.08) {
@@ -4395,57 +4835,67 @@ function padBounds(bounds, paddingRatio = 0.08) {
   return {
     northEast: {
       lat: Math.min(90, north + latPadding),
-      lng: Math.min(180, east + lngPadding)
+      lng: Math.min(180, east + lngPadding),
     },
     southWest: {
       lat: Math.max(-90, south - latPadding),
-      lng: Math.max(-180, west - lngPadding)
-    }
+      lng: Math.max(-180, west - lngPadding),
+    },
   };
 }
 
-// 加载聚合数据
 async function loadClusterData() {
   const requestToken = ++activeClusterRequestToken;
   try {
     const currentZoom = mapStore.zoom;
 
     if (currentZoom >= CLUSTER_ZOOM_THRESHOLD) {
-      console.log('[Map] zoom >= threshold, clearing clusters, zoom:', currentZoom);
+      console.log(
+        "[Map] zoom >= threshold, clearing clusters, zoom:",
+        currentZoom,
+      );
       clusters.value = [];
       return;
     }
 
-    // 获取地图视野边界
     if (!amapRef.value) {
-      console.log('[Map] amapRef not ready');
+      console.log("[Map] amapRef not ready");
       return;
     }
 
     const bounds = getMapBounds();
-    console.log('[Map] getBounds result:', bounds);
+    console.log("[Map] getBounds result:", bounds);
 
     if (!bounds) {
-      console.log('[Map] No bounds available, using default');
+      console.log("[Map] No bounds available, using default");
       const center = extractCoordinates(mapStore.center);
       if (!center) return;
 
       const defaultBounds = {
-        northEast: { lat: center.latitude + 0.05, lng: center.longitude + 0.05 },
-        southWest: { lat: center.latitude - 0.05, lng: center.longitude - 0.05 }
+        northEast: {
+          lat: center.latitude + 0.05,
+          lng: center.longitude + 0.05,
+        },
+        southWest: {
+          lat: center.latitude - 0.05,
+          lng: center.longitude - 0.05,
+        },
       };
 
       const response = await mapApi.getClusterData(
         defaultBounds.northEast,
         defaultBounds.southWest,
-        currentZoom
+        currentZoom,
       );
 
       const data = response?.data ?? response;
-      console.log('[Map] cluster API response:', data);
+      console.log("[Map] cluster API response:", data);
       if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
         clusters.value = data;
-        console.log('[Map] clusters loaded with default bounds:', clusters.value.length);
+        console.log(
+          "[Map] clusters loaded with default bounds:",
+          clusters.value.length,
+        );
       }
       return;
     }
@@ -4454,14 +4904,18 @@ async function loadClusterData() {
       const response = await mapApi.getClusterData(
         bounds.northEast,
         bounds.southWest,
-        currentZoom
+        currentZoom,
       );
 
       const data = response?.data ?? response;
-      console.log('[Map] cluster API response:', data);
+      console.log("[Map] cluster API response:", data);
       if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
         clusters.value = data;
-        console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
+        console.log(
+          "[Map] clusters loaded:",
+          clusters.value.length,
+          clusters.value,
+        );
       }
       return;
     }
@@ -4470,61 +4924,61 @@ async function loadClusterData() {
     const response = await mapApi.getClusterData(
       paddedBounds.northEast,
       paddedBounds.southWest,
-      currentZoom
+      currentZoom,
     );
 
     const data = response?.data ?? response;
-    console.log('[Map] cluster API response:', data);
+    console.log("[Map] cluster API response:", data);
     if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
       clusters.value = data;
-      console.log('[Map] clusters loaded:', clusters.value.length, clusters.value);
+      console.log(
+        "[Map] clusters loaded:",
+        clusters.value.length,
+        clusters.value,
+      );
     }
   } catch (error) {
     if (requestToken === activeClusterRequestToken) {
       clusters.value = [];
     }
-    console.error('加载聚合数据失败:', error);
+    console.error("加载聚合数据失败:", error);
   }
 }
 
-// 获取地图边界
 function getMapBounds() {
   if (!amapRef.value) return null;
   return amapRef.value.getBounds();
 }
 
-// 点击聚合气泡
 function handleClusterClick({ cluster, latitude, longitude, count }) {
-  console.log('[Map] cluster clicked:', cluster, count);
+  console.log("[Map] cluster clicked:", cluster, count);
 
-  // 放大地图并移动到聚合中心
   const currentZoom = mapStore.zoom;
   const newZoom = Math.min(currentZoom + 2, 18);
 
   mapStore.updateCenter(latitude, longitude);
   mapStore.updateZoom(newZoom);
 
-  // 延迟重新加载数据
   setTimeout(() => {
     loadStories();
     loadClusterData();
   }, 300);
 }
 
-// 加载精选推荐
 async function loadFeaturedStories() {
   try {
     const res = await storyApi.getFeaturedStories();
     const data = res?.data ?? res;
     const list = data?.stories ?? [];
-    featuredStories.value = list.map((s) => normalizeStoryForMap(s)).filter(Boolean);
+    featuredStories.value = list
+      .map((s) => normalizeStoryForMap(s))
+      .filter(Boolean);
   } catch (error) {
-    console.error('加载精选推荐失败:', error);
+    console.error("加载精选推荐失败:", error);
     featuredStories.value = [];
   }
 }
 
-// 加载推荐流
 async function loadRecommendationFeed(reset = true) {
   if (reset) {
     feedPage.value = 1;
@@ -4532,14 +4986,16 @@ async function loadRecommendationFeed(reset = true) {
     feedLoading.value = true;
   }
   try {
-    const center = extractCoordinates(mapStore.center) || extractCoordinates(mapStore.userLocation);
+    const center =
+      extractCoordinates(mapStore.center) ||
+      extractCoordinates(mapStore.userLocation);
     const lat = center?.latitude;
     const lng = center?.longitude;
     const res = await mapApi.getRecommendationFeed({
       lat,
       lng,
       page: feedPage.value,
-      limit: 20
+      limit: 20,
     });
     const data = res?.data ?? res;
     const list = data?.stories ?? [];
@@ -4553,7 +5009,7 @@ async function loadRecommendationFeed(reset = true) {
     }
     void hydrateStoryLocations(normalized);
   } catch (error) {
-    console.error('加载推荐流失败:', error);
+    console.error("加载推荐流失败:", error);
     if (reset) feedStories.value = [];
   } finally {
     if (reset) feedLoading.value = false;
@@ -4565,12 +5021,14 @@ async function loadMoreFeed() {
   feedLoadingMore.value = true;
   feedPage.value += 1;
   try {
-    const center = extractCoordinates(mapStore.center) || extractCoordinates(mapStore.userLocation);
+    const center =
+      extractCoordinates(mapStore.center) ||
+      extractCoordinates(mapStore.userLocation);
     const res = await mapApi.getRecommendationFeed({
       lat: center?.latitude,
       lng: center?.longitude,
       page: feedPage.value,
-      limit: 20
+      limit: 20,
     });
     const data = res?.data ?? res;
     const list = data?.stories ?? [];
@@ -4579,23 +5037,21 @@ async function loadMoreFeed() {
     feedStories.value = [...feedStories.value, ...normalized];
     void hydrateStoryLocations(normalized);
   } catch (error) {
-    console.error('加载更多失败:', error);
+    console.error("加载更多失败:", error);
     feedPage.value -= 1;
   } finally {
     feedLoadingMore.value = false;
   }
 }
 
-// 标记点击事件
 function handleMarkerClick(data) {
   const { story, screenX, screenY } = data;
   openStoryModal(story, 0, {
     directOpen: true,
-    startPosition: { x: screenX, y: screenY }
+    startPosition: { x: screenX, y: screenY },
   });
 }
 
-// 关闭故事弹窗
 function closeStoryModal() {
   clearTimeout(storyOpenTimer);
   storyOpenTimer = null;
@@ -4603,11 +5059,10 @@ function closeStoryModal() {
   selectedStory.value = null;
 }
 
-// 地图移动事件
 function handleMapMove(event) {
   const center = extractCoordinates(event);
   if (!center) {
-    console.warn('[Map] Skip invalid map move event:', event);
+    console.warn("[Map] Skip invalid map move event:", event);
     return;
   }
 
@@ -4622,7 +5077,6 @@ function handleMapMove(event) {
     }
   }
 
-  // 防抖加载
   clearTimeout(loadTimer);
   loadTimer = setTimeout(() => {
     loadStories();
@@ -4634,14 +5088,20 @@ let loadTimer = null;
 let suppressMapReloadUntil = 0;
 
 function extractCoordinates(location) {
-  if (!location || typeof location !== 'object') {
+  if (!location || typeof location !== "object") {
     return null;
   }
 
-  const latitude = [location.latitude, location.lat, Array.isArray(location.coordinates) ? location.coordinates[1] : undefined]
-    .find((value) => Number.isFinite(Number(value)));
-  const longitude = [location.longitude, location.lng, Array.isArray(location.coordinates) ? location.coordinates[0] : undefined]
-    .find((value) => Number.isFinite(Number(value)));
+  const latitude = [
+    location.latitude,
+    location.lat,
+    Array.isArray(location.coordinates) ? location.coordinates[1] : undefined,
+  ].find((value) => Number.isFinite(Number(value)));
+  const longitude = [
+    location.longitude,
+    location.lng,
+    Array.isArray(location.coordinates) ? location.coordinates[0] : undefined,
+  ].find((value) => Number.isFinite(Number(value)));
 
   if (latitude === undefined || longitude === undefined) {
     return null;
@@ -4649,27 +5109,30 @@ function extractCoordinates(location) {
 
   return {
     latitude: Number(latitude),
-    longitude: Number(longitude)
+    longitude: Number(longitude),
   };
 }
 
 function normalizeStoryForMap(story, fallbackLocation = null) {
-  if (!story || typeof story !== 'object') {
+  if (!story || typeof story !== "object") {
     return null;
   }
 
-  const coords = extractCoordinates(story.location)
-    || extractCoordinates(story)
-    || extractCoordinates(fallbackLocation);
+  const coords =
+    extractCoordinates(story.location) ||
+    extractCoordinates(story) ||
+    extractCoordinates(fallbackLocation);
 
   if (!coords) {
-    console.warn('[Map] Skip story with invalid coordinates:', story);
+    console.warn("[Map] Skip story with invalid coordinates:", story);
     return null;
   }
 
   const author = resolveStoryAuthor(story);
   const nextLikeCount = Number(story.likeCount ?? story.likes ?? 0);
-  const normalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+  const normalizedLikeCount = Number.isFinite(nextLikeCount)
+    ? nextLikeCount
+    : 0;
   const normalizedStoryId = normalizeStoryIdKey(story.id ?? story.storyId);
 
   if (!normalizedStoryId) {
@@ -4685,42 +5148,51 @@ function normalizeStoryForMap(story, fallbackLocation = null) {
     username: author.username,
     avatar: author.avatar,
     author,
-    locationName: pickLocationText([
-      story.locationName,
-      story.location?.name,
-      story.location?.address
-    ], false),
-    location: buildNormalizedStoryLocation(story, coords, fallbackLocation)
+    locationName: pickLocationText(
+      [story.locationName, story.location?.name, story.location?.address],
+      false,
+    ),
+    location: buildNormalizedStoryLocation(story, coords, fallbackLocation),
   };
 }
 
 function normalizeUserPanelStory(item, fallbackAuthor = null) {
-  if (!item || typeof item !== 'object') {
+  if (!item || typeof item !== "object") {
     return null;
   }
 
-  const nextBaseStory = item.story && typeof item.story === 'object'
-    ? item.story
-    : item;
-  if (!nextBaseStory || typeof nextBaseStory !== 'object') {
+  const nextBaseStory =
+    item.story && typeof item.story === "object" ? item.story : item;
+  if (!nextBaseStory || typeof nextBaseStory !== "object") {
     return null;
   }
 
   const nextAuthor = resolveStoryAuthor(nextBaseStory, fallbackAuthor);
   const nextCoords = extractCoordinates(nextBaseStory.location);
-  const nextLikeCount = Number(nextBaseStory.likeCount ?? nextBaseStory.likes ?? 0);
-  const nextNormalizedLikeCount = Number.isFinite(nextLikeCount) ? nextLikeCount : 0;
+  const nextLikeCount = Number(
+    nextBaseStory.likeCount ?? nextBaseStory.likes ?? 0,
+  );
+  const nextNormalizedLikeCount = Number.isFinite(nextLikeCount)
+    ? nextLikeCount
+    : 0;
   const nextFavoriteCount = Number(nextBaseStory.favoriteCount ?? 0);
-  const nextNormalizedFavoriteCount = Number.isFinite(nextFavoriteCount) ? nextFavoriteCount : 0;
-  const normalizedStoryId = normalizeStoryIdKey(nextBaseStory.id ?? item.storyId ?? item.id);
+  const nextNormalizedFavoriteCount = Number.isFinite(nextFavoriteCount)
+    ? nextFavoriteCount
+    : 0;
+  const normalizedStoryId = normalizeStoryIdKey(
+    nextBaseStory.id ?? item.storyId ?? item.id,
+  );
   if (!normalizedStoryId) {
     return null;
   }
-  const nextLocationName = pickLocationText([
-    nextBaseStory.locationName,
-    nextBaseStory.location?.name,
-    nextBaseStory.location?.address
-  ], false);
+  const nextLocationName = pickLocationText(
+    [
+      nextBaseStory.locationName,
+      nextBaseStory.location?.name,
+      nextBaseStory.location?.address,
+    ],
+    false,
+  );
 
   return {
     ...nextBaseStory,
@@ -4734,9 +5206,8 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
     avatar: nextAuthor.avatar,
     author: nextAuthor,
     locationName: nextLocationName,
-    location: buildNormalizedStoryLocation(nextBaseStory, nextCoords)
+    location: buildNormalizedStoryLocation(nextBaseStory, nextCoords),
   };
-
 }
 
 async function hydrateStoryLocations(stories = []) {
@@ -4747,22 +5218,31 @@ async function hydrateStoryLocations(stories = []) {
       })
     : [];
 
-  await Promise.allSettled(targets.map(async (story) => {
-    const coords = extractCoordinates(story.location);
-    if (!coords) {
-      return;
-    }
+  await Promise.allSettled(
+    targets.map(async (story) => {
+      const coords = extractCoordinates(story.location);
+      if (!coords) {
+        return;
+      }
 
-    const resolvedLocation = await reverseGeocodeLocationDetail(coords.latitude, coords.longitude);
-    story.location = buildNormalizedStoryLocation(story, coords, resolvedLocation);
+      const resolvedLocation = await reverseGeocodeLocationDetail(
+        coords.latitude,
+        coords.longitude,
+      );
+      story.location = buildNormalizedStoryLocation(
+        story,
+        coords,
+        resolvedLocation,
+      );
 
-    if (!story.locationName) {
-      story.locationName = pickLocationText([
-        resolvedLocation?.name,
-        resolvedLocation?.address
-      ], false);
-    }
-  }));
+      if (!story.locationName) {
+        story.locationName = pickLocationText(
+          [resolvedLocation?.name, resolvedLocation?.address],
+          false,
+        );
+      }
+    }),
+  );
 }
 
 function extractStoriesFromResponse(response) {
@@ -4770,20 +5250,23 @@ function extractStoriesFromResponse(response) {
     response?.data?.stories,
     response?.stories,
     Array.isArray(response?.data) ? response.data : null,
-    Array.isArray(response) ? response : null
+    Array.isArray(response) ? response : null,
   ];
 
   return candidates.find(Array.isArray) ?? null;
 }
 
 function normalizeRandomWalkResponse(response) {
-  const candidates = [response, response?.data, response?.data?.data].filter(Boolean);
+  const candidates = [response, response?.data, response?.data?.data].filter(
+    Boolean,
+  );
 
   for (const candidate of candidates) {
     const story = candidate.story || candidate.data?.story || null;
-    const coords = extractCoordinates(candidate.location)
-      || extractCoordinates(candidate.data?.location)
-      || extractCoordinates(story?.location);
+    const coords =
+      extractCoordinates(candidate.location) ||
+      extractCoordinates(candidate.data?.location) ||
+      extractCoordinates(story?.location);
 
     if (story && coords) {
       const normalizedStory = normalizeStoryForMap(story, coords);
@@ -4793,7 +5276,7 @@ function normalizeRandomWalkResponse(response) {
 
       return {
         story: normalizedStory,
-        coords
+        coords,
       };
     }
   }
@@ -4801,31 +5284,29 @@ function normalizeRandomWalkResponse(response) {
   return null;
 }
 
-// 随机漫步
 async function handleRandomWalk() {
   randomWalking.value = true;
   try {
-    const center = extractCoordinates(mapStore.center) || extractCoordinates(mapStore.userLocation);
+    const center =
+      extractCoordinates(mapStore.center) ||
+      extractCoordinates(mapStore.userLocation);
     const originLatitude = center?.latitude ?? 39.9;
     const originLongitude = center?.longitude ?? 116.4;
     const response = await mapApi.randomWalk(originLatitude, originLongitude);
-    console.log('随机漫步响应:', response);
-    
-    // 适配后端响应格式: { code, data: { location, story } }
+    console.log("随机漫步响应:", response);
+
     const normalized = normalizeRandomWalkResponse(response);
     const { story, coords } = normalized || {};
     if (!normalized) {
-      console.error('random walk response format error:', response);
-      showToast('随机漫步返回数据格式错误', 'error');
+      console.error("random walk response format error:", response);
+      showToast("随机漫步返回数据格式错误", "error");
       return;
     }
 
-    // 后端可能返回 latitude/longitude 为 null，需要从 story 中提取位置
     let nextLatitude = coords.latitude;
     let nextLongitude = coords.longitude;
-    
+
     if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
-      // 如果 location 为空，尝试从 story.location 获取
       if (story.location) {
         nextLatitude = Number(story.location.lat ?? story.location.latitude);
         nextLongitude = Number(story.location.lng ?? story.location.longitude);
@@ -4833,51 +5314,44 @@ async function handleRandomWalk() {
     }
 
     if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
-      console.error('随机漫步返回的位置为空:', coords, story);
-      showToast('随机漫步返回的位置信息为空', 'error');
+      console.error("随机漫步返回的位置为空:", coords, story);
+      showToast("随机漫步返回的位置信息为空", "error");
       return;
     }
 
     const location = {
       latitude: nextLatitude,
-      longitude: nextLongitude
+      longitude: nextLongitude,
     };
-    
-    // 更新中心位置
+
     mapStore.updateCenter(nextLatitude, nextLongitude);
-    // 自动缩放到合适的级别（15级适合查看街景）
     mapStore.updateZoom(15);
-    // 等待地图动画完成后再展开故事牌面
     setTimeout(() => {
       openStoryModal(story);
-    }, 800); // 等待地图移动和缩放动画完成
+    }, 800);
   } catch (error) {
-    console.error('随机漫步失败:', error);
-    showToast('随机漫步失败，请重试', 'error');
+    console.error("随机漫步失败:", error);
+    showToast("随机漫步失败，请重试", "error");
   } finally {
     randomWalking.value = false;
   }
   isDockExpanded.value = false;
 }
 
-// 预览图片
 function handlePreviewImage({ index, images }) {
-  // TODO: 实现图片预览器
-  console.log('预览图片:', index, images);
+  console.log("预览图片:", index, images);
 }
 
-// 打开精选故事
 function openFeaturedStory(story) {
   openStoryFromCollection(story);
 }
 
-// 处理点赞
 function handleStoryLike({ storyId, liked, likeCount }) {
   const currentLikeCount = Number(
-    selectedStory.value?.likeCount
-    ?? selectedStory.value?.likes
-    ?? storyLikeCount.value
-    ?? 0
+    selectedStory.value?.likeCount ??
+      selectedStory.value?.likes ??
+      storyLikeCount.value ??
+      0,
   );
   const nextLikeCount = Number.isFinite(Number(likeCount))
     ? Number(likeCount)
@@ -4893,7 +5367,7 @@ function handleStoryLike({ storyId, liked, likeCount }) {
   });
 
   const likesIndex = likesList.value.findIndex(
-    (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(storyId)
+    (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(storyId),
   );
   if (!liked && likesIndex > -1) {
     likesList.value.splice(likesIndex, 1);
@@ -4908,21 +5382,20 @@ function handleStoryLike({ storyId, liked, likeCount }) {
   }
 }
 
-// 处理收藏
 function handleStoryFavorite({ storyId, favorited, favoriteCount }) {
   storyIsFavorited.value = favorited;
-  if (typeof favoriteCount === 'number') {
+  if (typeof favoriteCount === "number") {
     storyFavoriteCount.value = Math.max(0, favoriteCount);
   }
   syncStoryAcrossCollections(storyId, (story) => {
     story.isFavorited = favorited;
-    if (typeof favoriteCount === 'number') {
+    if (typeof favoriteCount === "number") {
       story.favoriteCount = favoriteCount;
     }
   });
 
   const favoritesIndex = favoritesList.value.findIndex(
-    (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(storyId)
+    (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(storyId),
   );
   if (!favorited && favoritesIndex > -1) {
     favoritesList.value.splice(favoritesIndex, 1);
@@ -4930,7 +5403,7 @@ function handleStoryFavorite({ storyId, favorited, favoriteCount }) {
     const normalizedStory = normalizeUserPanelStory(selectedStory.value);
     if (normalizedStory) {
       normalizedStory.isFavorited = true;
-      if (typeof favoriteCount === 'number') {
+      if (typeof favoriteCount === "number") {
         normalizedStory.favoriteCount = favoriteCount;
       }
       favoritesList.value.unshift(normalizedStory);
@@ -4938,7 +5411,6 @@ function handleStoryFavorite({ storyId, favorited, favoriteCount }) {
   }
 }
 
-// 处理评论
 function handleStoryComment({ storyId, comment }) {
   const normalizedComment = normalizeStoryComment(comment);
   if (!normalizedComment) {
@@ -4947,41 +5419,43 @@ function handleStoryComment({ storyId, comment }) {
 
   syncStoryAcrossCollections(storyId, (story) => {
     const nextComments = normalizeStoryComments(story.comments);
-    const exists = nextComments.some((item) => item.id === normalizedComment.id);
-    story.comments = exists ? nextComments : [normalizedComment, ...nextComments];
+    const exists = nextComments.some(
+      (item) => item.id === normalizedComment.id,
+    );
+    story.comments = exists
+      ? nextComments
+      : [normalizedComment, ...nextComments];
     story.commentCount = story.comments.length;
   });
 }
 
-// 处理举报
 async function handleStoryReport({ storyId, reason, description }) {
-  // 检查是否登录（游客不能举报）
   if (!userStore.isLoggedIn || userStore.isGuest) {
-    showToast('请先登录后再举报', 'warning');
+    showToast("请先登录后再举报", "warning");
     return;
   }
 
   try {
-    await reportApi.create('story', storyId, `${reason}: ${description}`);
-    showToast('举报已提交，我们会尽快处理', 'success');
+    await reportApi.create("story", storyId, `${reason}: ${description}`);
+    showToast("举报已提交，我们会尽快处理", "success");
   } catch (error) {
-    console.error('举报失败:', error);
-    const message = error.message || '举报失败，请重试';
-    showToast(message, 'error');
+    console.error("举报失败:", error);
+    const message = error.message || "举报失败，请重试";
+    showToast(message, "error");
     throw new Error(message);
   }
 }
 
-// 子组件或外部触发主题变更时同步
 function handleThemeChange(theme) {
   mapTheme.value = theme;
-  localStorage.setItem('mapTheme', theme);
-  window.dispatchEvent(new CustomEvent('map-theme-change', {
-    detail: { theme }
-  }));
+  localStorage.setItem("mapTheme", theme);
+  window.dispatchEvent(
+    new CustomEvent("map-theme-change", {
+      detail: { theme },
+    }),
+  );
 }
 
-// 获取用户位置
 function getUserLocation() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
@@ -4990,19 +5464,19 @@ function getUserLocation() {
         mapStore.setUserLocation(latitude, longitude);
         mapStore.updateCenter(latitude, longitude);
         nearbyPinnedCenterLabel.value = null;
-        nearbyCenterLabel.value = currentUserLocationLabel.value || '当前位置';
+        nearbyCenterLabel.value = currentUserLocationLabel.value || "当前位置";
         void refreshCurrentUserLocationLabel(nearbyCenterLabel.value);
         scheduleNearbyCenterLabelRefresh(nearbyCenterLabel.value, 80);
       },
       (error) => {
-        console.error('获取位置失败:', error);
-      }
+        console.error("获取位置失败:", error);
+      },
     );
   }
 }
 
 function handleDocumentClick(event) {
-  const dockContainer = document.querySelector('.dock-container');
+  const dockContainer = document.querySelector(".dock-container");
   const target = event?.target;
 
   if (!dockContainer || !(target instanceof Node)) {
@@ -5016,7 +5490,6 @@ function handleDocumentClick(event) {
 
 let themeAutoCheckInterval = null;
 
-// 加载通知数据
 async function loadNotifications() {
   if (!userStore.isLoggedIn || userStore.isGuest) return;
 
@@ -5024,7 +5497,7 @@ async function loadNotifications() {
   try {
     const [listRes, countRes] = await Promise.all([
       notificationApi.getMyNotifications({ page: 1, limit: 10 }),
-      notificationApi.getUnreadCount()
+      notificationApi.getUnreadCount(),
     ]);
 
     const listData = listRes?.data ?? listRes;
@@ -5033,36 +5506,35 @@ async function loadNotifications() {
     notifications.value = listData?.notifications || [];
     notificationUnreadCount.value = countData?.unreadCount || 0;
   } catch (error) {
-    console.error('加载通知失败:', error);
+    console.error("加载通知失败:", error);
   } finally {
     notificationsLoading.value = false;
   }
 }
 
-// 关闭通知栏并标记已访问
 function closeNotificationPanel() {
   showNotificationPanel.value = false;
 }
 
-// 打开消息面板
 function openMsgPanel() {
   showNotificationPanel.value = true;
-  if (notificationTab.value === 'messages') {
+  if (notificationTab.value === "messages") {
     loadNotifications();
   } else {
     loadAnnouncements();
   }
 }
 
-// 切换通知面板标签（点击即视为已读该栏）
 function switchNotificationTab(tab) {
   notificationTab.value = tab;
-  if (tab === 'messages') {
-    // 点击消息tab → 消息标记已读
+  if (tab === "messages") {
     if (notificationUnreadCount.value > 0) {
       notificationApi.markAllRead().catch(() => {});
       notificationUnreadCount.value = 0;
-      notifications.value = notifications.value.map(n => ({ ...n, isRead: true }));
+      notifications.value = notifications.value.map((n) => ({
+        ...n,
+        isRead: true,
+      }));
     }
     loadNotifications();
   } else {
@@ -5070,122 +5542,109 @@ function switchNotificationTab(tab) {
   }
 }
 
-// 加载公告数据（加载后若当前在公告tab则自动标记已读）
 async function loadAnnouncements() {
   announcementsLoading.value = true;
   try {
     const res = await mapApi.getAnnouncements();
     const data = res?.data ?? res;
     announcements.value = data?.announcements || [];
-    // 若当前正在查看公告tab，加载完成后标记已读
-    if (notificationTab.value === 'announcements') {
+    if (notificationTab.value === "announcements") {
       markAnnouncementsAsRead();
     }
   } catch (error) {
-    console.error('加载公告失败:', error);
+    console.error("加载公告失败:", error);
   } finally {
     announcementsLoading.value = false;
   }
 }
 
-// 标记所有通知已读
 async function markAllNotificationsRead() {
   try {
     await notificationApi.markAllRead();
     notificationUnreadCount.value = 0;
-    notifications.value = notifications.value.map(n => ({ ...n, isRead: true }));
+    notifications.value = notifications.value.map((n) => ({
+      ...n,
+      isRead: true,
+    }));
   } catch (error) {
-    console.error('标记已读失败:', error);
+    console.error("标记已读失败:", error);
   }
 }
 
-// 清空所有通知
 async function clearAllNotifications() {
-  if (!(await showConfirm('确定要清空所有通知吗？此操作不可恢复。'))) return;
+  if (!(await showConfirm("确定要清空所有通知吗？此操作不可恢复。"))) return;
   try {
     await notificationApi.clearAll();
     notifications.value = [];
     notificationUnreadCount.value = 0;
   } catch (error) {
-    console.error('清空通知失败:', error);
+    console.error("清空通知失败:", error);
   }
 }
 
-// ========== 红点状态管理 ==========
-
-// 消息未读数（后端返回）
-// 公告已读状态：记录用户"已看过的公告ID列表"（用数组确保Vue响应式）
 const readAnnouncementIds = ref([]);
 
-// 标记所有公告为已读
 function markAnnouncementsAsRead() {
-  announcements.value.forEach(a => {
+  announcements.value.forEach((a) => {
     if (!readAnnouncementIds.value.includes(a.id)) {
       readAnnouncementIds.value.push(a.id);
     }
   });
 }
 
-// 消息是否有未读
 const hasUnreadMessages = computed(() => notificationUnreadCount.value > 0);
 
-// 公告是否有未读（存在未在 readAnnouncementIds 中的公告）
 const hasUnreadAnnouncements = computed(() => {
-  return announcements.value.some(a => !readAnnouncementIds.value.includes(a.id));
+  return announcements.value.some(
+    (a) => !readAnnouncementIds.value.includes(a.id),
+  );
 });
 
-// msg按钮是否显示红点（消息未读 OR 公告未读）
-const hasNotificationBadge = computed(() => hasUnreadMessages.value || hasUnreadAnnouncements.value);
+const hasNotificationBadge = computed(
+  () => hasUnreadMessages.value || hasUnreadAnnouncements.value,
+);
 
-// 后台预加载：仅获取未读通知数（不加载列表，轻量）
 async function prefetchUnreadCount() {
   if (!userStore.isLoggedIn || userStore.isGuest) return;
   try {
     const res = await notificationApi.getUnreadCount();
     const data = res?.data ?? res;
     notificationUnreadCount.value = data?.unreadCount || 0;
-  } catch (error) {
-    // 静默失败
-  }
+  } catch (error) {}
 }
 
 onMounted(() => {
   getUserLocation();
   loadStories();
-  // 延迟加载聚合数据，等待地图初始化完成
   setTimeout(loadClusterData, 1000);
   themeAutoCheckInterval = setInterval(() => {
     minuteTicker.value += 1;
   }, 60000);
 
-  // 添加全局点击事件来关闭 Dock 菜单
-  document.addEventListener('click', handleDocumentClick);
-  window.addEventListener('resize', scheduleWelcomeTextFit);
+  document.addEventListener("click", handleDocumentClick);
+  window.addEventListener("resize", scheduleWelcomeTextFit);
   scheduleWelcomeTextFit();
   if (document.fonts?.ready) {
     document.fonts.ready.then(scheduleWelcomeTextFit).catch(() => {});
   }
-  // --- 新增：控制欢迎界面消失的定时器 ---
   welcomeOverlayTimer = window.setTimeout(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
 
-  // --- 通知栏：有未读消息或新公告时自动弹出 ---
   if (userStore.isLoggedIn && !userStore.isGuest) {
-    // 并行加载通知和公告，任一有新内容则弹出
     const loadTasks = [loadNotifications(), loadAnnouncements()];
     Promise.all(loadTasks).then(() => {
-      const hasUnread = notificationUnreadCount.value > 0 || hasUnreadAnnouncements.value;
+      const hasUnread =
+        notificationUnreadCount.value > 0 || hasUnreadAnnouncements.value;
       if (hasUnread) {
-        // 优先展示有新内容的tab，并标记已读
         if (notificationUnreadCount.value > 0) {
-          notificationTab.value = 'messages';
+          notificationTab.value = "messages";
           if (notificationUnreadCount.value > 0) {
             notificationApi.markAllRead().catch(() => {});
             notificationUnreadCount.value = 0;
           }
         } else {
-          notificationTab.value = 'announcements';
+          notificationTab.value = "announcements";
           markAnnouncementsAsRead();
         }
         showNotificationPanel.value = true;
@@ -5195,8 +5654,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleDocumentClick);
-  window.removeEventListener('resize', scheduleWelcomeTextFit);
+  document.removeEventListener("click", handleDocumentClick);
+  window.removeEventListener("resize", scheduleWelcomeTextFit);
   clearNearbySearchTimer();
   clearNearbyCenterLabelTimer();
   activeNearbySearchToken += 1;
@@ -5213,8 +5672,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-
-/* --- 欢迎语遮罩层样式（电影感落日版） --- */
 .welcome-overlay {
   position: absolute;
   top: 0;
@@ -5225,8 +5682,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 模拟落日余晖：从暮霭紫过渡到落日橘，低饱和度更显宁静高级 */
-  background: linear-gradient(135deg, #4A4063 0%, #B85B56 50%, #E08E6D 100%);
+  background: linear-gradient(135deg, #4a4063 0%, #b85b56 50%, #e08e6d 100%);
 }
 
 .welcome-content {
@@ -5235,28 +5691,26 @@ onUnmounted(() => {
 }
 
 .welcome-text {
-  /* 字体栈：优先尝试 Matisse-EB，若无则优雅降级到加粗的华文中宋 */
-  font-family: 'Matisse-EB', 'FOT-MatissePro-EB', 'STZhongsong', '华文中宋', 'Songti SC', serif;
-  font-size: 48px; /* 字号再放大，配合衬线体体现张力 */
-  font-weight: 900; /* 极致加粗 */
+  font-family:
+    "Matisse-EB", "FOT-MatissePro-EB", "STZhongsong", "华文中宋", "Songti SC",
+    serif;
+  font-size: 48px;
+  font-weight: 900;
   letter-spacing: 4px;
   line-height: 1.5;
   margin: 0;
-  
-  /* 摒弃花哨渐变，使用纯净的米白色，带一点点极柔和的暗影增加层次 */
-  color: #FDFDFD;
+
+  color: #fdfdfd;
   text-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-  
-  /* 电影字幕般的缓慢浮现效果 */
+
   display: inline-block;
   opacity: 0;
   transform: translateY(15px) scale(var(--welcome-text-scale, 1));
   transform-origin: center center;
   animation: textCinematicShow 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-  animation-delay: 0.2s; /* 略微延迟，等背景出来后再出字幕 */
+  animation-delay: 0.2s;
 }
 
-/* 纯净的浮现动画 */
 @keyframes textCinematicShow {
   to {
     opacity: 1;
@@ -5264,8 +5718,6 @@ onUnmounted(() => {
   }
 }
 
-/* --- 丝滑进退场动画 --- */
-/* 增加动画时长，让退场像坠入梦境一样缓慢散开 */
 .welcome-fade-enter-active,
 .welcome-fade-leave-active {
   transition: all 1.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -5274,7 +5726,7 @@ onUnmounted(() => {
 .welcome-fade-enter-from,
 .welcome-fade-leave-to {
   opacity: 0;
-  transform: scale(1.04); /* 退场时微微放大 */
+  transform: scale(1.04);
 }
 
 .welcome-overlay {
@@ -5292,17 +5744,41 @@ onUnmounted(() => {
 
 .welcome-overlay__sky {
   background:
-    radial-gradient(circle at 18% 18%, rgba(56, 74, 168, 0.14) 0%, transparent 22%),
-    radial-gradient(circle at 82% 14%, rgba(82, 52, 142, 0.12) 0%, transparent 20%),
-    radial-gradient(circle at 50% 110%, rgba(28, 62, 120, 0.18) 0%, transparent 34%),
+    radial-gradient(
+      circle at 18% 18%,
+      rgba(56, 74, 168, 0.14) 0%,
+      transparent 22%
+    ),
+    radial-gradient(
+      circle at 82% 14%,
+      rgba(82, 52, 142, 0.12) 0%,
+      transparent 20%
+    ),
+    radial-gradient(
+      circle at 50% 110%,
+      rgba(28, 62, 120, 0.18) 0%,
+      transparent 34%
+    ),
     linear-gradient(180deg, #02040b 0%, #060b18 46%, #0b1530 100%);
 }
 
 .welcome-overlay__nebula {
   background:
-    radial-gradient(circle at 24% 28%, rgba(118, 141, 241, 0.09) 0%, transparent 24%),
-    radial-gradient(circle at 76% 32%, rgba(154, 113, 222, 0.08) 0%, transparent 20%),
-    radial-gradient(circle at 50% 72%, rgba(82, 136, 226, 0.08) 0%, transparent 26%);
+    radial-gradient(
+      circle at 24% 28%,
+      rgba(118, 141, 241, 0.09) 0%,
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 76% 32%,
+      rgba(154, 113, 222, 0.08) 0%,
+      transparent 20%
+    ),
+    radial-gradient(
+      circle at 50% 72%,
+      rgba(82, 136, 226, 0.08) 0%,
+      transparent 26%
+    );
   filter: blur(20px);
   opacity: 0.8;
   animation: welcomeNebulaFloat 12s ease-in-out infinite alternate;
@@ -5310,18 +5786,66 @@ onUnmounted(() => {
 
 .welcome-overlay__stars {
   background-image:
-    radial-gradient(circle at 7% 12%, rgba(255, 255, 255, 0.95) 0 1px, transparent 1.6px),
-    radial-gradient(circle at 17% 68%, rgba(255, 244, 201, 0.88) 0 1.3px, transparent 2px),
-    radial-gradient(circle at 24% 22%, rgba(255, 255, 255, 0.78) 0 1px, transparent 1.8px),
-    radial-gradient(circle at 32% 14%, rgba(201, 224, 255, 0.8) 0 1.2px, transparent 2px),
-    radial-gradient(circle at 43% 82%, rgba(255, 244, 201, 0.84) 0 1.3px, transparent 2px),
-    radial-gradient(circle at 54% 18%, rgba(255, 255, 255, 0.78) 0 1px, transparent 1.8px),
-    radial-gradient(circle at 63% 72%, rgba(201, 224, 255, 0.84) 0 1.4px, transparent 2.1px),
-    radial-gradient(circle at 72% 10%, rgba(255, 244, 201, 0.9) 0 1.3px, transparent 2px),
-    radial-gradient(circle at 86% 24%, rgba(255, 255, 255, 0.85) 0 1.1px, transparent 1.8px),
-    radial-gradient(circle at 93% 66%, rgba(201, 224, 255, 0.82) 0 1.4px, transparent 2.2px),
-    radial-gradient(circle at 14% 88%, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.7px),
-    radial-gradient(circle at 84% 86%, rgba(255, 244, 201, 0.82) 0 1.2px, transparent 2px);
+    radial-gradient(
+      circle at 7% 12%,
+      rgba(255, 255, 255, 0.95) 0 1px,
+      transparent 1.6px
+    ),
+    radial-gradient(
+      circle at 17% 68%,
+      rgba(255, 244, 201, 0.88) 0 1.3px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 24% 22%,
+      rgba(255, 255, 255, 0.78) 0 1px,
+      transparent 1.8px
+    ),
+    radial-gradient(
+      circle at 32% 14%,
+      rgba(201, 224, 255, 0.8) 0 1.2px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 43% 82%,
+      rgba(255, 244, 201, 0.84) 0 1.3px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 54% 18%,
+      rgba(255, 255, 255, 0.78) 0 1px,
+      transparent 1.8px
+    ),
+    radial-gradient(
+      circle at 63% 72%,
+      rgba(201, 224, 255, 0.84) 0 1.4px,
+      transparent 2.1px
+    ),
+    radial-gradient(
+      circle at 72% 10%,
+      rgba(255, 244, 201, 0.9) 0 1.3px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 86% 24%,
+      rgba(255, 255, 255, 0.85) 0 1.1px,
+      transparent 1.8px
+    ),
+    radial-gradient(
+      circle at 93% 66%,
+      rgba(201, 224, 255, 0.82) 0 1.4px,
+      transparent 2.2px
+    ),
+    radial-gradient(
+      circle at 14% 88%,
+      rgba(255, 255, 255, 0.72) 0 1px,
+      transparent 1.7px
+    ),
+    radial-gradient(
+      circle at 84% 86%,
+      rgba(255, 244, 201, 0.82) 0 1.2px,
+      transparent 2px
+    );
   opacity: 0.95;
   animation: welcomeStarsPulse 4.8s ease-in-out infinite;
 }
@@ -5343,8 +5867,7 @@ onUnmounted(() => {
   background-clip: text;
   color: transparent;
   text-shadow: none;
-  filter:
-    drop-shadow(0 6px 20px rgba(0, 0, 0, 0.42))
+  filter: drop-shadow(0 6px 20px rgba(0, 0, 0, 0.42))
     drop-shadow(0 0 18px rgba(255, 220, 150, 0.2));
 }
 
@@ -5406,7 +5929,12 @@ onUnmounted(() => {
   max-height: min(90vh, 960px);
   border-radius: 32px;
   border: 1px solid rgba(196, 142, 48, 0.36);
-  background: linear-gradient(160deg, rgba(18, 23, 37, 0.96) 0%, rgba(31, 42, 64, 0.97) 56%, rgba(17, 25, 42, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 23, 37, 0.96) 0%,
+    rgba(31, 42, 64, 0.97) 56%,
+    rgba(17, 25, 42, 0.98) 100%
+  );
   box-shadow:
     0 40px 80px -32px rgba(3, 7, 18, 0.72),
     0 0 0 1px rgba(255, 248, 232, 0.08),
@@ -5439,7 +5967,7 @@ onUnmounted(() => {
 
 .story-sidebar::before,
 .story-sidebar::after {
-  content: '';
+  content: "";
   position: absolute;
   pointer-events: none;
 }
@@ -5449,8 +5977,17 @@ onUnmounted(() => {
   border-radius: 24px;
   border: 1px solid rgba(199, 151, 60, 0.18);
   background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08) 0%, transparent 24%),
-    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.03) 48%, transparent 100%);
+    radial-gradient(
+      circle at top right,
+      rgba(255, 255, 255, 0.08) 0%,
+      transparent 24%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.03) 48%,
+      transparent 100%
+    );
   z-index: 0;
 }
 
@@ -5461,7 +5998,11 @@ onUnmounted(() => {
   opacity: 0;
   transition: opacity 0.26s ease;
   background:
-    radial-gradient(circle at top, rgba(255, 229, 176, 0.12) 0%, transparent 30%),
+    radial-gradient(
+      circle at top,
+      rgba(255, 229, 176, 0.12) 0%,
+      transparent 30%
+    ),
     rgba(8, 11, 19, 0.5);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -5481,7 +6022,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   padding-right: 102px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
 }
 
 .sidebar-tabs {
@@ -5711,7 +6256,10 @@ onUnmounted(() => {
   border-radius: 16px;
   border: 1px solid transparent;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
 .nearby-search-panel__submit,
@@ -5723,7 +6271,11 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .nearby-search-panel__submit:hover:not(:disabled),
@@ -5785,7 +6337,11 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 14px;
   cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
 }
 
 .nearby-search-panel__result:hover {
@@ -5846,7 +6402,6 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
-/* 精选故事卡片 */
 .featured-story-card {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 14px;
@@ -5962,7 +6517,6 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-/* 公告列表 */
 .announcement-list {
   display: flex;
   flex-direction: column;
@@ -6024,14 +6578,28 @@ onUnmounted(() => {
 }
 
 .dock-container {
-  --dock-main-gradient: linear-gradient(135deg, rgba(19, 30, 61, 0.94) 0%, rgba(50, 26, 66, 0.96) 52%, rgba(108, 54, 61, 0.96) 100%);
+  --dock-main-gradient: linear-gradient(
+    135deg,
+    rgba(19, 30, 61, 0.94) 0%,
+    rgba(50, 26, 66, 0.96) 52%,
+    rgba(108, 54, 61, 0.96) 100%
+  );
   --dock-main-shadow: rgba(8, 13, 29, 0.34);
   --dock-main-border: rgba(255, 255, 255, 0.16);
-  --dock-info-bg: linear-gradient(145deg, rgba(8, 12, 25, 0.97) 0%, rgba(17, 24, 45, 0.95) 100%);
+  --dock-info-bg: linear-gradient(
+    145deg,
+    rgba(8, 12, 25, 0.97) 0%,
+    rgba(17, 24, 45, 0.95) 100%
+  );
   --dock-info-border: rgba(255, 230, 186, 0.12);
   --dock-info-kicker: rgba(255, 214, 143, 0.9);
   --dock-info-text: rgba(255, 255, 255, 0.76);
-  --dock-card-surface: linear-gradient(160deg, #f5ead5 0%, #eddcc0 58%, #e6cfad 100%);
+  --dock-card-surface: linear-gradient(
+    160deg,
+    #f5ead5 0%,
+    #eddcc0 58%,
+    #e6cfad 100%
+  );
   --dock-card-border: rgba(181, 132, 42, 0.56);
   --dock-card-frame: rgba(189, 146, 61, 0.44);
   --dock-card-pattern: rgba(147, 111, 48, 0.18);
@@ -6039,7 +6607,11 @@ onUnmounted(() => {
   --dock-card-edge-glow: rgba(233, 193, 114, 0.18);
   --dock-card-order: rgba(27, 33, 52, 0.44);
   --dock-card-subtitle: rgba(27, 33, 52, 0.72);
-  --dock-card-icon-bg: linear-gradient(145deg, rgba(255, 248, 234, 0.9) 0%, rgba(232, 214, 186, 0.82) 100%);
+  --dock-card-icon-bg: linear-gradient(
+    145deg,
+    rgba(255, 248, 234, 0.9) 0%,
+    rgba(232, 214, 186, 0.82) 100%
+  );
   --dock-card-active-border: rgba(255, 239, 192, 0.98);
   --dock-card-active-frame: rgba(236, 190, 96, 0.82);
   --dock-card-active-corner: rgba(228, 176, 66, 0.92);
@@ -6055,14 +6627,28 @@ onUnmounted(() => {
 }
 
 .dock-container.dock-light {
-  --dock-main-gradient: linear-gradient(135deg, rgba(183, 108, 58, 0.94) 0%, rgba(204, 137, 77, 0.97) 48%, rgba(118, 78, 45, 0.94) 100%);
+  --dock-main-gradient: linear-gradient(
+    135deg,
+    rgba(183, 108, 58, 0.94) 0%,
+    rgba(204, 137, 77, 0.97) 48%,
+    rgba(118, 78, 45, 0.94) 100%
+  );
   --dock-main-shadow: rgba(72, 41, 15, 0.28);
   --dock-main-border: rgba(255, 248, 231, 0.34);
-  --dock-info-bg: linear-gradient(145deg, rgba(63, 41, 22, 0.96) 0%, rgba(102, 69, 36, 0.94) 100%);
+  --dock-info-bg: linear-gradient(
+    145deg,
+    rgba(63, 41, 22, 0.96) 0%,
+    rgba(102, 69, 36, 0.94) 100%
+  );
   --dock-info-border: rgba(255, 231, 188, 0.24);
   --dock-info-kicker: rgba(255, 216, 151, 0.96);
   --dock-info-text: rgba(255, 246, 229, 0.82);
-  --dock-card-surface: linear-gradient(160deg, #faefd9 0%, #f0dfbf 54%, #e5c996 100%);
+  --dock-card-surface: linear-gradient(
+    160deg,
+    #faefd9 0%,
+    #f0dfbf 54%,
+    #e5c996 100%
+  );
   --dock-card-border: rgba(194, 139, 39, 0.64);
   --dock-card-frame: rgba(203, 154, 53, 0.5);
   --dock-card-pattern: rgba(155, 101, 34, 0.16);
@@ -6070,21 +6656,39 @@ onUnmounted(() => {
   --dock-card-edge-glow: rgba(241, 199, 114, 0.22);
   --dock-card-order: rgba(64, 43, 21, 0.42);
   --dock-card-subtitle: rgba(64, 43, 21, 0.72);
-  --dock-card-icon-bg: linear-gradient(145deg, rgba(255, 247, 228, 0.9) 0%, rgba(234, 214, 180, 0.82) 100%);
+  --dock-card-icon-bg: linear-gradient(
+    145deg,
+    rgba(255, 247, 228, 0.9) 0%,
+    rgba(234, 214, 180, 0.82) 100%
+  );
   --dock-card-active-border: rgba(255, 245, 213, 1);
   --dock-card-active-frame: rgba(222, 164, 61, 0.88);
   --dock-card-active-corner: rgba(215, 151, 41, 0.96);
 }
 
 .dock-container.dock-dark {
-  --dock-main-gradient: linear-gradient(135deg, rgba(28, 34, 63, 0.96) 0%, rgba(40, 56, 96, 0.96) 48%, rgba(16, 22, 44, 0.98) 100%);
+  --dock-main-gradient: linear-gradient(
+    135deg,
+    rgba(28, 34, 63, 0.96) 0%,
+    rgba(40, 56, 96, 0.96) 48%,
+    rgba(16, 22, 44, 0.98) 100%
+  );
   --dock-main-shadow: rgba(5, 8, 20, 0.42);
   --dock-main-border: rgba(194, 214, 255, 0.18);
-  --dock-info-bg: linear-gradient(145deg, rgba(9, 14, 31, 0.98) 0%, rgba(18, 28, 57, 0.96) 100%);
+  --dock-info-bg: linear-gradient(
+    145deg,
+    rgba(9, 14, 31, 0.98) 0%,
+    rgba(18, 28, 57, 0.96) 100%
+  );
   --dock-info-border: rgba(158, 192, 255, 0.18);
   --dock-info-kicker: rgba(168, 204, 255, 0.92);
   --dock-info-text: rgba(219, 229, 255, 0.78);
-  --dock-card-surface: linear-gradient(160deg, #16213d 0%, #1d2d54 54%, #243865 100%);
+  --dock-card-surface: linear-gradient(
+    160deg,
+    #16213d 0%,
+    #1d2d54 54%,
+    #243865 100%
+  );
   --dock-card-border: rgba(139, 171, 235, 0.28);
   --dock-card-frame: rgba(139, 171, 235, 0.2);
   --dock-card-pattern: rgba(139, 171, 235, 0.16);
@@ -6092,13 +6696,15 @@ onUnmounted(() => {
   --dock-card-edge-glow: rgba(0, 0, 0, 0);
   --dock-card-order: rgba(220, 231, 255, 0.38);
   --dock-card-subtitle: rgba(220, 231, 255, 0.72);
-  --dock-card-icon-bg: linear-gradient(145deg, rgba(27, 42, 79, 0.92) 0%, rgba(39, 59, 108, 0.86) 100%);
+  --dock-card-icon-bg: linear-gradient(
+    145deg,
+    rgba(27, 42, 79, 0.92) 0%,
+    rgba(39, 59, 108, 0.86) 100%
+  );
   --dock-card-active-border: rgba(226, 238, 255, 0.98);
   --dock-card-active-frame: rgba(155, 193, 255, 0.78);
   --dock-card-active-corner: rgba(155, 193, 255, 0.96);
 }
-
-
 
 .dock-container.show-user-sidebar {
   right: calc(320px + 96px);
@@ -6131,7 +6737,10 @@ onUnmounted(() => {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.32s ease, transform 0.46s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.32s ease;
+  transition:
+    opacity 0.32s ease,
+    transform 0.46s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0.32s ease;
   z-index: 210;
 }
 
@@ -6147,7 +6756,13 @@ onUnmounted(() => {
   height: 76px;
   border-radius: 24px;
   padding: 0 20px 0 16px;
-  background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.22) 0%, transparent 44%), var(--dock-main-gradient);
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(255, 255, 255, 0.22) 0%,
+      transparent 44%
+    ),
+    var(--dock-main-gradient);
   color: white;
   box-shadow: 0 18px 40px var(--dock-main-shadow);
   cursor: pointer;
@@ -6155,7 +6770,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: flex-start;
   gap: 14px;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
   border: 1px solid var(--dock-main-border);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -6213,12 +6830,21 @@ onUnmounted(() => {
 }
 
 .dock-card-info::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at top right, rgba(255, 214, 143, 0.12) 0%, transparent 28%),
-    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.04) 48%, transparent 100%);
+    radial-gradient(
+      circle at top right,
+      rgba(255, 214, 143, 0.12) 0%,
+      transparent 28%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.04) 48%,
+      transparent 100%
+    );
   pointer-events: none;
 }
 
@@ -6267,7 +6893,8 @@ onUnmounted(() => {
   opacity: 0;
   cursor: pointer;
   pointer-events: auto;
-  transform: translate3d(var(--spread-x), var(--spread-y), 0) rotate(var(--spread-rotate));
+  transform: translate3d(var(--spread-x), var(--spread-y), 0)
+    rotate(var(--spread-rotate));
   transform-origin: center bottom;
   z-index: 12;
 }
@@ -6291,7 +6918,8 @@ onUnmounted(() => {
   color: var(--card-ink);
   cursor: pointer;
   overflow: visible;
-  transform: translate3d(var(--peek-x), var(--peek-y), 0) rotate(var(--peek-rotate));
+  transform: translate3d(var(--peek-x), var(--peek-y), 0)
+    rotate(var(--peek-rotate));
   transform-origin: center bottom;
   opacity: 0;
   pointer-events: auto;
@@ -6312,35 +6940,63 @@ onUnmounted(() => {
 }
 
 .dock-card::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 12px;
   border-radius: 22px;
   border: 1px solid var(--dock-card-frame);
   background:
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.2) 0 18%, transparent 18.5%),
-    radial-gradient(circle at center, transparent 0 39%, var(--dock-card-pattern) 39.5%, transparent 40.5%),
-    linear-gradient(0deg, transparent calc(50% - 1px), var(--dock-card-pattern) 50%, transparent calc(50% + 1px)),
-    linear-gradient(90deg, transparent calc(50% - 1px), var(--dock-card-pattern) 50%, transparent calc(50% + 1px));
+    radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.2) 0 18%,
+      transparent 18.5%
+    ),
+    radial-gradient(
+      circle at center,
+      transparent 0 39%,
+      var(--dock-card-pattern) 39.5%,
+      transparent 40.5%
+    ),
+    linear-gradient(
+      0deg,
+      transparent calc(50% - 1px),
+      var(--dock-card-pattern) 50%,
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(
+      90deg,
+      transparent calc(50% - 1px),
+      var(--dock-card-pattern) 50%,
+      transparent calc(50% + 1px)
+    );
   opacity: 0.65;
   pointer-events: none;
 }
 
 .dock-card::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 24px;
   border-radius: 24px;
   background:
-    radial-gradient(circle at top center, rgba(255, 255, 255, 0.28) 0%, transparent 22%),
-    repeating-linear-gradient(135deg, rgba(147, 111, 48, 0.03) 0 6px, rgba(255, 255, 255, 0.03) 6px 12px);
+    radial-gradient(
+      circle at top center,
+      rgba(255, 255, 255, 0.28) 0%,
+      transparent 22%
+    ),
+    repeating-linear-gradient(
+      135deg,
+      rgba(147, 111, 48, 0.03) 0 6px,
+      rgba(255, 255, 255, 0.03) 6px 12px
+    );
   mix-blend-mode: soft-light;
   pointer-events: none;
 }
 
 .dock-menu.expanded .dock-card {
   opacity: 1;
-  transform: translate3d(var(--spread-x), var(--spread-y), 0) rotate(var(--spread-rotate));
+  transform: translate3d(var(--spread-x), var(--spread-y), 0)
+    rotate(var(--spread-rotate));
   transition-delay: calc(var(--index) * 62ms);
   z-index: var(--card-z);
 }
@@ -6358,21 +7014,26 @@ onUnmounted(() => {
 }
 
 .dock-menu.expanded .dock-card.drawing {
-  transform: translate3d(var(--prep-x), var(--prep-y), 0) rotate(var(--prep-rotate)) scale(var(--prep-scale));
+  transform: translate3d(var(--prep-x), var(--prep-y), 0)
+    rotate(var(--prep-rotate)) scale(var(--prep-scale));
   transition-duration: 0.24s, 0.28s, 0.28s, 0.18s, 0.28s;
-  transition-timing-function: cubic-bezier(0.32, 0.94, 0.48, 1), ease, ease, ease, ease;
+  transition-timing-function:
+    cubic-bezier(0.32, 0.94, 0.48, 1), ease, ease, ease, ease;
   z-index: var(--card-z) !important;
 }
 
 .dock-menu.expanded .dock-card.lifting {
-  transform: translate3d(var(--draw-x), var(--draw-y), 0) rotate(var(--draw-rotate)) scale(var(--draw-scale));
+  transform: translate3d(var(--draw-x), var(--draw-y), 0)
+    rotate(var(--draw-rotate)) scale(var(--draw-scale));
   transition-duration: 0.24s, 0.22s, 0.22s, 0.16s, 0.22s;
-  transition-timing-function: cubic-bezier(0.2, 0.88, 0.24, 1), ease, ease, ease, ease;
+  transition-timing-function:
+    cubic-bezier(0.2, 0.88, 0.24, 1), ease, ease, ease, ease;
   z-index: 116 !important;
 }
 
 .dock-menu.expanded .dock-card.active {
-  transform: translate3d(var(--hover-x), var(--hover-y), 0) rotate(var(--hover-rotate)) scale(var(--hover-scale));
+  transform: translate3d(var(--hover-x), var(--hover-y), 0)
+    rotate(var(--hover-rotate)) scale(var(--hover-scale));
   transition-duration: 0.16s, 0.22s, 0.22s, 0.16s, 0.22s;
   z-index: 116 !important;
 }
@@ -6407,7 +7068,8 @@ onUnmounted(() => {
 
 .dock-menu.expanded .dock-card.returning {
   transition-duration: 0.28s, 0.28s, 0.28s, 0.2s, 0.28s;
-  transition-timing-function: cubic-bezier(0.42, 0, 0.58, 1), ease, ease, ease, ease;
+  transition-timing-function:
+    cubic-bezier(0.42, 0, 0.58, 1), ease, ease, ease, ease;
 }
 
 .dock-card:focus {
@@ -6422,7 +7084,8 @@ onUnmounted(() => {
 
 .dock-card.disabled:hover,
 .dock-card.disabled:focus {
-  transform: translate3d(var(--spread-x), var(--spread-y), 0) rotate(var(--spread-rotate));
+  transform: translate3d(var(--spread-x), var(--spread-y), 0)
+    rotate(var(--spread-rotate));
   box-shadow:
     0 20px 38px rgba(8, 12, 24, 0.26),
     inset 0 0 0 2px rgba(255, 246, 223, 0.75),
@@ -6466,16 +7129,32 @@ onUnmounted(() => {
 @keyframes dockCardHoverWobble {
   0%,
   100% {
-    transform: translate3d(var(--hover-x), var(--hover-y), 0) rotate(calc(var(--hover-rotate) - 0.45deg)) scale(var(--hover-scale));
+    transform: translate3d(var(--hover-x), var(--hover-y), 0)
+      rotate(calc(var(--hover-rotate) - 0.45deg)) scale(var(--hover-scale));
   }
   18% {
-    transform: translate3d(calc(var(--hover-x) - 1px), calc(var(--hover-y) - 2px), 0) rotate(calc(var(--hover-rotate) + 0.25deg)) scale(var(--hover-scale));
+    transform: translate3d(
+        calc(var(--hover-x) - 1px),
+        calc(var(--hover-y) - 2px),
+        0
+      )
+      rotate(calc(var(--hover-rotate) + 0.25deg)) scale(var(--hover-scale));
   }
   50% {
-    transform: translate3d(calc(var(--hover-x) + 2px), calc(var(--hover-y) - 3px), 0) rotate(calc(var(--hover-rotate) + 0.8deg)) scale(var(--hover-scale));
+    transform: translate3d(
+        calc(var(--hover-x) + 2px),
+        calc(var(--hover-y) - 3px),
+        0
+      )
+      rotate(calc(var(--hover-rotate) + 0.8deg)) scale(var(--hover-scale));
   }
   78% {
-    transform: translate3d(calc(var(--hover-x) - 1px), calc(var(--hover-y) - 1px), 0) rotate(calc(var(--hover-rotate) - 0.65deg)) scale(var(--hover-scale));
+    transform: translate3d(
+        calc(var(--hover-x) - 1px),
+        calc(var(--hover-y) - 1px),
+        0
+      )
+      rotate(calc(var(--hover-rotate) - 0.65deg)) scale(var(--hover-scale));
   }
 }
 
@@ -6553,10 +7232,29 @@ onUnmounted(() => {
   border-radius: 22px;
   border: 1px solid var(--dock-card-pattern);
   background:
-    radial-gradient(circle at center, transparent 0 35px, var(--dock-card-pattern) 35.5px, transparent 36.5px),
-    radial-gradient(circle at center, var(--dock-card-pattern) 0 2px, transparent 2.5px),
-    linear-gradient(0deg, transparent calc(50% - 1px), var(--dock-card-pattern) 50%, transparent calc(50% + 1px)),
-    linear-gradient(90deg, transparent calc(50% - 1px), var(--dock-card-pattern) 50%, transparent calc(50% + 1px));
+    radial-gradient(
+      circle at center,
+      transparent 0 35px,
+      var(--dock-card-pattern) 35.5px,
+      transparent 36.5px
+    ),
+    radial-gradient(
+      circle at center,
+      var(--dock-card-pattern) 0 2px,
+      transparent 2.5px
+    ),
+    linear-gradient(
+      0deg,
+      transparent calc(50% - 1px),
+      var(--dock-card-pattern) 50%,
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(
+      90deg,
+      transparent calc(50% - 1px),
+      var(--dock-card-pattern) 50%,
+      transparent calc(50% + 1px)
+    );
   opacity: 0.85;
   pointer-events: none;
 }
@@ -6571,7 +7269,12 @@ onUnmounted(() => {
   font-size: 44px;
   color: var(--card-accent);
   background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.2) 34%, transparent 35%),
+    radial-gradient(
+      circle at 30% 30%,
+      rgba(255, 255, 255, 0.65) 0%,
+      rgba(255, 255, 255, 0.2) 34%,
+      transparent 35%
+    ),
     var(--dock-card-icon-bg);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
@@ -6640,7 +7343,11 @@ onUnmounted(() => {
   justify-content: center;
   padding: 36px 24px;
   background:
-    radial-gradient(circle at top, rgba(255, 229, 176, 0.16) 0%, transparent 30%),
+    radial-gradient(
+      circle at top,
+      rgba(255, 229, 176, 0.16) 0%,
+      transparent 30%
+    ),
     rgba(8, 11, 19, 0.5);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -6661,8 +7368,12 @@ onUnmounted(() => {
   border-radius: 36px;
   overflow: hidden;
   border: 1px solid rgba(196, 142, 48, 0.38);
-  background:
-    linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 52%, rgba(229, 206, 166, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 52%,
+    rgba(229, 206, 166, 0.98) 100%
+  );
   box-shadow:
     0 40px 80px -32px rgba(7, 11, 22, 0.5),
     0 0 0 1px rgba(255, 248, 232, 0.36),
@@ -6680,14 +7391,23 @@ onUnmounted(() => {
 }
 
 .publish-modal::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 12px;
   border-radius: 28px;
   border: 1px solid rgba(199, 151, 60, 0.22);
   background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.14) 0%, transparent 24%),
-    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.05) 48%, transparent 100%);
+    radial-gradient(
+      circle at top right,
+      rgba(255, 255, 255, 0.14) 0%,
+      transparent 24%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 48%,
+      transparent 100%
+    );
   pointer-events: none;
 }
 
@@ -6697,8 +7417,12 @@ onUnmounted(() => {
 
 .publish-modal.dark {
   border-color: rgba(141, 176, 235, 0.24);
-  background:
-    linear-gradient(160deg, rgba(15, 22, 40, 0.98) 0%, rgba(22, 34, 58, 0.98) 52%, rgba(29, 46, 78, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(15, 22, 40, 0.98) 0%,
+    rgba(22, 34, 58, 0.98) 52%,
+    rgba(29, 46, 78, 0.98) 100%
+  );
   box-shadow:
     0 40px 80px -32px rgba(3, 6, 15, 0.64),
     0 0 0 1px rgba(182, 208, 255, 0.14),
@@ -6731,7 +7455,10 @@ onUnmounted(() => {
   font-size: 18px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .publish-modal-close:hover {
@@ -6780,14 +7507,19 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  background:
-    linear-gradient(160deg, rgba(36, 23, 9, 0.94) 0%, rgba(67, 42, 18, 0.96) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(36, 23, 9, 0.94) 0%,
+    rgba(67, 42, 18, 0.96) 100%
+  );
   color: #fff8ef;
   box-shadow:
     0 -10px 36px -18px rgba(0, 0, 0, 0.62),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   cursor: pointer;
-  transition: transform 0.22s ease, background 0.22s ease;
+  transition:
+    transform 0.22s ease,
+    background 0.22s ease;
 }
 
 .publish-pick-dock:hover {
@@ -6796,8 +7528,11 @@ onUnmounted(() => {
 
 .publish-modal.dark .publish-pick-dock {
   border-color: rgba(198, 219, 255, 0.18);
-  background:
-    linear-gradient(160deg, rgba(10, 17, 33, 0.94) 0%, rgba(17, 30, 58, 0.96) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(10, 17, 33, 0.94) 0%,
+    rgba(17, 30, 58, 0.96) 100%
+  );
   color: #eef4ff;
 }
 
@@ -6832,8 +7567,11 @@ onUnmounted(() => {
   padding: 14px 14px 12px;
   border-radius: 18px;
   border: 1px solid rgba(199, 151, 60, 0.3);
-  background:
-    linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 100%
+  );
   box-shadow:
     0 18px 40px -24px rgba(6, 10, 20, 0.5),
     0 0 0 1px rgba(255, 248, 232, 0.32);
@@ -6860,7 +7598,10 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
 }
 
 .publish-pick-confirm-actions button:hover {
@@ -6926,7 +7667,6 @@ onUnmounted(() => {
   }
 }
 
-/* 用户个人信息侧边栏 */
 .user-sidebar {
   position: fixed;
   left: 50%;
@@ -6937,7 +7677,12 @@ onUnmounted(() => {
   max-height: min(90vh, 960px);
   border-radius: 36px;
   border: 1px solid rgba(196, 142, 48, 0.34);
-  background: linear-gradient(160deg, rgba(18, 23, 37, 0.97) 0%, rgba(31, 42, 64, 0.98) 56%, rgba(17, 25, 42, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 23, 37, 0.97) 0%,
+    rgba(31, 42, 64, 0.98) 56%,
+    rgba(17, 25, 42, 0.98) 100%
+  );
   box-shadow:
     0 40px 80px -32px rgba(3, 7, 18, 0.72),
     0 0 0 1px rgba(255, 248, 232, 0.08),
@@ -6970,7 +7715,7 @@ onUnmounted(() => {
 
 .user-sidebar::before,
 .user-sidebar::after {
-  content: '';
+  content: "";
   position: absolute;
   pointer-events: none;
 }
@@ -6980,8 +7725,17 @@ onUnmounted(() => {
   border-radius: 28px;
   border: 1px solid rgba(199, 151, 60, 0.16);
   background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08) 0%, transparent 24%),
-    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.03) 48%, transparent 100%);
+    radial-gradient(
+      circle at top right,
+      rgba(255, 255, 255, 0.08) 0%,
+      transparent 24%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.03) 48%,
+      transparent 100%
+    );
   z-index: 0;
 }
 
@@ -6992,7 +7746,11 @@ onUnmounted(() => {
   opacity: 0;
   transition: opacity 0.26s ease;
   background:
-    radial-gradient(circle at top, rgba(255, 229, 176, 0.12) 0%, transparent 30%),
+    radial-gradient(
+      circle at top,
+      rgba(255, 229, 176, 0.12) 0%,
+      transparent 30%
+    ),
     rgba(8, 11, 19, 0.5);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -7011,7 +7769,11 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding-right: 108px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
 }
 
 .user-sidebar-header h3 {
@@ -7067,7 +7829,6 @@ onUnmounted(() => {
   padding: 20px 28px 28px;
 }
 
-/* 游客模式样式 */
 .guest-profile {
   display: flex;
   flex-direction: column;
@@ -7080,7 +7841,11 @@ onUnmounted(() => {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.3) 0%,
+    rgba(118, 75, 162, 0.3) 100%
+  );
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7246,8 +8011,12 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .avatar-error {
@@ -7540,9 +8309,16 @@ onUnmounted(() => {
 }
 
 @keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-3px); }
-  75% { transform: translateX(3px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
 }
 
 .user-actions {
@@ -7556,7 +8332,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.2) 0%,
+    rgba(118, 75, 162, 0.2) 100%
+  );
   border: 1px solid rgba(102, 126, 234, 0.3);
   border-radius: 12px;
   cursor: pointer;
@@ -7565,7 +8345,11 @@ onUnmounted(() => {
 }
 
 .user-action-btn:hover {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.3) 0%,
+    rgba(118, 75, 162, 0.3) 100%
+  );
   border-color: rgba(102, 126, 234, 0.5);
   transform: translateX(4px);
 }
@@ -7580,33 +8364,50 @@ onUnmounted(() => {
 }
 
 .user-action-btn.active {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.5) 0%,
+    rgba(118, 75, 162, 0.5) 100%
+  );
   border-color: rgba(102, 126, 234, 0.8);
   box-shadow: 0 0 15px rgba(102, 126, 234, 0.3);
 }
 
 .logout-action-btn {
-  background: linear-gradient(135deg, rgba(244, 67, 54, 0.2) 0%, rgba(244, 67, 54, 0.1) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(244, 67, 54, 0.2) 0%,
+    rgba(244, 67, 54, 0.1) 100%
+  ) !important;
   border-color: rgba(244, 67, 54, 0.3) !important;
 }
 
 .logout-action-btn:hover {
-  background: linear-gradient(135deg, rgba(244, 67, 54, 0.3) 0%, rgba(244, 67, 54, 0.2) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(244, 67, 54, 0.3) 0%,
+    rgba(244, 67, 54, 0.2) 100%
+  ) !important;
   border-color: rgba(244, 67, 54, 0.5) !important;
 }
 
-/* 用户子侧边栏（我的点赞/发布） */
 .user-sub-sidebar {
   position: fixed;
-  right: 320px; /* 用户侧边栏宽度 */
+  right: 320px;
   top: 0;
   bottom: 0;
   width: 360px;
-  background: linear-gradient(135deg, rgba(40, 40, 45, 0.95) 0%, rgba(30, 30, 35, 0.98) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(40, 40, 45, 0.95) 0%,
+    rgba(30, 30, 35, 0.98) 100%
+  );
   box-shadow: -2px 0 20px rgba(0, 0, 0, 0.4);
   transform: translateX(100%);
-  transition: transform 0.3s ease, visibility 0.3s ease;
-  z-index: 149; /* 比用户侧边栏低一级 */
+  transition:
+    transform 0.3s ease,
+    visibility 0.3s ease;
+  z-index: 149;
   display: flex;
   flex-direction: column;
   visibility: hidden;
@@ -7679,7 +8480,11 @@ onUnmounted(() => {
   max-height: min(78vh, 760px);
   border-radius: 30px;
   border: 1px solid rgba(196, 142, 48, 0.24);
-  background: linear-gradient(160deg, rgba(14, 19, 31, 0.98) 0%, rgba(24, 32, 51, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(14, 19, 31, 0.98) 0%,
+    rgba(24, 32, 51, 0.98) 100%
+  );
   box-shadow:
     0 28px 64px -30px rgba(3, 6, 15, 0.74),
     0 0 0 1px rgba(255, 248, 232, 0.06);
@@ -7704,7 +8509,11 @@ onUnmounted(() => {
   padding: 22px 24px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding-right: 72px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
 }
 
 .user-sub-sidebar .close-btn {
@@ -7864,23 +8673,27 @@ onUnmounted(() => {
 }
 
 .likes-panel .item-footer,
+.posts-panel .item-footer,
 .favorites-panel .item-footer {
   justify-content: flex-start;
   gap: 14px;
 }
 
 .likes-panel .item-location,
+.posts-panel .item-location,
 .favorites-panel .item-location {
   flex: 1;
   min-width: 0;
 }
 
 .likes-panel .item-likes,
+.posts-panel .item-likes,
 .favorites-panel .item-likes {
   white-space: nowrap;
 }
 
 .likes-panel .item-likes + .item-likes,
+.posts-panel .item-likes + .item-likes,
 .favorites-panel .item-likes + .item-likes {
   margin-left: 10px;
 }
@@ -7899,11 +8712,11 @@ onUnmounted(() => {
 
 .likes-panel .unlike-btn span::before,
 .favorites-panel .unfavorite-btn span::before {
-  content: '❌️';
+  content: "❌️";
 }
 
 .favorites-panel .unfavorite-btn.is-restorable span::before {
-  content: '⭐️';
+  content: "⭐️";
 }
 
 .panel-loading-more,
@@ -7918,7 +8731,12 @@ onUnmounted(() => {
 }
 
 .story-tarot-shell {
-  --story-tarot-surface: linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 54%, rgba(229, 201, 150, 0.98) 100%);
+  --story-tarot-surface: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 54%,
+    rgba(229, 201, 150, 0.98) 100%
+  );
   --story-tarot-border: rgba(196, 142, 48, 0.42);
   --story-tarot-frame: rgba(188, 141, 52, 0.34);
   --story-tarot-pattern: rgba(151, 101, 34, 0.16);
@@ -7935,7 +8753,11 @@ onUnmounted(() => {
   justify-content: center;
   padding: 28px 20px;
   background:
-    radial-gradient(circle at top, rgba(255, 226, 170, 0.26) 0%, transparent 30%),
+    radial-gradient(
+      circle at top,
+      rgba(255, 226, 170, 0.26) 0%,
+      transparent 30%
+    ),
     rgba(10, 13, 22, 0.62);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -7943,7 +8765,12 @@ onUnmounted(() => {
 }
 
 .story-tarot-shell.dark {
-  --story-tarot-surface: linear-gradient(160deg, rgba(14, 23, 41, 0.98) 0%, rgba(24, 35, 59, 0.98) 54%, rgba(33, 50, 84, 0.98) 100%);
+  --story-tarot-surface: linear-gradient(
+    160deg,
+    rgba(14, 23, 41, 0.98) 0%,
+    rgba(24, 35, 59, 0.98) 54%,
+    rgba(33, 50, 84, 0.98) 100%
+  );
   --story-tarot-border: rgba(141, 176, 235, 0.28);
   --story-tarot-frame: rgba(141, 176, 235, 0.18);
   --story-tarot-pattern: rgba(141, 176, 235, 0.14);
@@ -7978,7 +8805,7 @@ onUnmounted(() => {
 
 .story-tarot-card::before,
 .story-tarot-card::after {
-  content: '';
+  content: "";
   position: absolute;
   pointer-events: none;
 }
@@ -7988,10 +8815,29 @@ onUnmounted(() => {
   border-radius: 26px;
   border: 1px solid var(--story-tarot-frame);
   background:
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.16) 0 18%, transparent 18.5%),
-    radial-gradient(circle at center, transparent 0 40%, var(--story-tarot-pattern) 40.5%, transparent 41.5%),
-    linear-gradient(0deg, transparent calc(50% - 1px), var(--story-tarot-pattern) 50%, transparent calc(50% + 1px)),
-    linear-gradient(90deg, transparent calc(50% - 1px), var(--story-tarot-pattern) 50%, transparent calc(50% + 1px));
+    radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.16) 0 18%,
+      transparent 18.5%
+    ),
+    radial-gradient(
+      circle at center,
+      transparent 0 40%,
+      var(--story-tarot-pattern) 40.5%,
+      transparent 41.5%
+    ),
+    linear-gradient(
+      0deg,
+      transparent calc(50% - 1px),
+      var(--story-tarot-pattern) 50%,
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(
+      90deg,
+      transparent calc(50% - 1px),
+      var(--story-tarot-pattern) 50%,
+      transparent calc(50% + 1px)
+    );
   opacity: 0.72;
 }
 
@@ -7999,8 +8845,16 @@ onUnmounted(() => {
   inset: 26px;
   border-radius: 24px;
   background:
-    radial-gradient(circle at top center, rgba(255, 255, 255, 0.24) 0%, transparent 24%),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 6px, rgba(255, 255, 255, 0) 6px 12px);
+    radial-gradient(
+      circle at top center,
+      rgba(255, 255, 255, 0.24) 0%,
+      transparent 24%
+    ),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.04) 0 6px,
+      rgba(255, 255, 255, 0) 6px 12px
+    );
   mix-blend-mode: soft-light;
 }
 
@@ -8029,7 +8883,10 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .story-tarot-close:hover {
@@ -8119,7 +8976,7 @@ onUnmounted(() => {
 
 .story-tarot-headline h3 {
   margin: 0;
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: "Georgia", "Times New Roman", serif;
   font-size: clamp(28px, 4vw, 38px);
   line-height: 1.1;
 }
@@ -8154,7 +9011,11 @@ onUnmounted(() => {
   height: 54px;
   border-radius: 50%;
   overflow: hidden;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.52) 0%, var(--story-tarot-accent-soft) 100%);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    var(--story-tarot-accent-soft) 100%
+  );
   border: 1px solid rgba(255, 255, 255, 0.26);
   display: flex;
   align-items: center;
@@ -8205,7 +9066,11 @@ onUnmounted(() => {
   overflow: hidden;
   border: 1px solid var(--story-tarot-frame);
   background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.18) 0%, transparent 24%),
+    radial-gradient(
+      circle at top,
+      rgba(255, 255, 255, 0.18) 0%,
+      transparent 24%
+    ),
     linear-gradient(135deg, var(--story-tarot-accent-soft) 0%, transparent 100%);
 }
 
@@ -8225,7 +9090,7 @@ onUnmounted(() => {
 
 .story-tarot-oracle strong {
   font-size: 30px;
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: "Georgia", "Times New Roman", serif;
 }
 
 .story-tarot-oracle span:last-child {
@@ -8281,7 +9146,10 @@ onUnmounted(() => {
   overflow: hidden;
   background: transparent;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .story-tarot-thumb:hover {
@@ -8335,7 +9203,11 @@ onUnmounted(() => {
   gap: 4px;
   justify-items: start;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
 }
 
 .story-tarot-action:hover {
@@ -8408,7 +9280,9 @@ onUnmounted(() => {
   font-size: 14px;
   line-height: 1.7;
   outline: none;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .story-tarot-textarea:focus {
@@ -8442,13 +9316,21 @@ onUnmounted(() => {
 }
 
 .story-tarot-primary {
-  background: linear-gradient(135deg, rgba(108, 67, 20, 0.96) 0%, rgba(144, 92, 28, 0.96) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(108, 67, 20, 0.96) 0%,
+    rgba(144, 92, 28, 0.96) 100%
+  );
   color: #fff7ea;
   box-shadow: 0 20px 30px -24px rgba(77, 45, 11, 0.7);
 }
 
 .story-tarot-shell.dark .story-tarot-primary {
-  background: linear-gradient(135deg, rgba(110, 149, 218, 0.9) 0%, rgba(82, 122, 200, 0.92) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(110, 149, 218, 0.9) 0%,
+    rgba(82, 122, 200, 0.92) 100%
+  );
   color: #08111f;
   box-shadow: 0 20px 30px -24px rgba(10, 17, 33, 0.7);
 }
@@ -8562,7 +9444,10 @@ onUnmounted(() => {
   font-size: 13px;
   line-height: 1.45;
   cursor: pointer;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
 }
 
 .story-tarot-report-option span:hover {
@@ -8583,7 +9468,11 @@ onUnmounted(() => {
   justify-content: center;
   padding: 36px 24px;
   background:
-    radial-gradient(circle at top, rgba(255, 229, 176, 0.16) 0%, transparent 30%),
+    radial-gradient(
+      circle at top,
+      rgba(255, 229, 176, 0.16) 0%,
+      transparent 30%
+    ),
     rgba(8, 11, 19, 0.5);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -8640,8 +9529,12 @@ onUnmounted(() => {
 .user-sidebar:not(.dark),
 .user-sub-sidebar:not(.dark) {
   border-color: rgba(196, 142, 48, 0.38);
-  background:
-    linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 52%, rgba(229, 206, 166, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 52%,
+    rgba(229, 206, 166, 0.98) 100%
+  );
   box-shadow:
     0 40px 80px -32px rgba(7, 11, 22, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.46),
@@ -8653,8 +9546,12 @@ onUnmounted(() => {
 .user-sidebar.dark,
 .user-sub-sidebar.dark {
   border-color: rgba(141, 176, 235, 0.24);
-  background:
-    linear-gradient(160deg, rgba(15, 22, 40, 0.98) 0%, rgba(22, 34, 58, 0.98) 52%, rgba(29, 46, 78, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(15, 22, 40, 0.98) 0%,
+    rgba(22, 34, 58, 0.98) 52%,
+    rgba(29, 46, 78, 0.98) 100%
+  );
   box-shadow:
     0 40px 80px -32px rgba(3, 6, 15, 0.64),
     0 0 0 1px rgba(182, 208, 255, 0.14),
@@ -8667,8 +9564,17 @@ onUnmounted(() => {
 .user-sub-sidebar:not(.dark)::before {
   border-color: rgba(199, 151, 60, 0.22);
   background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.14) 0%, transparent 24%),
-    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.05) 48%, transparent 100%);
+    radial-gradient(
+      circle at top right,
+      rgba(255, 255, 255, 0.14) 0%,
+      transparent 24%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 48%,
+      transparent 100%
+    );
 }
 
 .story-sidebar.dark::before,
@@ -8676,22 +9582,39 @@ onUnmounted(() => {
 .user-sub-sidebar.dark::before {
   border-color: rgba(141, 176, 235, 0.14);
   background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08) 0%, transparent 24%),
-    linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.03) 48%, transparent 100%);
+    radial-gradient(
+      circle at top right,
+      rgba(255, 255, 255, 0.08) 0%,
+      transparent 24%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.03) 48%,
+      transparent 100%
+    );
 }
 
 .story-sidebar:not(.dark) .sidebar-header,
 .user-sidebar:not(.dark) .user-sidebar-header,
 .user-sub-sidebar:not(.dark) .sub-sidebar-header {
   border-bottom-color: rgba(148, 111, 46, 0.18);
-  background: linear-gradient(180deg, rgba(255, 252, 245, 0.42) 0%, rgba(255, 245, 227, 0.14) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 245, 0.42) 0%,
+    rgba(255, 245, 227, 0.14) 100%
+  );
 }
 
 .story-sidebar.dark .sidebar-header,
 .user-sidebar.dark .user-sidebar-header,
 .user-sub-sidebar.dark .sub-sidebar-header {
   border-bottom-color: rgba(198, 219, 255, 0.12);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
 }
 
 .story-sidebar:not(.dark) .sidebar-header h3,
@@ -8792,7 +9715,11 @@ onUnmounted(() => {
 
 .story-sidebar:not(.dark) .nearby-search-panel {
   border-color: rgba(196, 142, 48, 0.2);
-  background: linear-gradient(180deg, rgba(255, 252, 246, 0.94) 0%, rgba(248, 238, 217, 0.84) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 246, 0.94) 0%,
+    rgba(248, 238, 217, 0.84) 100%
+  );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.56),
     0 18px 30px -26px rgba(66, 42, 15, 0.2);
@@ -8832,7 +9759,11 @@ onUnmounted(() => {
 }
 
 .story-sidebar:not(.dark) .nearby-search-panel__submit {
-  background: linear-gradient(135deg, rgba(118, 72, 20, 0.96) 0%, rgba(168, 108, 31, 0.96) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(118, 72, 20, 0.96) 0%,
+    rgba(168, 108, 31, 0.96) 100%
+  );
   color: #fff8ef;
   box-shadow: 0 18px 28px -22px rgba(77, 45, 11, 0.52);
 }
@@ -8859,7 +9790,11 @@ onUnmounted(() => {
 
 .story-sidebar.dark .nearby-search-panel {
   border-color: rgba(198, 219, 255, 0.16);
-  background: linear-gradient(180deg, rgba(16, 24, 41, 0.94) 0%, rgba(19, 32, 57, 0.88) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(16, 24, 41, 0.94) 0%,
+    rgba(19, 32, 57, 0.88) 100%
+  );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 18px 30px -26px rgba(0, 0, 0, 0.4);
@@ -8899,7 +9834,11 @@ onUnmounted(() => {
 }
 
 .story-sidebar.dark .nearby-search-panel__submit {
-  background: linear-gradient(135deg, rgba(59, 96, 162, 0.94) 0%, rgba(84, 139, 222, 0.94) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(59, 96, 162, 0.94) 0%,
+    rgba(84, 139, 222, 0.94) 100%
+  );
   color: #eef4ff;
   box-shadow: 0 18px 28px -22px rgba(6, 12, 28, 0.56);
 }
@@ -9137,8 +10076,12 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .project-title {
@@ -9147,13 +10090,14 @@ onUnmounted(() => {
   left: 0;
   width: 280px;
   padding: 12px 20px;
-  background: linear-gradient(90deg, 
-    rgba(255, 107, 107, 0.2) 0%, 
-    rgba(255, 165, 0, 0.2) 14.28%, 
-    rgba(255, 215, 0, 0.2) 28.57%, 
-    rgba(168, 230, 207, 0.2) 42.85%, 
-    rgba(102, 126, 234, 0.2) 57.14%, 
-    rgba(255, 107, 157, 0.2) 71.43%, 
+  background: linear-gradient(
+    90deg,
+    rgba(255, 107, 107, 0.2) 0%,
+    rgba(255, 165, 0, 0.2) 14.28%,
+    rgba(255, 215, 0, 0.2) 28.57%,
+    rgba(168, 230, 207, 0.2) 42.85%,
+    rgba(102, 126, 234, 0.2) 57.14%,
+    rgba(255, 107, 157, 0.2) 71.43%,
     rgba(255, 107, 107, 0.2) 85.71%,
     rgba(255, 107, 107, 0.2) 100%
   );
@@ -9163,7 +10107,7 @@ onUnmounted(() => {
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: "Georgia", "Times New Roman", serif;
   font-size: 28px;
   font-weight: 700;
   background-clip: padding-box;
@@ -9176,14 +10120,15 @@ onUnmounted(() => {
 }
 
 .project-title::before {
-  content: 'EchoStar';
-  background: linear-gradient(90deg, 
-    rgba(0, 148, 148, 1) 0%, 
-    rgba(0, 90, 255, 1) 14.28%, 
-    rgba(0, 40, 255, 1) 28.57%, 
-    rgba(87, 25, 48, 1) 42.85%, 
-    rgba(153, 129, 21, 1) 57.14%, 
-    rgba(0, 148, 98, 1) 71.43%, 
+  content: "EchoStar";
+  background: linear-gradient(
+    90deg,
+    rgba(0, 148, 148, 1) 0%,
+    rgba(0, 90, 255, 1) 14.28%,
+    rgba(0, 40, 255, 1) 28.57%,
+    rgba(87, 25, 48, 1) 42.85%,
+    rgba(153, 129, 21, 1) 57.14%,
+    rgba(0, 148, 98, 1) 71.43%,
     rgba(0, 148, 148, 1) 85.71%,
     rgba(0, 148, 148, 1) 100%
   );
@@ -9204,7 +10149,6 @@ onUnmounted(() => {
   }
 }
 
-/* --- 通知栏样式 --- */
 .notification-backdrop {
   position: fixed;
   top: 0;
@@ -9222,8 +10166,12 @@ onUnmounted(() => {
   max-height: calc(100vh - 120px);
   border-radius: 24px;
   border: 1px solid rgba(199, 151, 60, 0.32);
-  background:
-    linear-gradient(160deg, rgba(250, 239, 217, 0.98) 0%, rgba(240, 223, 191, 0.98) 54%, rgba(229, 201, 150, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 54%,
+    rgba(229, 201, 150, 0.98) 100%
+  );
   box-shadow:
     0 40px 88px -36px rgba(4, 8, 18, 0.72),
     0 0 0 1px rgba(255, 255, 255, 0.12),
@@ -9235,8 +10183,12 @@ onUnmounted(() => {
 
 .notification-panel.dark {
   border-color: rgba(141, 176, 235, 0.24);
-  background:
-    linear-gradient(160deg, rgba(15, 22, 40, 0.98) 0%, rgba(22, 34, 58, 0.98) 52%, rgba(29, 46, 78, 0.98) 100%);
+  background: linear-gradient(
+    160deg,
+    rgba(15, 22, 40, 0.98) 0%,
+    rgba(22, 34, 58, 0.98) 52%,
+    rgba(29, 46, 78, 0.98) 100%
+  );
   box-shadow:
     0 40px 80px -32px rgba(3, 6, 15, 0.64),
     0 0 0 1px rgba(182, 208, 255, 0.14),
@@ -9250,7 +10202,11 @@ onUnmounted(() => {
   align-items: center;
   padding: 16px 20px;
   border-bottom: 1px solid rgba(148, 111, 46, 0.18);
-  background: linear-gradient(180deg, rgba(255, 252, 245, 0.42) 0%, rgba(255, 245, 227, 0.14) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 245, 0.42) 0%,
+    rgba(255, 245, 227, 0.14) 100%
+  );
 }
 
 .notification-tabs {
@@ -9271,7 +10227,6 @@ onUnmounted(() => {
   position: relative;
 }
 
-/* 消息tab 红点角标 */
 .notification-tab-btn .tab-badge {
   position: absolute;
   top: -2px;
@@ -9289,7 +10244,6 @@ onUnmounted(() => {
   box-shadow: 0 1px 4px rgba(244, 67, 54, 0.4);
 }
 
-/* 公告tab 红点 */
 .notification-tab-btn .tab-dot {
   position: absolute;
   top: 2px;
@@ -9313,7 +10267,11 @@ onUnmounted(() => {
 
 .notification-panel.dark .notification-header {
   border-bottom-color: rgba(198, 219, 255, 0.12);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
 }
 
 .notification-panel.dark .notification-tab-btn {
@@ -9334,7 +10292,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: "Georgia", "Times New Roman", serif;
 }
 
 .notification-actions {
@@ -9496,7 +10454,11 @@ onUnmounted(() => {
   height: 40px;
   border-radius: 50%;
   overflow: hidden;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.52) 0%, rgba(159, 105, 34, 0.14) 100%);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(159, 105, 34, 0.14) 100%
+  );
   border: 1px solid rgba(255, 255, 255, 0.26);
   display: flex;
   align-items: center;
@@ -9508,7 +10470,11 @@ onUnmounted(() => {
 }
 
 .notification-panel.dark .notice-avatar {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12) 0%, rgba(142, 108, 255, 0.14) 100%);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(142, 108, 255, 0.14) 100%
+  );
   color: #a8c4ff;
 }
 
@@ -9553,7 +10519,6 @@ onUnmounted(() => {
   background: #8e6cff;
 }
 
-/* 公告面板内卡片样式 */
 .announcement-panel-list {
   display: flex;
   flex-direction: column;
@@ -9605,7 +10570,7 @@ onUnmounted(() => {
   margin: 0 0 4px;
   font-size: 14px;
   font-weight: 700;
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: "Georgia", "Times New Roman", serif;
 }
 
 .np-ann-content {
@@ -9641,7 +10606,6 @@ onUnmounted(() => {
   color: rgba(200, 210, 230, 0.5);
 }
 
-/* --- 消息呼出按钮 --- */
 .msg-trigger-wrapper {
   position: fixed;
   right: 0;
@@ -9659,7 +10623,11 @@ onUnmounted(() => {
   height: 200px;
   border: none;
   border-radius: 10px 0 0 10px;
-  background: linear-gradient(180deg, rgba(250, 239, 217, 0.92) 0%, rgba(229, 201, 150, 0.92) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(250, 239, 217, 0.92) 0%,
+    rgba(229, 201, 150, 0.92) 100%
+  );
   border: 1px solid rgba(199, 151, 60, 0.24);
   border-right: none;
   color: #8b561d;
@@ -9678,11 +10646,19 @@ onUnmounted(() => {
 
 .msg-trigger-btn:hover {
   width: 38px;
-  background: linear-gradient(180deg, rgba(255, 250, 240, 0.96) 0%, rgba(240, 223, 191, 0.96) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 250, 240, 0.96) 0%,
+    rgba(240, 223, 191, 0.96) 100%
+  );
 }
 
 .msg-trigger-btn.dark {
-  background: linear-gradient(180deg, rgba(15, 22, 40, 0.92) 0%, rgba(29, 46, 78, 0.92) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 22, 40, 0.92) 0%,
+    rgba(29, 46, 78, 0.92) 100%
+  );
   border-color: rgba(141, 176, 235, 0.18);
   color: #a8c4ff;
   box-shadow: -4px 0 16px -6px rgba(3, 6, 15, 0.32);
@@ -9690,10 +10666,13 @@ onUnmounted(() => {
 
 .msg-trigger-btn.dark:hover {
   width: 38px;
-  background: linear-gradient(180deg, rgba(22, 34, 58, 0.96) 0%, rgba(35, 55, 90, 0.96) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(22, 34, 58, 0.96) 0%,
+    rgba(35, 55, 90, 0.96) 100%
+  );
 }
 
-/* msg按钮红点 */
 .msg-badge-dot {
   position: absolute;
   top: 8px;
@@ -9714,14 +10693,22 @@ onUnmounted(() => {
 }
 
 @keyframes badge-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.25); opacity: 0.75; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.75;
+  }
 }
 
-/* 通知栏过渡动画 */
 .notification-fade-enter-active,
 .notification-fade-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
 }
 
 .notification-fade-enter-from,
@@ -9738,4 +10725,3 @@ onUnmounted(() => {
   }
 }
 </style>
-
