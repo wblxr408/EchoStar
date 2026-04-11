@@ -108,21 +108,37 @@
               v-for="story in filteredStories"
               :key="story.id"
               class="story-card"
+              :class="{ 'is-shadowbanned': story.isShadowbanned }"
               @click="openStoryDetail(story.id)"
             >
               <div class="story-badges">
                   <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
                 </div>
               <div class="story-content">
-                <p class="story-text">{{ story.content }}</p>
+                <p class="story-text" :title="story.content">{{ story.content }}</p>
                 <div class="story-tags">
                   <span class="emotion-tag">{{ story.emotionTag || story.emotion }}</span>
-                  <span class="location-tag">📍 {{ story.locationName || story.location }}</span>
+                  <span class="location-tag" :title="story.locationName || formatLocation(story.location)">
+                    📍 {{ story.locationName || formatLocation(story.location) }}
+                  </span>
                 </div>
                 <div class="story-stats">
-                  <span>❤️ {{ story.likeCount || story.likes || 0 }}</span>
-                  <span>💬 {{ story.commentCount || story.comments || 0 }}</span>
-                  <span>👁️ {{ story.viewCount || story.views || 0 }}</span>
+                  <span class="story-stat-item">
+                    <span class="story-stat-label">点赞</span>
+                    <span class="story-stat-value">{{ story.likeCount }}</span>
+                  </span>
+                  <span class="story-stat-item">
+                    <span class="story-stat-label">评论</span>
+                    <span class="story-stat-value">{{ story.commentCount }}</span>
+                  </span>
+                  <span class="story-stat-item">
+                    <span class="story-stat-label">收藏</span>
+                    <span class="story-stat-value">{{ story.favoriteCount }}</span>
+                  </span>
+                  <span class="story-stat-item">
+                    <span class="story-stat-label">浏览</span>
+                    <span class="story-stat-value">{{ story.viewCount }}</span>
+                  </span>
                 </div>
               </div>
               <div class="story-actions" @click.stop>
@@ -403,6 +419,11 @@
               <span class="stat-label">评论</span>
             </div>
             <div class="detail-stat">
+              <span class="stat-icon">⭐</span>
+              <span class="stat-num">{{ storyDetail.favoriteCount || 0 }}</span>
+              <span class="stat-label">收藏</span>
+            </div>
+            <div class="detail-stat">
               <span class="stat-icon">👁️</span>
               <span class="stat-num">{{ storyDetail.viewCount || 0 }}</span>
               <span class="stat-label">浏览</span>
@@ -614,6 +635,23 @@ const filteredStories = computed(() => {
   return stories.value;
 });
 
+function toCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) ? count : 0;
+}
+
+function normalizeAdminStory(story) {
+  return {
+    ...story,
+    likeCount: toCount(story.likeCount ?? story.likes),
+    commentCount: toCount(story.commentCount ?? story.comments),
+    favoriteCount: toCount(story.favoriteCount ?? story.favorites),
+    viewCount: toCount(story.viewCount ?? story.views),
+    isRecommended: Boolean(story.isRecommended),
+    isShadowbanned: story.visibility === 'shadowban'
+  };
+}
+
 async function loadStories() {
   try {
     const params = {};
@@ -622,11 +660,7 @@ async function loadStories() {
     }
     const response = await storyApi.getAdminStories(params);
     const data = response.data || response;
-    stories.value = (data?.stories || []).map(s => ({
-      ...s,
-      isRecommended: s.isRecommended || false,
-      isShadowbanned: s.visibility === 'shadowban'
-    }));
+    stories.value = (data?.stories || []).map(normalizeAdminStory);
   } catch (error) {
     console.error('加载故事列表失败:', error);
   }
@@ -652,7 +686,11 @@ async function openStoryDetail(storyId) {
     const data = response.data || response;
     storyDetail.value = {
       ...data,
-      isRecommended: data.isRecommended || false
+      likeCount: toCount(data.likeCount),
+      commentCount: toCount(data.commentCount),
+      favoriteCount: toCount(data.favoriteCount),
+      viewCount: toCount(data.viewCount),
+      isRecommended: Boolean(data.isRecommended)
     };
   } catch (error) {
     console.error('加载故事详情失败:', error);
@@ -1389,14 +1427,20 @@ function handleLogout() {
 .stories-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: stretch;
   gap: 20px;
 }
 
 .story-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 340px;
   border: 1px solid #f0f0f0;
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
   background: white;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 .story-image {
@@ -1412,10 +1456,12 @@ function handleLogout() {
 
 .story-badges {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 12px;
+  left: 12px;
   display: flex;
   gap: 6px;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .badge {
@@ -1431,40 +1477,99 @@ function handleLogout() {
 }
 
 .badge.shadowbanned {
-  background: #6c757d;
+  background: rgba(71, 85, 105, 0.92);
   color: white;
 }
 
 .story-content {
-  padding: 16px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 18px 16px 14px;
+}
+
+.story-card.is-shadowbanned .story-content {
+  padding-top: 52px;
+}
+
+.story-card .story-text {
+  margin: 0;
+  color: #243045;
+  font-size: 14px;
+  line-height: 1.65;
+  word-break: break-word;
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
 }
 
 .story-tags {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
+  margin: 0;
 }
 
 .emotion-tag, .location-tag {
+  display: inline-flex;
+  align-items: center;
   font-size: 12px;
   color: #2d8a6e;
   background: #e8f5e9;
   padding: 4px 10px;
   border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-tag {
+  max-width: 100%;
+  flex: 1 1 100%;
 }
 
 .story-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+}
+
+.story-stat-item {
   display: flex;
-  gap: 16px;
-  font-size: 13px;
-  color: #999;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.story-stat-label {
+  font-size: 12px;
+}
+
+.story-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
 }
 
 .story-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  padding: 12px 16px;
+  padding: 12px 16px 16px;
   border-top: 1px solid #f0f0f0;
+}
+
+.story-actions .btn-action:only-child {
+  grid-column: 1 / -1;
 }
 
 .btn-action {
@@ -1807,7 +1912,7 @@ function handleLogout() {
 
 .story-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
 }
 
 /* 故事详情弹窗 */
@@ -2040,8 +2145,9 @@ function handleLogout() {
 
 /* 统计 */
 .detail-stats {
-  display: flex;
-  justify-content: space-around;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 12px;
   padding: 16px 0;
   border-top: 1px solid #f0f0f0;
   border-bottom: 1px solid #f0f0f0;

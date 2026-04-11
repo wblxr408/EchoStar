@@ -231,7 +231,7 @@ class StoryServiceClass {
     // ======================
     const { commentCacheUtil } = await import('../../common/utils/comment-cache.util.js');
     const { Comment } = await import('../comment/comment.model.js');
-    const [likeCount, commentCount, viewDelta] = await Promise.all([
+    const [likeCount, commentCount, favoriteCount, viewDelta] = await Promise.all([
       likeCacheUtil.getLikeCount(storyId),
       commentCacheUtil.getCommentCount(storyId).then(async (r) => {
         if (r >= 0) return r;
@@ -240,6 +240,7 @@ class StoryServiceClass {
         await commentCacheUtil.setCommentCount(storyId, count);
         return count;
       }),
+      favoriteCacheUtil.getFavoriteCount(storyId).catch(() => 0),
       viewDeltaPromise
     ]);
     const totalViewCount = (story.viewCount || 0) + viewDelta - 1;
@@ -257,6 +258,7 @@ class StoryServiceClass {
       viewCount: totalViewCount,
       likeCount,  // ✅ 新增
       commentCount,  // ✅ 新增
+      favoriteCount,
       createdAt: story.createdAt,
       visibilityStartTime: story.visibilityStartTime,
       visibilityEndTime: story.visibilityEndTime,
@@ -697,6 +699,28 @@ class StoryServiceClass {
       return (story.viewCount || 0) + delta;
     });
 
+    const { commentCacheUtil } = await import('../../common/utils/comment-cache.util.js');
+    const { Comment } = await import('../comment/comment.model.js');
+    const [adminLikeCounts, adminCommentCounts, adminFavoriteCounts] = await Promise.all([
+      Promise.all(storyIds.map((id) => likeCacheUtil.getLikeCount(id).catch(() => 0))),
+      Promise.all(
+        storyIds.map((id) =>
+          commentCacheUtil.getCommentCount(id)
+            .then(async (cachedCount) => {
+              if (cachedCount >= 0) {
+                return cachedCount;
+              }
+
+              const dbCount = await Comment.count({ where: { storyId: id, status: 'active' } });
+              await commentCacheUtil.setCommentCount(id, dbCount);
+              return dbCount;
+            })
+            .catch(() => 0)
+        )
+      ),
+      Promise.all(storyIds.map((id) => favoriteCacheUtil.getFavoriteCount(id).catch(() => 0)))
+    ]);
+
     return {
       stories: rows.map((story, index) => ({
         id: normalizeStoryId(story.id),
@@ -706,6 +730,9 @@ class StoryServiceClass {
         locationName: story.locationName,
         createdAt: story.createdAt,
         viewCount: realViewCounts[index],
+        likeCount: adminLikeCounts[index] || 0,
+        commentCount: adminCommentCounts[index] || 0,
+        favoriteCount: adminFavoriteCounts[index] || 0,
         isRecommended: Boolean(story.isRecommended),
         images: safeParseJSONB(story.images, []),
         location: story.location ? parseStoryLocationValue(story.location) : null,

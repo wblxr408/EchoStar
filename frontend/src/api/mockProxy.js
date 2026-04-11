@@ -227,7 +227,13 @@ export const mockStoryApi = {
     }
     return {
       code: 0,
-      data: story
+      data: {
+        ...story,
+        likeCount: story.likeCount ?? story.likes ?? 0,
+        commentCount: story.commentCount ?? story.comments ?? 0,
+        favoriteCount: story.favoriteCount ?? story.favorites ?? 0,
+        viewCount: story.viewCount ?? story.views ?? 0
+      }
     };
   },
 
@@ -358,6 +364,12 @@ export const mockStoryApi = {
           content: s.content,
           visibility: s.visibility || 'public',
           createdAt: s.createdAt,
+          likeCount: s.likeCount ?? s.likes ?? 0,
+          commentCount: s.commentCount ?? s.comments ?? 0,
+          favoriteCount: s.favoriteCount ?? s.favorites ?? 0,
+          viewCount: s.viewCount ?? s.views ?? 0,
+          locationName: s.locationName,
+          location: s.location,
           author: s.author || mockUser
         })),
         pagination: {
