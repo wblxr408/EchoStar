@@ -4044,8 +4044,8 @@ function handleMyPosts() {
   if (showFavoritesPanel.value) showFavoritesPanel.value = false;
   showPostsPanel.value = !showPostsPanel.value;
 
-  if (showPostsPanel.value && postsList.value.length === 0) {
-    loadPostsData();
+  if (showPostsPanel.value) {
+    void loadPostsData();
   }
 }
 

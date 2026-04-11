@@ -108,37 +108,43 @@
               v-for="story in filteredStories"
               :key="story.id"
               class="story-card"
-              :class="{ 'is-shadowbanned': story.isShadowbanned }"
+              :class="{
+                'is-shadowbanned': story.isShadowbanned,
+                'has-story-badge': story.isShadowbanned || story.isRecommended
+              }"
               @click="openStoryDetail(story.id)"
             >
               <div class="story-badges">
-                  <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
-                </div>
+                <span v-if="story.isRecommended && !story.isShadowbanned" class="badge recommended">⭐ 已推荐</span>
+                <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
+              </div>
               <div class="story-content">
                 <p class="story-text" :title="story.content">{{ story.content }}</p>
-                <div class="story-tags">
-                  <span class="emotion-tag">{{ story.emotionTag || story.emotion }}</span>
-                  <span class="location-tag" :title="story.locationName || formatLocation(story.location)">
-                    📍 {{ story.locationName || formatLocation(story.location) }}
-                  </span>
-                </div>
-                <div class="story-stats">
-                  <span class="story-stat-item">
-                    <span class="story-stat-label">点赞</span>
-                    <span class="story-stat-value">{{ story.likeCount }}</span>
-                  </span>
-                  <span class="story-stat-item">
-                    <span class="story-stat-label">评论</span>
-                    <span class="story-stat-value">{{ story.commentCount }}</span>
-                  </span>
-                  <span class="story-stat-item">
-                    <span class="story-stat-label">收藏</span>
-                    <span class="story-stat-value">{{ story.favoriteCount }}</span>
-                  </span>
-                  <span class="story-stat-item">
-                    <span class="story-stat-label">浏览</span>
-                    <span class="story-stat-value">{{ story.viewCount }}</span>
-                  </span>
+                <div class="story-meta">
+                  <div class="story-tags">
+                    <span class="emotion-tag">{{ story.emotionTag || story.emotion }}</span>
+                    <span class="location-tag" :title="story.locationName || formatLocation(story.location)">
+                      📍 {{ story.locationName || formatLocation(story.location) }}
+                    </span>
+                  </div>
+                  <div class="story-stats">
+                    <span class="story-stat-item">
+                      <span class="story-stat-label">点赞</span>
+                      <span class="story-stat-value">{{ story.likeCount }}</span>
+                    </span>
+                    <span class="story-stat-item">
+                      <span class="story-stat-label">评论</span>
+                      <span class="story-stat-value">{{ story.commentCount }}</span>
+                    </span>
+                    <span class="story-stat-item">
+                      <span class="story-stat-label">收藏</span>
+                      <span class="story-stat-value">{{ story.favoriteCount }}</span>
+                    </span>
+                    <span class="story-stat-item">
+                      <span class="story-stat-label">浏览</span>
+                      <span class="story-stat-value">{{ story.viewCount }}</span>
+                    </span>
+                  </div>
                 </div>
               </div>
               <div class="story-actions" @click.stop>
@@ -380,6 +386,7 @@
               <span class="detail-time">{{ formatShortTime(storyDetail.createdAt) }}</span>
             </div>
             <div class="detail-badges">
+              <span v-if="storyDetail.isRecommended && storyDetail.visibility !== 'shadowban'" class="badge-sm recommended">⭐ 已推荐</span>
               <span v-if="storyDetail.visibility === 'shadowban'" class="badge-sm shadowbanned">👻 已隐藏</span>
               <span v-if="storyDetail.isTimeCapsule" class="badge-sm capsule">⏳ 时光胶囊</span>
             </div>
@@ -709,7 +716,10 @@ function formatLocation(loc) {
 }
 
 async function handleRecommendFromDetail(storyId) {
-  const reason = await showPrompt('请输入推荐理由：');
+  const reason = await showPrompt('请输入推荐理由：', {
+    theme: 'light',
+    placeholder: '例如：内容优质、值得优先展示'
+  });
   if (reason === null || !reason.trim()) return;
   try {
     const response = await adminApi.recommend(storyId, reason);
@@ -748,7 +758,10 @@ async function handleUnrecommendFromDetail(storyId) {
 }
 
 async function handleShadowbanFromDetail(storyId) {
-  const reason = await showPrompt('请输入隐藏理由：');
+  const reason = await showPrompt('请输入隐藏理由：', {
+    theme: 'light',
+    placeholder: '例如：包含违规内容，需要临时隐藏'
+  });
   if (reason === null || !reason.trim()) return;
   try {
     await adminApi.shadowban(storyId, reason);
@@ -789,7 +802,10 @@ async function handleRestoreFromDetail(storyId) {
 
 // API 8.1 推荐
 async function handleRecommendStory(storyId) {
-  const reason = await showPrompt('请输入推荐理由：');
+  const reason = await showPrompt('请输入推荐理由：', {
+    theme: 'light',
+    placeholder: '例如：内容优质、值得优先展示'
+  });
   if (reason === null || !reason.trim()) return;
   try {
     const response = await adminApi.recommend(storyId, reason);
@@ -824,7 +840,10 @@ async function handleUnrecommendStory(storyId) {
 
 // API 8.2 Shadowban
 async function handleShadowbanStory(storyId) {
-  const reason = await showPrompt('请输入隐藏理由：');
+  const reason = await showPrompt('请输入隐藏理由：', {
+    theme: 'light',
+    placeholder: '例如：包含违规内容，需要临时隐藏'
+  });
   if (reason === null || !reason.trim()) return;
   try {
     await adminApi.shadowban(storyId, reason);
@@ -1485,17 +1504,17 @@ function handleLogout() {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 14px;
   min-height: 0;
   padding: 18px 16px 14px;
 }
 
-.story-card.is-shadowbanned .story-content {
+.story-card.has-story-badge .story-content {
   padding-top: 52px;
 }
 
 .story-card .story-text {
   margin: 0;
+  flex: 1 1 auto;
   color: #243045;
   font-size: 14px;
   line-height: 1.65;
@@ -1505,6 +1524,13 @@ function handleLogout() {
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 6;
+}
+
+.story-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
 }
 
 .story-tags {
@@ -1536,7 +1562,7 @@ function handleLogout() {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .story-stat-item {
