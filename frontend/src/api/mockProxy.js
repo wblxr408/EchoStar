@@ -349,10 +349,14 @@ export const mockStoryApi = {
     const limit = params.limit || 20;
     const start = (page - 1) * limit;
     const visibility = params.visibility;
+    const isRecommended = params.isRecommended;
 
     let stories = mockStories;
     if (visibility) {
       stories = stories.filter(s => s.visibility === visibility);
+    }
+    if (isRecommended === 'true' || isRecommended === true) {
+      stories = stories.filter(s => s.isRecommended);
     }
 
     return {
@@ -368,6 +372,7 @@ export const mockStoryApi = {
           commentCount: s.commentCount ?? s.comments ?? 0,
           favoriteCount: s.favoriteCount ?? s.favorites ?? 0,
           viewCount: s.viewCount ?? s.views ?? 0,
+          isRecommended: s.isRecommended || false,
           locationName: s.locationName,
           location: s.location,
           author: s.author || mockUser

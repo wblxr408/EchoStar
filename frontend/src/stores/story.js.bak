@@ -1,0 +1,152 @@
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import { storyApi } from '../api/story';
+import type { Story, Pagination } from '../types/story';
+
+/**
+ * 故事状态管理
+ * 使用 TypeScript 和 Composition API
+ */
+
+export const useStoryStore = defineStore('story', () => {
+  // 我的故事列表
+  const myStories = ref<Story[]>([]);
+
+  // 分页信息
+  const pagination = ref<Pagination>({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0
+  });
+
+  // 加载状态
+  const loading = ref(false);
+
+  // 计算属性：是否有更多页
+  const hasMore = computed(() => pagination.value.page < pagination.value.totalPages);
+
+  // 计算属性：故事总数
+  const totalCount = computed(() => pagination.value.total);
+
+  /**
+   * 获取我的故事列表
+   */
+  async function fetchMyStories(page = 1): Promise<void> {
+    loading.value = true;
+
+    try {
+      const data = await storyApi.getMyStories({ page, limit: pagination.value.limit });
+      myStories.value = data.stories;
+      pagination.value = data.pagination;
+    } catch (error) {
+      console.error('Failed to fetch stories:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /**
+   * 加载更多故事
+   */
+  async function loadMore(): Promise<void> {
+    if (!hasMore.value || loading.value) return;
+
+    const nextPage = pagination.value.page + 1;
+    loading.value = true;
+
+    try {
+      const data = await storyApi.getMyStories({ 
+        page: nextPage, 
+        limit: pagination.value.limit 
+      });
+      myStories.value.push(...data.stories);
+      pagination.value = data.pagination;
+    } catch (error) {
+      console.error('Failed to load more stories:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /**
+   * 发布故事
+   */
+  async function createStory(storyData: Partial<Story>): Promise<Story> {
+    const data = await storyApi.createStory(storyData);
+    // 添加到列表头部
+    myStories.value.unshift(data);
+    // 更新总数
+    pagination.value.total += 1;
+    return data;
+  }
+
+  /**
+   * 更新故事
+   */
+  async function updateStory(id: string | number, storyData: Partial<Story>): Promise<Story> {
+    const data = await storyApi.updateStory(id, storyData);
+    // 更新列表中的故事
+    const index = myStories.value.findIndex(s => s.id === id);
+    if (index > -1) {
+      myStories.value[index] = { ...myStories.value[index], ...data };
+    }
+    return data;
+  }
+
+  /**
+   * 删除故事
+   */
+  async function deleteStory(id: string | number): Promise<void> {
+    await storyApi.deleteStory(id);
+    // 从列表中移除
+    myStories.value = myStories.value.filter(story => story.id !== id);
+    // 更新总数
+    pagination.value.total -= 1;
+  }
+
+  /**
+   * 清空列表
+   */
+  function clear(): void {
+    myStories.value = [];
+    pagination.value = {
+      page: 1,
+      limit: 10,
+      total: 0,
+      totalPages: 0
+    };
+  }
+
+  /**
+   * 重置分页
+   */
+  function resetPagination(): void {
+    pagination.value = {
+      page: 1,
+      limit: 10,
+      total: 0,
+      totalPages: 0
+    };
+  }
+
+  return {
+    // 状态
+    myStories,
+    pagination,
+    loading,
+    // 计算属性
+    hasMore,
+    totalCount,
+    // 方法
+    fetchMyStories,
+    loadMore,
+    createStory,
+    updateStory,
+    deleteStory,
+    clear,
+    resetPagination
+  };
+});

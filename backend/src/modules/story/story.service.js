@@ -654,7 +654,7 @@ class StoryServiceClass {
   /**
    * 管理员获取所有帖子（public + shadowban）
    */
-  async getAllStoriesForAdmin({ page = 1, limit = 20, visibility = null }) {
+  async getAllStoriesForAdmin({ page = 1, limit = 20, visibility = null, isRecommended = null }) {
     const offset = (page - 1) * limit;
 
     // 构建 where 条件
@@ -667,6 +667,11 @@ class StoryServiceClass {
     // 如果指定了 visibility，则过滤
     if (visibility && ['public', 'shadowban'].includes(visibility)) {
       whereCondition.visibility = visibility;
+    }
+
+    // 如果指定了 isRecommended，则过滤推荐故事
+    if (isRecommended === 'true' || isRecommended === true) {
+      whereCondition.isRecommended = true;
     }
 
     const { rows, count } = await Story.findAndCountAll({

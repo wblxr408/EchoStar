@@ -166,9 +166,9 @@ export const getFeaturedStories = async (req, res, next) => {
  */
 export const getAllStoriesForAdmin = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, visibility } = req.query;
+    const { page = 1, limit = 20, visibility, isRecommended } = req.query;
 
-    const result = await StoryService.getAllStoriesForAdmin({ page, limit, visibility });
+    const result = await StoryService.getAllStoriesForAdmin({ page, limit, visibility, isRecommended });
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);

@@ -182,6 +182,13 @@
               </div>
             </div>
           </div>
+
+          <!-- 翻页控件 -->
+          <div v-if="storyTotalPages > 1" class="pagination">
+            <button class="page-btn" :disabled="storyPage <= 1" @click="storyPrevPage">上一页</button>
+            <span class="page-info">第 {{ storyPage }} / {{ storyTotalPages }} 页（共 {{ storyPagination.total }} 条）</span>
+            <button class="page-btn" :disabled="storyPage >= storyTotalPages" @click="storyNextPage">下一页</button>
+          </div>
         </section>
 
         <!-- 用户管理（API 8.4-8.5） -->
@@ -631,16 +638,15 @@ watch(currentTab, (newTab) => {
 // ============ 故事管理（API 2.10, 8.1-8.3） ============
 const storyFilter = ref('all');
 const stories = ref([]);
+const storyPage = ref(1);
+const storyPageSize = 10;
+const storyPagination = ref({ total: 0, page: 1, limit: 10, totalPages: 0 });
 
 const filteredStories = computed(() => {
-  if (storyFilter.value === 'recommended') {
-    return stories.value.filter(s => s.isRecommended);
-  }
-  if (storyFilter.value === 'shadowbanned') {
-    return stories.value.filter(s => s.visibility === 'shadowban');
-  }
   return stories.value;
 });
+
+const storyTotalPages = computed(() => storyPagination.value.totalPages || 0);
 
 function toCount(value) {
   const count = Number(value);
@@ -661,20 +667,49 @@ function normalizeAdminStory(story) {
 
 async function loadStories() {
   try {
-    const params = {};
+    const params = {
+      page: storyPage.value,
+      limit: storyPageSize,
+    };
     if (storyFilter.value === 'shadowbanned') {
       params.visibility = 'shadowban';
+    } else if (storyFilter.value === 'recommended') {
+      params.isRecommended = 'true';
     }
     const response = await storyApi.getAdminStories(params);
     const data = response.data || response;
     stories.value = (data?.stories || []).map(normalizeAdminStory);
+    if (data?.pagination) {
+      storyPagination.value = data.pagination;
+    }
   } catch (error) {
     console.error('加载故事列表失败:', error);
   }
 }
 
 function refreshStories() {
+  storyPage.value = 1;
   loadStories();
+}
+
+// 切换筛选时重置页码
+watch(storyFilter, () => {
+  storyPage.value = 1;
+  loadStories();
+});
+
+function storyPrevPage() {
+  if (storyPage.value > 1) {
+    storyPage.value--;
+    loadStories();
+  }
+}
+
+function storyNextPage() {
+  if (storyPage.value < storyTotalPages.value) {
+    storyPage.value++;
+    loadStories();
+  }
 }
 
 // ============ 故事详情弹窗 ============
@@ -1448,6 +1483,46 @@ function handleLogout() {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   align-items: stretch;
   gap: 20px;
+}
+
+/* 翻页控件 */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.page-btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  background: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #333;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ffdb64 0%, #ffcc00 100%);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 14px;
+  color: #666;
+  min-width: 180px;
+  text-align: center;
 }
 
 .story-card {
