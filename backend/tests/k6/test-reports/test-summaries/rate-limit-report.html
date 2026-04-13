@@ -22,18 +22,18 @@
   .summary-card { background: #1e293b; border-radius: 10px; padding: 16px 22px; flex: 1; min-width: 160px; border: 1px solid #334155; }
   .summary-card .value { font-size: 1.6em; font-weight: bold; }
   .summary-card .label { color: #94a3b8; font-size: 0.85em; margin-top: 4px; }
-  .grade-excellent { color: #4ade80; }
-  .grade-good { color: #a3e635; }
-  .grade-acceptable { color: #fbbf24; }
-  .grade-slow { color: #f97316; }
-  .grade-critical { color: #ef4444; }
+  .grade-excellent { color: #22c55e; }
+  .grade-good { color: #4ade80; }
+  .grade-acceptable { color: #86efac; }
+  .grade-slow { color: #a7f3d0; }
+  .grade-critical { color: #bbf7d0; }
 
   .analysis-section { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; }
   .analysis-section h2 { color: #38bdf8; margin-bottom: 14px; font-size: 1.2em; border-bottom: 1px solid #334155; padding-bottom: 8px; }
   .analysis-section p { color: #cbd5e1; margin-bottom: 12px; font-size: 0.95em; }
   .analysis-section strong { color: #e2e8f0; }
   .highlight { color: #4ade80; font-weight: bold; }
-  .highlight-warn { color: #fbbf24; font-weight: bold; }
+  .highlight-warn { color: #86efac; font-weight: bold; }
 
   .data-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.85em; }
   .data-table th, .data-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
@@ -293,10 +293,10 @@ new Chart(document.getElementById('responseTimeChart'), {
   data: {
     labels: endpoints,
     datasets: [
-      { label: 'P50', data: p50, backgroundColor: 'rgba(74,222,128,0.7)', borderColor: '#4ade80', borderWidth: 1 },
-      { label: 'P90', data: p90, backgroundColor: 'rgba(163,230,53,0.7)', borderColor: '#a3e635', borderWidth: 1 },
-      { label: 'P95', data: p95, backgroundColor: 'rgba(251,191,36,0.7)', borderColor: '#fbbf24', borderWidth: 1 },
-      { label: 'Avg', data: avg, backgroundColor: 'rgba(56,189,248,0.7)', borderColor: '#38bdf8', borderWidth: 1 }
+      { label: 'P50', data: p50, backgroundColor: 'rgba(220,252,231,0.7)', borderColor: '#dcfce7', borderWidth: 1 },
+      { label: 'P90', data: p90, backgroundColor: 'rgba(167,243,208,0.7)', borderColor: '#a7f3d0', borderWidth: 1 },
+      { label: 'P95', data: p95, backgroundColor: 'rgba(74,222,128,0.7)', borderColor: '#4ade80', borderWidth: 1 },
+      { label: 'Avg', data: avg, backgroundColor: 'rgba(45,212,191,0.7)', borderColor: '#2dd4bf', borderWidth: 1 }
     ]
   },
   options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'ms', color: '#94a3b8' } } } }
@@ -309,8 +309,8 @@ new Chart(document.getElementById('rateLimitChart'), {
     labels: ['429 限流拦截 (95.99%)', '2xx 成功处理 (4.00%)', '其他'],
     datasets: [{
       data: [190236, 7930, 267],
-      backgroundColor: ['rgba(251,191,36,0.8)', 'rgba(74,222,128,0.8)', 'rgba(139,92,246,0.6)'],
-      borderColor: ['#fbbf24', '#4ade80', '#a78bfa'],
+      backgroundColor: ['rgba(167,243,208,0.8)', 'rgba(74,222,128,0.8)', 'rgba(45,212,191,0.6)'],
+      borderColor: ['#a7f3d0', '#4ade80', '#2dd4bf'],
       borderWidth: 2
     }]
   },
@@ -342,10 +342,10 @@ new Chart(document.getElementById('requestCountChart'), {
       label: 'HTTP 请求数',
       data: reqCounts,
       backgroundColor: endpoints.map((_, i) => {
-        const colors = ['rgba(56,189,248,0.7)', 'rgba(74,222,128,0.7)', 'rgba(251,191,36,0.7)', 'rgba(248,113,113,0.7)', 'rgba(192,132,252,0.7)', 'rgba(251,146,60,0.7)', 'rgba(45,212,191,0.7)', 'rgba(232,121,249,0.7)'];
+        const colors = ['rgba(220,252,231,0.7)', 'rgba(167,243,208,0.7)', 'rgba(134,239,172,0.7)', 'rgba(74,222,128,0.7)', 'rgba(45,212,191,0.7)', 'rgba(34,211,238,0.7)', 'rgba(5,150,105,0.7)', 'rgba(22,163,74,0.7)'];
         return colors[i];
       }),
-      borderColor: ['#38bdf8', '#4ade80', '#fbbf24', '#f87171', '#c084fc', '#fb923c', '#2dd4bf', '#e879f9'],
+      borderColor: ['#dcfce7', '#a7f3d0', '#86efac', '#4ade80', '#2dd4bf', '#22d3ee', '#059669', '#16a34a'],
       borderWidth: 1
     }]
   },
@@ -362,8 +362,8 @@ new Chart(document.getElementById('checkRateChart'), {
     datasets: [{
       label: '断言通过率 (%)',
       data: checkPassRates,
-      backgroundColor: checkPassRates.map(v => v >= 100 ? 'rgba(74,222,128,0.7)' : 'rgba(251,191,36,0.7)'),
-      borderColor: checkPassRates.map(v => v >= 100 ? '#4ade80' : '#fbbf24'),
+      backgroundColor: checkPassRates.map(v => v >= 100 ? 'rgba(74,222,128,0.7)' : 'rgba(167,243,208,0.7)'),
+      borderColor: checkPassRates.map(v => v >= 100 ? '#4ade80' : '#a7f3d0'),
       borderWidth: 1
     }]
   },
@@ -379,8 +379,8 @@ new Chart(document.getElementById('endpointDetailChart'), {
   data: {
     labels: endpoints,
     datasets: [
-      { label: 'P95 (ms)', data: p95, backgroundColor: 'rgba(56,189,248,0.6)', borderColor: '#38bdf8', borderWidth: 1 },
-      { label: 'Max (ms)', data: maxRt, backgroundColor: 'rgba(248,113,113,0.5)', borderColor: '#f87171', borderWidth: 1 }
+      { label: 'P95 (ms)', data: p95, backgroundColor: 'rgba(74,222,128,0.6)', borderColor: '#4ade80', borderWidth: 1 },
+      { label: 'Max (ms)', data: maxRt, backgroundColor: 'rgba(5,150,105,0.5)', borderColor: '#059669', borderWidth: 1 }
     ]
   },
   options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'ms', color: '#94a3b8' } } } }
@@ -394,8 +394,8 @@ new Chart(document.getElementById('iterationChart'), {
     datasets: [{
       label: '迭代耗时 (ms)',
       data: [270.76, 447.58, 491.72, 286.49, 1464.31],
-      backgroundColor: ['rgba(74,222,128,0.7)', 'rgba(163,230,53,0.7)', 'rgba(251,191,36,0.7)', 'rgba(56,189,248,0.7)', 'rgba(248,113,113,0.7)'],
-      borderColor: ['#4ade80', '#a3e635', '#fbbf24', '#38bdf8', '#f87171'],
+      backgroundColor: ['rgba(220,252,231,0.7)', 'rgba(167,243,208,0.7)', 'rgba(74,222,128,0.7)', 'rgba(45,212,191,0.7)', 'rgba(5,150,105,0.7)'],
+      borderColor: ['#dcfce7', '#a7f3d0', '#4ade80', '#2dd4bf', '#059669'],
       borderWidth: 1
     }]
   },
@@ -408,8 +408,8 @@ new Chart(document.getElementById('limiterChart'), {
   data: {
     labels: ['strict (auth)', 'general (report等)', 'loose (map)'],
     datasets: [
-      { label: 'P95 (ms)', data: [160.82, 157.39, 157.42], backgroundColor: 'rgba(248,113,113,0.6)', borderColor: '#f87171', borderWidth: 1 },
-      { label: 'Avg (ms)', data: [81.53, 76.45, 75.14], backgroundColor: 'rgba(56,189,248,0.6)', borderColor: '#38bdf8', borderWidth: 1 }
+      { label: 'P95 (ms)', data: [160.82, 157.39, 157.42], backgroundColor: 'rgba(74,222,128,0.6)', borderColor: '#4ade80', borderWidth: 1 },
+      { label: 'Avg (ms)', data: [81.53, 76.45, 75.14], backgroundColor: 'rgba(45,212,191,0.6)', borderColor: '#2dd4bf', borderWidth: 1 }
     ]
   },
   options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'ms', color: '#94a3b8' } } } }
