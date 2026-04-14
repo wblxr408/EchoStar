@@ -52,3 +52,7 @@ coverage/
 dump.rdb
 "backend/logic/"
 backend/scripts/seed-data.js
+
+# Project folders
+.codebuddy/
+pro/
