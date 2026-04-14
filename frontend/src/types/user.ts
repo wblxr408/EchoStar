@@ -9,6 +9,9 @@ export interface User {
   avatar?: string;
   avatarUrl?: string;
   role?: 'user' | 'admin' | 'guest';
+  vip?: number;
+  bio?: string;
+  status?: string;
   createdAt?: string;
   updatedAt?: string;
 }

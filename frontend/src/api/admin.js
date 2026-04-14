@@ -57,4 +57,11 @@ export const adminApi = {
     }
     return api.get("/v1/auth/admin/users", { params });
   },
+
+  upgradeVip(userId, days = 30) {
+    if (adminApiProxy) {
+      return adminApiProxy.upgradeVip(userId, days);
+    }
+    return api.post(`/v1/admin/users/${userId}/upgrade-vip`, { days });
+  },
 };
