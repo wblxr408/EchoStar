@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div
     class="amap-container"
     :class="{ 'dark-mode': isDarkMode }"
@@ -332,6 +332,10 @@ function initMap() {
       longitude: center.getLng(),
       zoom: map.getZoom(),
     });
+
+    // 地图移动后像素位置变化，重新检测高缩放聚合
+    updateClusterMarkers();
+    updateMarkers();
   });
 
   map.on("zoomend", () => {
@@ -345,6 +349,10 @@ function initMap() {
       longitude: center.getLng(),
       zoom: map.getZoom(),
     });
+
+    // 缩放结束后重新渲染标记（高缩放聚合检测依赖当前 zoom）
+    updateClusterMarkers();
+    updateMarkers();
   });
 
   map.on("click", (event) => {
@@ -393,6 +401,33 @@ function clearClusterMarkers() {
 
   clusterMarkers.forEach((marker) => map.remove(marker));
   clusterMarkers = [];
+}
+
+/**
+ * 安全替换标记：先将新标记添加到地图，再移除旧标记，避免闪烁。
+ * @param {Array} oldMarkers - 旧标记数组引用
+ * @param {Array} newMarkers - 新标记数组
+ * @param {Function} setRef - 用于更新外部数组引用的回调 (newArr) => {}
+ */
+function swapMarkers(oldMarkers, newMarkers, setRef) {
+  // 先把新标记加到地图上
+  if (newMarkers.length > 0 && map) {
+    map.add(newMarkers);
+  }
+  // 再移除旧标记（此时地图上已有新标记，不会闪烁）
+  if (oldMarkers.length > 0 && map) {
+    oldMarkers.forEach((marker) => map.remove(marker));
+  }
+  // 更新外部引用
+  setRef(newMarkers);
+}
+
+function swapClusterMarkers(newClusterMarkers) {
+  swapMarkers(clusterMarkers, newClusterMarkers, (arr) => { clusterMarkers = arr; });
+}
+
+function swapNormalMarkers(newNormalMarkers) {
+  swapMarkers(markers, newNormalMarkers, (arr) => { markers = arr; });
 }
 
 function clearUserLocationMarker() {
@@ -540,6 +575,13 @@ function updateTempPickedMarker(location = props.tempPickedLocation) {
   tempPickedMarker.setPosition([coords.longitude, coords.latitude]);
 }
 
+// hex 转 rgb 工具函数（用于动态 box-shadow）
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) return "0,0,0";
+  return `${parseInt(result[1], 16)},${parseInt(result[2], 16)},${parseInt(result[3], 16)}`;
+}
+
 function createMarker(story) {
   if (!map || !window.AMap) {
     return null;
@@ -559,12 +601,35 @@ function createMarker(story) {
   const emotion = fromEmotionTag(story.emotionTag) || story.emotion;
   const color = colors[emotion] || "#667eea";
   const isLocked = story.isTimeCapsule && !story.isUnlocked;
+  const isDark = isDarkMode.value;
+
+  // 双层设计：外圈发光底座 + 内核情绪色块 + 呼吸动画
+  const glowOpacity = isDark ? "0.4" : "0.2";
+  // hover 阴影：日间深色扩散 / 夜间冰蓝辉光
+  const hoverShadowColor = isDark
+    ? `rgba(143, 180, 255, 0.35)`
+    : `rgba(0, 0, 0, 0.25)`;
+  const darkClass = isDark ? " marker-dark" : "";
+  const lockStyle = isLocked ? "opacity: 0.55;" : "";
 
   content.innerHTML = `
-    <div class="marker-wrapper" style="background: ${color}; ${isLocked ? "opacity: 0.6;" : ""}">
-      <div class="marker-emotion">${isLocked ? "LOCK" : getEmotionEmoji(story.emotionTag || story.emotion)}</div>
+    <div class="marker-wrapper${darkClass}"
+         style="--marker-color: ${color};
+                --marker-glow-rgb: ${hexToRgb(color)};
+                --glow-opacity: ${glowOpacity};
+                --hover-shadow: ${hoverShadowColor};
+                background: ${color};
+                ${lockStyle}">
+      <div class="marker-glow"></div>
+      <div class="marker-pulse"></div>
+      <div class="marker-emotion">${isLocked ? "\uD83D\uDD12" : getEmotionEmoji(story.emotionTag || story.emotion)}</div>
     </div>
   `;
+
+  // 大量标记点性能优化：content-visibility auto
+  if (markers.length > 50) {
+    content.style.contentVisibility = "auto";
+  }
 
   const marker = new window.AMap.Marker({
     position: [coords.longitude, coords.latitude],
@@ -1167,7 +1232,7 @@ function createClusterMarker(cluster) {
     position: [coords.longitude, coords.latitude],
     content,
     offset: new window.AMap.Pixel(-radius, -radius),
-    zIndex: 50,
+    zIndex: cluster.showPopover ? 110 : 50,
   });
 
   marker.on("click", () => {
@@ -1176,6 +1241,7 @@ function createClusterMarker(cluster) {
       latitude: coords.latitude,
       longitude: coords.longitude,
       count,
+      showPopover: !!cluster.showPopover,
     });
   });
 
@@ -1189,7 +1255,7 @@ function updateClusterMarkers() {
     return;
   }
 
-  clearClusterMarkers();
+  const newClusterMarkers = [];
   absorbedStoryIds = new Set();
 
   {
@@ -1198,6 +1264,8 @@ function updateClusterMarkers() {
       Number.isFinite(currentZoom) &&
       currentZoom >= CLUSTER_RENDER_ZOOM_THRESHOLD
     ) {
+      // 高缩放时不渲染服务端聚合，但必须清除旧聚合标记避免残留闪烁
+      swapClusterMarkers([]);
       return;
     }
 
@@ -1211,13 +1279,12 @@ function updateClusterMarkers() {
     mergedClusters.forEach((cluster) => {
       const marker = createClusterMarker(cluster);
       if (marker) {
-        clusterMarkers.push(marker);
+        newClusterMarkers.push(marker);
       }
     });
 
-    if (clusterMarkers.length > 0) {
-      map.add(clusterMarkers);
-    }
+    // 先建后删：先加新标记，再通过swap移除旧标记
+    swapClusterMarkers(newClusterMarkers);
     return;
   }
 
@@ -1275,13 +1342,12 @@ function updateClusterMarkers() {
   merged.forEach((cluster) => {
     const marker = createClusterMarker(cluster);
     if (marker) {
-      clusterMarkers.push(marker);
+      newClusterMarkers.push(marker);
     }
   });
 
-  if (clusterMarkers.length > 0) {
-    map.add(clusterMarkers);
-  }
+  // 先建后删
+  swapClusterMarkers(newClusterMarkers);
 }
 
 function absorbNearbyStories(clusters, stories) {
@@ -1376,7 +1442,11 @@ function updateMarkers() {
     return;
   }
 
-  clearMarkers();
+  // 使用新数组收集标记，最后通过 swap 先建后删
+  const newMarkers = [];
+
+  // 高缩放聚合星列表（独立于 clusterMarkers，用于高缩放时极近点的二次聚合）
+  const highZoomClusterMarkers = [];
 
   {
     const currentZoom = Number(props.zoom);
@@ -1388,16 +1458,106 @@ function updateMarkers() {
         ? buildLowZoomRenderableData(clusterEntries, storyEntries).points
         : dedupeStories(storyEntries);
 
+    // 高缩放（zoom >= CLUSTER_RENDER_ZOOM_THRESHOLD）时，
+    // 对极近故事点做像素重叠检测，重叠组重新聚合成星
+    if (
+      Number.isFinite(currentZoom) &&
+      currentZoom >= CLUSTER_RENDER_ZOOM_THRESHOLD &&
+      renderableStories.length > 1 &&
+      map
+    ) {
+      const pixelItems = renderableStories
+        .map(createStoryPixelState)
+        .filter(Boolean);
+
+      if (pixelItems.length > 1) {
+        // Union-Find 分组
+        const parent = pixelItems.map((_, i) => i);
+        const find = (i) => {
+          if (parent[i] !== i) parent[i] = find(parent[i]);
+          return parent[i];
+        };
+        const union = (a, b) => {
+          const ra = find(a), rb = find(b);
+          if (ra !== rb) parent[rb] = ra;
+        };
+
+        for (let i = 0; i < pixelItems.length; i++) {
+          for (let j = i + 1; j < pixelItems.length; j++) {
+            if (
+              getStoryMarkerOverlapRatio(pixelItems[i], pixelItems[j]) >=
+              FORCED_STORY_CLUSTER_OVERLAP_RATIO
+            ) {
+              union(i, j);
+            }
+          }
+        }
+
+        // 分组：孤立点渲染为 dot，重叠组渲染为高缩放聚合星
+        const grouped = new Map();
+        pixelItems.forEach((item, idx) => {
+          const root = find(idx);
+          if (!grouped.has(root)) grouped.set(root, []);
+          grouped.get(root).push(item);
+        });
+
+        const isolatedStories = [];
+
+        for (const group of grouped.values()) {
+          if (group.length === 1) {
+            // 孤立点：正常渲染为 dot
+            isolatedStories.push(group[0].story);
+          } else {
+            // 重叠组：创建高缩放聚合星（带 showPopover 标记）
+            const pointIds = dedupePointIds(group.map((item) => item.story.id));
+            let lat = 0, lng = 0;
+            group.forEach((item) => {
+              lat += item.latitude;
+              lng += item.longitude;
+            });
+            const highZoomCluster = {
+              type: "cluster",
+              latitude: lat / group.length,
+              longitude: lng / group.length,
+              count: pointIds.length || group.length,
+              pointIds,
+              showPopover: true, // 标记：点击时展示列表，不放大地图
+            };
+            const clusterMarker = createClusterMarker(highZoomCluster);
+            if (clusterMarker) {
+              highZoomClusterMarkers.push(clusterMarker);
+            }
+          }
+        }
+
+        // 渲染孤立 dot
+        isolatedStories.forEach((story) => {
+          const marker = createMarker(story);
+          if (marker) {
+            newMarkers.push(marker);
+          }
+        });
+
+        // 渲染高缩放聚合星
+        if (highZoomClusterMarkers.length > 0) {
+          newMarkers.push(...highZoomClusterMarkers);
+        }
+
+        // 先建后删
+        swapNormalMarkers(newMarkers);
+        return;
+      }
+    }
+
     renderableStories.forEach((story) => {
       const marker = createMarker(story);
       if (marker) {
-        markers.push(marker);
+        newMarkers.push(marker);
       }
     });
 
-    if (markers.length > 0) {
-      map.add(markers);
-    }
+    // 先建后删
+    swapNormalMarkers(newMarkers);
     return;
   }
 
@@ -1442,13 +1602,12 @@ function updateMarkers() {
     }
     const marker = createMarker(story);
     if (marker) {
-      markers.push(marker);
+      newMarkers.push(marker);
     }
   });
 
-  if (markers.length > 0) {
-    map.add(markers);
-  }
+  // 先建后删
+  swapNormalMarkers(newMarkers);
 }
 
 function addNewStoryMarker(story) {
@@ -1666,6 +1825,9 @@ watch(
 
     if (map && Number.isFinite(zoom)) {
       map.setZoom(zoom);
+      // 缩放变化时重新渲染标记（高缩放聚合检测依赖当前 zoom）
+      updateClusterMarkers();
+      updateMarkers();
     }
   },
 );
@@ -1720,15 +1882,36 @@ watch(
 
 :deep(.custom-marker) {
   cursor: pointer;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition-property: transform, filter, box-shadow;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
 }
 
+/* 日间 hover：深色阴影扩散 */
 :deep(.custom-marker:hover) {
-  transform: scale(1.3);
+  transform: scale(1.15) rotate(-5deg);
+}
+:deep(.custom-marker:hover .marker-glow) {
+  box-shadow:
+    0 0 16px 5px rgba(var(--marker-glow-rgb), calc(var(--glow-opacity) * 2)),
+    0 4px 12px var(--hover-shadow);
+}
+
+/* 夜间 hover：冰蓝辉光叠加 */
+:deep(.amap-container.dark-mode .custom-marker:hover .marker-glow) {
+  box-shadow:
+    0 0 20px 6px rgba(143, 180, 255, 0.35),
+    0 0 32px 8px rgba(143, 180, 255, 0.15),
+    0 4px 12px var(--hover-shadow);
 }
 
 :deep(.custom-marker:active) {
-  transform: scale(1.1);
+  transform: scale(0.95);
+}
+
+:deep(.custom-marker:focus-visible .marker-wrapper) {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
 }
 
 :deep(.user-location-marker) {
@@ -1811,20 +1994,102 @@ watch(
   position: relative;
   width: 50px;
   height: 50px;
-  border-radius: 50%;
+  border-radius: 50% 50% 50% 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   border: 3px solid white;
-  overflow: hidden;
+  overflow: visible;
+  transform-origin: center;
 }
 
-:deep(.amap-container.dark-mode .marker-wrapper) {
+/* 外圈发光底座 — 使用 CSS 变量动态颜色 */
+:deep(.marker-glow) {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  box-shadow: 0 0 10px 3px rgba(var(--marker-glow-rgb), var(--glow-opacity));
+  transition-property: box-shadow, opacity, transform;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+/* 呼吸动画层：日间金色脉动 / 夜间冰蓝闪烁 */
+:deep(.marker-pulse) {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  animation: marker-breathe 3s ease-in-out infinite;
+}
+
+/* 日间呼吸动画：opacity + scale 模拟金色微光 */
+@keyframes marker-breathe {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.98);
+    box-shadow: 0 0 4px rgba(215, 154, 67, 0.15);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+    box-shadow: 0 0 12px rgba(215, 154, 67, 0.35);
+  }
+  100% {
+    opacity: 0.6;
+    transform: scale(0.98);
+    box-shadow: 0 0 4px rgba(215, 154, 67, 0.15);
+  }
+}
+
+/* 夜间呼吸动画：叠加冰蓝辉光 text-shadow 效果（用 box-shadow 模拟）*/
+:deep(.amap-container.dark-mode .marker-pulse) {
+  animation-name: marker-breathe-dark;
+}
+@keyframes marker-breathe-dark {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.98);
+    box-shadow: 0 0 6px rgba(143, 180, 255, 0.12);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+    box-shadow:
+      0 0 16px rgba(143, 180, 255, 0.35),
+      0 0 28px rgba(143, 180, 255, 0.12);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(0.98);
+    box-shadow: 0 0 6px rgba(143, 180, 255, 0.12);
+  }
+}
+
+/* prefers-reduced-motion：关闭所有动画 */
+@media (prefers-reduced-motion: reduce) {
+  :deep(.marker-pulse) {
+    animation: none !important;
+    opacity: 0.7;
+  }
+  :deep(.custom-marker) {
+    transition-duration: 0s !important;
+  }
+  :deep(.marker-glow) {
+    transition-duration: 0s !important;
+  }
+}
+
+/* 暗色模式：冰蓝辉光 — 外圈发光增强 + 边框冰蓝色 */
+:deep(.amap-container.dark-mode .marker-wrapper.marker-dark) {
   box-shadow:
-    0 0 12px currentColor,
-    0 0 24px rgba(255, 255, 255, 0.3),
+    0 0 12px rgba(143, 180, 255, 0.3),
     0 4px 12px rgba(0, 0, 0, 0.5);
+  border-color: rgba(143, 180, 255, 0.4);
 }
 
 :deep(.marker-emotion) {

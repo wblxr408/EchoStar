@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
@@ -35,6 +35,24 @@
         @theme-change="handleThemeChange"
       />
     </div>
+
+    <ClusterPopover
+      v-if="showClusterPopover"
+      :visible="showClusterPopover"
+      :stories="clusterPopoverStories"
+      :map-theme="effectiveMapTheme"
+      @close="showClusterPopover = false"
+      @select-story="openStoryFromCollection"
+      @preview-image="handlePreviewImage"
+    />
+
+    <ImageLightbox
+      :visible="showLightbox"
+
+      :images="lightboxImages"
+      :initial-index="lightboxInitialIndex"
+      @close="showLightbox = false"
+    />
 
     <transition name="publish-modal">
       <div
@@ -399,6 +417,24 @@
         </div>
       </div>
     </div>
+
+    <ClusterPopover
+      v-if="showClusterPopover"
+      :visible="showClusterPopover"
+      :stories="clusterPopoverStories"
+      :map-theme="effectiveMapTheme"
+      @close="showClusterPopover = false"
+      @select-story="openStoryFromCollection"
+      @preview-image="handlePreviewImage"
+    />
+
+    <ImageLightbox
+      :visible="showLightbox"
+
+      :images="lightboxImages"
+      :initial-index="lightboxInitialIndex"
+      @close="showLightbox = false"
+    />
 
     <transition name="publish-modal">
       <div
@@ -1170,6 +1206,8 @@ import { notificationApi } from "../../api/notification";
 import { showToast, showConfirm } from "../../composables/useToast.js";
 import AMap from "../../components/AMap.vue";
 import StoryCard from "../../components/StoryCard.vue";
+import ClusterPopover from "../../components/ClusterPopover.vue";
+import ImageLightbox from "../../components/ImageLightbox.vue";
 import PublishForm from "../../components/PublishForm.vue";
 import LoginModal from "../Home/components/LoginModal.vue";
 import { formatRelativeTime } from "../../utils/time";
@@ -1183,6 +1221,12 @@ const mapStore = useMapStore();
 const userStore = useUserStore();
 
 const clusters = ref([]);
+
+const showClusterPopover = ref(false);
+const clusterPopoverStories = ref([]);
+const showLightbox = ref(false);
+const lightboxImages = ref([]);
+const lightboxInitialIndex = ref(0);
 
 const showSidebar = ref(false);
 const showPublishSidebar = ref(false);
@@ -4950,14 +4994,83 @@ function getMapBounds() {
   return amapRef.value.getBounds();
 }
 
-function handleClusterClick({ cluster, latitude, longitude, count }) {
-  console.log("[Map] cluster clicked:", cluster, count);
+function handleClusterClick({ cluster, latitude, longitude, count, showPopover }) {
+  console.log("[Map] cluster clicked:", cluster, count, showPopover);
 
   const currentZoom = mapStore.zoom;
-  const newZoom = Math.min(currentZoom + 2, 18);
+  const ZOOM_MAX = 18; // 放大上限，同时也是弹出故事列表的阈值
+  const newZoom = Math.min(currentZoom + 2, ZOOM_MAX);
 
+  // 已达上限无法继续放大 → 回退为弹出故事列表
+  if (!Number.isFinite(currentZoom) || currentZoom >= ZOOM_MAX + 2 ) {
+    const pointIds = cluster?.pointIds || [];
+    const allStories = mapStore.stories || [];
+    // 统一转为字符串比较
+    const pidSet = new Set(pointIds.map(String));
+    let matched = pointIds.length > 0
+      ? allStories.filter((s) => pidSet.has(String(s.id ?? "")) || pidSet.has(String(s._id ?? "")))
+      : [];
+
+    // 坐标近邻匹配补充
+    if (matched.length === 0 && count > 1) {
+      const latTol = 0.001;
+      const lngTol = 0.001;
+      allStories.forEach((s) => {
+        const sLat = s.location?.latitude ?? s.location?.lat;
+        const sLng = s.location?.longitude ?? s.location?.lng;
+        if (
+          sLat != null && sLng != null &&
+          Math.abs(sLat - latitude) < latTol &&
+          Math.abs(sLng - longitude) < lngTol &&
+          !matched.find((m) => String(m.id ?? m._id ?? "") === String(s.id ?? s._id ?? ""))
+        ) {
+          matched.push(s);
+        }
+      });
+    }
+
+    if (matched.length >= 1) {
+      clusterPopoverStories.value = matched;
+      showClusterPopover.value = true;
+    }
+    return;
+  }
+
+  // 正常流程：放大地图 +2 级
   mapStore.updateCenter(latitude, longitude);
   mapStore.updateZoom(newZoom);
+
+  // 收集该聚合点关联的故事，用于浮层展示（放大后如果仍有多条故事则展示）
+  const pointIds = cluster?.pointIds || [];
+  const allStories = mapStore.stories || [];
+  const matched = pointIds.length > 0
+    ? allStories.filter((s) => pointIds.includes(s.id) || pointIds.includes(s._id))
+    : [];
+
+  // 坐标近邻匹配（补充）
+  if (matched.length === 0 && count > 1) {
+    const latTol = 0.001;
+    const lngTol = 0.001;
+    allStories.forEach((s) => {
+      const sLat = s.location?.latitude ?? s.location?.lat;
+      const sLng = s.location?.longitude ?? s.location?.lng;
+      if (
+        sLat != null && sLng != null &&
+        Math.abs(sLat - latitude) < latTol &&
+        Math.abs(sLng - longitude) < lngTol &&
+        !matched.find((m) => (m.id || m._id) === (s.id || s._id))
+      ) {
+        matched.push(s);
+      }
+    });
+  }
+
+  // 放大后如果仍有多条重叠故事，且缩放级别足够高（>= ZOOM_MAX-2），才弹出列表
+  // 低缩放时只执行放大操作，不弹列表
+  if (matched.length > 1 && newZoom >= ZOOM_MAX - 2) {
+    clusterPopoverStories.value = matched;
+    showClusterPopover.value = true;
+  }
 
   setTimeout(() => {
     loadStories();
@@ -5339,7 +5452,10 @@ async function handleRandomWalk() {
 }
 
 function handlePreviewImage({ index, images }) {
-  console.log("预览图片:", index, images);
+  if (!images || images.length === 0) return;
+  lightboxImages.value = images;
+  lightboxInitialIndex.value = index || 0;
+  showLightbox.value = true;
 }
 
 function openFeaturedStory(story) {
