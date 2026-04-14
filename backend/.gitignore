@@ -53,6 +53,9 @@ public/uploads/
 # Redis dump
 dump.rdb
 
+# Docker bind mount 数据目录
+docker-data/
+
 # 备份文件
 *.bak
 *.backup
@@ -67,3 +70,7 @@ test-config.local.json
 # 本地测试专用文件（限流绕过服务器，严禁提交）
 src/server.no-limit.js
 src/cluster.no-limit.js
+
+
+scripts/seed-data.js
+scripts/seeddatamanage.md
