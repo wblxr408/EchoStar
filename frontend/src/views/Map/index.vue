@@ -1,5 +1,5 @@
-﻿<template>
-  <div class="map-page" @click="handlePageClick">
+<template>
+  <div class="map-page" :class="{ 'search-blur': anyPanelOpen }" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
         <div class="welcome-overlay__sky" aria-hidden="true">
@@ -53,7 +53,7 @@
         <!-- 故事标签页 -->
         <div v-if="searchTab === 'story'" class="map-search-results-list" @scroll="handleSearchScroll">
           <div v-if="searchLoading" class="map-search-empty">搜索中...</div>
-          <div v-else-if="searchKeyword.trim() && !searchStorySearched" class="map-search-empty">输入关键词后回车搜索故事</div>
+          <div v-else-if="searchKeyword.trim() && !searchStorySearched" class="map-search-empty">搜索中...</div>
           <div v-else-if="searchKeyword.trim() && searchResults.length === 0" class="map-search-empty">未找到相关故事</div>
           <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入关键词搜索故事</div>
           <template v-else>
@@ -69,19 +69,6 @@
                   <span class="item-author">{{ story.author?.username || story.username || '匿名用户' }}</span>
                   <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ story.locationName || '' }}</span>
                 </div>
-                <button
-                  v-if="story.isLiked"
-                  class="item-action-btn unlike-btn"
-                  title="取消点赞"
-                  @click.stop="handleSearchUnlike(story)"
-                ><span>💔</span></button>
-                <button
-                  v-if="story.isFavorited"
-                  class="item-action-btn unfavorite-btn"
-                  :class="{ 'is-restorable': story.isFavorited === false }"
-                  :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
-                  @click.stop="handleSearchToggleFavorite(story)"
-                ><span>{{ story.isFavorited !== false ? '⭐' : '✨' }}</span></button>
               </div>
               <p class="item-content">{{ story.content }}</p>
               <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
@@ -97,7 +84,7 @@
         <!-- 用户标签页 -->
         <div v-else class="map-search-results-list">
           <div v-if="searchUserLoading" class="map-search-empty">搜索中...</div>
-          <div v-else-if="searchKeyword.trim() && !searchUserSearched" class="map-search-empty">输入用户ID后回车查找用户</div>
+          <div v-else-if="searchKeyword.trim() && !searchUserSearched" class="map-search-empty">搜索中...</div>
           <div v-else-if="searchKeyword.trim() && !searchedUser" class="map-search-empty">未找到该用户</div>
           <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入用户ID查找用户</div>
 
@@ -1374,6 +1361,11 @@ const nearbyCenterSummary = computed(() => {
 
   return `当前显示的是 ${nearbyCenterLabel.value} 附近的故事。`;
 });
+const anyPanelOpen = computed(() => {
+  return showSidebar.value || showUserSidebar.value || showPublishSidebar.value
+    || showSwitchAccountModal.value || showLoginModal.value || showNotificationPanel.value
+    || showEditProfileModal.value || isDockExpanded.value;
+});
 const hoveredDockCard = ref("");
 const selectedDockCard = ref("");
 const drawingDockCard = ref("");
@@ -1710,12 +1702,26 @@ function switchSearchTab(tab) {
   searchTab.value = tab;
   const keyword = searchKeyword.value.trim();
   if (!keyword) return;
-  if (tab === 'story' && !searchStorySearched.value) {
+  if (tab === 'story') {
     loadSearchResults(false);
-  } else if (tab === 'user' && !searchUserSearched.value) {
+  } else {
     searchUserById(keyword);
   }
 }
+
+let searchDebounceTimer = null;
+watch(searchKeyword, (keyword) => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    const trimmed = keyword.trim();
+    if (!trimmed) return;
+    if (searchTab.value === 'story') {
+      loadSearchResults(false);
+    } else {
+      searchUserById(trimmed);
+    }
+  }, 350);
+});
 
 const storyReportPanelOpen = ref(false);
 const selectedStoryReportReason = ref("");
@@ -5082,6 +5088,7 @@ async function searchUserById(keyword) {
 }
 
 function handleSearchSubmit() {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
   searchFocused.value = true;
   const keyword = searchKeyword.value.trim();
   if (!keyword) return;
@@ -12591,8 +12598,9 @@ onUnmounted(() => {
   top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 500;
+  z-index: 50;
   width: min(520px, calc(100vw - 40px));
+  transition: filter 0.3s ease;
 }
 .map-search-input-wrap {
   display: flex;
@@ -12608,6 +12616,16 @@ onUnmounted(() => {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   transition: all 0.25s ease;
 }
+/* 浅色模式暖色调 */
+.map-search-bar:not(.dark) .map-search-input-wrap {
+  background: linear-gradient(135deg, rgba(250, 239, 217, 0.92) 0%, rgba(240, 223, 191, 0.92) 100%);
+  border-color: rgba(196, 142, 48, 0.28);
+  box-shadow: 0 4px 20px rgba(7, 11, 22, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+.map-search-bar:not(.dark) .map-search-input-wrap:focus-within {
+  border-color: rgba(196, 142, 48, 0.5);
+  box-shadow: 0 4px 24px rgba(196, 142, 48, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
 .map-search-bar.dark .map-search-input-wrap {
   background: rgba(20, 28, 42, 0.88);
   border-color: rgba(255, 255, 255, 0.1);
@@ -12621,6 +12639,13 @@ onUnmounted(() => {
   border-color: rgba(143, 180, 255, 0.5);
   box-shadow: 0 4px 24px rgba(143, 180, 255, 0.12);
 }
+/* 浅色模式文字颜色 */
+.map-search-bar:not(.dark) .map-search-icon { color: #8b6d3a; }
+.map-search-bar:not(.dark) .map-search-input { color: #3c2910; }
+.map-search-bar:not(.dark) .map-search-input::placeholder { color: rgba(94, 63, 20, 0.45); }
+.map-search-bar:not(.dark) .map-search-clear { background: rgba(164, 122, 48, 0.12); }
+.map-search-bar:not(.dark) .map-search-clear svg { color: #8b6d3a; }
+.map-search-bar:not(.dark) .map-search-clear:hover { background: rgba(164, 122, 48, 0.22); }
 .map-search-icon {
   width: 18px;
   height: 18px;
@@ -12666,7 +12691,7 @@ onUnmounted(() => {
   top: 72px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 499;
+  z-index: 49;
   width: min(480px, calc(100vw - 40px));
   max-height: calc(100vh - 110px);
   background: rgba(255, 255, 255, 0.95);
@@ -12676,7 +12701,24 @@ onUnmounted(() => {
   border-radius: 16px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
   overflow: hidden;
+  transition: filter 0.3s ease;
 }
+/* 浅色模式暖色调 */
+.map-search-results:not(.dark) {
+  background: linear-gradient(160deg, rgba(250, 239, 217, 0.97) 0%, rgba(240, 223, 191, 0.97) 52%, rgba(229, 206, 166, 0.97) 100%);
+  border-color: rgba(196, 142, 48, 0.3);
+  box-shadow: 0 8px 40px rgba(7, 11, 22, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+.map-search-results:not(.dark) .search-tabs {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+}
+.map-search-results:not(.dark) .search-tab { color: #8b6d3a; }
+.map-search-results:not(.dark) .search-tab:hover { color: #5e3f14; }
+.map-search-results:not(.dark) .search-tab.active { color: #96772e; }
+.map-search-results:not(.dark) .search-tab.active::after { background: #96772e; }
+.map-search-results:not(.dark) .map-search-empty { color: #8b6d3a; }
+.map-search-results:not(.dark) .search-user-profile .user-display-name { color: #3c2910; }
+.map-search-results:not(.dark) .search-user-profile .user-star-id { color: #8b6d3a; }
 .map-search-results.dark {
   background: rgba(20, 28, 42, 0.95);
   border-color: rgba(255, 255, 255, 0.08);
@@ -12702,13 +12744,40 @@ onUnmounted(() => {
 .map-search-results.dark .map-search-card .item-time { color: rgba(255, 255, 255, 0.5); }
 .map-search-results.dark .map-search-card .item-footer { color: rgba(255, 255, 255, 0.5); }
 .map-search-results:not(.dark) .map-search-card.panel-item {
-  background: rgba(255, 252, 246, 0.6);
-  border-color: rgba(164, 122, 48, 0.2);
+  background: rgba(255, 252, 246, 0.34);
+  border-color: rgba(164, 122, 48, 0.25);
+  box-shadow: 0 18px 26px -22px rgba(98, 75, 34, 0.18);
+}
+.map-search-results:not(.dark) .map-search-card.panel-item:hover {
+  background: rgba(255, 250, 242, 0.52);
+  border-color: rgba(164, 122, 48, 0.35);
 }
 .map-search-results:not(.dark) .map-search-card .item-content { color: #2c2c2c; }
 .map-search-results:not(.dark) .map-search-card .item-author { color: #333; }
 .map-search-results:not(.dark) .map-search-card .item-time { color: #888; }
 .map-search-results:not(.dark) .map-search-card .item-footer { color: #666; }
+/* 搜索用户结果面板内故事列表浅色模式文字 */
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item {
+  background: rgba(255, 252, 246, 0.34);
+  border-color: rgba(164, 122, 48, 0.25);
+  box-shadow: 0 18px 26px -22px rgba(98, 75, 34, 0.18);
+}
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item:hover {
+  background: rgba(255, 250, 242, 0.52);
+  border-color: rgba(164, 122, 48, 0.35);
+}
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-author { color: #333; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-time { color: #888; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-footer { color: #666; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-likes { color: #666; }
+.map-search-results:not(.dark) .search-user-profile .panel-empty { color: #8b6d3a; }
+.map-search-results:not(.dark) .search-user-profile .user-content-tabs { border-bottom-color: rgba(148, 111, 46, 0.18); }
+.map-search-results:not(.dark) .search-user-profile .content-tab { color: #8b6d3a; }
+.map-search-results:not(.dark) .search-user-profile .content-tab.active { color: #3c2910; }
+.map-search-results:not(.dark) .search-user-profile .tab-count { color: #8b6d3a; background: rgba(255, 252, 246, 0.5); }
+.map-search-results:not(.dark) .search-user-profile .user-bio-area { background: rgba(255, 252, 246, 0.34); border-color: rgba(164, 122, 48, 0.16); }
+.map-search-results:not(.dark) .search-user-profile .bio-text { color: #3c2910; }
 .map-search-empty {
   padding: 20px 16px;
   text-align: center;
@@ -12826,5 +12895,14 @@ onUnmounted(() => {
 }
 .map-search-results-list {
   max-height: calc(100vh - 160px);
+}
+
+/* 使用 JS 控制模糊 */
+.search-blur .map-search-bar,
+.search-blur .map-search-results {
+  filter: blur(4px);
+  opacity: 0.6;
+  pointer-events: none;
+  transition: filter 0.3s ease, opacity 0.3s ease;
 }
 </style>
