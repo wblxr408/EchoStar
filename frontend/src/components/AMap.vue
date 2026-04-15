@@ -82,6 +82,14 @@ const isDarkMode = ref(props.theme === "dark");
 const isSidebarHidden = ref(false);
 const isPublishSidebarOpen = ref(false);
 
+function setMapZoomingState(isZooming) {
+  if (!mapContainer.value) {
+    return;
+  }
+
+  mapContainer.value.classList.toggle("is-zooming", isZooming);
+}
+
 function toFiniteNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -338,10 +346,16 @@ function initMap() {
     updateMarkers();
   });
 
+  map.on("zoomstart", () => {
+    setMapZoomingState(true);
+  });
+
   map.on("zoomend", () => {
     if (!map) {
       return;
     }
+
+    setMapZoomingState(false);
 
     const center = map.getCenter();
     emit("map-move", {
@@ -634,7 +648,10 @@ function createMarker(story) {
   const marker = new window.AMap.Marker({
     position: [coords.longitude, coords.latitude],
     content,
-    offset: new window.AMap.Pixel(-25, -25),
+    offset: new window.AMap.Pixel(
+      -STORY_MARKER_SIZE / 2,
+      -STORY_MARKER_SIZE / 2,
+    ),
     title: (story.content || story.preview || "").substring(0, 50) + "...",
     zIndex: story.isTimeCapsule ? 10 : 100,
   });
@@ -1881,6 +1898,12 @@ watch(
 }
 
 :deep(.custom-marker) {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition-property: transform, filter, box-shadow;
   transition-duration: 0.2s;
@@ -1889,7 +1912,7 @@ watch(
 
 /* 日间 hover：深色阴影扩散 */
 :deep(.custom-marker:hover) {
-  transform: scale(1.15) rotate(-5deg);
+  transform: scale(1.08);
 }
 :deep(.custom-marker:hover .marker-glow) {
   box-shadow:
@@ -1992,9 +2015,10 @@ watch(
 
 :deep(.marker-wrapper) {
   position: relative;
-  width: 50px;
-  height: 50px;
-  border-radius: 50% 50% 50% 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2007,7 +2031,10 @@ watch(
 /* 外圈发光底座 — 使用 CSS 变量动态颜色 */
 :deep(.marker-glow) {
   position: absolute;
-  inset: -6px;
+  left: 50%;
+  top: 50%;
+  width: calc(100% + 12px);
+  height: calc(100% + 12px);
   border-radius: 50%;
   pointer-events: none;
   z-index: -1;
@@ -2015,33 +2042,40 @@ watch(
   transition-property: box-shadow, opacity, transform;
   transition-duration: 0.2s;
   transition-timing-function: ease;
+  transform: translate(-50%, -50%);
+  will-change: opacity, box-shadow, transform;
 }
 
 /* 呼吸动画层：日间金色脉动 / 夜间冰蓝闪烁 */
 :deep(.marker-pulse) {
   position: absolute;
-  inset: -4px;
+  left: 50%;
+  top: 50%;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
   border-radius: 50%;
   pointer-events: none;
   z-index: -1;
+  transform: translate(-50%, -50%);
   animation: marker-breathe 3s ease-in-out infinite;
+  will-change: opacity, box-shadow, transform;
 }
 
 /* 日间呼吸动画：opacity + scale 模拟金色微光 */
 @keyframes marker-breathe {
   0% {
     opacity: 0.6;
-    transform: scale(0.98);
+    transform: translate(-50%, -50%) scale(0.98);
     box-shadow: 0 0 4px rgba(215, 154, 67, 0.15);
   }
   50% {
     opacity: 1;
-    transform: scale(1.02);
+    transform: translate(-50%, -50%) scale(1.02);
     box-shadow: 0 0 12px rgba(215, 154, 67, 0.35);
   }
   100% {
     opacity: 0.6;
-    transform: scale(0.98);
+    transform: translate(-50%, -50%) scale(0.98);
     box-shadow: 0 0 4px rgba(215, 154, 67, 0.15);
   }
 }
@@ -2053,19 +2087,19 @@ watch(
 @keyframes marker-breathe-dark {
   0% {
     opacity: 0.5;
-    transform: scale(0.98);
+    transform: translate(-50%, -50%) scale(0.98);
     box-shadow: 0 0 6px rgba(143, 180, 255, 0.12);
   }
   50% {
     opacity: 1;
-    transform: scale(1.02);
+    transform: translate(-50%, -50%) scale(1.02);
     box-shadow:
       0 0 16px rgba(143, 180, 255, 0.35),
       0 0 28px rgba(143, 180, 255, 0.12);
   }
   100% {
     opacity: 0.5;
-    transform: scale(0.98);
+    transform: translate(-50%, -50%) scale(0.98);
     box-shadow: 0 0 6px rgba(143, 180, 255, 0.12);
   }
 }
@@ -2075,6 +2109,7 @@ watch(
   :deep(.marker-pulse) {
     animation: none !important;
     opacity: 0.7;
+    transform: translate(-50%, -50%);
   }
   :deep(.custom-marker) {
     transition-duration: 0s !important;
@@ -2090,6 +2125,23 @@ watch(
     0 0 12px rgba(143, 180, 255, 0.3),
     0 4px 12px rgba(0, 0, 0, 0.5);
   border-color: rgba(143, 180, 255, 0.4);
+}
+
+:deep(.amap-container.is-zooming .custom-marker) {
+  transition-duration: 0s !important;
+}
+
+:deep(.amap-container.is-zooming .marker-glow) {
+  opacity: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+:deep(.amap-container.is-zooming .marker-pulse) {
+  opacity: 0;
+  animation: none !important;
+  box-shadow: none;
+  transform: none;
 }
 
 :deep(.marker-emotion) {
