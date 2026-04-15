@@ -148,7 +148,7 @@ class StoryServiceClass {
       include: [{
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }]
     });
 
@@ -265,7 +265,8 @@ class StoryServiceClass {
       author: {
         id: story.userId,
         username: author?.username || '匿名用户',
-        avatar: author?.avatarUrl || null
+        avatar: author?.avatarUrl || null,
+        vip: author?.vip || 0
       }
     };
   }
@@ -326,7 +327,7 @@ class StoryServiceClass {
       include: [{
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -369,7 +370,8 @@ class StoryServiceClass {
         author: {
           id: story.userId,
           username: story.author?.username || '匿名用户',
-          avatar: story.author?.avatarUrl || null
+          avatar: story.author?.avatarUrl || null,
+          vip: story.author?.vip || 0
         }
       })),
       pagination: {
@@ -524,7 +526,7 @@ class StoryServiceClass {
       include: [{
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -576,7 +578,8 @@ class StoryServiceClass {
         author: {
           id: story.userId,
           username: story.author?.username || '匿名用户',
-          avatar: story.author?.avatarUrl || null
+          avatar: story.author?.avatarUrl || null,
+          vip: story.author?.vip || 0
         }
       };
     });
@@ -606,7 +609,7 @@ class StoryServiceClass {
       include: [{
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -632,7 +635,8 @@ class StoryServiceClass {
           author: story.author ? {
             id: story.author.id,
             username: story.author.username || '匿名用户',
-            avatar: story.author.avatarUrl || null
+            avatar: story.author.avatarUrl || null,
+            vip: story.author.vip || 0
           } : null,
           location: { latitude: lat, longitude: lng },
           locationName: story.locationName,
@@ -683,7 +687,7 @@ class StoryServiceClass {
       include: [{
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }]
     });
 
@@ -745,7 +749,8 @@ class StoryServiceClass {
         author: {
           id: story.author?.id || story.userId,
           username: story.author?.username || '匿名用户',
-          avatar: story.author?.avatarUrl || null
+          avatar: story.author?.avatarUrl || null,
+          vip: story.author?.vip || 0
         }
       })),
       pagination: {

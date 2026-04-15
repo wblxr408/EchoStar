@@ -27,7 +27,12 @@ export const ResponseCode = {
   STORY_FORBIDDEN: 2002,
   TIME_CAPSULE_LOCKED: 2003,
 
-  PERMISSION_DENIED: 3001
+  PERMISSION_DENIED: 3001,
+
+  // VIP相关业务错误 (4000+)
+  VIP_REQUIRED: 4001,
+  VIP_EXPIRED: 4002,
+  VIP_NOT_FOUND: 4003
 };
 
 /**
@@ -53,5 +58,9 @@ export const ResponseMessage = {
   [ResponseCode.STORY_FORBIDDEN]: '无权访问此故事',
   [ResponseCode.TIME_CAPSULE_LOCKED]: '时光胶囊尚未解锁',
 
-  [ResponseCode.PERMISSION_DENIED]: '权限不足'
+  [ResponseCode.PERMISSION_DENIED]: '权限不足',
+
+  [ResponseCode.VIP_REQUIRED]: '此功能仅限VIP会员使用',
+  [ResponseCode.VIP_EXPIRED]: '您的VIP已过期',
+  [ResponseCode.VIP_NOT_FOUND]: '未找到VIP记录'
 };

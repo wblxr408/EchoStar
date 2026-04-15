@@ -179,6 +179,22 @@
       />
     </div>
 
+    <button
+      class="locate-btn"
+      :class="{ dark: effectiveMapTheme === 'dark' }"
+      title="回到我的位置"
+      aria-label="回到我的位置"
+      @click.stop="handleLocate"
+    >
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <line x1="12" y1="2" x2="12" y2="6"/>
+        <line x1="12" y1="18" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="6" y2="12"/>
+        <line x1="18" y1="12" x2="22" y2="12"/>
+      </svg>
+    </button>
+
     <ClusterPopover
       v-if="showClusterPopover"
       :visible="showClusterPopover"
@@ -195,6 +211,15 @@
       :images="lightboxImages"
       :initial-index="lightboxInitialIndex"
       @close="showLightbox = false"
+    />
+
+    <MyFootprints
+      :visible="showFootprints"
+      :is-dark="effectiveMapTheme === 'dark'"
+      :map-ref="amapRef"
+      :story-detail-open="!!selectedStory && showFootprints"
+      @close="showFootprints = false"
+      @story-click="handleStoryClick"
     />
 
     <transition name="publish-modal">
@@ -1246,6 +1271,7 @@ import AMap from "../../components/AMap.vue";
 import StoryCard from "../../components/StoryCard.vue";
 import ClusterPopover from "../../components/ClusterPopover.vue";
 import ImageLightbox from "../../components/ImageLightbox.vue";
+import MyFootprints from "../../components/MyFootprints.vue";
 import PublishForm from "../../components/PublishForm.vue";
 import LoginModal from "../Home/components/LoginModal.vue";
 import { formatRelativeTime } from "../../utils/time";
@@ -1590,6 +1616,7 @@ function onConfirmPasswordInput() {
 const showSwitchAccountModal = ref(false);
 const savedAccounts = ref([]);
 const isSwitchingAccount = ref(false); // 标记是否在切换账号流程中
+const showFootprints = ref(false);
 const likesList = ref([]);
 const postsList = ref([]);
 const favoritesList = ref([]);
@@ -2516,19 +2543,19 @@ const dockActions = computed(() => [
     handler: handleRandomWalk,
   },
   {
-    key: "locate",
-    tag: "Position Sync",
-    title: "回到我的位置",
-    subtitle: "重新对准当前位置",
-    description: "使用当前位置重新定位地图，把视角迅速拉回你所在的地方。",
-    icon: "◎",
+    key: "footprints",
+    tag: "My Footprints",
+    title: "我的足迹",
+    subtitle: "回放你的故事轨迹",
+    description: "将你发布过的故事按时间顺序连成轨迹，在地图上重温每一段旅程。",
+    icon: "🐾",
     suit: "♣",
-    accent: "#2cb67d",
-    accentSoft: "rgba(44, 182, 125, 0.24)",
-    ink: isDarkMap.value ? "#eef3ff" : "#123127",
+    accent: "#e8b86d",
+    accentSoft: "rgba(232, 184, 109, 0.24)",
+    ink: isDarkMap.value ? "#eef3ff" : "#3e2811",
     visible: true,
     disabled: false,
-    handler: handleLocate,
+    handler: handleFootprints,
   },
   {
     key: "theme",
@@ -4565,6 +4592,14 @@ function handleMyPosts() {
   if (showPostsPanel.value) {
     void loadPostsData();
   }
+}
+
+function handleFootprints() {
+  if (showLikesPanel.value) showLikesPanel.value = false;
+  if (showPostsPanel.value) showPostsPanel.value = false;
+  if (showFavoritesPanel.value) showFavoritesPanel.value = false;
+  showFootprints.value = !showFootprints.value;
+  isDockExpanded.value = false;
 }
 
 async function loadLikesData(isLoadMore = false) {
@@ -9132,6 +9167,78 @@ onUnmounted(() => {
     rgba(244, 67, 54, 0.1) 100%
   ) !important;
   border-color: rgba(244, 67, 54, 0.3) !important;
+}
+
+.footprints-btn {
+  background: linear-gradient(
+    135deg,
+    rgba(232, 184, 109, 0.2) 0%,
+    rgba(240, 147, 251, 0.2) 100%
+  ) !important;
+  border-color: rgba(232, 184, 109, 0.3) !important;
+}
+
+.footprints-btn:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(232, 184, 109, 0.3) 0%,
+    rgba(240, 147, 251, 0.3) 100%
+  ) !important;
+  border-color: rgba(232, 184, 109, 0.5) !important;
+}
+
+.footprints-btn.active {
+  background: linear-gradient(
+    135deg,
+    rgba(232, 184, 109, 0.5) 0%,
+    rgba(240, 147, 251, 0.5) 100%
+  ) !important;
+  border-color: rgba(232, 184, 109, 0.8) !important;
+  box-shadow: 0 0 15px rgba(232, 184, 109, 0.3) !important;
+}
+
+/* 定位按钮 - 右下角 */
+.locate-btn {
+  position: fixed;
+  bottom: 100px;
+  right: 15px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(102, 126, 234, 0.25);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #667eea;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 190;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.25s ease;
+}
+
+.locate-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+  border-color: rgba(102, 126, 234, 0.45);
+}
+
+.locate-btn:active {
+  transform: scale(0.95);
+}
+
+.locate-btn.dark {
+  background: rgba(26, 26, 46, 0.92);
+  border-color: rgba(143, 180, 255, 0.2);
+  color: #8fb4ff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.locate-btn.dark:hover {
+  box-shadow: 0 4px 16px rgba(143, 180, 255, 0.2);
+  border-color: rgba(143, 180, 255, 0.4);
 }
 
 .logout-action-btn:hover {
