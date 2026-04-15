@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="map-page" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
@@ -324,8 +324,13 @@
         }}</span>
       </button>
 
-      <div class="dock-menu" :class="{ expanded: isDockExpanded }">
+      <div
+        ref="dockMenuRef"
+        class="dock-menu"
+        :class="{ expanded: isDockExpanded }"
+      >
         <div
+          ref="dockCardStackRef"
           class="dock-card-stack"
           :class="{
             'selection-motion': Boolean(
@@ -336,6 +341,7 @@
             ),
           }"
           :style="getDockStackStyle(visibleDockActions.length)"
+          @mousemove="handleDockStackPointerMove"
           @mouseleave="scheduleClearDockHover"
         >
           <div
@@ -363,13 +369,26 @@
           >
             <span
               v-if="shouldRenderDockAnchor(action.key)"
-              class="dock-card-anchor"
+              class="dock-card-placeholder"
               :style="
-                getDockCardStyle(index, visibleDockActions.length, action)
+                getDockPlaceholderStyle(index, visibleDockActions.length, action)
               "
               aria-hidden="true"
               @mouseenter="setDockHover(action.key)"
               @mouseleave="scheduleClearDockHover"
+              @click.stop="handleDockCardClick(action)"
+            ></span>
+
+            <span
+              v-if="shouldRenderDockAnchor(action.key)"
+              class="dock-card-anchor"
+              :style="
+                getDockAnchorStyle(index, visibleDockActions.length, action)
+              "
+              aria-hidden="true"
+              @mouseenter="setDockHover(action.key)"
+              @mouseleave="scheduleClearDockHover"
+              @click.stop="handleDockCardClick(action)"
             ></span>
 
             <button
@@ -1295,11 +1314,14 @@ const selectedDockCard = ref("");
 const drawingDockCard = ref("");
 const liftingDockCard = ref("");
 const returningDockCard = ref("");
+const dockMenuRef = ref(null);
+const dockCardStackRef = ref(null);
 const ripplingDockCard = ref("");
 const dockActionPending = ref(false);
 const isDarkMap = computed(() => effectiveMapTheme.value === "dark");
 let dockHoverClearTimer = null;
 let dockSelectionTimer = null;
+let dockPointerX = null;
 let nearbyPlaceSearchInstance = null;
 let nearbyPlaceSearchPromise = null;
 let nearbySearchTimer = null;
@@ -1314,8 +1336,8 @@ let geocoderPromise = null;
 const reverseGeocodeCache = new Map();
 const reverseGeocodePending = new Map();
 
-const DOCK_CARD_PREP_MS = 120;
-const DOCK_CARD_DRAW_MS = 250;
+const DOCK_CARD_PREP_MS = 110;
+const DOCK_CARD_DRAW_MS = 100;
 const DOCK_CARD_RETURN_MS = 300;
 const STORY_MODAL_OPEN_DELAY_MS = 420;
 const POI_SEARCH_RADIUS_METERS = 50000;
@@ -2304,7 +2326,7 @@ const dockActions = computed(() => [
     tag: "Create Story",
     title: "发布故事",
     subtitle: "你有什么想说的？",
-    description: "打开发布面板，把此刻的情绪和位置写进地图里。",
+    description: "打开发布面板，把此刻的情绪和故事写进地图里。",
     icon: "✦",
     suit: "♦",
     accent: "#ff7a59",
@@ -2317,9 +2339,9 @@ const dockActions = computed(() => [
   {
     key: "stories",
     tag: "Story Wall",
-    title: "附近故事",
+    title: "故事墙",
     subtitle: "打开故事墙",
-    description: "展开右侧故事墙，继续浏览附近故事、精选内容和公告。",
+    description: "展开故事墙，浏览附近故事、精选故事和为你推荐。",
     icon: "✉",
     suit: "♣",
     accent: "#5f7cff",
@@ -2658,6 +2680,70 @@ function clearDockHover() {
   syncDockHoverSelection();
 }
 
+function getDockStickyHoverKey() {
+  return selectedDockCard.value || liftingDockCard.value || "";
+}
+
+function getDockStickyHorizontalBounds(key) {
+  if (!key) {
+    return null;
+  }
+
+  const index = visibleDockActions.value.findIndex((action) => action.key === key);
+
+  if (index < 0) {
+    return null;
+  }
+
+  const { cardWidth, spreadX, hoverX } = getDockLayoutMetrics(
+    index,
+    visibleDockActions.value.length,
+    key,
+  );
+  const horizontalTolerance = 4;
+
+  return {
+    left: Math.min(spreadX, hoverX) - horizontalTolerance,
+    right: Math.max(spreadX, hoverX) + cardWidth + horizontalTolerance,
+  };
+}
+
+function isPointerWithinDockStickyHorizontalBounds(key) {
+  if (dockPointerX === null) {
+    return false;
+  }
+
+  const bounds = getDockStickyHorizontalBounds(key);
+
+  if (!bounds) {
+    return false;
+  }
+
+  return dockPointerX >= bounds.left && dockPointerX <= bounds.right;
+}
+
+function handleDockStackPointerMove(event) {
+  if (!dockCardStackRef.value) {
+    return;
+  }
+
+  const rect = dockCardStackRef.value.getBoundingClientRect();
+  dockPointerX = event.clientX - rect.left;
+
+  const stickyHoverKey = getDockStickyHoverKey();
+
+  if (!stickyHoverKey || hoveredDockCard.value !== stickyHoverKey) {
+    return;
+  }
+
+  if (isPointerWithinDockStickyHorizontalBounds(stickyHoverKey)) {
+    return;
+  }
+
+  hoveredDockCard.value = "";
+  syncDockHoverSelection();
+}
+
 function scheduleClearDockHover() {
   if (isPickingPublishLocation.value) {
     hoveredDockCard.value = "";
@@ -2673,10 +2759,24 @@ function scheduleClearDockHover() {
   }
 
   dockHoverClearTimer = window.setTimeout(() => {
+    const stickyHoverKey = getDockStickyHoverKey();
+    const pointerStillInDockMenu = Boolean(dockMenuRef.value?.matches?.(":hover"));
+
+    if (
+      stickyHoverKey &&
+      pointerStillInDockMenu &&
+      isPointerWithinDockStickyHorizontalBounds(stickyHoverKey)
+    ) {
+      hoveredDockCard.value = stickyHoverKey;
+      dockHoverClearTimer = null;
+      syncDockHoverSelection();
+      return;
+    }
+
     hoveredDockCard.value = "";
     dockHoverClearTimer = null;
     syncDockHoverSelection();
-  }, 70);
+  }, 90);
 }
 
 function handleDockCardClick(action) {
@@ -2718,16 +2818,20 @@ function getDockLayoutMetrics(index, total, actionKey = "") {
   const cardWidth = 244;
   const cardStep = 148;
   const cardHeight = 344;
-  const compressedStep = 74;
-  const gapClearance = 28;
-  const stackWidth = cardWidth + (visibleCount - 1) * cardStep;
+  const stackSidePadding = 96;
+  const sideRetreatBase = 14;
+  const sideRetreatBoost = 75;
+  const sideRetreatNearBonus = 18;
+  const sideCompressionStep = 25;
+  const stackWidth =
+    cardWidth + (visibleCount - 1) * cardStep + stackSidePadding * 2;
   const middleIndex = (visibleCount - 1) / 2;
   const distanceFromMiddle = index - middleIndex;
   const maxDistance = Math.max(middleIndex, 1);
   const normalizedDistance =
     maxDistance === 0 ? 0 : Math.abs(distanceFromMiddle) / maxDistance;
   const arcLift = Math.round((1 - Math.pow(normalizedDistance, 1.55)) * 74);
-  const baseX = index * cardStep;
+  const baseX = stackSidePadding + index * cardStep;
   const collapsedX = (stackWidth - cardWidth) / 2 + index * 2;
   const collapsedY = 28 - index * 2;
   const spreadY = Math.round(-10 - arcLift);
@@ -2736,52 +2840,49 @@ function getDockLayoutMetrics(index, total, actionKey = "") {
   const hasExtractionGap = gapIndex >= 0;
   let spreadX = baseX;
   let adjustedSpreadRotate = spreadRotate;
-  let extractionLaneX = baseX;
+  let selectedLiftX = baseX;
 
   if (hasExtractionGap) {
     const leftCount = gapIndex;
     const rightCount = visibleCount - gapIndex - 1;
-    const maxLeftStart = baseX - cardWidth - gapClearance;
-    const minRightStart = baseX + cardWidth + gapClearance;
-    const leftCompressedStep =
-      leftCount > 1
-        ? Math.min(compressedStep, Math.max(maxLeftStart / (leftCount - 1), 0))
-        : compressedStep;
-    const rightCompressedStep =
-      rightCount > 1
-        ? Math.min(
-            compressedStep,
-            Math.max(
-              (stackWidth - cardWidth - minRightStart) / (rightCount - 1),
-              0,
-            ),
-          )
-        : compressedStep;
-    const rightStartX =
-      stackWidth - cardWidth - (rightCount - 1) * rightCompressedStep;
-
-    // Shift the selected card toward the nearest gap before lifting it out.
-    if (index === gapIndex && leftCount > 0 && rightCount > 0) {
-      const leftBoundary = (gapIndex - 1) * leftCompressedStep + cardWidth;
-      const rightBoundary = rightStartX;
-      extractionLaneX = (leftBoundary + rightBoundary) / 2 - cardWidth / 2;
-    }
+    const selectedBaseX = stackSidePadding + gapIndex * cardStep;
 
     if (index < gapIndex) {
-      spreadX = index * leftCompressedStep;
-      adjustedSpreadRotate -= 1.6 + (gapIndex - index - 1) * 0.14;
+      const proximityToGap =
+        leftCount <= 1 ? 1 : index / (leftCount - 1);
+      const nearGapBonus =
+        Math.pow(proximityToGap, 1.55) * sideRetreatNearBonus;
+      const retreatAmount =
+        sideRetreatBase +
+        proximityToGap * sideRetreatBoost +
+        nearGapBonus +
+        index * sideCompressionStep;
+      spreadX = baseX - retreatAmount;
+      adjustedSpreadRotate -= 0.75 + proximityToGap * 1.25;
     } else if (index > gapIndex) {
-      spreadX = rightStartX + (index - gapIndex - 1) * rightCompressedStep;
-      adjustedSpreadRotate += 1.6 + (index - gapIndex - 1) * 0.14;
+      const ordinal = index - gapIndex - 1;
+      const proximityToGap =
+        rightCount <= 1 ? 1 : 1 - ordinal / (rightCount - 1);
+      const nearGapBonus =
+        Math.pow(proximityToGap, 1.55) * sideRetreatNearBonus;
+      const retreatAmount =
+        sideRetreatBase +
+        proximityToGap * sideRetreatBoost +
+        nearGapBonus +
+        (rightCount - ordinal - 1) * sideCompressionStep;
+      spreadX = baseX + retreatAmount;
+      adjustedSpreadRotate += 0.75 + proximityToGap * 1.25;
+    } else {
+      selectedLiftX = selectedBaseX;
     }
   }
 
-  const prepX = baseX + (extractionLaneX - baseX) * 0.84;
-  const prepY = spreadY - 24;
-  const prepRotate = distanceFromMiddle * 4.1;
-  const drawX = extractionLaneX;
-  const drawY = spreadY - 116;
-  const drawRotate = distanceFromMiddle * 1.75;
+  const prepX = baseX;
+  const prepY = spreadY - 10;
+  const prepRotate = spreadRotate * 0.78;
+  const drawX = selectedLiftX;
+  const drawY = spreadY - 82;
+  const drawRotate = spreadRotate * 0.32;
   const hoverX = drawX;
   const hoverY = drawY;
   const hoverRotate = drawRotate;
@@ -2880,19 +2981,62 @@ function getDockCardStyle(index, total, action) {
     "--prep-x": `${prepX}px`,
     "--prep-y": `${prepY}px`,
     "--prep-rotate": `${prepRotate}deg`,
-    "--prep-scale": "1.008",
+    "--prep-scale": "1",
     "--draw-x": `${drawX}px`,
     "--draw-y": `${drawY}px`,
     "--draw-rotate": `${drawRotate}deg`,
-    "--draw-scale": "1.02",
+    "--draw-scale": "1.014",
     "--hover-x": `${hoverX}px`,
     "--hover-y": `${hoverY}px`,
     "--hover-rotate": `${hoverRotate}deg`,
-    "--hover-scale": "1.02",
+    "--hover-scale": "1.014",
     "--card-z": `${total - index}`,
     "--card-accent": action.accent,
     "--card-accent-soft": action.accentSoft,
     "--card-ink": action.ink,
+  };
+}
+
+function getDockAnchorStyle(index, total, action) {
+  const {
+    cardWidth,
+    cardHeight,
+    spreadX,
+    spreadY,
+    hoverX,
+    hoverY,
+    motionState,
+  } = getDockLayoutMetrics(index, total, action.key);
+  const paddingX = motionState === "selected" ? 8 : 6;
+  const paddingTop = motionState === "selected" ? 58 : 34;
+  const paddingBottom = motionState === "selected" ? 40 : 24;
+  const anchorX = Math.min(spreadX, hoverX) - paddingX;
+  const anchorY = Math.min(spreadY, hoverY) - paddingTop;
+  const anchorWidth = cardWidth + Math.abs(hoverX - spreadX) + paddingX * 2;
+  const anchorHeight =
+    cardHeight + Math.abs(hoverY - spreadY) + paddingTop + paddingBottom;
+
+  return {
+    "--anchor-x": `${anchorX}px`,
+    "--anchor-y": `${anchorY}px`,
+    width: `${anchorWidth}px`,
+    height: `${anchorHeight}px`,
+    zIndex: motionState === "selected" ? "117" : "115",
+  };
+}
+
+function getDockPlaceholderStyle(index, total, action) {
+  const { cardWidth, cardHeight, spreadX, spreadY, motionState } =
+    getDockLayoutMetrics(index, total, action.key);
+  const paddingX = motionState === "selected" ? 6 : 4;
+  const paddingY = motionState === "selected" ? 26 : 16;
+
+  return {
+    "--placeholder-x": `${spreadX - paddingX}px`,
+    "--placeholder-y": `${spreadY - paddingY}px`,
+    width: `${cardWidth + paddingX * 2}px`,
+    height: `${cardHeight + paddingY * 2}px`,
+    zIndex: motionState === "selected" ? "115" : "113",
   };
 }
 
@@ -6998,6 +7142,7 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.dock-card-placeholder,
 .dock-card-anchor {
   display: block;
   position: absolute;
@@ -7009,13 +7154,22 @@ onUnmounted(() => {
   opacity: 0;
   cursor: pointer;
   pointer-events: auto;
-  transform: translate3d(var(--spread-x), var(--spread-y), 0)
-    rotate(var(--spread-rotate));
-  transform-origin: center bottom;
-  z-index: 12;
+}
+
+.dock-card-placeholder {
+  transform: translate3d(var(--placeholder-x), var(--placeholder-y), 0);
+  transform-origin: center center;
+  z-index: 113;
+}
+
+.dock-card-anchor {
+  transform: translate3d(var(--anchor-x), var(--anchor-y), 0);
+  transform-origin: center center;
+  z-index: 115;
 }
 
 .dock-card {
+  --active-breathe-y: 0px;
   position: absolute;
   left: 0;
   bottom: 0;
@@ -7121,6 +7275,13 @@ onUnmounted(() => {
   transition-delay: 0ms !important;
 }
 
+.dock-card-stack.selection-motion
+  .dock-card:not(.drawing):not(.lifting):not(.active):not(.returning) {
+  transition-duration: 0.24s, 0.26s, 0.26s, 0.18s, 0.26s;
+  transition-timing-function:
+    cubic-bezier(0.2, 0.82, 0.22, 1), ease, ease, ease, ease;
+}
+
 .dock-card-stack.selection-motion .dock-card.drawing {
   transition-delay: 85ms, 0ms, 0ms, 0ms, 0ms !important;
 }
@@ -7141,16 +7302,28 @@ onUnmounted(() => {
 .dock-menu.expanded .dock-card.lifting {
   transform: translate3d(var(--draw-x), var(--draw-y), 0)
     rotate(var(--draw-rotate)) scale(var(--draw-scale));
-  transition-duration: 0.24s, 0.22s, 0.22s, 0.16s, 0.22s;
+  transition-duration: 0.1s, 0.12s, 0.12s, 0.1s, 0.12s;
   transition-timing-function:
     cubic-bezier(0.2, 0.88, 0.24, 1), ease, ease, ease, ease;
   z-index: 116 !important;
 }
 
 .dock-menu.expanded .dock-card.active {
-  transform: translate3d(var(--hover-x), var(--hover-y), 0)
-    rotate(var(--hover-rotate)) scale(var(--hover-scale));
+  transform: translate3d(
+      var(--hover-x),
+      calc(var(--hover-y) + var(--active-breathe-y)),
+      0
+    )
+    rotate(var(--hover-rotate))
+    scale(var(--hover-scale));
   transition-duration: 0.16s, 0.22s, 0.22s, 0.16s, 0.22s;
+  animation: dockCardActiveBreath 2.7s ease-in-out infinite;
+  box-shadow:
+    0 24px 44px rgba(8, 12, 24, 0.34),
+    0 0 0 1px var(--dock-card-edge-ring),
+    0 0 28px -5px var(--card-accent-soft),
+    inset 0 0 0 2px rgba(255, 246, 223, 0.84),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
   z-index: 116 !important;
 }
 
@@ -7271,6 +7444,41 @@ onUnmounted(() => {
         0
       )
       rotate(calc(var(--hover-rotate) - 0.65deg)) scale(var(--hover-scale));
+  }
+}
+
+@property --active-breathe-y {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes dockCardActiveBreath {
+  0%,
+  100% {
+    --active-breathe-y: 0px;
+    box-shadow:
+      0 24px 44px rgba(8, 12, 24, 0.34),
+      0 0 0 1px var(--dock-card-edge-ring),
+      0 0 28px -5px var(--card-accent-soft),
+      inset 0 0 0 2px rgba(255, 246, 223, 0.84),
+      inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  }
+  50% {
+    --active-breathe-y: -3px;
+    box-shadow:
+      0 28px 50px rgba(8, 12, 24, 0.38),
+      0 0 0 1px var(--dock-card-edge-ring),
+      0 0 34px -3px var(--card-accent-soft),
+      inset 0 0 0 2px rgba(255, 246, 223, 0.9),
+      inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-menu.expanded .dock-card.active,
+  .dock-card.rippling .dock-card-ripple {
+    animation: none !important;
   }
 }
 
