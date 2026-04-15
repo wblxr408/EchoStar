@@ -72,6 +72,16 @@ export const User = sequelize.define('User', {
     field: 'user_status',
     comment: '用户状态（deleted/normal/recommended）'
   },
+  vip: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    field: 'vip',
+    comment: 'VIP状态（0非会员，1会员）',
+    validate: {
+      isIn: [[0, 1]]
+    }
+  },
   bio: {
     type: DataTypes.STRING(500),
     allowNull: true,

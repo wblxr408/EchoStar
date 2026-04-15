@@ -250,12 +250,18 @@
           <!-- 正常用户 -->
           <div v-if="userFilter === 'normal'" class="users-list">
             <div class="search-bar">
-              <input v-model="userSearch" placeholder="搜索用户..." class="search-input">
+              <select v-model="userSearchType" class="search-type-select">
+                <option value="username">用户名</option>
+                <option value="email">邮箱</option>
+                <option value="id">用户ID</option>
+              </select>
+              <input v-model="userSearch" :placeholder="searchPlaceholder" class="search-input">
             </div>
             <table class="users-table">
               <thead>
                 <tr>
                   <th>用户信息</th>
+                  <th>VIP状态</th>
                   <th>发布故事</th>
                   <th>注册时间</th>
                   <th>操作</th>
@@ -267,18 +273,29 @@
                     <div class="user-cell">
                       <img :src="user.avatar" class="user-avatar">
                       <div class="user-info">
-                        <span class="user-name">{{ user.name }}</span>
+                        <span class="user-name">{{ user.name }} <span v-if="user.vip" class="vip-badge">VIP</span></span>
                         <span class="user-email">{{ user.email }}</span>
+                        <span class="user-id">ID: {{ user.id }}</span>
                       </div>
                     </div>
+                  </td>
+                  <td>
+                    <span v-if="user.vip" class="vip-status active">👑 VIP会员</span>
+                    <span v-else class="vip-status inactive">普通用户</span>
                   </td>
                   <td>{{ user.storyCount }}</td>
                   <td>{{ formatShortTime(user.createdAt) }}</td>
                   <td>
-                    <!-- API 8.4 封禁 -->
-                    <button class="btn-ban" @click="showBanDialog(user.id)">
-                      封禁
-                    </button>
+                    <div class="user-action-btns">
+                      <!-- API 升级VIP -->
+                      <button class="btn-vip-upgrade" @click="showUpgradeVipDialog(user.id)">
+                        👑 升级VIP
+                      </button>
+                      <!-- API 8.4 封禁 -->
+                      <button class="btn-ban" @click="showBanDialog(user.id)">
+                        封禁
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -497,6 +514,62 @@
         <div class="modal-actions">
           <button class="btn-cancel" @click="showBanModal = false">取消</button>
           <button class="btn-confirm" @click="confirmBan">确认封禁</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIP升级确认弹窗 -->
+    <div v-if="showVipUpgradeModal" class="modal-overlay" @click.self="showVipUpgradeModal = false">
+      <div class="modal-content vip-upgrade-modal">
+        <h3>👑 升级VIP会员</h3>
+        <div v-if="vipUpgradeUser" class="vip-upgrade-info">
+          <div class="vip-info-card">
+            <div class="vip-info-row">
+              <span class="vip-info-label">用户ID</span>
+              <span class="vip-info-value">{{ vipUpgradeUser.id }}</span>
+            </div>
+            <div class="vip-info-row">
+              <span class="vip-info-label">用户名</span>
+              <span class="vip-info-value">{{ vipUpgradeUser.name }}</span>
+            </div>
+            <div class="vip-info-row">
+              <span class="vip-info-label">邮箱</span>
+              <span class="vip-info-value">{{ vipUpgradeUser.email }}</span>
+            </div>
+            <div class="vip-info-row">
+              <span class="vip-info-label">注册时间</span>
+              <span class="vip-info-value">{{ formatShortTime(vipUpgradeUser.createdAt) }}</span>
+            </div>
+            <div class="vip-info-row">
+              <span class="vip-info-label">当前VIP状态</span>
+              <span class="vip-info-value" :class="vipUpgradeUser.vip ? 'vip-active' : 'vip-inactive'">
+                {{ vipUpgradeUser.vip ? '👑 VIP会员' : '普通用户' }}
+              </span>
+            </div>
+          </div>
+          <div class="vip-duration-select">
+            <label>VIP有效期</label>
+            <select v-model="vipUpgradeDays">
+              <option :value="7">7天</option>
+              <option :value="30">30天</option>
+              <option :value="90">90天</option>
+              <option :value="180">180天</option>
+              <option :value="365">365天</option>
+            </select>
+          </div>
+          <p v-if="vipUpgradeUser.vip" class="vip-extend-tip">
+            该用户当前已是VIP会员，升级将在原到期时间基础上延长 {{ vipUpgradeDays }} 天。
+          </p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="showVipUpgradeModal = false">取消</button>
+          <button
+            class="btn-confirm btn-vip-confirm"
+            :disabled="vipUpgrading"
+            @click="confirmUpgradeVip"
+          >
+            {{ vipUpgrading ? '升级中...' : '确认升级' }}
+          </button>
         </div>
       </div>
     </div>
@@ -920,12 +993,25 @@ const userTabs = ref([
 const bannedUsers = ref([]);
 const normalUsers = ref([]);
 const userSearch = ref('');
+const userSearchType = ref('username');
+
+const searchPlaceholder = computed(() => {
+  const map = { username: '输入用户名搜索...', email: '输入邮箱搜索...', id: '输入用户ID搜索...' };
+  return map[userSearchType.value] || '搜索用户...';
+});
 
 const filteredNormalUsers = computed(() => {
   if (!userSearch.value) return normalUsers.value;
+  const keyword = userSearch.value.trim();
+  if (userSearchType.value === 'id') {
+    return normalUsers.value.filter(u => String(u.id).includes(keyword));
+  }
+  if (userSearchType.value === 'email') {
+    return normalUsers.value.filter(u => u.email?.toLowerCase().includes(keyword.toLowerCase()));
+  }
   return normalUsers.value.filter(u =>
-    u.username?.includes(userSearch.value) ||
-    u.email?.includes(userSearch.value)
+    u.username?.includes(keyword) ||
+    u.name?.includes(keyword)
   );
 });
 
@@ -937,11 +1023,13 @@ async function loadUsers() {
     normalUsers.value = (normalData?.users || []).map(u => ({
       id: u.id,
       name: u.username,
+      username: u.username,
       email: u.email,
       avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
       status: u.status,
+      vip: u.vip || 0,
       createdAt: u.createdAt,
-      storyCount: 0 // 后端暂未返回
+      storyCount: 0
     }));
 
     // 加载封禁用户
@@ -963,6 +1051,38 @@ async function loadUsers() {
     ];
   } catch (error) {
     console.error('加载用户列表失败:', error);
+  }
+}
+
+// ============ VIP升级 ============
+const showVipUpgradeModal = ref(false);
+const vipUpgradeUser = ref(null);
+const vipUpgradeDays = ref(30);
+const vipUpgrading = ref(false);
+
+function showUpgradeVipDialog(userId) {
+  vipUpgradeUser.value = normalUsers.value.find(u => u.id === userId);
+  vipUpgradeDays.value = 30;
+  showVipUpgradeModal.value = true;
+}
+
+async function confirmUpgradeVip() {
+  if (!vipUpgradeUser.value) return;
+  vipUpgrading.value = true;
+  try {
+    await adminApi.upgradeVip(vipUpgradeUser.value.id, vipUpgradeDays.value);
+    showToast(`已将用户 ${vipUpgradeUser.value.name} 升级为VIP（${vipUpgradeDays.value}天）`, 'success');
+    // 更新本地状态
+    const user = normalUsers.value.find(u => u.id === vipUpgradeUser.value.id);
+    if (user) {
+      user.vip = 1;
+    }
+    showVipUpgradeModal.value = false;
+  } catch (error) {
+    console.error('VIP升级失败:', error);
+    showToast(error.response?.data?.message || error.message || '升级失败', 'error');
+  } finally {
+    vipUpgrading.value = false;
   }
 }
 
@@ -1598,7 +1718,8 @@ function handleLogout() {
   overflow: hidden;
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
+  -webkit-line-clamp: 6; /* 兼容旧版WebKit内核浏览器（老Chrome、Safari、移动端浏览器） */
+  line-clamp: 6; /* 标准属性，兼容现代浏览器（Chrome 115+、Firefox 117+等） */
 }
 
 .story-meta {
@@ -2506,5 +2627,198 @@ function handleLogout() {
 .ann-modal-fade-enter-from,
 .ann-modal-fade-leave-to {
   opacity: 0;
+}
+
+/* --- VIP升级相关样式 --- */
+.search-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.search-type-select {
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #555;
+  background: #fff;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.search-type-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.search-bar .search-input {
+  flex: 1;
+}
+
+.user-action-btns {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.user-id {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.vip-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #7b5800;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.vip-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.vip-status.active {
+  background: linear-gradient(135deg, #fff8e1, #ffecb3);
+  color: #f57f17;
+}
+
+.vip-status.inactive {
+  background: #f5f5f5;
+  color: #999;
+}
+
+.btn-vip-upgrade {
+  padding: 6px 12px;
+  border: 1px solid #ffd700;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #fff8e1, #fff3cd);
+  color: #b8860b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-vip-upgrade:hover {
+  background: linear-gradient(135deg, #ffecb3, #ffe082);
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+}
+
+/* VIP升级弹窗 */
+.vip-upgrade-modal h3 {
+  color: #b8860b;
+}
+
+.vip-upgrade-info {
+  margin: 16px 0;
+}
+
+.vip-info-card {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.vip-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.vip-info-row:last-child {
+  border-bottom: none;
+}
+
+.vip-info-label {
+  font-size: 14px;
+  color: #888;
+  font-weight: 500;
+}
+
+.vip-info-value {
+  font-size: 14px;
+  color: #333;
+  font-weight: 600;
+}
+
+.vip-info-value.vip-active {
+  color: #f57f17;
+}
+
+.vip-info-value.vip-inactive {
+  color: #999;
+}
+
+.vip-duration-select {
+  margin-bottom: 12px;
+}
+
+.vip-duration-select label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+}
+
+.vip-duration-select select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #333;
+  background: #fff;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.vip-duration-select select:focus {
+  outline: none;
+  border-color: #ffd700;
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.12);
+}
+
+.vip-extend-tip {
+  font-size: 13px;
+  color: #e65100;
+  background: #fff3e0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 0;
+}
+
+.btn-vip-confirm {
+  background: linear-gradient(135deg, #ffd700, #ffaa00) !important;
+  color: #5d4037 !important;
+  border: none !important;
+}
+
+.btn-vip-confirm:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ffca28, #ff8f00) !important;
+  box-shadow: 0 2px 12px rgba(255, 215, 0, 0.4);
+}
+
+.btn-vip-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

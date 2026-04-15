@@ -254,7 +254,7 @@ const AuthServiceImpl = {
    */
   async fetchUserRaw(userId) {
     const user = await User.findByPk(userId, {
-      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'status', 'createdAt']
+      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'status', 'createdAt', 'vip']
     });
 
     if (!user) return null;
@@ -267,6 +267,7 @@ const AuthServiceImpl = {
       role: user.role,
       bio: user.bio,
       status: user.status,
+      vip: user.vip,
       createdAt: user.createdAt
     };
   },
@@ -298,6 +299,7 @@ const AuthServiceImpl = {
       bio: rawData.bio,
       role: rawData.role,
       status: rawData.status,
+      vip: rawData.vip,
       createdAt: rawData.createdAt
     };
   },
@@ -380,6 +382,7 @@ const AuthServiceImpl = {
       username: rawData.username,
       avatar: rawData.avatarUrl,
       bio: rawData.bio,
+      vip: rawData.vip,
       stories: stories.map(story => ({
         id: story.id,
         content: story.content,
@@ -450,7 +453,8 @@ const AuthServiceImpl = {
       id: user.id,
       username: user.username,
       avatar: user.avatarUrl,
-      bio: user.bio
+      bio: user.bio,
+      vip: user.vip
     };
   },
 
@@ -533,7 +537,7 @@ const AuthServiceImpl = {
 
     const { count, rows } = await User.findAndCountAll({
       where: { status: statusFilter },
-      attributes: ['id', 'username', 'email', 'role', 'status', 'bio', 'avatarUrl', 'createdAt'],
+      attributes: ['id', 'username', 'email', 'role', 'status', 'bio', 'avatarUrl', 'createdAt', 'vip'],
       order: [['createdAt', 'DESC']],
       offset,
       limit: pageSize
