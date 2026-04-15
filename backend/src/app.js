@@ -5,6 +5,7 @@ import { corsMiddleware } from './common/middleware/cors.js';
 import { errorHandler, notFoundHandler } from './common/middleware/error-handler.js';
 import { generalLimiter } from './common/middleware/rate-limit.js';
 import logger from './common/utils/logger.js';
+import cron from 'node-cron';
 
 // 导入路由
 import authRoutes from './routes/auth.routes.js';
@@ -17,11 +18,13 @@ import favoriteRoutes from './routes/favorite.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import reportRoutes from './routes/report.routes.js';
 import announcementRoutes from './routes/announcement.routes.js';
+import vipRoutes from './routes/vip.routes.js';
 
 // 导入定时任务
 import { syncStoryViewCount } from './jobs/sync-story-view-count.js';
 import { syncLikeToDatabase } from './jobs/sync-like-to-db.js';
 import { syncFavoriteToDatabase } from './jobs/sync-favorite-to-db.js';
+import { checkVipExpiry } from './jobs/check-vip-expiry.js';
 
 // 导入 RocketMQ
 import { rocketmqClient } from './common/utils/rocketmq.js';
@@ -78,6 +81,7 @@ export function createApp() {
   app.use('/api/v1/notifications', notificationRoutes);
   app.use('/api/v1/reports', reportRoutes);
   app.use('/api/v1/announcements', announcementRoutes);
+  app.use('/api/v1/vip', vipRoutes);
 
   // 兼容旧版 API 路由 (不带 v1 前缀)
   app.use('/api/auth', authRoutes);
@@ -90,6 +94,7 @@ export function createApp() {
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/announcements', announcementRoutes);
+  app.use('/api/vip', vipRoutes);
 
   // 404 处理
   app.use(notFoundHandler);
@@ -138,6 +143,16 @@ export function createApp() {
       });
     }, 5 * 1000);
 
+    // 定时任务：每天凌晨1点检查VIP过期
+    cron.schedule('0 1 * * *', () => {
+      console.log('🕐 开始执行VIP过期检查...');
+      checkVipExpiry().catch(err => {
+        console.error('❌ 检查VIP过期失败:', err);
+      });
+    }, {
+      timezone: 'Asia/Shanghai'  // 设置时区
+    });
+
     // 启动时执行一次（防止服务重启期间的数据丢失）
     syncStoryViewCount().catch(err => {
       console.error('❌ 启动时同步浏览量失败:', err);
@@ -147,6 +162,9 @@ export function createApp() {
     });
     syncFavoriteToDatabase().catch(err => {
       console.error('❌ 启动时同步收藏数据失败:', err);
+    });
+    checkVipExpiry().catch(err => {
+      console.error('❌ 启动时检查VIP过期失败:', err);
     });
   }
 

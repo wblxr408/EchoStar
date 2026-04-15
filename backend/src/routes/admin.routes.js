@@ -38,6 +38,11 @@ router.post('/users/:userId/ban', adminController.banUser);
 router.post('/users/:userId/unban', adminController.unbanUser);
 
 /**
+ * POST /api/admin/users/:userId/upgrade-vip - 升级用户为VIP
+ */
+router.post('/users/:userId/upgrade-vip', adminController.upgradeUserToVip);
+
+/**
  * GET /api/admin/statistics - 数据统计
  */
 router.get('/statistics', adminController.getStatistics);

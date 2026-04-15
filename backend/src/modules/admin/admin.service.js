@@ -240,6 +240,17 @@ export const AdminService = {
   },
 
   /**
+   * 升级用户为VIP
+   * @param {number} userId - 用户ID
+   * @param {number} adminId - 管理员ID
+   * @param {number} days - VIP天数
+   */
+  async upgradeUserToVip(userId, adminId, days = 30) {
+    const { VipService } = await import('../vip/vip.service.js');
+    return await VipService.upgradeUserToVip(userId, adminId, days);
+  },
+
+  /**
    * 数据统计
    */
   async getStatistics() {
