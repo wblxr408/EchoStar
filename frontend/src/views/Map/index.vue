@@ -3871,9 +3871,7 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
       source.avatarUrl,
       fallbackAuthor?.avatar,
     ),
-    vip: useCurrentUserProfile
-      ? Boolean(userStore.user?.vip)
-      : Boolean(authorObject?.vip ?? userObject?.vip ?? source.author?.vip),
+    vip: Boolean(authorObject?.vip ?? userObject?.vip ?? source.author?.vip),
   };
 }
 
@@ -5040,6 +5038,7 @@ async function loadSearchResults(isLoadMore = false) {
           id: normalizeStoryIdKey(author.id),
           username: author.username || '匿名用户',
           avatar: author.avatar || null,
+          vip: author.vip || 0,
         },
         locationName: item.locationName || null,
       };

@@ -33,26 +33,29 @@ class NotificationServiceClass {
   async getFromUserInfo(fromUserId) {
     try {
       const user = await User.findByPk(fromUserId, {
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       });
       if (!user) {
         return {
           id: fromUserId,
           username: '匿名用户',
-          avatar: null
+          avatar: null,
+          vip: 0
         };
       }
       return {
         id: user.id,
         username: user.username || '匿名用户',
-        avatar: user.avatarUrl || null
+        avatar: user.avatarUrl || null,
+        vip: user.vip || 0
       };
     } catch (error) {
       console.error('❌ 获取用户信息失败:', error);
       return {
         id: fromUserId,
         username: '匿名用户',
-        avatar: null
+        avatar: null,
+        vip: 0
       };
     }
   }
@@ -188,12 +191,13 @@ class NotificationServiceClass {
       try {
         const users = await User.findAll({
           where: { id: fromUserIds },
-          attributes: ['id', 'username', 'avatarUrl']
+          attributes: ['id', 'username', 'avatarUrl', 'vip']
         });
         userMap = new Map(users.map(u => [u.id, {
           id: u.id,
           username: u.username || '匿名用户',
-          avatar: u.avatarUrl || null
+          avatar: u.avatarUrl || null,
+          vip: u.vip || 0
         }]));
       } catch (err) {
         console.error('[notification-service] 批量查询用户失败:', err);
@@ -210,7 +214,7 @@ class NotificationServiceClass {
           type: data.type,
           fromUserId,
           storyId: parseInt(data.storyId),
-          fromUser: userMap.get(fromUserId) || { id: fromUserId, username: '匿名用户', avatar: null },
+          fromUser: userMap.get(fromUserId) || { id: fromUserId, username: '匿名用户', avatar: null, vip: 0 },
           fromUserName: data.fromUserName,
           content: data.content,
           createdAt: parseInt(data.createdAt),

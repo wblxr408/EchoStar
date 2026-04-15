@@ -213,7 +213,7 @@ class FavoriteServiceClass {
         include: [{
           model: User,
           as: 'author',
-          attributes: ['id', 'username', 'avatarUrl']
+          attributes: ['id', 'username', 'avatarUrl', 'vip']
         }]
       }],
       order: [['createdAt', 'DESC']],
@@ -259,7 +259,8 @@ class FavoriteServiceClass {
               ? {
                   id: favorite.story.author.id,
                   username: favorite.story.author.username,
-                  avatar: favorite.story.author.avatarUrl || null
+                  avatar: favorite.story.author.avatarUrl || null,
+                  vip: favorite.story.author.vip || 0
                 }
               : null
           }

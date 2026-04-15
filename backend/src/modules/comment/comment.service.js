@@ -60,7 +60,7 @@ class CommentServiceClass {
       include: [{
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -75,7 +75,8 @@ class CommentServiceClass {
         user: {
           id: comment.userId,
           username: comment.user?.username || '匿名用户',
-          avatar: comment.user?.avatarUrl || null
+          avatar: comment.user?.avatarUrl || null,
+          vip: comment.user?.vip || 0
         }
       })),
       pagination: {
@@ -159,7 +160,7 @@ class CommentServiceClass {
       include: [{
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -175,7 +176,8 @@ class CommentServiceClass {
         user: {
           id: comment.userId,
           username: comment.user?.username || '匿名用户',
-          avatar: comment.user?.avatarUrl || null
+          avatar: comment.user?.avatarUrl || null,
+          vip: comment.user?.vip || 0
         }
       })),
       pagination: {
