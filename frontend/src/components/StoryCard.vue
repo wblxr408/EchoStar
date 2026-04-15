@@ -7,7 +7,7 @@
           <span v-else class="avatar-fallback">{{ getInitial(storyAuthorName) }}</span>
         </div>
         <div class="user-details">
-          <span class="username">{{ storyAuthorName }}</span>
+          <span class="vip-name-row"><span class="username vip-username" :class="{ 'has-vip': storyAuthorVip }">{{ storyAuthorName }}</span><span class="vip-text-badge-sm" v-if="storyAuthorVip">VIP</span></span>
           <span class="time">{{ formatRelativeTime(story.createdAt) }}</span>
         </div>
       </div>
@@ -104,6 +104,16 @@ const storyAuthorAvatar = computed(() => {
     || '';
 });
 
+const storyAuthorVip = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
+  const userObject = props.story?.user && typeof props.story.user === 'object'
+    ? props.story.user
+    : null;
+  return Boolean(authorObject?.vip || userObject?.vip || props.story?.vip);
+});
+
 function getInitial(name) {
   return String(name || '\u533f').trim().slice(0, 1).toUpperCase() || '\u533f';
 }
@@ -177,12 +187,47 @@ function handleSelect() {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  align-items: flex-start;
 }
 
 .username {
   font-size: 14px;
   font-weight: 600;
   color: #2d3436;
+}
+
+.vip-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.vip-username.has-vip {
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+.vip-text-badge-sm {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #5d4037;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  line-height: 14px;
+  margin-top: 1px;
+}
+
+@keyframes vipGoldFlow {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .time {

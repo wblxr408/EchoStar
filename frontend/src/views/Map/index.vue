@@ -66,7 +66,7 @@
               <div class="item-header">
                 <img :src="story.avatar" class="item-avatar" alt="头像" />
                 <div class="item-meta">
-                  <span class="item-author">{{ story.author?.username || story.username || '匿名用户' }}</span>
+                  <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': story.author?.vip }">{{ story.author?.username || story.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="story.author?.vip">VIP</span></span>
                   <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ story.locationName || '' }}</span>
                 </div>
               </div>
@@ -100,7 +100,8 @@
               <div class="user-identity-area">
                 <div class="user-identity-top">
                   <div class="user-name-row">
-                    <span class="user-display-name">{{ searchedUser.username || '未设置' }}</span>
+                    <span class="vip-text-badge" v-if="searchedUser.vip">VIP</span>
+                    <span class="user-display-name" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '未设置' }}</span>
                   </div>
                   <div class="user-star-id">STAR-ID: {{ searchedUser.id ?? '' }}</div>
                 </div>
@@ -129,7 +130,7 @@
                   <div class="item-header">
                     <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
                     <div class="item-meta">
-                      <span class="item-author">{{ searchedUser.username || '匿名用户' }}</span>
+                      <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="searchedUser.vip">VIP</span></span>
                       <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
                     </div>
                   </div>
@@ -431,9 +432,9 @@
                         />
                         <span v-else>{{ getStoryAuthorInitial(story) }}</span>
                       </div>
-                      <span class="featured-author-name">{{
+                      <span class="vip-name-row"><span class="featured-author-name vip-username" :class="{ 'has-vip': getStoryAuthorVip(story) }">{{
                         getStoryAuthorName(story)
-                      }}</span>
+                      }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(story)">VIP</span></span>
                     </div>
                     <p class="featured-text">{{ story.content }}</p>
                     <div class="featured-meta">
@@ -882,7 +883,7 @@
                     <div class="item-header">
                       <img :src="story.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
-                        <span class="item-author">{{ getStoryAuthorName(story) }}</span>
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(story) }">{{ getStoryAuthorName(story) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(story)">VIP</span></span>
                         <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
                       </div>
                       <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(story)"><span>🗑️</span></button>
@@ -912,10 +913,10 @@
                     <div class="item-header">
                       <img :src="story.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
-                        <span class="item-author">{{ getStoryAuthorName(story) }}</span>
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(story) }">{{ getStoryAuthorName(story) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(story)">VIP</span></span>
                         <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
                       </div>
-                      <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(story)"><span>💔</span></button>
+                      <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(story)"><span>❌</span></button>
                     </div>
                     <p class="item-content">{{ story.content }}</p>
                     <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
@@ -942,7 +943,7 @@
                     <div class="item-header">
                       <img :src="story.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
-                        <span class="item-author">{{ getStoryAuthorName(story) }}</span>
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(story) }">{{ getStoryAuthorName(story) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(story)">VIP</span></span>
                         <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
                       </div>
                       <button
@@ -950,7 +951,7 @@
                         :class="{ 'is-restorable': story.isFavorited === false }"
                         :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
                         @click.stop="handleToggleFavoriteFromList(story)"
-                      ><span>{{ story.isFavorited !== false ? "⭐" : "✨" }}</span></button>
+                      ><span>{{ story.isFavorited !== false ? "❌" : "✨" }}</span></button>
                     </div>
                     <p class="item-content">{{ story.content }}</p>
                     <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
@@ -1077,12 +1078,12 @@
           <div class="account-slots">
             <div class="account-slot current">
               <img :src="userStore.user?.avatar || 'https://picsum.photos/80/80?random=1'" class="slot-avatar" />
-              <span class="slot-name">{{ userStore.user?.username || '当前账号' }}</span>
+              <span class="vip-name-row"><span class="slot-name vip-username" :class="{ 'has-vip': userStore.user?.vip }">{{ userStore.user?.username || '当前账号' }}</span><span class="vip-text-badge-sm" v-if="userStore.user?.vip">VIP</span></span>
               <span class="slot-current-badge">当前</span>
             </div>
             <div v-for="acc in savedAccounts" :key="acc.id" class="account-slot" @click="handleSwitchToAccount(acc)">
               <img :src="acc.avatar || 'https://picsum.photos/80/80?random=2'" class="slot-avatar" />
-              <span class="slot-name">{{ acc.username || '其他账号' }}</span>
+              <span class="vip-name-row"><span class="slot-name vip-username" :class="{ 'has-vip': acc.vip }">{{ acc.username || '其他账号' }}</span><span class="vip-text-badge-sm" v-if="acc.vip">VIP</span></span>
             </div>
             <div v-if="savedAccounts.length < 2" class="account-slot add-slot" @click="handleAddAccount">
               <div class="add-avatar">+</div>
@@ -1102,6 +1103,7 @@
       :favorite-pending="storyFavoritePending"
       :start-position="storyStartPosition"
       :direct-open="storyDirectOpen"
+      :is-dark="effectiveMapTheme === 'dark'"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
       @like="toggleStoryLike"
@@ -1858,6 +1860,7 @@ function normalizeStoryComment(comment) {
     id: comment.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     author,
     avatar: firstNonEmptyString(commentUser?.avatar, comment.avatar),
+    vip: Boolean(commentUser?.vip ?? false),
     content: firstNonEmptyString(comment.content),
     createdAt: comment.createdAt || new Date().toISOString(),
   };
@@ -3810,6 +3813,7 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
         "\u533f\u540d\u7528\u6237",
       ),
       avatar: firstNonEmptyString(fallbackAuthor?.avatar),
+      vip: fallbackAuthor?.vip ?? false,
     };
   }
 
@@ -3867,6 +3871,9 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
       source.avatarUrl,
       fallbackAuthor?.avatar,
     ),
+    vip: useCurrentUserProfile
+      ? Boolean(userStore.user?.vip)
+      : Boolean(authorObject?.vip ?? userObject?.vip ?? source.author?.vip),
   };
 }
 
@@ -3876,6 +3883,10 @@ function getStoryAuthorName(story) {
 
 function getStoryAuthorAvatar(story) {
   return resolveStoryAuthor(story).avatar;
+}
+
+function getStoryAuthorVip(story) {
+  return Boolean(resolveStoryAuthor(story).vip);
 }
 
 function getStoryAuthorInitial(story) {
@@ -9779,7 +9790,7 @@ onUnmounted(() => {
 }
 
 .likes-panel .unlike-btn span::before {
-  content: "💔";
+  content: "❌";
 }
 
 .favorites-panel .unfavorite-btn span::before {
@@ -11895,6 +11906,41 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
+/* VIP 小徽标 - 用于紧凑列表（item-meta内、slot内等） */
+.vip-text-badge-sm {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #5d4037;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  line-height: 16px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+/* VIP 用户名+徽标行内容器 - 保持同行 */
+.vip-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+/* 通用 VIP 用户名流金样式 */
+.vip-username.has-vip {
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+  display: inline;
+}
+
 .icon-edit-btn {
   display: flex;
   align-items: center;
@@ -12765,8 +12811,8 @@ onUnmounted(() => {
 /* 搜索面板内点赞/收藏按钮图标放大 */
 .map-search-card .item-action-btn span { font-size: 0; line-height: 0; }
 .map-search-card .item-action-btn span::before { font-size: 18px; line-height: 1; }
-.map-search-card .unlike-btn span::before { content: "💔"; }
-.map-search-card .unfavorite-btn span::before { content: "⭐"; }
+.map-search-card .unlike-btn span::before { content: "❌"; }
+.map-search-card .unfavorite-btn span::before { content: "❌"; }
 
 /* 搜索面板过渡动画 */
 .search-panel-fade-enter-active,
