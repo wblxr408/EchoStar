@@ -2441,6 +2441,7 @@ async function submitStoryComment() {
       user: {
         username: userStore.user?.username,
         avatar: userStore.user?.avatar,
+        vip: userStore.user?.vip || 0,
       },
     });
 
@@ -2448,6 +2449,9 @@ async function submitStoryComment() {
     handleStoryComment({ storyId, comment: newComment });
     storyCommentDraft.value = "";
     storyCommentComposerOpen.value = false;
+    if (selectedStory.value && normalizeStoryIdKey(selectedStory.value.id) === normalizeStoryIdKey(storyId)) {
+      selectedStory.value = { ...selectedStory.value, comments: storyComments.value };
+    }
   } catch (error) {
     console.error("评论失败:", error);
     showToast(error.message || "评论失败，请重试", "error");
@@ -2480,11 +2484,15 @@ async function handleSubmitCommentFromStory({ storyId, content }) {
       user: {
         username: userStore.user?.username,
         avatar: userStore.user?.avatar,
+        vip: userStore.user?.vip || 0,
       },
     });
 
     storyComments.value = [newComment, ...storyComments.value];
     handleStoryComment({ storyId, comment: newComment });
+    if (selectedStory.value && normalizeStoryIdKey(selectedStory.value.id) === normalizeStoryIdKey(storyId)) {
+      selectedStory.value = { ...selectedStory.value, comments: storyComments.value };
+    }
   } catch (error) {
     console.error("评论失败:", error);
     showToast(error.message || "评论失败，请重试", "error");
