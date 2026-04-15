@@ -76,6 +76,14 @@ export const likeApi = {
     return api.get("/v1/likes/me", { params });
   },
 
+  getUserLikes(userId, params = {}) {
+    const normalizedUserId = normalizeStoryId(userId);
+    if (likeApiProxy) {
+      return likeApiProxy.getUserLikes(normalizedUserId, params);
+    }
+    return api.get(`/v1/likes/user/${normalizedUserId}`, { params });
+  },
+
   checkMultiple(storyIds) {
     const normalizedStoryIds = Array.isArray(storyIds)
       ? storyIds.map((storyId) => normalizeStoryId(storyId))

@@ -17,6 +17,149 @@
         </div>
       </div>
     </transition>
+
+    <!-- 搜索框 -->
+    <div class="map-search-bar" :class="{ dark: effectiveMapTheme === 'dark' }" @click.stop>
+      <div class="map-search-input-wrap">
+        <svg class="map-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input
+          v-model="searchKeyword"
+          class="map-search-input"
+          type="text"
+          placeholder="搜索故事/用户"
+          @keydown.enter="handleSearchSubmit"
+          @focus="searchFocused = true"
+        />
+        <button v-if="searchKeyword" class="map-search-clear" @click="clearSearch()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 搜索结果面板 -->
+    <transition name="search-panel-fade">
+      <div
+        v-if="showSearchPanel"
+        class="map-search-results"
+        :class="{ dark: effectiveMapTheme === 'dark' }"
+        @click.stop
+      >
+        <!-- 标签页切换 -->
+        <div class="search-tabs">
+          <button class="search-tab" :class="{ active: searchTab === 'story' }" @click="switchSearchTab('story')">故事</button>
+          <button class="search-tab" :class="{ active: searchTab === 'user' }" @click="switchSearchTab('user')">用户</button>
+        </div>
+
+        <!-- 故事标签页 -->
+        <div v-if="searchTab === 'story'" class="map-search-results-list" @scroll="handleSearchScroll">
+          <div v-if="searchLoading" class="map-search-empty">搜索中...</div>
+          <div v-else-if="searchKeyword.trim() && !searchStorySearched" class="map-search-empty">输入关键词后回车搜索故事</div>
+          <div v-else-if="searchKeyword.trim() && searchResults.length === 0" class="map-search-empty">未找到相关故事</div>
+          <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入关键词搜索故事</div>
+          <template v-else>
+            <div
+              v-for="story in searchResults"
+              :key="story.id"
+              class="map-search-card panel-item"
+              @click="openStoryFromCollection(story)"
+            >
+              <div class="item-header">
+                <img :src="story.avatar" class="item-avatar" alt="头像" />
+                <div class="item-meta">
+                  <span class="item-author">{{ story.author?.username || story.username || '匿名用户' }}</span>
+                  <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ story.locationName || '' }}</span>
+                </div>
+                <button
+                  v-if="story.isLiked"
+                  class="item-action-btn unlike-btn"
+                  title="取消点赞"
+                  @click.stop="handleSearchUnlike(story)"
+                ><span>💔</span></button>
+                <button
+                  v-if="story.isFavorited"
+                  class="item-action-btn unfavorite-btn"
+                  :class="{ 'is-restorable': story.isFavorited === false }"
+                  :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
+                  @click.stop="handleSearchToggleFavorite(story)"
+                ><span>{{ story.isFavorited !== false ? '⭐' : '✨' }}</span></button>
+              </div>
+              <p class="item-content">{{ story.content }}</p>
+              <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+              <div class="item-footer">
+                <span class="item-likes">👁 {{ story.viewCount ?? 0 }}</span>
+              </div>
+            </div>
+            <div v-if="searchLoadingMore" class="map-search-empty">加载更多...</div>
+            <div v-else-if="searchHasMore && searchResults.length > 0" class="map-search-empty" style="cursor:pointer" @click="loadSearchResults(true)">点击加载更多</div>
+          </template>
+        </div>
+
+        <!-- 用户标签页 -->
+        <div v-else class="map-search-results-list">
+          <div v-if="searchUserLoading" class="map-search-empty">搜索中...</div>
+          <div v-else-if="searchKeyword.trim() && !searchUserSearched" class="map-search-empty">输入用户ID后回车查找用户</div>
+          <div v-else-if="searchKeyword.trim() && !searchedUser" class="map-search-empty">未找到该用户</div>
+          <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入用户ID查找用户</div>
+
+          <!-- 搜索到的用户信息面板（只读，与"我的信息"一致但去除操作） -->
+          <div v-else class="search-user-profile">
+            <!-- 头像 + 用户名/ID -->
+            <div class="user-profile-new">
+              <div class="user-avatar-wrapper">
+                <div class="user-avatar-large">
+                  <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
+                </div>
+              </div>
+              <div class="user-identity-area">
+                <div class="user-identity-top">
+                  <div class="user-name-row">
+                    <span class="user-display-name">{{ searchedUser.username || '未设置' }}</span>
+                  </div>
+                  <div class="user-star-id">STAR-ID: {{ searchedUser.id ?? '' }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 签名 -->
+            <div v-if="searchedUser.bio" class="user-bio-area search-user-bio">
+              <div class="bio-content">
+                <span class="bio-text">{{ searchedUser.bio }}</span>
+              </div>
+            </div>
+
+            <!-- 标签栏 -->
+            <div class="user-content-tabs">
+              <button class="content-tab active">作品<span class="tab-count">{{ searchedUserStories.length }}</span></button>
+            </div>
+
+            <!-- 故事列表 -->
+            <div class="user-content-list">
+              <div v-if="searchedUserStories.length === 0" class="panel-empty">
+                <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
+              </div>
+              <div v-else class="panel-list">
+                <div v-for="story in searchedUserStories" :key="story.id" class="panel-item" @click="openStoryFromCollection(story)">
+                  <div class="item-header">
+                    <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
+                    <div class="item-meta">
+                      <span class="item-author">{{ searchedUser.username || '匿名用户' }}</span>
+                      <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+                    </div>
+                  </div>
+                  <p class="item-content">{{ story.content }}</p>
+                  <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                  <div class="item-footer">
+                    <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+                    <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <div class="map-container">
       <AMap
         ref="amapRef"
@@ -581,7 +724,8 @@
           </div>
 
           <div v-else class="user-sidebar-content">
-            <div class="user-profile">
+            <!-- 头像 + 用户名/ID栏 -->
+            <div class="user-profile-new">
               <div class="user-avatar-wrapper">
                 <div class="user-avatar-large" @click="triggerAvatarUpload">
                   <img
@@ -612,413 +756,307 @@
                   {{ avatarError }}
                 </div>
               </div>
-              <div class="user-info-details">
-                <div class="info-item editable">
-                  <span class="info-label">用户名</span>
-                  <div v-if="!isEditingUsername" class="info-value-with-edit">
-                    <span class="info-value">{{
-                      userStore.user?.username ||
-                      userStore.user?.name ||
-                      "未设置"
+
+              <div class="user-identity-area">
+                <div class="user-identity-top">
+                  <div class="user-name-row">
+                    <span
+                      v-if="userStore.user?.vip"
+                      class="vip-text-badge"
+                    >VIP</span>
+                    <span class="user-display-name" :class="{ 'has-vip': userStore.user?.vip }">{{
+                      userStore.user?.username || userStore.user?.name || "未设置"
                     }}</span>
                     <button
-                      class="edit-btn"
-                      @click="startEditUsername"
-                      title="修改用户名"
+                      class="icon-edit-btn"
+                      title="编辑资料"
+                      @click="handleOpenEditProfile"
                     >
-                      <span>✏️</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
                   </div>
-                  <div v-else class="username-edit-form">
-                    <input
-                      v-model="editingUsername"
-                      type="text"
-                      placeholder="输入新用户名"
-                      maxlength="20"
-                      @keyup.enter="saveUsername"
-                      @keyup.esc="cancelEditUsername"
-                    />
-                    <div class="username-actions">
-                      <button
-                        class="save-btn"
-                        :disabled="!canSaveUsername"
-                        @click="saveUsername"
-                      >
-                        <span v-if="checkingUsername">⌛</span>
-                        <span v-else>✓</span>
-                      </button>
-                      <button class="cancel-btn" @click="cancelEditUsername">
-                        <span>✕</span>
-                      </button>
-                    </div>
-                    <div v-if="usernameError" class="username-error">
-                      {{ usernameError }}
-                    </div>
-                  </div>
+                  <div class="user-star-id">STAR-ID: {{ userStore.user?.id ?? "" }}</div>
                 </div>
-                <div class="info-item">
-                  <span class="info-label">用户ID</span>
-                  <span class="info-value">{{ userStore.user?.id ?? "" }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">邮箱</span>
-                  <span class="info-value">{{
-                    userStore.user?.email ?? ""
-                  }}</span>
-                </div>
-                <div class="info-item editable">
-                  <span class="info-label">密码</span>
-                  <div v-if="!isEditingPassword" class="info-value-with-edit">
-                    <span class="info-value">点击右侧按钮修改密码</span>
-                    <button
-                      class="edit-btn"
-                      @click="startEditPassword"
-                      title="修改密码"
-                    >
-                      <span>✏️</span>
-                    </button>
-                  </div>
-                  <div v-else class="password-edit-form">
-                    <div class="password-input-wrapper">
-                      <input
-                        v-model="passwordForm.currentPassword"
-                        :type="showCurrentPassword ? 'text' : 'password'"
-                        placeholder="当前密码"
-                        :class="{ 'input-error': currentPasswordError }"
-                      />
-                      <button
-                        class="eye-btn-small"
-                        @click="showCurrentPassword = !showCurrentPassword"
-                      >
-                        <span>{{ showCurrentPassword ? "🙈" : "👁️" }}</span>
-                      </button>
-                    </div>
-                    <div v-if="currentPasswordError" class="field-error">
-                      {{ currentPasswordError }}
-                    </div>
-                    <div class="password-input-wrapper">
-                      <input
-                        v-model="passwordForm.newPassword"
-                        :type="showNewPassword ? 'text' : 'password'"
-                        placeholder="新密码（至少6位）"
-                        minlength="6"
-                        :class="{ 'input-error': newPasswordError }"
-                      />
-                      <button
-                        class="eye-btn-small"
-                        @click="showNewPassword = !showNewPassword"
-                      >
-                        <span>{{ showNewPassword ? "🙈" : "👁️" }}</span>
-                      </button>
-                    </div>
-                    <div v-if="newPasswordError" class="field-error">
-                      {{ newPasswordError }}
-                    </div>
-                    <div class="password-input-wrapper">
-                      <input
-                        v-model="passwordForm.confirmPassword"
-                        :type="showConfirmPassword ? 'text' : 'password'"
-                        placeholder="确认新密码"
-                        minlength="6"
-                        :class="{ 'input-error': confirmPasswordError }"
-                        @keyup.enter="savePassword"
-                        @keyup.esc="cancelEditPassword"
-                      />
-                      <button
-                        class="eye-btn-small"
-                        @click="showConfirmPassword = !showConfirmPassword"
-                      >
-                        <span>{{ showConfirmPassword ? "🙈" : "👁️" }}</span>
-                      </button>
-                    </div>
-                    <div v-if="confirmPasswordError" class="field-error">
-                      {{ confirmPasswordError }}
-                    </div>
-                    <div class="password-actions">
-                      <button
-                        class="save-btn"
-                        :disabled="!canSavePassword || savingPassword"
-                        @click="savePassword"
-                      >
-                        <span v-if="savingPassword">⌛</span>
-                        <span v-else>✓</span>
-                      </button>
-                      <button class="cancel-btn" @click="cancelEditPassword">
-                        <span>✕</span>
-                      </button>
-                    </div>
-                    <div v-if="passwordError" class="password-error">
-                      {{ passwordError }}
-                    </div>
-                  </div>
+                <div class="user-identity-actions">
+                  <button class="switch-account-btn" @click="handleSwitchAccount">
+                    切换账号
+                  </button>
+                  <button class="logout-inline-btn" @click="handleLogout">
+                    退出
+                  </button>
                 </div>
               </div>
             </div>
-            <div class="user-actions">
+
+            <!-- Bio 签名区域 -->
+            <div class="user-bio-area" @click="startEditBio">
+              <div class="bio-content">
+                <span v-if="editingBioInline" class="bio-input-wrap">
+                  <textarea
+                    ref="bioInputRef"
+                    v-model="bioDraft"
+                    maxlength="200"
+                    rows="3"
+                    @click.stop
+                    @keyup.esc="cancelEditBio"
+                    @keydown.enter.exact.prevent="saveBioInline"
+                    @blur="saveBioInline"
+                  ></textarea>
+                  <span class="bio-char-count">{{ bioDraft.length }}/200</span>
+                </span>
+                <span v-else class="bio-text">{{ userStore.user?.bio || '点击编辑个性签名' }}</span>
+              </div>
+              <div class="bio-edit-icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </div>
+            </div>
+
+            <!-- 标签栏 -->
+            <div class="user-content-tabs">
               <button
-                class="user-action-btn my-likes-btn"
-                :class="{ active: showLikesPanel }"
-                @click.stop="handleMyLikes"
+                class="content-tab"
+                :class="{ active: userContentTab === 'posts' }"
+                @click="switchUserContentTab('posts')"
               >
-                <span class="btn-icon">❤️</span>
-                <span class="btn-text">我的点赞</span>
+                作品<span v-if="postsTotalCount >= 0" class="tab-count">{{ postsTotalCount }}</span>
               </button>
               <button
-                class="user-action-btn my-favorites-btn"
-                :class="{ active: showFavoritesPanel }"
-                @click.stop="handleMyFavorites"
+                class="content-tab"
+                :class="{ active: userContentTab === 'likes' }"
+                @click="switchUserContentTab('likes')"
               >
-                <span class="btn-icon">⭐</span>
-                <span class="btn-text">我的收藏</span>
+                点赞<span v-if="likesTotalCount >= 0" class="tab-count">{{ likesTotalCount }}</span>
               </button>
               <button
-                class="user-action-btn my-posts-btn"
-                :class="{ active: showPostsPanel }"
-                @click.stop="handleMyPosts"
+                class="content-tab"
+                :class="{ active: userContentTab === 'favorites' }"
+                @click="switchUserContentTab('favorites')"
               >
-                <span class="btn-icon">📝</span>
-                <span class="btn-text">我的发布</span>
+                收藏<span v-if="favoritesTotalCount >= 0" class="tab-count">{{ favoritesTotalCount }}</span>
               </button>
-              <button
-                class="user-action-btn logout-action-btn"
-                @click="handleLogout"
-              >
-                <span class="btn-icon">🚪</span>
-                <span class="btn-text">退出登录</span>
-              </button>
+            </div>
+
+            <!-- 标签内容区 -->
+            <div class="user-content-list" @scroll="handleContentListScroll">
+              <!-- 作品 -->
+              <template v-if="userContentTab === 'posts'">
+                <div v-if="postsLoading && postsList.length === 0" class="panel-loading">
+                  <span class="loading-spinner">⌛</span><span>加载中...</span>
+                </div>
+                <div v-else-if="postsList.length === 0" class="panel-empty">
+                  <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
+                </div>
+                <div v-else class="panel-list">
+                  <div v-for="story in postsList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+                    <div class="item-header">
+                      <img :src="story.avatar" class="item-avatar" alt="头像" />
+                      <div class="item-meta">
+                        <span class="item-author">{{ getStoryAuthorName(story) }}</span>
+                        <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
+                      </div>
+                      <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(story)"><span>🗑️</span></button>
+                    </div>
+                    <p class="item-content">{{ story.content }}</p>
+                    <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                    <div class="item-footer">
+                      <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                    </div>
+                  </div>
+                  <div v-if="postsLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
+                  <div v-if="!postsHasMore && postsList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
+                </div>
+              </template>
+
+              <!-- 点赞 -->
+              <template v-if="userContentTab === 'likes'">
+                <div v-if="likesLoading && likesList.length === 0" class="panel-loading">
+                  <span class="loading-spinner">⌛</span><span>加载中...</span>
+                </div>
+                <div v-else-if="likesList.length === 0" class="panel-empty">
+                  <span class="empty-icon">💝</span><span>还没有点赞任何故事</span>
+                </div>
+                <div v-else class="panel-list">
+                  <div v-for="story in likesList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+                    <div class="item-header">
+                      <img :src="story.avatar" class="item-avatar" alt="头像" />
+                      <div class="item-meta">
+                        <span class="item-author">{{ getStoryAuthorName(story) }}</span>
+                        <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
+                      </div>
+                      <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(story)"><span>💔</span></button>
+                    </div>
+                    <p class="item-content">{{ story.content }}</p>
+                    <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                    <div class="item-footer">
+                      <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                    </div>
+                  </div>
+                  <div v-if="likesLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
+                  <div v-if="!likesHasMore && likesList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
+                </div>
+              </template>
+
+              <!-- 收藏 -->
+              <template v-if="userContentTab === 'favorites'">
+                <div v-if="favoritesLoading && favoritesList.length === 0" class="panel-loading">
+                  <span class="loading-spinner">⌛</span><span>加载中...</span>
+                </div>
+                <div v-else-if="favoritesList.length === 0" class="panel-empty">
+                  <span class="empty-icon">⭐</span><span>还没有收藏任何故事</span>
+                </div>
+                <div v-else class="panel-list">
+                  <div v-for="story in favoritesList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+                    <div class="item-header">
+                      <img :src="story.avatar" class="item-avatar" alt="头像" />
+                      <div class="item-meta">
+                        <span class="item-author">{{ getStoryAuthorName(story) }}</span>
+                        <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
+                      </div>
+                      <button
+                        class="item-action-btn unfavorite-btn"
+                        :class="{ 'is-restorable': story.isFavorited === false }"
+                        :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
+                        @click.stop="handleToggleFavoriteFromList(story)"
+                      ><span>{{ story.isFavorited !== false ? "⭐" : "✨" }}</span></button>
+                    </div>
+                    <p class="item-content">{{ story.content }}</p>
+                    <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                    <div class="item-footer">
+                      <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                    </div>
+                  </div>
+                  <div v-if="favoritesLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
+                  <div v-if="!favoritesHasMore && favoritesList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
+                </div>
+              </template>
             </div>
           </div>
         </div>
       </div>
     </transition>
 
-    <div
-      class="user-sub-sidebar likes-panel"
-      :class="{
-        'show-panel': showLikesPanel,
-        dark: effectiveMapTheme === 'dark',
-      }"
-      @click.stop
-    >
-      <div class="sub-sidebar-header">
-        <h4>我的点赞</h4>
-        <button class="close-btn" @click.stop="showLikesPanel = false">
-          <span>×</span>
-        </button>
-      </div>
-      <div class="sub-sidebar-content" @scroll="handleLikesScroll">
-        <div
-          v-if="likesLoading && likesList.length === 0"
-          class="panel-loading"
-        >
-          <span class="loading-spinner">⌛</span>
-          <span>加载中...</span>
+    <!-- 编辑资料弹窗（修改用户名、邮箱、密码） -->
+    <div v-if="showEditProfileModal" class="modal-overlay" :class="{ dark: effectiveMapTheme === 'dark' }" @click.self="handleCloseEditProfile">
+      <div class="edit-profile-modal" :class="{ dark: effectiveMapTheme === 'dark' }">
+        <div class="edit-profile-header">
+          <h3>编辑资料</h3>
+          <button class="close-btn" @click="handleCloseEditProfile"><span>×</span></button>
         </div>
-        <div v-else-if="likesList.length === 0" class="panel-empty">
-          <span class="empty-icon">💝</span>
-          <span>还没有点赞任何故事</span>
-        </div>
-        <div v-else class="panel-list">
-          <div
-            v-for="story in likesList"
-            :key="story.id"
-            class="panel-item"
-            @click="handleStoryClick(story)"
-          >
-            <div class="item-header">
-              <img :src="story.avatar" class="item-avatar" alt="头像" />
-              <div class="item-meta">
-                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{
-                  formatRelativeTime(story.createdAt)
-                }}</span>
-              </div>
-              <button
-                class="item-action-btn unlike-btn"
-                title="取消点赞"
-                @click.stop="handleUnlike(story)"
-              >
-                <span>💔</span>
+        <div class="edit-profile-body">
+          <div class="edit-field">
+            <label>用户名</label>
+            <input v-model="editProfileForm.username" type="text" placeholder="输入新用户名" maxlength="20" />
+            <span v-if="editProfileErrors.username" class="field-error-inline">{{ editProfileErrors.username }}</span>
+          </div>
+          <div class="edit-field">
+            <label>邮箱</label>
+            <input :value="editProfileForm.email" type="email" disabled />
+            <span class="field-hint">邮箱暂不支持修改</span>
+          </div>
+
+          <!-- 分隔线：修改密码区域 -->
+          <div class="edit-password-section">
+            <div class="edit-password-title">修改密码</div>
+          </div>
+
+          <div class="edit-field">
+            <label>旧密码</label>
+            <div class="edit-input-wrap">
+              <input
+                v-model="editProfileForm.currentPassword"
+                :type="editProfileShowOldPwd ? 'text' : 'password'"
+                placeholder="请输入旧密码"
+                @input="onOldPasswordInput"
+              />
+              <button class="eye-toggle" type="button" @click="editProfileShowOldPwd = !editProfileShowOldPwd">
+                <svg v-if="!editProfileShowOldPwd" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
               </button>
             </div>
-            <p class="item-content">{{ story.content }}</p>
-            <div v-if="story.images?.length" class="item-images">
-              <img :src="story.images[0]" alt="配图" />
-            </div>
-            <div class="item-footer">
-              <span class="item-location"
-                >📍 {{ getStoryLocationText(story) }}</span
-              >
-              <span class="item-likes"
-                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
-              >
-              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+            <div v-if="pwdVerify.oldPasswordError" class="validation-tip tip-error">
+              <span class="tip-text">{{ pwdVerify.oldPasswordError }}</span>
             </div>
           </div>
-          <div v-if="likesLoadingMore" class="panel-loading-more">
-            <span class="loading-spinner">⌛</span>
-            <span>加载更多...</span>
+          <div class="edit-field">
+            <label>新密码</label>
+            <div class="edit-input-wrap">
+              <input
+                v-model="editProfileForm.newPassword"
+                :type="editProfileShowNewPwd ? 'text' : 'password'"
+                placeholder="请输入新密码"
+                @input="onNewPasswordInput"
+              />
+              <button class="eye-toggle" type="button" @click="editProfileShowNewPwd = !editProfileShowNewPwd">
+                <svg v-if="!editProfileShowNewPwd" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
+            <div v-if="pwdVerify.newPasswordMsg" :class="['validation-tip', pwdVerify.newPasswordValid ? 'tip-success' : 'tip-error']">
+              <span class="tip-text">{{ pwdVerify.newPasswordMsg }}</span>
+            </div>
           </div>
-          <div
-            v-if="!likesHasMore && likesList.length > 0"
-            class="panel-no-more"
-          >
-            <span>没有更多了</span>
+          <div class="edit-field">
+            <label>确认新密码</label>
+            <div class="edit-input-wrap">
+              <input
+                v-model="editProfileForm.confirmPassword"
+                :type="editProfileShowConfirmPwd ? 'text' : 'password'"
+                placeholder="请再次输入新密码"
+                @input="onConfirmPasswordInput"
+              />
+              <button class="eye-toggle" type="button" @click="editProfileShowConfirmPwd = !editProfileShowConfirmPwd">
+                <svg v-if="!editProfileShowConfirmPwd" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
+            <div v-if="pwdVerify.confirmPasswordMsg" :class="['validation-tip', pwdVerify.confirmPasswordValid ? 'tip-success' : 'tip-error']">
+              <span class="tip-text">{{ pwdVerify.confirmPasswordMsg }}</span>
+            </div>
           </div>
+          <div class="edit-field">
+            <button
+              class="btn-confirm-password"
+              :disabled="!pwdVerify.canSubmit || editProfileSavingPassword"
+              @click="handleConfirmChangePassword"
+            >
+              {{ editProfileSavingPassword ? '修改中...' : '确认修改密码' }}
+            </button>
+          </div>
+        </div>
+        <div class="edit-profile-footer">
+          <button class="btn-cancel" @click="handleCloseEditProfile">取消</button>
+          <button class="btn-save" :disabled="editProfileSaving" @click="handleSaveEditProfile">
+            {{ editProfileSaving ? '保存中...' : '保存' }}
+          </button>
         </div>
       </div>
     </div>
 
-    <div
-      class="user-sub-sidebar posts-panel"
-      :class="{
-        'show-panel': showPostsPanel,
-        dark: effectiveMapTheme === 'dark',
-      }"
-      @click.stop
-    >
-      <div class="sub-sidebar-header">
-        <h4>我的发布</h4>
-        <button class="close-btn" @click.stop="showPostsPanel = false">
-          <span>×</span>
-        </button>
-      </div>
-      <div class="sub-sidebar-content" @scroll="handlePostsScroll">
-        <div
-          v-if="postsLoading && postsList.length === 0"
-          class="panel-loading"
-        >
-          <span class="loading-spinner">⌛</span>
-          <span>加载中...</span>
+    <!-- 切换账号弹窗 -->
+    <div v-if="showSwitchAccountModal" class="modal-overlay" :class="{ dark: effectiveMapTheme === 'dark' }" @click.self="showSwitchAccountModal = false">
+      <div class="switch-account-modal" :class="{ dark: effectiveMapTheme === 'dark' }">
+        <div class="switch-account-header">
+          <h3>切换账号</h3>
+          <button class="close-btn" @click="showSwitchAccountModal = false"><span>×</span></button>
         </div>
-        <div v-else-if="postsList.length === 0" class="panel-empty">
-          <span class="empty-icon">📝</span>
-          <span>还没有发布任何故事</span>
-        </div>
-        <div v-else class="panel-list">
-          <div
-            v-for="story in postsList"
-            :key="story.id"
-            class="panel-item"
-            @click="handleStoryClick(story)"
-          >
-            <div class="item-header">
-              <img :src="story.avatar" class="item-avatar" alt="头像" />
-              <div class="item-meta">
-                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{
-                  formatRelativeTime(story.createdAt)
-                }}</span>
-              </div>
-              <button
-                class="item-action-btn delete-btn"
-                title="删除故事"
-                @click.stop="handleDeleteStory(story)"
-              >
-                <span>🗑️</span>
-              </button>
+        <div class="switch-account-body">
+          <div class="account-slots">
+            <div class="account-slot current">
+              <img :src="userStore.user?.avatar || 'https://picsum.photos/80/80?random=1'" class="slot-avatar" />
+              <span class="slot-name">{{ userStore.user?.username || '当前账号' }}</span>
+              <span class="slot-current-badge">当前</span>
             </div>
-            <p class="item-content">{{ story.content }}</p>
-            <div v-if="story.images?.length" class="item-images">
-              <img :src="story.images[0]" alt="配图" />
+            <div v-for="acc in savedAccounts" :key="acc.id" class="account-slot" @click="handleSwitchToAccount(acc)">
+              <img :src="acc.avatar || 'https://picsum.photos/80/80?random=2'" class="slot-avatar" />
+              <span class="slot-name">{{ acc.username || '其他账号' }}</span>
             </div>
-            <div class="item-footer">
-              <span class="item-location"
-                >📍 {{ getStoryLocationText(story) }}</span
-              >
-              <span class="item-likes"
-                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
-              >
-              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+            <div v-if="savedAccounts.length < 2" class="account-slot add-slot" @click="handleAddAccount">
+              <div class="add-avatar">+</div>
+              <span class="slot-name">添加账号</span>
             </div>
-          </div>
-          <div v-if="postsLoadingMore" class="panel-loading-more">
-            <span class="loading-spinner">⌛</span>
-            <span>加载更多...</span>
-          </div>
-          <div
-            v-if="!postsHasMore && postsList.length > 0"
-            class="panel-no-more"
-          >
-            <span>没有更多了</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div
-      class="user-sub-sidebar favorites-panel"
-      :class="{
-        'show-panel': showFavoritesPanel,
-        dark: effectiveMapTheme === 'dark',
-      }"
-      @click.stop
-    >
-      <div class="sub-sidebar-header">
-        <h4>我的收藏</h4>
-        <button class="close-btn" @click.stop="showFavoritesPanel = false">
-          <span>×</span>
-        </button>
-      </div>
-      <div class="sub-sidebar-content" @scroll="handleFavoritesScroll">
-        <div
-          v-if="favoritesLoading && favoritesList.length === 0"
-          class="panel-loading"
-        >
-          <span class="loading-spinner">⌛</span>
-          <span>加载中...</span>
-        </div>
-        <div v-else-if="favoritesList.length === 0" class="panel-empty">
-          <span class="empty-icon">⭐</span>
-          <span>还没有收藏任何故事</span>
-        </div>
-        <div v-else class="panel-list">
-          <div
-            v-for="story in favoritesList"
-            :key="story.id"
-            class="panel-item"
-            @click="handleStoryClick(story)"
-          >
-            <div class="item-header">
-              <img :src="story.avatar" class="item-avatar" alt="头像" />
-              <div class="item-meta">
-                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{
-                  formatRelativeTime(story.createdAt)
-                }}</span>
-              </div>
-              <button
-                class="item-action-btn unfavorite-btn"
-                :class="{ 'is-restorable': story.isFavorited === false }"
-                :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
-                @click.stop="handleToggleFavoriteFromList(story)"
-              >
-                <span>{{ story.isFavorited !== false ? "★" : "☆" }}</span>
-              </button>
-            </div>
-            <p class="item-content">{{ story.content }}</p>
-            <div v-if="story.images?.length" class="item-images">
-              <img :src="story.images[0]" alt="配图" />
-            </div>
-            <div class="item-footer">
-              <span class="item-location"
-                >📍 {{ getStoryLocationText(story) }}</span
-              >
-              <span class="item-likes"
-                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
-              >
-              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
-            </div>
-          </div>
-          <div v-if="favoritesLoadingMore" class="panel-loading-more">
-            <span class="loading-spinner">⌛</span>
-            <span>加载更多...</span>
-          </div>
-          <div
-            v-if="!favoritesHasMore && favoritesList.length > 0"
-            class="panel-no-more"
-          >
-            <span>没有更多了</span>
           </div>
         </div>
       </div>
@@ -1186,12 +1224,12 @@
       </div>
     </transition>
 
-    <LoginModal v-if="showLoginModal" @close="showLoginModal = false" />
+    <LoginModal v-if="showLoginModal" @close="handleLoginModalClose" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from "vue";
 import { useMapStore } from "../../stores/map";
 import { useUserStore } from "../../stores/user";
 import PaperPlaneStory from "../../components/PaperPlaneStory.vue";
@@ -1466,6 +1504,92 @@ watch(
 const showLikesPanel = ref(false);
 const showPostsPanel = ref(false);
 const showFavoritesPanel = ref(false);
+
+// --- 新增：用户信息面板状态 ---
+const userContentTab = ref('posts');
+const postsTotalCount = ref(-1);
+const likesTotalCount = ref(-1);
+const favoritesTotalCount = ref(-1);
+
+// Bio 编辑
+const editingBioInline = ref(false);
+const bioDraft = ref('');
+const bioInputRef = ref(null);
+const bioChanged = ref(false);
+
+// 编辑资料弹窗
+const showEditProfileModal = ref(false);
+const editProfileForm = ref({ username: '', email: '', currentPassword: '', newPassword: '', confirmPassword: '' });
+const editProfileErrors = ref({ username: '', password: '' });
+const editProfileSaving = ref(false);
+const editProfileShowOldPwd = ref(false);
+const editProfileShowNewPwd = ref(false);
+const editProfileShowConfirmPwd = ref(false);
+const editProfileSavingPassword = ref(false);
+
+// 密码修改实时验证状态
+const pwdVerify = ref({
+  newPasswordMsg: '',
+  newPasswordValid: false,
+  confirmPasswordMsg: '',
+  confirmPasswordValid: false,
+  oldPasswordError: '',
+  canSubmit: false,
+});
+
+function computePasswordValidation() {
+  const form = editProfileForm.value;
+  const v = pwdVerify.value;
+
+  // 新密码验证
+  if (!form.newPassword) {
+    v.newPasswordMsg = '';
+    v.newPasswordValid = false;
+  } else if (form.newPassword.length < 6) {
+    v.newPasswordMsg = '密码不得少于6位';
+    v.newPasswordValid = false;
+  } else if (form.newPassword === form.currentPassword) {
+    v.newPasswordMsg = '与旧密码相同';
+    v.newPasswordValid = false;
+  } else {
+    v.newPasswordMsg = '新密码格式正确';
+    v.newPasswordValid = true;
+  }
+
+  // 确认新密码验证
+  if (!form.confirmPassword) {
+    v.confirmPasswordMsg = '';
+    v.confirmPasswordValid = false;
+  } else if (form.confirmPassword !== form.newPassword) {
+    v.confirmPasswordMsg = '与输入的新密码不同';
+    v.confirmPasswordValid = false;
+  } else {
+    v.confirmPasswordMsg = '输入正确';
+    v.confirmPasswordValid = true;
+  }
+
+  // 综合判断：所有条件通过才允许提交
+  v.canSubmit = v.newPasswordValid && v.confirmPasswordValid && !!form.currentPassword;
+}
+
+function onOldPasswordInput() {
+  // 用户修改旧密码时，清除旧密码错误提示
+  pwdVerify.value.oldPasswordError = '';
+  computePasswordValidation();
+}
+
+function onNewPasswordInput() {
+  computePasswordValidation();
+}
+
+function onConfirmPasswordInput() {
+  computePasswordValidation();
+}
+
+// 切换账号弹窗
+const showSwitchAccountModal = ref(false);
+const savedAccounts = ref([]);
+const isSwitchingAccount = ref(false); // 标记是否在切换账号流程中
 const likesList = ref([]);
 const postsList = ref([]);
 const favoritesList = ref([]);
@@ -1500,6 +1624,49 @@ const storyLikePending = ref(false);
 const storyIsFavorited = ref(false);
 const storyFavoriteCount = ref(0);
 const storyFavoritePending = ref(false);
+
+// --- 搜索框状态 ---
+const searchKeyword = ref('');
+const searchFocused = ref(false);
+const searchTab = ref('story');
+const searchResults = ref([]);
+const searchLoading = ref(false);
+const searchLoadingMore = ref(false);
+const searchHasMore = ref(false);
+const searchPage = ref(1);
+const searchPageSize = 10;
+const searchStorySearched = ref(false);
+const searchUserLoading = ref(false);
+const searchUserSearched = ref(false);
+const searchedUser = ref(null);
+const searchedUserStories = ref([]);
+
+const showSearchPanel = computed(() => {
+  return searchFocused.value;
+});
+
+function clearSearch() {
+  searchKeyword.value = '';
+  searchResults.value = [];
+  searchHasMore = false;
+  searchStorySearched.value = false;
+  searchUserSearched.value = false;
+  searchedUser.value = null;
+  searchedUserStories.value = [];
+}
+
+function switchSearchTab(tab) {
+  if (searchTab.value === tab) return;
+  searchTab.value = tab;
+  const keyword = searchKeyword.value.trim();
+  if (!keyword) return;
+  if (tab === 'story' && !searchStorySearched.value) {
+    loadSearchResults(false);
+  } else if (tab === 'user' && !searchUserSearched.value) {
+    searchUserById(keyword);
+  }
+}
+
 const storyReportPanelOpen = ref(false);
 const selectedStoryReportReason = ref("");
 const storyReportDescription = ref("");
@@ -1707,6 +1874,7 @@ function syncStoryAcrossCollections(storyId, mutate) {
     favoritesList,
     likesList,
     postsList,
+    searchResults,
   ];
 
   collections.forEach((collection) => {
@@ -1739,6 +1907,7 @@ function syncCurrentUserProfileAcrossStories(nextUser) {
     favoritesList,
     likesList,
     postsList,
+    searchResults,
   ];
 
   const applyUserProfile = (story) => {
@@ -3030,10 +3199,312 @@ function closeStoryPanel() {
 }
 
 function closeUserPanel() {
+  // 关闭时保存 bio 和编辑资料弹窗中的更改
+  savePendingChanges();
   showUserSidebar.value = false;
   showLikesPanel.value = false;
   showPostsPanel.value = false;
   showFavoritesPanel.value = false;
+  editingBioInline.value = false;
+  bioChanged.value = false;
+}
+
+// --- 新增：Bio 编辑 ---
+function startEditBio() {
+  if (editingBioInline.value) return;
+  editingBioInline.value = true;
+  bioDraft.value = userStore.user?.bio || '';
+  bioChanged.value = false;
+  nextTick(() => {
+    bioInputRef.value?.focus();
+  });
+}
+
+function cancelEditBio() {
+  editingBioInline.value = false;
+  bioDraft.value = '';
+  bioChanged.value = false;
+}
+
+let _bioSaving = false;
+
+function saveBioInline() {
+  if (_bioSaving) return;
+  if (!editingBioInline.value) return;
+  _bioSaving = true;
+  editingBioInline.value = false;
+  const newBio = bioDraft.value.trim();
+  const oldBio = userStore.user?.bio || '';
+  if (newBio === oldBio) {
+    bioChanged.value = false;
+    _bioSaving = false;
+    return;
+  }
+  // 直接提交保存
+  bioChanged.value = false;
+  authApi.updateProfile({ bio: newBio }).then((response) => {
+    const updatedUser = response?.data ?? response;
+    userStore.updateUser({ bio: newBio });
+    syncCurrentUserProfileAcrossStories({ ...(userStore.user || {}), bio: newBio });
+    showToast('签名已保存', 'success');
+    _bioSaving = false;
+  }).catch((error) => {
+    console.error('保存签名失败:', error);
+    showToast('保存签名失败', 'error');
+    _bioSaving = false;
+  });
+}
+
+// --- 新增：编辑资料弹窗 ---
+function handleOpenEditProfile() {
+  const u = userStore.user || {};
+  editProfileForm.value = {
+    username: u.username || u.name || '',
+    email: u.email || '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  };
+  editProfileErrors.value = { username: '', password: '' };
+  editProfileSaving.value = false;
+  editProfileSavingPassword.value = false;
+  editProfileShowOldPwd.value = false;
+  editProfileShowNewPwd.value = false;
+  editProfileShowConfirmPwd.value = false;
+  pwdVerify.value = {
+    newPasswordMsg: '',
+    newPasswordValid: false,
+    confirmPasswordMsg: '',
+    confirmPasswordValid: false,
+    oldPasswordError: '',
+    canSubmit: false,
+  };
+  showEditProfileModal.value = true;
+}
+
+async function handleSaveEditProfile() {
+  editProfileErrors.value = { username: '', password: '' };
+  const form = editProfileForm.value;
+  const trimmedUsername = form.username.trim();
+
+  // 验证用户名
+  if (trimmedUsername.length > 0 && trimmedUsername.length < 2) {
+    editProfileErrors.value.username = '用户名至少需要 2 个字符';
+    return;
+  }
+  if (trimmedUsername.length > 20) {
+    editProfileErrors.value.username = '用户名最多 20 个字符';
+    return;
+  }
+  if (trimmedUsername && !/^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/.test(trimmedUsername)) {
+    editProfileErrors.value.username = '用户名只能包含字母、数字、中文、下划线和连字符';
+    return;
+  }
+
+  editProfileSaving.value = true;
+  try {
+    const currentUsername = userStore.user?.username || userStore.user?.name;
+    if (trimmedUsername && trimmedUsername !== currentUsername) {
+      const result = await checkUsernameAvailability(trimmedUsername);
+      if (!result.available) {
+        editProfileErrors.value.username = result.message || '该用户名已被使用';
+        return;
+      }
+      const response = await authApi.updateProfile({ username: trimmedUsername });
+      const updatedUser = response?.data ?? response;
+      userStore.updateUser(updatedUser);
+      syncCurrentUserProfileAcrossStories({ ...(userStore.user || {}), ...(updatedUser || {}) });
+    }
+
+    showToast('资料更新成功', 'success');
+    showEditProfileModal.value = false;
+  } catch (error) {
+    const msg = error?.response?.data?.message || error?.response?.data?.error || '';
+    if (msg.includes('用户名') || msg.includes('username')) {
+      editProfileErrors.value.username = msg || '用户名修改失败';
+    } else {
+      showToast(msg || '保存失败，请重试', 'error');
+    }
+  } finally {
+    editProfileSaving.value = false;
+  }
+}
+
+// 确认修改密码（独立逻辑）
+async function handleConfirmChangePassword() {
+  if (!pwdVerify.value.canSubmit || editProfileSavingPassword.value) return;
+
+  const form = editProfileForm.value;
+  editProfileSavingPassword.value = true;
+
+  try {
+    await authApi.changePassword(form.currentPassword, form.newPassword);
+    showToast('密码修改成功', 'success');
+    // 清空密码字段
+    form.currentPassword = '';
+    form.newPassword = '';
+    form.confirmPassword = '';
+    pwdVerify.value = {
+      newPasswordMsg: '',
+      newPasswordValid: false,
+      confirmPasswordMsg: '',
+      confirmPasswordValid: false,
+      oldPasswordError: '',
+      canSubmit: false,
+    };
+  } catch (error) {
+    pwdVerify.value.oldPasswordError = '旧密码不正确';
+  } finally {
+    editProfileSavingPassword.value = false;
+  }
+}
+
+function handleCloseEditProfile() {
+  showEditProfileModal.value = false;
+}
+
+// --- 切换账号 ---
+function handleSwitchAccount() {
+  const currentId = String(userStore.user?.id || '');
+  const stored = JSON.parse(localStorage.getItem('savedAccounts') || '[]');
+  savedAccounts.value = stored.filter((a) => String(a.id) !== currentId).slice(0, 2);
+  showSwitchAccountModal.value = true;
+}
+
+function handleSwitchToAccount(acc) {
+  if (!acc.token) {
+    // 没有保存 token，回退到登录流程
+    showSwitchAccountModal.value = false;
+    isSwitchingAccount.value = true;
+    showUserSidebar.value = false;
+    userStore.logout();
+    showLoginModal.value = true;
+    return;
+  }
+  // 直接用保存的 token 切换，无需重新登录
+  showSwitchAccountModal.value = false;
+  // 先保存当前账号（含 token）到 savedAccounts
+  if (userStore.user?.id && userStore.token) {
+    saveAccountToStorage({ id: userStore.user.id, username: userStore.user.username, email: userStore.user.email, avatar: userStore.user.avatar, token: userStore.token });
+  }
+  userStore.setAuth(acc.token, { id: acc.id, username: acc.username, email: acc.email || '', avatar: acc.avatar || '' });
+  showToast(`已切换到账号: ${acc.username}`, 'success');
+  // 保持在"我的信息"页面并刷新所有内容
+  showUserSidebar.value = true;
+  refreshUserPanel();
+}
+
+function handleAddAccount() {
+  showSwitchAccountModal.value = false;
+  // 保存当前账号（含 token）到 savedAccounts
+  if (userStore.user?.id && userStore.token) {
+    saveAccountToStorage({ id: userStore.user.id, username: userStore.user.username, email: userStore.user.email, avatar: userStore.user.avatar, token: userStore.token });
+  }
+  isSwitchingAccount.value = true;
+  showUserSidebar.value = false;
+  showLoginModal.value = true;
+}
+
+// 保存账号到 localStorage（最多保留 2 个非当前账号）
+function saveAccountToStorage(account) {
+  const stored = JSON.parse(localStorage.getItem('savedAccounts') || '[]');
+  const accId = String(account.id);
+  // 去重
+  const filtered = stored.filter((a) => String(a.id) !== accId);
+  filtered.push(account);
+  // 最多保留 2 个
+  localStorage.setItem('savedAccounts', JSON.stringify(filtered.slice(-2)));
+}
+
+// 切换账号后刷新"我的信息"面板所有内容
+function refreshUserPanel() {
+  // 重置所有列表
+  postsList.value = [];
+  postsPage.value = 1;
+  postsHasMore.value = true;
+  postsTotalCount.value = -1;
+  likesList.value = [];
+  likesPage.value = 1;
+  likesHasMore.value = true;
+  likesTotalCount.value = -1;
+  favoritesList.value = [];
+  favoritesPage.value = 1;
+  favoritesHasMore.value = true;
+  favoritesTotalCount.value = -1;
+  userContentTab.value = 'posts';
+  // 刷新用户信息并加载作品
+  userStore.fetchUser().then(() => {
+    loadPostsData();
+  }).catch((error) => {
+    console.error('刷新用户信息失败:', error);
+  });
+}
+
+// LoginModal 登录成功后的回调
+function handleLoginModalClose() {
+  showLoginModal.value = false;
+  if (isSwitchingAccount.value) {
+    isSwitchingAccount.value = false;
+    if (userStore.isLoggedIn && userStore.user?.id && userStore.token) {
+      // 登录成功：保存新账号（含 token）并刷新面板
+      saveAccountToStorage({ id: userStore.user.id, username: userStore.user.username, email: userStore.user.email, avatar: userStore.user.avatar, token: userStore.token });
+      showToast('切换账号成功', 'success');
+      showUserSidebar.value = true;
+      refreshUserPanel();
+    }
+    // 用户取消了登录，不做额外操作
+  }
+}
+
+// --- 新增：标签栏切换 ---
+function switchUserContentTab(tab) {
+  userContentTab.value = tab;
+  if (tab === 'posts' && postsList.value.length === 0) loadPostsData();
+  else if (tab === 'likes' && likesList.value.length === 0) loadLikesData();
+  else if (tab === 'favorites' && favoritesList.value.length === 0) loadFavoritesData();
+}
+
+function handleContentListScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  if (scrollHeight - scrollTop - clientHeight < 50) {
+    if (userContentTab.value === 'posts') loadPostsData(true);
+    else if (userContentTab.value === 'likes') loadLikesData(true);
+    else if (userContentTab.value === 'favorites') loadFavoritesData(true);
+  }
+}
+
+// --- 新增：关闭面板时批量保存 ---
+async function savePendingChanges() {
+  const changes = [];
+  const form = editProfileForm.value;
+
+  // Bio 更改
+  if (bioChanged.value) {
+    changes.push({ type: 'bio', value: bioDraft.value.trim() });
+  }
+
+  // 用户名更改（编辑弹窗中）
+  if (showEditProfileModal.value) {
+    const trimmedUsername = form.username.trim();
+    const currentUsername = userStore.user?.username || userStore.user?.name;
+    if (trimmedUsername && trimmedUsername !== currentUsername && trimmedUsername.length >= 2) {
+      changes.push({ type: 'username', value: trimmedUsername });
+    }
+  }
+
+  if (changes.length === 0) return;
+
+  for (const change of changes) {
+    try {
+      if (change.type === 'bio') {
+        await authApi.updateProfile({ bio: change.value });
+        userStore.updateUser({ bio: change.value });
+        bioChanged.value = false;
+      }
+    } catch (error) {
+      console.error(`保存${change.type}失败:`, error);
+    }
+  }
 }
 
 function closePublishPanel() {
@@ -4061,6 +4532,9 @@ function handleUserClick() {
       console.error("刷新用户信息失败:", error);
     });
   }
+
+  // 自动加载默认标签页（作品）数据
+  if (postsList.value.length === 0) loadPostsData();
 }
 
 function handleMyLikes() {
@@ -4137,6 +4611,12 @@ async function loadLikesData(isLoadMore = false) {
       likesList.value = stories;
     }
 
+    if (data?.pagination?.total != null) {
+      likesTotalCount.value = data.pagination.total;
+    } else if (!isLoadMore) {
+      likesTotalCount.value = stories.length;
+    }
+
     void hydrateStoryLocations(stories);
 
     if (stories.length < likesPageSize) {
@@ -4190,11 +4670,14 @@ async function loadPostsData(isLoadMore = false) {
       postsList.value = stories;
     }
 
-    void hydrateStoryLocations(stories);
-
-    if (stories.length < postsPageSize) {
-      postsHasMore.value = false;
+    // 更新总数
+    if (data?.pagination?.total != null) {
+      postsTotalCount.value = data.pagination.total;
+    } else if (!isLoadMore) {
+      postsTotalCount.value = stories.length;
     }
+
+    void hydrateStoryLocations(stories);
   } catch (error) {
     console.error("加载发布数据失败:", error);
   } finally {
@@ -4257,6 +4740,12 @@ async function loadFavoritesData(isLoadMore = false) {
       favoritesList.value = basicStories;
     }
 
+    if (data?.pagination?.total != null) {
+      favoritesTotalCount.value = data.pagination.total;
+    } else if (!isLoadMore) {
+      favoritesTotalCount.value = basicStories.length;
+    }
+
     void hydrateStoryLocations(basicStories);
 
     if (basicStories.length < favoritesPageSize) {
@@ -4313,6 +4802,151 @@ async function handleToggleFavoriteFromList(story) {
     console.error("收藏操作失败:", error);
     showToast(error.message || "操作失败，请重试", "error");
   }
+}
+
+// --- 搜索功能 ---
+async function loadSearchResults(isLoadMore = false) {
+  const keyword = searchKeyword.value.trim();
+  if (!keyword) return;
+
+  if (isLoadMore) {
+    if (searchLoadingMore.value || !searchHasMore.value) return;
+    searchLoadingMore.value = true;
+    searchPage.value++;
+  } else {
+    searchLoading.value = true;
+    searchPage.value = 1;
+    searchResults.value = [];
+    searchHasMore.value = false;
+    searchStorySearched.value = true;
+  }
+
+  try {
+    const result = await storyApi.searchStories(keyword, {
+      page: searchPage.value,
+      limit: searchPageSize,
+    });
+    const data = result.data || result;
+    const rawStories = Array.isArray(data?.stories) ? data.stories : [];
+    const pagination = data?.pagination || {};
+    const totalPages = pagination.totalPages ?? 1;
+
+    searchHasMore.value = searchPage.value < totalPages;
+
+    const newStories = rawStories.map((item) => {
+      const author = item.author || {};
+      const normalized = {
+        ...item,
+        id: normalizeStoryIdKey(item.id),
+        avatar: author.avatar || null,
+        username: author.username || '匿名用户',
+        author: {
+          id: normalizeStoryIdKey(author.id),
+          username: author.username || '匿名用户',
+          avatar: author.avatar || null,
+        },
+        locationName: item.locationName || null,
+      };
+      const storyIdKey = normalizeStoryIdKey(item.id);
+      const likedItem = likesList.value.find((l) => normalizeStoryIdKey(l.id) === storyIdKey);
+      const favItem = favoritesList.value.find((f) => normalizeStoryIdKey(f.id) === storyIdKey);
+      if (likedItem) normalized.isLiked = true;
+      if (favItem) normalized.isFavorited = true;
+      return normalized;
+    });
+
+    if (isLoadMore) {
+      searchResults.value.push(...newStories);
+    } else {
+      searchResults.value = newStories;
+    }
+  } catch (error) {
+    console.error("搜索故事失败:", error);
+    showToast("搜索失败，请重试", "error");
+  } finally {
+    searchLoading.value = false;
+    searchLoadingMore.value = false;
+  }
+}
+
+async function searchUserById(keyword) {
+  if (!keyword) return;
+  searchUserLoading.value = true;
+  searchUserSearched.value = true;
+  searchedUser.value = null;
+  searchedUserStories.value = [];
+
+  try {
+    const result = await authApi.getUserById(keyword);
+    const data = result.data || result;
+    if (data && !data._updating) {
+      searchedUser.value = data;
+      const rawStories = Array.isArray(data.stories) ? data.stories : [];
+      searchedUserStories.value = rawStories.map((s) => ({
+        ...s,
+        id: normalizeStoryIdKey(s.id),
+        avatar: data.avatar || null,
+        username: data.username || '匿名用户',
+        author: {
+          id: normalizeStoryIdKey(data.id),
+          username: data.username || '匿名用户',
+          avatar: data.avatar || null,
+        },
+      }));
+    }
+  } catch (error) {
+    searchedUser.value = null;
+  } finally {
+    searchUserLoading.value = false;
+  }
+}
+
+function handleSearchSubmit() {
+  searchFocused.value = true;
+  const keyword = searchKeyword.value.trim();
+  if (!keyword) return;
+  if (searchTab.value === 'story') {
+    loadSearchResults(false);
+  } else {
+    searchUserById(keyword);
+  }
+}
+
+function handleSearchScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  if (scrollHeight - scrollTop - clientHeight < 50 && searchHasMore.value && !searchLoadingMore.value) {
+    loadSearchResults(true);
+  }
+}
+
+function handleSearchUnlike(story) {
+  if (!(story.isLiked)) return;
+  likeApi.remove(story.id).then(() => {
+    story.isLiked = false;
+    const likeCount = Math.max(0, Number(story.likeCount ?? 0) - 1);
+    story.likeCount = likeCount;
+    handleStoryLike({ storyId: story.id, liked: false, likeCount });
+  }).catch((err) => {
+    console.error("取消点赞失败:", err);
+    showToast("取消点赞失败", "error");
+  });
+}
+
+function handleSearchToggleFavorite(story) {
+  const isFavorited = story.isFavorited !== false;
+  const action = isFavorited ? favoriteApi.remove(story.id) : favoriteApi.create(story.id);
+  action.then(() => {
+    const nextFavorited = !isFavorited;
+    story.isFavorited = nextFavorited;
+    const favCount = nextFavorited
+      ? Number(story.favoriteCount ?? 0) + 1
+      : Math.max(0, Number(story.favoriteCount ?? 0) - 1);
+    story.favoriteCount = favCount;
+    handleStoryFavorite({ storyId: story.id, favorited: nextFavorited, favoriteCount: favCount });
+  }).catch((err) => {
+    console.error("收藏操作失败:", err);
+    showToast("操作失败", "error");
+  });
 }
 
 function handleStoryClick(story) {
@@ -4808,6 +5442,7 @@ function handlePageClick(event) {
 
   closeStoryPanel();
   closePublishPanel();
+  searchFocused.value = false;
 }
 
 const stories = computed(() => mapStore.stories);
@@ -7790,6 +8425,7 @@ onUnmounted(() => {
   right: auto;
   bottom: auto;
   width: min(900px, calc(100vw - 48px));
+  height: min(90vh, 960px);
   max-height: min(90vh, 960px);
   border-radius: 36px;
   border: 1px solid rgba(196, 142, 48, 0.34);
@@ -7939,7 +8575,7 @@ onUnmounted(() => {
 
 .user-sidebar-content {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   position: relative;
   z-index: 1;
   padding: 20px 28px 28px;
@@ -8717,8 +9353,8 @@ onUnmounted(() => {
 }
 
 .item-action-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -8788,23 +9424,13 @@ onUnmounted(() => {
   gap: 4px;
 }
 
-.likes-panel .item-footer,
-.posts-panel .item-footer,
-.favorites-panel .item-footer {
-  justify-content: flex-start;
+.user-content-list .item-footer {
+  display: flex;
+  justify-content: flex-end;
   gap: 14px;
 }
 
-.likes-panel .item-location,
-.posts-panel .item-location,
-.favorites-panel .item-location {
-  flex: 1;
-  min-width: 0;
-}
-
-.likes-panel .item-likes,
-.posts-panel .item-likes,
-.favorites-panel .item-likes {
+.user-content-list .item-likes {
   white-space: nowrap;
 }
 
@@ -8820,19 +9446,26 @@ onUnmounted(() => {
   line-height: 0;
 }
 
-.likes-panel .item-action-btn span::before,
-.favorites-panel .item-action-btn span::before {
-  font-size: 15px;
+.likes-panel .item-action-btn span::before {
+  font-size: 18px;
   line-height: 1;
 }
 
-.likes-panel .unlike-btn span::before,
+.favorites-panel .item-action-btn span::before {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.likes-panel .unlike-btn span::before {
+  content: "💔";
+}
+
 .favorites-panel .unfavorite-btn span::before {
-  content: "❌️";
+  content: "⭐";
 }
 
 .favorites-panel .unfavorite-btn.is-restorable span::before {
-  content: "⭐️";
+  content: "✨";
 }
 
 .panel-loading-more,
@@ -9761,6 +10394,27 @@ onUnmounted(() => {
 .user-sub-sidebar:not(.dark) .item-author,
 .user-sub-sidebar:not(.dark) .item-time {
   color: #3c2910;
+}
+
+/* 浅色模式下内容列表的卡片样式 */
+.user-sidebar:not(.dark) .user-content-list .panel-item {
+  border-color: rgba(164, 122, 48, 0.25);
+}
+
+.user-sidebar:not(.dark) .user-content-list .item-author {
+  color: #333;
+}
+
+.user-sidebar:not(.dark) .user-content-list .item-content {
+  color: #2c2c2c;
+}
+
+.user-sidebar:not(.dark) .user-content-list .item-time {
+  color: #888;
+}
+
+.user-sidebar:not(.dark) .user-content-list .item-footer {
+  color: #666;
 }
 
 .story-sidebar.dark .sidebar-header h3,
@@ -10839,5 +11493,999 @@ onUnmounted(() => {
     right: 20px;
     left: 20px;
   }
+}
+
+/* ============ 新用户信息面板样式 ============ */
+
+/* 用户头像+用户名/ID 新布局 */
+.user-profile-new {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 0;
+}
+
+.user-profile-new .user-avatar-wrapper {
+  flex-shrink: 0;
+}
+
+.user-identity-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.user-identity-top {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-display-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+.user-display-name:not(.has-vip) {
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+  -webkit-text-fill-color: unset;
+  color: #333;
+}
+
+.user-display-name.has-vip {
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+@keyframes vipGoldFlow {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.vip-text-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #5d4037;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.icon-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.icon-edit-btn:hover {
+  background: #f0f0f0;
+  color: #555;
+}
+
+.user-star-id {
+  font-size: 12px;
+  color: #999;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  letter-spacing: 0.5px;
+}
+
+.user-identity-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.switch-account-btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #e8f0fe;
+  color: #1a73e8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.switch-account-btn:hover {
+  background: #d2e3fc;
+}
+
+.logout-inline-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #999;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.logout-inline-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Bio 签名区域 */
+.user-bio-area {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  margin: 0 0 8px 0;
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
+  border-radius: 10px;
+  cursor: text;
+  transition: border-color 0.15s, background 0.15s;
+  min-height: 40px;
+}
+
+.user-bio-area:hover {
+  border-color: #ddd;
+  background: #f5f5f5;
+}
+
+.bio-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.bio-text {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.bio-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bio-input-wrap textarea {
+  width: 100%;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+.bio-input-wrap textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.bio-char-count {
+  font-size: 11px;
+  color: #bbb;
+  text-align: right;
+}
+
+.bio-edit-icon {
+  flex-shrink: 0;
+  padding-top: 2px;
+  color: #ccc;
+}
+
+/* 标签栏 */
+.user-content-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #eee;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.content-tab {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.content-tab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 2px;
+  background: #667eea;
+  border-radius: 1px;
+  transition: width 0.2s;
+}
+
+.content-tab.active {
+  color: #333;
+}
+
+.content-tab.active::after {
+  width: 60%;
+}
+
+.content-tab:hover {
+  color: #555;
+}
+
+.tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #aaa;
+  background: #f0f0f0;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.content-tab.active .tab-count {
+  color: #667eea;
+  background: #eef0ff;
+}
+
+/* 内容列表区域 */
+.user-content-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  min-height: 200px;
+  max-height: calc(100vh - 420px);
+}
+
+/* 隐藏整个侧边栏的外层滚动条 */
+.user-sidebar {
+  overflow: hidden !important;
+  scrollbar-width: none;
+}
+
+.user-sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.user-sidebar-content {
+  scrollbar-width: none;
+}
+
+.user-sidebar-content::-webkit-scrollbar {
+  display: none;
+}
+
+/* 隐藏故事列表滚动条但保留滚动功能 */
+.user-content-list {
+  scrollbar-width: none;
+}
+
+.user-content-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* 编辑资料弹窗 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+
+.modal-overlay.dark {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.edit-profile-modal {
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.edit-profile-modal.dark {
+  background: #1a1a2e;
+  color: #edf3ff;
+}
+
+.edit-profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.edit-profile-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.edit-profile-body {
+  padding: 20px;
+}
+
+.edit-field {
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.edit-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.optional-hint {
+  font-weight: 400;
+  color: #aaa;
+}
+
+.edit-field input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.edit-field input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.edit-input-wrap input {
+  padding-right: 40px;
+}
+
+/* 隐藏浏览器原生的密码显示/隐藏按钮 */
+.edit-input-wrap input::-ms-reveal,
+.edit-input-wrap input::-ms-clear {
+  display: none;
+}
+
+.edit-input-wrap input::-webkit-credentials-auto-fill-button,
+.edit-input-wrap input::-webkit-reveal-password-button {
+  display: none !important;
+}
+
+.edit-field input:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.eye-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.eye-toggle:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dark .eye-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.eye-toggle svg {
+  display: block;
+}
+
+.edit-input-wrap {
+  position: relative;
+}
+
+.field-error-inline {
+  display: block;
+  font-size: 12px;
+  color: #dc2626;
+  margin-top: 4px;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 4px;
+}
+
+.edit-profile-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid #eee;
+}
+
+.edit-profile-footer .btn-cancel {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: #f5f5f5;
+  color: #555;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.edit-profile-footer .btn-save {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 8px;
+  background: #667eea;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edit-profile-footer .btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 修改密码分隔区 */
+.edit-password-section {
+  padding-top: 8px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  border-top: 1px solid #eee;
+}
+
+.edit-password-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.dark .edit-password-section {
+  border-top-color: #333;
+}
+
+.dark .edit-password-title {
+  color: #aab;
+}
+
+/* 密码验证提示样式 */
+.validation-tip {
+  margin-top: 2px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tip-error {
+  border: 1px solid #dc2626;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.tip-error .tip-text {
+  color: #dc2626;
+}
+
+.tip-success {
+  border: 1px solid #16a34a;
+  background: rgba(34, 197, 94, 0.1);
+  margin-bottom: 8px;
+}
+
+.tip-success .tip-text {
+  color: #16a34a;
+}
+
+.dark .tip-error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.dark .tip-error .tip-text {
+  color: #fca5a5;
+}
+
+.dark .tip-success {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.dark .tip-success .tip-text {
+  color: #86efac;
+}
+
+/* 确认修改密码按钮 */
+.btn-confirm-password {
+  width: 100%;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: #667eea;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  margin-top: 4px;
+}
+
+.btn-confirm-password:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-confirm-password:not(:disabled):hover {
+  opacity: 0.85;
+}
+
+.dark .btn-confirm-password {
+  background: #5a6fd6;
+}
+
+/* 切换账号弹窗 */
+.switch-account-modal {
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.switch-account-modal.dark {
+  background: #1a1a2e;
+  color: #edf3ff;
+}
+
+.switch-account-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.switch-account-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.switch-account-body {
+  padding: 20px;
+}
+
+.account-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.account-slot:hover {
+  background: #f9fafb;
+  border-color: #ddd;
+}
+
+.account-slot.current {
+  background: #f0f7ff;
+  border-color: #c2d9ff;
+  cursor: default;
+}
+
+.slot-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.slot-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.slot-current-badge {
+  font-size: 11px;
+  color: #1a73e8;
+  background: #e8f0fe;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.add-slot {
+  border-style: dashed;
+  border-color: #ccc;
+  justify-content: center;
+}
+
+.add-slot:hover {
+  border-color: #999;
+  background: #fafafa;
+}
+
+.add-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px dashed #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #aaa;
+}
+
+/* 暗色模式适配 */
+.dark .user-display-name {
+  color: #edf3ff;
+}
+
+.dark .user-display-name:not(.has-vip) {
+  -webkit-text-fill-color: unset;
+}
+
+.dark .user-display-name.has-vip {
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #ffe4b5 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+.dark .user-star-id { color: #8899aa; }
+.dark .user-bio-area { background: #1e2a3a; border-color: #2a3a4a; }
+.dark .bio-text { color: #aabbcc; }
+.dark .bio-input-wrap textarea { background: #0f1a2a; border-color: #2a3a4a; color: #edf3ff; }
+.dark .user-content-tabs { border-bottom-color: #2a3a4a; }
+.dark .content-tab { color: #7788aa; }
+.dark .content-tab.active { color: #b8cfff; }
+.dark .content-tab.active::after { background: #8fb4ff; }
+.dark .tab-count { color: #556677; background: #1e2a3a; }
+.dark .content-tab.active .tab-count { color: #8fb4ff; background: #1a2a4a; }
+.dark .icon-edit-btn { color: #667788; }
+.dark .icon-edit-btn:hover { background: #2a3a4a; color: #aabbcc; }
+.dark .bio-edit-icon { color: #445566; }
+.dark .logout-inline-btn { color: #778899; }
+.dark .logout-inline-btn:hover { background: #3a2020; color: #ff6b6b; }
+.dark .switch-account-btn { background: #1a2a4a; color: #8fb4ff; }
+.dark .switch-account-btn:hover { background: #243656; }
+.dark .edit-profile-header { border-bottom-color: #2a3a4a; }
+.dark .edit-profile-footer { border-top-color: #2a3a4a; }
+.dark .edit-field label { color: #8899aa; }
+.dark .edit-field input { background: #0f1a2a; border-color: #2a3a4a; color: #edf3ff; }
+.dark .edit-field input:disabled { background: #162030; color: #556677; }
+.dark .switch-account-header { border-bottom-color: #2a3a4a; }
+.dark .account-slot { border-color: #2a3a4a; }
+.dark .account-slot:hover { background: #1a2a3a; border-color: #3a4a5a; }
+.dark .account-slot.current { background: #162030; border-color: #2a4a6a; }
+.dark .slot-name { color: #c8d8e8; }
+.dark .slot-current-badge { color: #8fb4ff; background: #1a2a4a; }
+.dark .add-slot { border-color: #3a4a5a; }
+.dark .add-slot:hover { border-color: #4a5a6a; background: #162030; }
+.dark .add-avatar { border-color: #4a5a6a; color: #5a6a7a; }
+.dark .edit-profile-footer .btn-cancel { background: #2a3a4a; color: #aabbcc; }
+
+/* ===== 地图搜索框 ===== */
+.map-search-bar {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  width: min(520px, calc(100vw - 40px));
+}
+.map-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  height: 44px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.25s ease;
+}
+.map-search-bar.dark .map-search-input-wrap {
+  background: rgba(20, 28, 42, 0.88);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+.map-search-input-wrap:focus-within {
+  border-color: rgba(102, 126, 234, 0.5);
+  box-shadow: 0 4px 24px rgba(102, 126, 234, 0.15);
+}
+.map-search-bar.dark .map-search-input-wrap:focus-within {
+  border-color: rgba(143, 180, 255, 0.5);
+  box-shadow: 0 4px 24px rgba(143, 180, 255, 0.12);
+}
+.map-search-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: #999;
+}
+.map-search-bar.dark .map-search-icon { color: #667788; }
+.map-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: #333;
+  line-height: 1.4;
+}
+.map-search-input::placeholder { color: #aaa; }
+.map-search-bar.dark .map-search-input { color: #dde4f0; }
+.map-search-bar.dark .map-search-input::placeholder { color: #556677; }
+.map-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.map-search-clear svg { width: 14px; height: 14px; color: #888; }
+.map-search-clear:hover { background: rgba(0, 0, 0, 0.12); }
+.map-search-bar.dark .map-search-clear { background: rgba(255, 255, 255, 0.08); }
+.map-search-bar.dark .map-search-clear svg { color: #778899; }
+.map-search-bar.dark .map-search-clear:hover { background: rgba(255, 255, 255, 0.15); }
+
+/* ===== 搜索结果面板 ===== */
+.map-search-results {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 499;
+  width: min(480px, calc(100vw - 40px));
+  max-height: calc(100vh - 110px);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+.map-search-results.dark {
+  background: rgba(20, 28, 42, 0.95);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+}
+.map-search-results-list {
+  overflow-y: auto;
+  max-height: calc(100vh - 120px);
+  padding: 8px;
+  scrollbar-width: none;
+}
+.map-search-results-list::-webkit-scrollbar { display: none; }
+.map-search-card {
+  margin-bottom: 8px;
+}
+.map-search-card:last-child { margin-bottom: 0; }
+.map-search-results.dark .map-search-card.panel-item {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(182, 208, 255, 0.12);
+}
+.map-search-results.dark .map-search-card .item-content { color: rgba(255, 255, 255, 0.85); }
+.map-search-results.dark .map-search-card .item-author { color: #fff; }
+.map-search-results.dark .map-search-card .item-time { color: rgba(255, 255, 255, 0.5); }
+.map-search-results.dark .map-search-card .item-footer { color: rgba(255, 255, 255, 0.5); }
+.map-search-results:not(.dark) .map-search-card.panel-item {
+  background: rgba(255, 252, 246, 0.6);
+  border-color: rgba(164, 122, 48, 0.2);
+}
+.map-search-results:not(.dark) .map-search-card .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .map-search-card .item-author { color: #333; }
+.map-search-results:not(.dark) .map-search-card .item-time { color: #888; }
+.map-search-results:not(.dark) .map-search-card .item-footer { color: #666; }
+.map-search-empty {
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #999;
+}
+.map-search-results.dark .map-search-empty { color: #556677; }
+
+/* 搜索面板内点赞/收藏按钮图标放大 */
+.map-search-card .item-action-btn span { font-size: 0; line-height: 0; }
+.map-search-card .item-action-btn span::before { font-size: 18px; line-height: 1; }
+.map-search-card .unlike-btn span::before { content: "💔"; }
+.map-search-card .unfavorite-btn span::before { content: "⭐"; }
+
+/* 搜索面板过渡动画 */
+.search-panel-fade-enter-active,
+.search-panel-fade-leave-active {
+  transition: all 0.2s ease;
+}
+.search-panel-fade-enter-from,
+.search-panel-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px);
+}
+
+/* ===== 搜索标签页 ===== */
+.search-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+.map-search-results.dark .search-tabs { border-bottom-color: rgba(255, 255, 255, 0.08); }
+.search-tab {
+  padding: 10px 18px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: #999;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+.search-tab:hover { color: #666; }
+.search-tab.active { color: #667eea; }
+.search-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 18px;
+  right: 18px;
+  height: 2px;
+  background: #667eea;
+  border-radius: 1px;
+}
+.map-search-results.dark .search-tab { color: #556677; }
+.map-search-results.dark .search-tab:hover { color: #8899aa; }
+.map-search-results.dark .search-tab.active { color: #8fb4ff; }
+.map-search-results.dark .search-tab.active::after { background: #8fb4ff; }
+
+/* ===== 搜索用户信息面板 ===== */
+.search-user-profile {
+  padding: 12px 8px 4px;
+}
+.search-user-profile .user-profile-new {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.search-user-profile .user-avatar-large {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  cursor: default;
+}
+.search-user-profile .user-avatar-large img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.search-user-profile .user-identity-area {
+  flex: 1;
+  min-width: 0;
+}
+.search-user-profile .user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.search-user-profile .user-display-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-search-results.dark .search-user-profile .user-display-name { color: #edf3ff; }
+.search-user-profile .user-star-id {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+.map-search-results.dark .search-user-profile .user-star-id { color: #556677; }
+.search-user-bio {
+  cursor: default !important;
+  margin-top: 12px;
+}
+.search-user-bio .bio-edit-icon { display: none; }
+.search-user-profile .user-content-list {
+  max-height: none;
+}
+.map-search-results-list {
+  max-height: calc(100vh - 160px);
 }
 </style>

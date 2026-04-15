@@ -63,6 +63,14 @@ export const favoriteApi = {
     return api.get("/v1/favorites/me", { params });
   },
 
+  getUserFavorites(userId, params = {}) {
+    const normalizedUserId = normalizeStoryId(userId);
+    if (favoriteApiProxy) {
+      return favoriteApiProxy.getUserFavorites(normalizedUserId, params);
+    }
+    return api.get(`/v1/favorites/user/${normalizedUserId}`, { params });
+  },
+
   checkMultiple(storyIds) {
     const normalizedStoryIds = Array.isArray(storyIds)
       ? storyIds.map((storyId) => normalizeStoryId(storyId))

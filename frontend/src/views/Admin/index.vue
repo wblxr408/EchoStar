@@ -1718,7 +1718,8 @@ function handleLogout() {
   overflow: hidden;
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
+  -webkit-line-clamp: 6; /* 兼容旧版WebKit内核浏览器（老Chrome、Safari、移动端浏览器） */
+  line-clamp: 6; /* 标准属性，兼容现代浏览器（Chrome 115+、Firefox 117+等） */
 }
 
 .story-meta {
