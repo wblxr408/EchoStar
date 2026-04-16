@@ -135,11 +135,12 @@ function handleSelect() {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   margin-bottom: 16px;
   cursor: pointer;
+  transform: scale(0.96);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .story-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
 }
 

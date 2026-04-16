@@ -60,12 +60,12 @@
             <div class="vscroll-spacer" :style="{ height: searchVScrollTotalHeight + 'px' }"></div>
             <div
               v-for="item in searchVScrollVisibleItems"
-              :key="item.data.id"
+              :key="item.data.id + '-search-' + searchAnimationKey"
               ref="searchVScrollItemRefs"
               :data-search-story-index="item.index"
-              class="map-search-card panel-item vscroll-item"
+              class="map-search-card panel-item vscroll-item story-card-enter"
               :class="{ 'is-vip-card': item.data.author?.vip }"
-              :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+              :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
               @click="openStoryFromCollection(item.data)"
             >
               <div class="item-header">
@@ -96,12 +96,12 @@
             <div class="vscroll-spacer" :style="{ height: userSearchVScrollTotalHeight + 'px' }"></div>
             <div
               v-for="item in userSearchVScrollVisibleItems"
-              :key="item.data.id"
+              :key="item.data.id + '-usersearch-' + searchAnimationKey"
               ref="userSearchVScrollItemRefs"
               :data-search-user-index="item.index"
-              class="search-user-card vscroll-item"
+              class="search-user-card vscroll-item story-card-enter"
               :class="{ 'is-vip-card': item.data.vip }"
-              :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+              :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
               @click="openUserDetail(item.data)"
             >
               <div class="search-user-card__avatar">
@@ -171,7 +171,7 @@
                   <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
                 </div>
                 <div v-else class="panel-list">
-                  <div v-for="story in searchedUserStories" :key="story.id" class="panel-item" :class="{ 'is-vip-card': searchedUser.vip }" @click="openStoryFromCollection(story)">
+                  <div v-for="(story, idx) in searchedUserStories" :key="story.id + '-detail-' + searchAnimationKey" class="panel-item story-card-enter" :class="{ 'is-vip-card': searchedUser.vip }" :data-virtual-index="idx" @click="openStoryFromCollection(story)">
                     <div class="item-header">
                       <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
                       <div class="item-meta">
@@ -464,11 +464,11 @@
                   <div class="vscroll-spacer" :style="{ height: feedVScrollTotalHeight + 'px' }"></div>
                   <StoryCard
                     v-for="item in feedVScrollVisibleItems"
-                    :key="item.data.id"
+                    :key="item.data.id + '-feed-' + storyCardAnimationKey"
                     ref="feedVScrollItemRefs"
                     :data-feed-index="item.index"
                     :story="item.data"
-                    class="vscroll-item"
+                    class="vscroll-item story-card-enter"
                     :style="{ position: 'absolute', top: item.top + 'px', width: '100%' }"
                     @preview-image="handlePreviewImage"
                     @select-story="openStoryFromCollection"
@@ -486,10 +486,11 @@
               </div>
               <div v-else class="story-list">
                 <div
-                  v-for="story in featuredStories"
-                  :key="story.id"
-                  class="featured-story-card"
+                  v-for="(story, idx) in featuredStories"
+                  :key="story.id + '-featured-' + storyCardAnimationKey"
+                  class="featured-story-card story-card-enter"
                   :class="{ 'is-vip-card': getStoryAuthorVip(story) }"
+                  :data-virtual-index="idx"
                   @click="openFeaturedStory(story)"
                 >
                   <div v-if="story.images?.length" class="featured-image">
@@ -1035,10 +1036,10 @@
                   <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
                   <div
                     v-for="item in vScrollVisibleItems"
-                    :key="item.data.id"
+                    :key="item.data.id + '-' + storyCardAnimationKey"
                     ref="vScrollItemRefs"
                     :data-virtual-index="item.index"
-                    class="panel-item vscroll-item"
+                    class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
                     :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
                     @click="handleStoryClick(item.data)"
@@ -1076,10 +1077,10 @@
                   <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
                   <div
                     v-for="item in vScrollVisibleItems"
-                    :key="item.data.id"
+                    :key="item.data.id + '-' + storyCardAnimationKey"
                     ref="vScrollItemRefs"
                     :data-virtual-index="item.index"
-                    class="panel-item vscroll-item"
+                    class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
                     :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
                     @click="handleStoryClick(item.data)"
@@ -1116,10 +1117,10 @@
                   <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
                   <div
                     v-for="item in vScrollVisibleItems"
-                    :key="item.data.id"
+                    :key="item.data.id + '-' + storyCardAnimationKey"
                     ref="vScrollItemRefs"
                     :data-virtual-index="item.index"
-                    class="panel-item vscroll-item"
+                    class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
                     :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
                     @click="handleStoryClick(item.data)"
@@ -1767,6 +1768,7 @@ const userContentTab = ref('posts');
 const postsTotalCount = ref(-1);
 const likesTotalCount = ref(-1);
 const favoritesTotalCount = ref(-1);
+const storyCardAnimationKey = ref(0); // 用于触发入场动画的版本号
 
 // Bio 编辑
 const editingBioInline = ref(false);
@@ -1907,7 +1909,8 @@ const vScrollItemRefs = ref([]);
 watch(vScrollItemRefs, (refs) => {
   if (!refs || refs.length === 0) return;
   for (const el of refs) {
-    if (el) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
       const idx = parseInt(el.dataset.virtualIndex, 10);
       if (!isNaN(idx)) {
         vScrollScheduleMeasure(idx, el);
@@ -1944,7 +1947,8 @@ const {
 watch(feedVScrollItemRefs, (refs) => {
   if (!refs || refs.length === 0) return;
   for (const el of refs) {
-    if (el) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
       const idx = parseInt(el.dataset.feedIndex, 10);
       if (!isNaN(idx)) feedVScrollScheduleMeasure(idx, el);
     }
@@ -1989,6 +1993,7 @@ const searchTab = ref('story');
 const searchResults = ref([]);
 const searchLoading = ref(false);
 const searchLoadingMore = ref(false);
+const searchAnimationKey = ref(0); // 搜索结果入场动画触发
 const searchHasMore = ref(false);
 const searchPage = ref(1);
 const searchPageSize = 10;
@@ -2025,7 +2030,8 @@ const {
 watch(searchVScrollItemRefs, (refs) => {
   if (!refs || refs.length === 0) return;
   for (const el of refs) {
-    if (el) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
       const idx = parseInt(el.dataset.searchStoryIndex, 10);
       if (!isNaN(idx)) searchVScrollScheduleMeasure(idx, el);
     }
@@ -2057,7 +2063,8 @@ const {
 watch(userSearchVScrollItemRefs, (refs) => {
   if (!refs || refs.length === 0) return;
   for (const el of refs) {
-    if (el) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
       const idx = parseInt(el.dataset.searchUserIndex, 10);
       if (!isNaN(idx)) userSearchVScrollScheduleMeasure(idx, el);
     }
@@ -4172,6 +4179,8 @@ function handleLoginModalClose() {
 // --- 新增：标签栏切换 ---
 function switchUserContentTab(tab) {
   userContentTab.value = tab;
+  // 触发入场动画
+  storyCardAnimationKey.value++;
   if (tab === 'posts' && postsList.value.length === 0) loadPostsData();
   else if (tab === 'likes' && likesList.value.length === 0) loadLikesData();
   else if (tab === 'favorites' && favoritesList.value.length === 0) loadFavoritesData();
@@ -5371,11 +5380,13 @@ async function loadLikesData(isLoadMore = false) {
       })
       .filter(Boolean);
 
+
     if (isLoadMore) {
       likesList.value.push(...stories);
       likesPage.value++;
     } else {
       likesList.value = stories;
+      storyCardAnimationKey.value++; // 触发入场动画
     }
 
     if (data?.pagination?.total != null) {
@@ -5483,6 +5494,7 @@ async function loadPostsData(isLoadMore = false) {
       postsPage.value++;
     } else {
       postsList.value = stories;
+      storyCardAnimationKey.value++; // 触发入场动画
     }
 
     // 更新总数
@@ -5558,6 +5570,7 @@ async function loadFavoritesData(isLoadMore = false) {
       favoritesPage.value++;
     } else {
       favoritesList.value = basicStories;
+      storyCardAnimationKey.value++; // 触发入场动画
     }
 
     if (data?.pagination?.total != null) {
@@ -5682,6 +5695,7 @@ async function loadSearchResults(isLoadMore = false) {
       searchResults.value.push(...newStories);
     } else {
       searchResults.value = newStories;
+      searchAnimationKey.value++; // 触发入场动画
     }
   } catch (error) {
     console.error("搜索故事失败:", error);
@@ -5789,6 +5803,7 @@ async function performUserSearch(keyword, isLoadMore = false) {
         ? [exactUser, ...fuzzyUsers]
         : fuzzyUsers;
       searchUserResults.value = merged;
+      searchAnimationKey.value++; // 触发入场动画
     }
   } catch (error) {
     console.error("搜索用户失败:", error);
@@ -5847,6 +5862,7 @@ async function openUserDetail(user) {
           vip: data.vip || 0,
         },
       }));
+      searchAnimationKey.value++; // 触发入场动画
     }
   } catch (error) {
     console.error("获取用户详情失败:", error);
@@ -6702,6 +6718,7 @@ async function loadFeaturedStories() {
     featuredStories.value = list
       .map((s) => normalizeStoryForMap(s))
       .filter(Boolean);
+    storyCardAnimationKey.value++; // 触发入场动画
   } catch (error) {
     console.error("加载精选推荐失败:", error);
     featuredStories.value = [];
@@ -6733,6 +6750,7 @@ async function loadRecommendationFeed(reset = true) {
     const normalized = list.map((s) => normalizeStoryForMap(s)).filter(Boolean);
     if (reset) {
       feedStories.value = normalized;
+      storyCardAnimationKey.value++; // 触发入场动画
     } else {
       feedStories.value = [...feedStories.value, ...normalized];
     }
@@ -8169,13 +8187,14 @@ onUnmounted(() => {
   border-radius: 14px;
   overflow: hidden;
   cursor: pointer;
+  transform: scale(0.96);
   transition: all 0.3s;
   border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
 .featured-story-card:hover {
   background: rgba(255, 255, 255, 0.12);
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
@@ -10684,13 +10703,50 @@ onUnmounted(() => {
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: scale(0.98);
+  transform: scale(0.96);
 }
 
 .panel-item:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(102, 126, 234, 0.3);
   transform: scale(1);
+}
+
+/* 故事卡片入场动画 - stagger: 0.12s | duration: 0.45s | distance: 80vh */
+/* animation-delay 通过模板内联 style 设置，此处不声明 */
+
+@keyframes storyCardEntrance {
+  0% {
+    opacity: 0;
+    transform: translateY(80vh) scale(0.95);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  75% {
+    transform: translateY(-8px) scale(1);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(0.96);
+  }
+}
+
+.story-card-enter {
+  animation: storyCardEntrance 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.story-list :deep(.story-card.story-card-enter) {
+  animation: storyCardEntrance 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-card-enter {
+    animation: none;
+    opacity: 1;
+    transform: scale(0.96);
+  }
 }
 
 .item-avatar {
