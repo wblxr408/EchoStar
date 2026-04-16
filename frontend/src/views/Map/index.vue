@@ -563,6 +563,11 @@
             <span
               v-if="shouldRenderDockAnchor(action.key)"
               class="dock-card-placeholder"
+              :class="{
+                'dock-card-hitbox-disabled':
+                  action.key === themeSelectorCardKey &&
+                  themeDockSubmenuVisible,
+              }"
               :style="
                 getDockPlaceholderStyle(index, visibleDockActions.length, action)
               "
@@ -575,6 +580,11 @@
             <span
               v-if="shouldRenderDockAnchor(action.key)"
               class="dock-card-anchor"
+              :class="{
+                'dock-card-hitbox-disabled':
+                  action.key === themeSelectorCardKey &&
+                  themeDockSubmenuVisible,
+              }"
               :style="
                 getDockAnchorStyle(index, visibleDockActions.length, action)
               "
@@ -584,7 +594,8 @@
               @click.stop="handleDockCardClick(action)"
             ></span>
 
-            <button
+            <component
+              :is="action.key === themeSelectorCardKey ? 'div' : 'button'"
               class="dock-card"
               :class="{
                 drawing: drawingDockCard === action.key,
@@ -598,9 +609,13 @@
               :style="
                 getDockCardStyle(index, visibleDockActions.length, action)
               "
-              :disabled="action.disabled || isPickingPublishLocation"
+              :disabled="
+                action.key === themeSelectorCardKey
+                  ? undefined
+                  : action.disabled || isPickingPublishLocation
+              "
               :title="action.title"
-              type="button"
+              :type="action.key === themeSelectorCardKey ? undefined : 'button'"
               @mouseenter="setDockHover(action.key)"
               @mouseleave="scheduleClearDockHover"
               @click.stop="handleDockCardClick(action)"
@@ -634,9 +649,10 @@
                       <strong class="dock-theme-inline__title">切换主题</strong>
 
                       <div class="dock-theme-inline__list">
-                        <div
+                        <button
                           v-for="option in dockThemeOptions"
                           :key="option.key"
+                          type="button"
                           class="dock-theme-inline-option"
                           :class="{
                             active: option.key === selectedThemeChoice,
@@ -646,18 +662,9 @@
                             '--theme-option-accent': option.accent,
                             '--theme-option-accent-soft': option.accentSoft,
                           }"
-                          :role="option.disabled ? undefined : 'button'"
-                          :tabindex="option.disabled ? -1 : 0"
+                          :disabled="option.disabled"
                           :title="option.tooltip"
-                          @pointerdown.stop.prevent="
-                            !option.disabled && handleThemeOptionClick(option)
-                          "
-                          @keydown.enter.stop.prevent="
-                            !option.disabled && handleThemeOptionClick(option)
-                          "
-                          @keydown.space.stop.prevent="
-                            !option.disabled && handleThemeOptionClick(option)
-                          "
+                          @click.stop.prevent="handleThemeOptionClick(option)"
                         >
                           <span class="dock-theme-inline-option__label">
                             {{ option.label }}
@@ -665,7 +672,7 @@
                           <small class="dock-theme-inline-option__meta">
                             {{ option.helper }}
                           </small>
-                        </div>
+                        </button>
                       </div>
                     </div>
                   </template>
@@ -682,7 +689,7 @@
                 }}</span>
               </div>
               <span class="dock-card-ripple"></span>
-            </button>
+            </component>
           </template>
         </div>
       </div>
@@ -2452,7 +2459,12 @@ async function toggleStoryLike() {
   storyLikePending.value = true;
   storyIsLiked.value = nextLiked;
   storyLikeCount.value = nextCount;
-  handleStoryLike({ storyId, liked: nextLiked, likeCount: nextCount });
+  handleStoryLike({
+    storyId,
+    liked: nextLiked,
+    likeCount: nextCount,
+    previousLiked,
+  });
 
   try {
     const response = await likeApi.toggle(storyId);
@@ -2469,6 +2481,7 @@ async function toggleStoryLike() {
       storyId,
       liked: resolvedLiked,
       likeCount: resolvedLikeCount,
+      previousLiked: nextLiked,
     });
   } catch (error) {
     console.error("点赞失败:", error);
@@ -2478,6 +2491,7 @@ async function toggleStoryLike() {
       storyId,
       liked: previousLiked,
       likeCount: previousCount,
+      previousLiked: nextLiked,
     });
     showToast(error.message || "点赞失败，请重试", "error");
   } finally {
@@ -2502,6 +2516,7 @@ async function toggleStoryFavorite() {
     storyId,
     favorited: !previousFavorited,
     favoriteCount: previousFavoriteCount + (!previousFavorited ? 1 : -1),
+    previousFavorited,
   });
 
   try {
@@ -2516,6 +2531,7 @@ async function toggleStoryFavorite() {
       storyId,
       favorited: resolvedFavorited,
       favoriteCount: previousFavoriteCount + (resolvedFavorited ? 1 : -1),
+      previousFavorited: !previousFavorited,
     });
 
     try {
@@ -2537,6 +2553,7 @@ async function toggleStoryFavorite() {
       storyId,
       favorited: previousFavorited,
       favoriteCount: previousFavoriteCount,
+      previousFavorited: !previousFavorited,
     });
     showToast(error.message || "收藏操作失败，请重试", "error");
   } finally {
@@ -3609,7 +3626,15 @@ watch(showUserSidebar, (newValue) => {
     showLikesPanel.value = false;
     showPostsPanel.value = false;
     showFavoritesPanel.value = false;
+    return;
   }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    return;
+  }
+
+  void refreshUserPanelTotals();
+  refreshActiveUserPanelTab();
 });
 
 function closeStoryPanel() {
@@ -3852,7 +3877,8 @@ function refreshUserPanel() {
   userContentTab.value = 'posts';
   // 刷新用户信息并加载作品
   userStore.fetchUser().then(() => {
-    loadPostsData();
+    void refreshUserPanelTotals();
+    refreshActiveUserPanelTab();
   }).catch((error) => {
     console.error('刷新用户信息失败:', error);
   });
@@ -3880,6 +3906,20 @@ function switchUserContentTab(tab) {
   if (tab === 'posts' && postsList.value.length === 0) loadPostsData();
   else if (tab === 'likes' && likesList.value.length === 0) loadLikesData();
   else if (tab === 'favorites' && favoritesList.value.length === 0) loadFavoritesData();
+}
+
+function refreshActiveUserPanelTab() {
+  if (userContentTab.value === "likes") {
+    loadLikesData();
+    return;
+  }
+
+  if (userContentTab.value === "favorites") {
+    loadFavoritesData();
+    return;
+  }
+
+  loadPostsData();
 }
 
 function handleContentListScroll(event) {
@@ -4958,7 +4998,6 @@ function handleUserClick() {
   }
 
   // 自动加载默认标签页（作品）数据
-  if (postsList.value.length === 0) loadPostsData();
 }
 
 function handleMyLikes() {
@@ -5060,6 +5099,54 @@ async function loadLikesData(isLoadMore = false) {
     likesLoading.value = false;
     likesLoadingMore.value = false;
   }
+}
+
+function resolveUserPanelPaginationTotal(result) {
+  const data = result?.data ?? result;
+  const total = Number(data?.pagination?.total);
+  return Number.isFinite(total) ? total : null;
+}
+
+async function refreshUserPanelTotals() {
+  const [postsResult, likesResult, favoritesResult] = await Promise.allSettled([
+    storyApi.getMyStories({ page: 1, limit: 1 }),
+    likeApi.getMyLikes({ page: 1, limit: 1 }),
+    favoriteApi.getMyFavorites({ page: 1, limit: 1 }),
+  ]);
+
+  if (postsResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(postsResult.value);
+    if (total !== null) {
+      postsTotalCount.value = total;
+    }
+  }
+
+  if (likesResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(likesResult.value);
+    if (total !== null) {
+      likesTotalCount.value = total;
+    }
+  }
+
+  if (favoritesResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(favoritesResult.value);
+    if (total !== null) {
+      favoritesTotalCount.value = total;
+    }
+  }
+}
+
+function updateUserPanelTotalCount(totalCountRef, delta) {
+  if (!delta) {
+    return;
+  }
+
+  const currentTotal = Number(totalCountRef.value);
+  if (!Number.isFinite(currentTotal) || currentTotal < 0) {
+    return;
+  }
+
+  totalCountRef.value = Math.max(0, currentTotal + delta);
 }
 
 async function loadPostsData(isLoadMore = false) {
@@ -5209,6 +5296,7 @@ async function handleToggleFavoriteFromList(story) {
         storyId: story.id,
         favorited: false,
         favoriteCount: Math.max(0, Number(story.favoriteCount ?? 0) - 1),
+        previousFavorited: true,
       });
     } else {
       await favoriteApi.create(story.id);
@@ -5216,6 +5304,7 @@ async function handleToggleFavoriteFromList(story) {
         storyId: story.id,
         favorited: true,
         favoriteCount: Number(story.favoriteCount ?? 0) + 1,
+        previousFavorited: false,
       });
     }
 
@@ -5494,7 +5583,12 @@ function handleSearchUnlike(story) {
     story.isLiked = false;
     const likeCount = Math.max(0, Number(story.likeCount ?? 0) - 1);
     story.likeCount = likeCount;
-    handleStoryLike({ storyId: story.id, liked: false, likeCount });
+    handleStoryLike({
+      storyId: story.id,
+      liked: false,
+      likeCount,
+      previousLiked: true,
+    });
   }).catch((err) => {
     console.error("取消点赞失败:", err);
     showToast("取消点赞失败", "error");
@@ -5511,7 +5605,12 @@ function handleSearchToggleFavorite(story) {
       ? Number(story.favoriteCount ?? 0) + 1
       : Math.max(0, Number(story.favoriteCount ?? 0) - 1);
     story.favoriteCount = favCount;
-    handleStoryFavorite({ storyId: story.id, favorited: nextFavorited, favoriteCount: favCount });
+    handleStoryFavorite({
+      storyId: story.id,
+      favorited: nextFavorited,
+      favoriteCount: favCount,
+      previousFavorited: isFavorited,
+    });
   }).catch((err) => {
     console.error("收藏操作失败:", err);
     showToast("操作失败", "error");
@@ -5532,12 +5631,16 @@ async function handleUnlike(story) {
 
   try {
     await likeApi.remove(story.id);
-    const index = likesList.value.findIndex(
-      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id),
+    const likeCount = Math.max(
+      0,
+      Number(story.likeCount ?? story.likes ?? 0) - 1,
     );
-    if (index > -1) {
-      likesList.value.splice(index, 1);
-    }
+    handleStoryLike({
+      storyId: story.id,
+      liked: false,
+      likeCount,
+      previousLiked: true,
+    });
 
     console.log("已取消点赞:", story.id);
   } catch (error) {
@@ -5559,6 +5662,7 @@ async function handleDeleteStory(story) {
     if (index > -1) {
       postsList.value.splice(index, 1);
     }
+    updateUserPanelTotalCount(postsTotalCount, -1);
 
     console.log("已删除故事:", story.id);
   } catch (error) {
@@ -5914,6 +6018,7 @@ async function handlePublishSubmit(storyData) {
       );
       await loadStories();
     }
+    updateUserPanelTotalCount(postsTotalCount, 1);
 
     mapStore.updateCenter(location.latitude, location.longitude);
     mapStore.updateZoom(15);
@@ -6672,7 +6777,7 @@ function openFeaturedStory(story) {
   openStoryFromCollection(story);
 }
 
-function handleStoryLike({ storyId, liked, likeCount }) {
+function handleStoryLike({ storyId, liked, likeCount, previousLiked }) {
   const currentLikeCount = Number(
     selectedStory.value?.likeCount ??
       selectedStory.value?.likes ??
@@ -6685,6 +6790,10 @@ function handleStoryLike({ storyId, liked, likeCount }) {
 
   storyLikeCount.value = nextLikeCount;
   storyIsLiked.value = liked;
+
+  if (typeof previousLiked === "boolean" && previousLiked !== liked) {
+    updateUserPanelTotalCount(likesTotalCount, liked ? 1 : -1);
+  }
 
   syncStoryAcrossCollections(storyId, (story) => {
     story.likes = nextLikeCount;
@@ -6708,10 +6817,24 @@ function handleStoryLike({ storyId, liked, likeCount }) {
   }
 }
 
-function handleStoryFavorite({ storyId, favorited, favoriteCount }) {
+function handleStoryFavorite({
+  storyId,
+  favorited,
+  favoriteCount,
+  previousFavorited,
+}) {
   storyIsFavorited.value = favorited;
   if (typeof favoriteCount === "number") {
     storyFavoriteCount.value = Math.max(0, favoriteCount);
+  }
+  if (
+    typeof previousFavorited === "boolean" &&
+    previousFavorited !== favorited
+  ) {
+    updateUserPanelTotalCount(
+      favoritesTotalCount,
+      favorited ? 1 : -1,
+    );
   }
   syncStoryAcrossCollections(storyId, (story) => {
     story.isFavorited = favorited;
@@ -8104,7 +8227,7 @@ onUnmounted(() => {
 }
 
 .dock-container.show-user-sidebar {
-  right: calc(320px + 96px);
+  right: 96px;
 }
 
 .dock-container.locked {
@@ -8303,6 +8426,10 @@ onUnmounted(() => {
   transform: translate3d(var(--anchor-x), var(--anchor-y), 0);
   transform-origin: center center;
   z-index: 115;
+}
+
+.dock-card-hitbox-disabled {
+  pointer-events: none !important;
 }
 
 .dock-card {
@@ -8755,14 +8882,18 @@ onUnmounted(() => {
 }
 
 .dock-theme-inline-option {
+  appearance: none;
+  -webkit-appearance: none;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
+  width: 100%;
   padding: 11px 12px;
+  font: inherit;
   border-radius: 18px;
   border: 2px solid rgba(186, 154, 98, 0.72);
-  background: #efe2c8;
+  background: #ffffff;
   color: #23170c;
   text-align: left;
   box-shadow:
@@ -8783,7 +8914,7 @@ onUnmounted(() => {
 .dock-theme-inline-option:focus-visible {
   transform: translateY(-1px);
   border-color: rgba(161, 124, 57, 0.88);
-  background: #f4e8d1;
+  background: #ffffff;
   box-shadow:
     0 14px 24px -20px rgba(15, 12, 10, 0.46),
     0 0 0 1px rgba(180, 139, 67, 0.2);
@@ -8791,7 +8922,7 @@ onUnmounted(() => {
 
 .dock-theme-inline-option.active {
   border-color: #c99a2e;
-  background: #efe2c8;
+  background: #ffffff;
   box-shadow:
     0 16px 28px -20px rgba(15, 12, 10, 0.4),
     0 0 0 2px rgba(217, 176, 74, 0.38);
@@ -8801,7 +8932,7 @@ onUnmounted(() => {
   opacity: 0.72;
   cursor: not-allowed;
   box-shadow: none;
-  background: #e2d5bf;
+  background: #ffffff;
   border-color: rgba(175, 154, 118, 0.72);
   color: rgba(61, 47, 33, 0.88);
 }
@@ -13235,32 +13366,50 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 2px solid rgba(0, 0, 0, 0.14);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.18);
   transition: all 0.25s ease;
 }
 /* 浅色模式暖色调 */
 .map-search-bar:not(.dark) .map-search-input-wrap {
   background: linear-gradient(135deg, rgba(250, 239, 217, 0.92) 0%, rgba(240, 223, 191, 0.92) 100%);
-  border-color: rgba(196, 142, 48, 0.28);
-  box-shadow: 0 4px 20px rgba(7, 11, 22, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.4);
+  border-color: rgba(22, 18, 12, 0.72);
+  box-shadow:
+    0 10px 28px rgba(7, 11, 22, 0.2),
+    0 0 0 1px rgba(255, 248, 232, 0.72),
+    0 0 24px rgba(114, 80, 22, 0.18);
 }
 .map-search-bar:not(.dark) .map-search-input-wrap:focus-within {
-  border-color: rgba(196, 142, 48, 0.5);
-  box-shadow: 0 4px 24px rgba(196, 142, 48, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5);
+  border-color: rgba(12, 10, 8, 0.88);
+  box-shadow:
+    0 12px 32px rgba(7, 11, 22, 0.24),
+    0 0 0 1px rgba(255, 248, 232, 0.86),
+    0 0 0 5px rgba(35, 29, 18, 0.14),
+    0 0 34px rgba(196, 142, 48, 0.28);
 }
 .map-search-bar.dark .map-search-input-wrap {
   background: rgba(20, 28, 42, 0.88);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border-color: rgba(248, 251, 255, 0.78);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 22px rgba(214, 230, 255, 0.18);
 }
 .map-search-input-wrap:focus-within {
-  border-color: rgba(102, 126, 234, 0.5);
-  box-shadow: 0 4px 24px rgba(102, 126, 234, 0.15);
+  border-color: rgba(102, 126, 234, 0.62);
+  box-shadow:
+    0 12px 30px rgba(102, 126, 234, 0.18),
+    0 0 0 4px rgba(102, 126, 234, 0.12);
 }
 .map-search-bar.dark .map-search-input-wrap:focus-within {
-  border-color: rgba(143, 180, 255, 0.5);
-  box-shadow: 0 4px 24px rgba(143, 180, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.44),
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 5px rgba(230, 240, 255, 0.14),
+    0 0 34px rgba(143, 180, 255, 0.34);
 }
 /* 浅色模式文字颜色 */
 .map-search-bar:not(.dark) .map-search-icon { color: #8b6d3a; }
