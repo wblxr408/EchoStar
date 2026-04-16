@@ -498,6 +498,7 @@
       :class="[
         'dock-container',
         effectiveMapTheme === 'dark' ? 'dock-dark' : 'dock-light',
+        { 'dock-vip-theme': isVipTheme },
         {
           'show-publish-sidebar': showPublishSidebar,
           'show-user-sidebar': showUserSidebar,
@@ -567,6 +568,11 @@
             <span
               v-if="shouldRenderDockAnchor(action.key)"
               class="dock-card-placeholder"
+              :class="{
+                'dock-card-hitbox-disabled':
+                  action.key === themeSelectorCardKey &&
+                  themeDockSubmenuVisible,
+              }"
               :style="
                 getDockPlaceholderStyle(index, visibleDockActions.length, action)
               "
@@ -579,6 +585,11 @@
             <span
               v-if="shouldRenderDockAnchor(action.key)"
               class="dock-card-anchor"
+              :class="{
+                'dock-card-hitbox-disabled':
+                  action.key === themeSelectorCardKey &&
+                  themeDockSubmenuVisible,
+              }"
               :style="
                 getDockAnchorStyle(index, visibleDockActions.length, action)
               "
@@ -588,7 +599,8 @@
               @click.stop="handleDockCardClick(action)"
             ></span>
 
-            <button
+            <component
+              :is="action.key === themeSelectorCardKey ? 'div' : 'button'"
               class="dock-card"
               :class="{
                 drawing: drawingDockCard === action.key,
@@ -597,13 +609,18 @@
                 returning: returningDockCard === action.key,
                 disabled: action.disabled,
                 rippling: ripplingDockCard === action.key,
+                selector: action.key === themeSelectorCardKey,
               }"
               :style="
                 getDockCardStyle(index, visibleDockActions.length, action)
               "
-              :disabled="action.disabled || isPickingPublishLocation"
+              :disabled="
+                action.key === themeSelectorCardKey
+                  ? undefined
+                  : action.disabled || isPickingPublishLocation
+              "
               :title="action.title"
-              type="button"
+              :type="action.key === themeSelectorCardKey ? undefined : 'button'"
               @mouseenter="setDockHover(action.key)"
               @mouseleave="scheduleClearDockHover"
               @click.stop="handleDockCardClick(action)"
@@ -616,11 +633,60 @@
                 <span class="dock-card-corner corner-top-right"></span>
                 <span class="dock-card-corner corner-bottom-left"></span>
 
-                <div class="dock-card-face">
+                <div
+                  class="dock-card-face"
+                  :class="{
+                    'dock-card-face--theme-selector':
+                      action.key === themeSelectorCardKey &&
+                      themeDockSubmenuVisible,
+                  }"
+                >
                   <span class="dock-card-pattern"></span>
-                  <span class="dock-card-icon">{{ action.icon }}</span>
-                  <span class="dock-card-title">{{ action.title }}</span>
-                  <span class="dock-card-subtitle">{{ action.subtitle }}</span>
+
+                  <template
+                    v-if="
+                      action.key === themeSelectorCardKey &&
+                      themeDockSubmenuVisible
+                    "
+                  >
+                    <div class="dock-theme-inline">
+                      <p class="dock-theme-inline__eyebrow">Theme Select</p>
+                      <strong class="dock-theme-inline__title">切换主题</strong>
+
+                      <div class="dock-theme-inline__list">
+                        <button
+                          v-for="option in dockThemeOptions"
+                          :key="option.key"
+                          type="button"
+                          class="dock-theme-inline-option"
+                          :class="{
+                            active: option.key === selectedThemeChoice,
+                            disabled: option.disabled,
+                          }"
+                          :style="{
+                            '--theme-option-accent': option.accent,
+                            '--theme-option-accent-soft': option.accentSoft,
+                          }"
+                          :disabled="option.disabled"
+                          :title="option.tooltip"
+                          @click.stop.prevent="handleThemeOptionClick(option)"
+                        >
+                          <span class="dock-theme-inline-option__label">
+                            {{ option.label }}
+                          </span>
+                          <small class="dock-theme-inline-option__meta">
+                            {{ option.helper }}
+                          </small>
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else>
+                    <span class="dock-card-icon">{{ action.icon }}</span>
+                    <span class="dock-card-title">{{ action.title }}</span>
+                    <span class="dock-card-subtitle">{{ action.subtitle }}</span>
+                  </template>
                 </div>
 
                 <span class="dock-card-suit suit-bottom">{{
@@ -628,7 +694,7 @@
                 }}</span>
               </div>
               <span class="dock-card-ripple"></span>
-            </button>
+            </component>
           </template>
         </div>
       </div>
@@ -1381,6 +1447,8 @@ const storyStartPosition = ref({
   y: window.innerHeight / 2,
 });
 const storyDirectOpen = ref(true); // `false` 时从地图起点飞入
+const THEME_SELECTOR_CARD_KEY = "theme";
+const themeSelectorCardKey = THEME_SELECTOR_CARD_KEY;
 const mapTheme = ref(localStorage.getItem("mapTheme") || "auto");
 const amapRef = ref(null);
 const minuteTicker = ref(0);
@@ -1390,12 +1458,27 @@ function getTimeBasedTheme() {
   const hour = new Date().getHours();
   return hour >= 6 && hour < 18 ? "light" : "dark";
 }
+function normalizeThemeChoice(theme) {
+  return ["auto", "light", "dark", "vip"].includes(theme) ? theme : "auto";
+}
+
+const selectedThemeChoice = computed(() => {
+  const normalized = normalizeThemeChoice(mapTheme.value);
+
+  if (normalized === "auto") {
+    return getTimeBasedTheme();
+  }
+
+  return normalized;
+});
+
 const effectiveMapTheme = computed(() => {
   void minuteTicker.value;
-  if (mapTheme.value === "light" || mapTheme.value === "dark") {
-    return mapTheme.value;
+  if (selectedThemeChoice.value === "vip") {
+    return "dark";
   }
-  return getTimeBasedTheme();
+
+  return selectedThemeChoice.value;
 });
 const nearbyCenterSummary = computed(() => {
   if (!nearbyCenterLabel.value) {
@@ -1419,6 +1502,13 @@ const dockCardStackRef = ref(null);
 const ripplingDockCard = ref("");
 const dockActionPending = ref(false);
 const isDarkMap = computed(() => effectiveMapTheme.value === "dark");
+const isVipTheme = computed(() => selectedThemeChoice.value === "vip");
+const canUseVipTheme = computed(
+  () =>
+    Boolean(userStore.user?.vip) &&
+    Boolean(userStore.isLoggedIn) &&
+    !userStore.isGuest,
+);
 let dockHoverClearTimer = null;
 let dockSelectionTimer = null;
 let dockPointerX = null;
@@ -2378,7 +2468,12 @@ async function toggleStoryLike() {
   storyLikePending.value = true;
   storyIsLiked.value = nextLiked;
   storyLikeCount.value = nextCount;
-  handleStoryLike({ storyId, liked: nextLiked, likeCount: nextCount });
+  handleStoryLike({
+    storyId,
+    liked: nextLiked,
+    likeCount: nextCount,
+    previousLiked,
+  });
 
   try {
     const response = await likeApi.toggle(storyId);
@@ -2395,6 +2490,7 @@ async function toggleStoryLike() {
       storyId,
       liked: resolvedLiked,
       likeCount: resolvedLikeCount,
+      previousLiked: nextLiked,
     });
   } catch (error) {
     console.error("点赞失败:", error);
@@ -2404,6 +2500,7 @@ async function toggleStoryLike() {
       storyId,
       liked: previousLiked,
       likeCount: previousCount,
+      previousLiked: nextLiked,
     });
     showToast(error.message || "点赞失败，请重试", "error");
   } finally {
@@ -2428,6 +2525,7 @@ async function toggleStoryFavorite() {
     storyId,
     favorited: !previousFavorited,
     favoriteCount: previousFavoriteCount + (!previousFavorited ? 1 : -1),
+    previousFavorited,
   });
 
   try {
@@ -2442,6 +2540,7 @@ async function toggleStoryFavorite() {
       storyId,
       favorited: resolvedFavorited,
       favoriteCount: previousFavoriteCount + (resolvedFavorited ? 1 : -1),
+      previousFavorited: !previousFavorited,
     });
 
     try {
@@ -2463,6 +2562,7 @@ async function toggleStoryFavorite() {
       storyId,
       favorited: previousFavorited,
       favoriteCount: previousFavoriteCount,
+      previousFavorited: !previousFavorited,
     });
     showToast(error.message || "收藏操作失败，请重试", "error");
   } finally {
@@ -2654,21 +2754,18 @@ const dockActions = computed(() => [
   },
   {
     key: "theme",
-    tag: "Theme Shift",
-    title: effectiveMapTheme.value === "dark" ? "切到浅色地图" : "切到深色地图",
+    tag: "Theme Atelier",
+    title: "切换主题氛围",
     subtitle: "切换当前场景氛围",
-    description:
-      effectiveMapTheme.value === "dark"
-        ? "把地图切回更明亮的视觉主题。"
-        : "切到更沉浸的深色地图主题。",
-    icon: effectiveMapTheme.value === "dark" ? "☀" : "☾",
+    description: "在明亮、暗色与会员主题之间切换当前地图氛围。",
+    icon: "☯",
     suit: "♣",
     accent: "#8e6cff",
     accentSoft: "rgba(142, 108, 255, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#241a3f",
     visible: true,
     disabled: false,
-    handler: toggleTheme,
+    handler: () => {},
   },
   {
     key: "user",
@@ -2705,7 +2802,79 @@ const dockActions = computed(() => [
 ]);
 
 const visibleDockActions = computed(() =>
-  dockActions.value.filter((action) => action.visible),
+  dockActions.value
+    .filter((action) => action.visible)
+    .map((action) => {
+      if (action.key !== THEME_SELECTOR_CARD_KEY) {
+        return action;
+      }
+
+      return {
+        ...action,
+        title:
+          selectedThemeChoice.value === "vip"
+            ? "会员主题"
+            : selectedThemeChoice.value === "dark"
+              ? "暗色主题"
+              : "明亮主题",
+        subtitle: "选择你想使用的主题",
+        description: canUseVipTheme.value
+          ? "你可以在这里切换你喜欢的主题：明、暗、会员专属。"
+          : "你可以在这里切换你喜欢的主题：明、暗、会员专属。",
+        icon: selectedThemeChoice.value === "vip" ? "✦" : "☯",
+        accent: selectedThemeChoice.value === "vip" ? "#d6b36c" : "#8e6cff",
+        accentSoft:
+          selectedThemeChoice.value === "vip"
+            ? "rgba(214, 179, 108, 0.3)"
+            : "rgba(142, 108, 255, 0.24)",
+        title: "切换主题",
+        subtitle: action.subtitle,
+        description: action.description,
+        title: "切换主题氛围",
+      };
+    }),
+);
+
+const dockThemeOptions = computed(() => [
+  {
+    key: "light",
+    icon: "明",
+    label: "明亮主题",
+    helper: "晨光琉璃",
+    accent: "#c98c3d",
+    accentSoft: "rgba(201, 140, 61, 0.24)",
+    disabled: false,
+    tooltip: "切换到明亮主题",
+  },
+  {
+    key: "dark",
+    icon: "暗",
+    label: "暗色主题",
+    helper: "深空星幕",
+    accent: "#79a6ff",
+    accentSoft: "rgba(121, 166, 255, 0.24)",
+    disabled: false,
+    tooltip: "切换到暗色主题",
+  },
+  {
+    key: "vip",
+    icon: "VIP",
+    label: "会员主题",
+    helper: "即将开放",
+    accent: "#d6b36c",
+    accentSoft: "rgba(214, 179, 108, 0.26)",
+    disabled: true,
+    tooltip: "会员主题即将开放",
+  },
+]);
+
+const themeDockSubmenuVisible = computed(
+  () =>
+    isDockExpanded.value &&
+    selectedDockCard.value === THEME_SELECTOR_CARD_KEY &&
+    !drawingDockCard.value &&
+    !liftingDockCard.value &&
+    !returningDockCard.value,
 );
 
 const activeDockAction = computed(() => {
@@ -2875,6 +3044,12 @@ watch(isDockExpanded, (expanded) => {
 
   hoveredDockCard.value = "";
   resetDockSelectionMotion();
+});
+
+watch(canUseVipTheme, (allowed) => {
+  if (!allowed && mapTheme.value === "vip") {
+    handleThemeChange("dark");
+  }
 });
 
 watch(visibleDockActions, (actions) => {
@@ -3053,6 +3228,10 @@ function handleDockCardClick(action) {
     return;
   }
 
+  if (action.key === THEME_SELECTOR_CARD_KEY) {
+    return;
+  }
+
   if (action.disabled) {
     return;
   }
@@ -3080,6 +3259,27 @@ function handleDockCardClick(action) {
     isDockExpanded.value = false;
     action.handler();
   }, 500);
+}
+
+function handleThemeOptionClick(option) {
+  if (!option || dockActionPending.value) {
+    return;
+  }
+
+  if (option.disabled) {
+    showToast("VIP 主题仅对 VIP 用户开放", "warning");
+    return;
+  }
+
+  dockActionPending.value = true;
+
+  window.setTimeout(() => {
+    handleThemeChange(option.key);
+    dockActionPending.value = false;
+    isDockExpanded.value = false;
+    hoveredDockCard.value = "";
+    resetDockSelectionMotion();
+  }, 140);
 }
 
 function getDockLayoutMetrics(index, total, actionKey = "") {
@@ -3435,7 +3635,15 @@ watch(showUserSidebar, (newValue) => {
     showLikesPanel.value = false;
     showPostsPanel.value = false;
     showFavoritesPanel.value = false;
+    return;
   }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    return;
+  }
+
+  void refreshUserPanelTotals();
+  refreshActiveUserPanelTab();
 });
 
 function closeStoryPanel() {
@@ -3678,7 +3886,8 @@ function refreshUserPanel() {
   userContentTab.value = 'posts';
   // 刷新用户信息并加载作品
   userStore.fetchUser().then(() => {
-    loadPostsData();
+    void refreshUserPanelTotals();
+    refreshActiveUserPanelTab();
   }).catch((error) => {
     console.error('刷新用户信息失败:', error);
   });
@@ -3706,6 +3915,20 @@ function switchUserContentTab(tab) {
   if (tab === 'posts' && postsList.value.length === 0) loadPostsData();
   else if (tab === 'likes' && likesList.value.length === 0) loadLikesData();
   else if (tab === 'favorites' && favoritesList.value.length === 0) loadFavoritesData();
+}
+
+function refreshActiveUserPanelTab() {
+  if (userContentTab.value === "likes") {
+    loadLikesData();
+    return;
+  }
+
+  if (userContentTab.value === "favorites") {
+    loadFavoritesData();
+    return;
+  }
+
+  loadPostsData();
 }
 
 function handleContentListScroll(event) {
@@ -4784,7 +5007,6 @@ function handleUserClick() {
   }
 
   // 自动加载默认标签页（作品）数据
-  if (postsList.value.length === 0) loadPostsData();
 }
 
 function handleMyLikes() {
@@ -4886,6 +5108,54 @@ async function loadLikesData(isLoadMore = false) {
     likesLoading.value = false;
     likesLoadingMore.value = false;
   }
+}
+
+function resolveUserPanelPaginationTotal(result) {
+  const data = result?.data ?? result;
+  const total = Number(data?.pagination?.total);
+  return Number.isFinite(total) ? total : null;
+}
+
+async function refreshUserPanelTotals() {
+  const [postsResult, likesResult, favoritesResult] = await Promise.allSettled([
+    storyApi.getMyStories({ page: 1, limit: 1 }),
+    likeApi.getMyLikes({ page: 1, limit: 1 }),
+    favoriteApi.getMyFavorites({ page: 1, limit: 1 }),
+  ]);
+
+  if (postsResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(postsResult.value);
+    if (total !== null) {
+      postsTotalCount.value = total;
+    }
+  }
+
+  if (likesResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(likesResult.value);
+    if (total !== null) {
+      likesTotalCount.value = total;
+    }
+  }
+
+  if (favoritesResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(favoritesResult.value);
+    if (total !== null) {
+      favoritesTotalCount.value = total;
+    }
+  }
+}
+
+function updateUserPanelTotalCount(totalCountRef, delta) {
+  if (!delta) {
+    return;
+  }
+
+  const currentTotal = Number(totalCountRef.value);
+  if (!Number.isFinite(currentTotal) || currentTotal < 0) {
+    return;
+  }
+
+  totalCountRef.value = Math.max(0, currentTotal + delta);
 }
 
 async function loadPostsData(isLoadMore = false) {
@@ -5035,6 +5305,7 @@ async function handleToggleFavoriteFromList(story) {
         storyId: story.id,
         favorited: false,
         favoriteCount: Math.max(0, Number(story.favoriteCount ?? 0) - 1),
+        previousFavorited: true,
       });
     } else {
       await favoriteApi.create(story.id);
@@ -5042,6 +5313,7 @@ async function handleToggleFavoriteFromList(story) {
         storyId: story.id,
         favorited: true,
         favoriteCount: Number(story.favoriteCount ?? 0) + 1,
+        previousFavorited: false,
       });
     }
 
@@ -5320,7 +5592,12 @@ function handleSearchUnlike(story) {
     story.isLiked = false;
     const likeCount = Math.max(0, Number(story.likeCount ?? 0) - 1);
     story.likeCount = likeCount;
-    handleStoryLike({ storyId: story.id, liked: false, likeCount });
+    handleStoryLike({
+      storyId: story.id,
+      liked: false,
+      likeCount,
+      previousLiked: true,
+    });
   }).catch((err) => {
     console.error("取消点赞失败:", err);
     showToast("取消点赞失败", "error");
@@ -5337,7 +5614,12 @@ function handleSearchToggleFavorite(story) {
       ? Number(story.favoriteCount ?? 0) + 1
       : Math.max(0, Number(story.favoriteCount ?? 0) - 1);
     story.favoriteCount = favCount;
-    handleStoryFavorite({ storyId: story.id, favorited: nextFavorited, favoriteCount: favCount });
+    handleStoryFavorite({
+      storyId: story.id,
+      favorited: nextFavorited,
+      favoriteCount: favCount,
+      previousFavorited: isFavorited,
+    });
   }).catch((err) => {
     console.error("收藏操作失败:", err);
     showToast("操作失败", "error");
@@ -5358,12 +5640,16 @@ async function handleUnlike(story) {
 
   try {
     await likeApi.remove(story.id);
-    const index = likesList.value.findIndex(
-      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id),
+    const likeCount = Math.max(
+      0,
+      Number(story.likeCount ?? story.likes ?? 0) - 1,
     );
-    if (index > -1) {
-      likesList.value.splice(index, 1);
-    }
+    handleStoryLike({
+      storyId: story.id,
+      liked: false,
+      likeCount,
+      previousLiked: true,
+    });
 
     console.log("已取消点赞:", story.id);
   } catch (error) {
@@ -5385,6 +5671,7 @@ async function handleDeleteStory(story) {
     if (index > -1) {
       postsList.value.splice(index, 1);
     }
+    updateUserPanelTotalCount(postsTotalCount, -1);
 
     console.log("已删除故事:", story.id);
   } catch (error) {
@@ -5740,6 +6027,7 @@ async function handlePublishSubmit(storyData) {
       );
       await loadStories();
     }
+    updateUserPanelTotalCount(postsTotalCount, 1);
 
     mapStore.updateCenter(location.latitude, location.longitude);
     mapStore.updateZoom(15);
@@ -6498,7 +6786,7 @@ function openFeaturedStory(story) {
   openStoryFromCollection(story);
 }
 
-function handleStoryLike({ storyId, liked, likeCount }) {
+function handleStoryLike({ storyId, liked, likeCount, previousLiked }) {
   const currentLikeCount = Number(
     selectedStory.value?.likeCount ??
       selectedStory.value?.likes ??
@@ -6511,6 +6799,10 @@ function handleStoryLike({ storyId, liked, likeCount }) {
 
   storyLikeCount.value = nextLikeCount;
   storyIsLiked.value = liked;
+
+  if (typeof previousLiked === "boolean" && previousLiked !== liked) {
+    updateUserPanelTotalCount(likesTotalCount, liked ? 1 : -1);
+  }
 
   syncStoryAcrossCollections(storyId, (story) => {
     story.likes = nextLikeCount;
@@ -6534,10 +6826,24 @@ function handleStoryLike({ storyId, liked, likeCount }) {
   }
 }
 
-function handleStoryFavorite({ storyId, favorited, favoriteCount }) {
+function handleStoryFavorite({
+  storyId,
+  favorited,
+  favoriteCount,
+  previousFavorited,
+}) {
   storyIsFavorited.value = favorited;
   if (typeof favoriteCount === "number") {
     storyFavoriteCount.value = Math.max(0, favoriteCount);
+  }
+  if (
+    typeof previousFavorited === "boolean" &&
+    previousFavorited !== favorited
+  ) {
+    updateUserPanelTotalCount(
+      favoritesTotalCount,
+      favorited ? 1 : -1,
+    );
   }
   syncStoryAcrossCollections(storyId, (story) => {
     story.isFavorited = favorited;
@@ -6599,11 +6905,18 @@ async function handleStoryReport({ storyId, reason, description }) {
 }
 
 function handleThemeChange(theme) {
-  mapTheme.value = theme;
-  localStorage.setItem("mapTheme", theme);
+  const normalizedTheme = normalizeThemeChoice(theme);
+  const nextTheme =
+    normalizedTheme === "vip" && !canUseVipTheme.value ? "dark" : normalizedTheme;
+
+  mapTheme.value = nextTheme;
+  localStorage.setItem("mapTheme", nextTheme);
   window.dispatchEvent(
     new CustomEvent("map-theme-change", {
-      detail: { theme },
+      detail: {
+        theme: nextTheme === "vip" ? "dark" : nextTheme,
+        selectedTheme: nextTheme,
+      },
     }),
   );
 }
@@ -7767,6 +8080,12 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(255, 239, 192, 0.98);
   --dock-card-active-frame: rgba(236, 190, 96, 0.82);
   --dock-card-active-corner: rgba(228, 176, 66, 0.92);
+  --dock-submenu-shadow: rgba(8, 13, 29, 0.28);
+  --dock-submenu-option-text: rgba(255, 255, 255, 0.84);
+  --dock-submenu-option-muted: rgba(255, 255, 255, 0.6);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.08);
+  --dock-submenu-option-border: rgba(255, 255, 255, 0.08);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.14);
   position: fixed;
   bottom: 32px;
   right: 96px;
@@ -7816,6 +8135,12 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(255, 245, 213, 1);
   --dock-card-active-frame: rgba(222, 164, 61, 0.88);
   --dock-card-active-corner: rgba(215, 151, 41, 0.96);
+  --dock-submenu-shadow: rgba(72, 41, 15, 0.18);
+  --dock-submenu-option-text: rgba(255, 249, 238, 0.9);
+  --dock-submenu-option-muted: rgba(255, 238, 214, 0.66);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.1);
+  --dock-submenu-option-border: rgba(255, 242, 220, 0.12);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.16);
 }
 
 .dock-container.dock-dark {
@@ -7856,10 +8181,62 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(226, 238, 255, 0.98);
   --dock-card-active-frame: rgba(155, 193, 255, 0.78);
   --dock-card-active-corner: rgba(155, 193, 255, 0.96);
+  --dock-submenu-shadow: rgba(5, 8, 20, 0.34);
+  --dock-submenu-option-text: rgba(238, 244, 255, 0.88);
+  --dock-submenu-option-muted: rgba(198, 214, 245, 0.62);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.06);
+  --dock-submenu-option-border: rgba(198, 214, 245, 0.08);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.1);
+}
+
+.dock-container.dock-vip-theme {
+  --dock-main-gradient: linear-gradient(
+    135deg,
+    rgba(56, 37, 17, 0.98) 0%,
+    rgba(97, 70, 28, 0.97) 48%,
+    rgba(39, 25, 11, 0.98) 100%
+  );
+  --dock-main-shadow: rgba(39, 24, 7, 0.42);
+  --dock-main-border: rgba(248, 225, 171, 0.26);
+  --dock-info-bg: linear-gradient(
+    145deg,
+    rgba(42, 26, 10, 0.98) 0%,
+    rgba(92, 63, 23, 0.96) 100%
+  );
+  --dock-info-border: rgba(248, 225, 171, 0.22);
+  --dock-info-kicker: rgba(255, 224, 163, 0.94);
+  --dock-info-text: rgba(255, 247, 231, 0.82);
+  --dock-card-surface: linear-gradient(
+    160deg,
+    #24150a 0%,
+    #5b3b16 52%,
+    #8c6730 100%
+  );
+  --dock-card-border: rgba(236, 196, 112, 0.5);
+  --dock-card-frame: rgba(242, 210, 139, 0.34);
+  --dock-card-pattern: rgba(255, 225, 161, 0.16);
+  --dock-card-edge-ring: rgba(255, 221, 145, 0.14);
+  --dock-card-edge-glow: rgba(255, 210, 116, 0.24);
+  --dock-card-order: rgba(255, 232, 187, 0.46);
+  --dock-card-subtitle: rgba(255, 244, 222, 0.74);
+  --dock-card-icon-bg: linear-gradient(
+    145deg,
+    rgba(137, 100, 37, 0.92) 0%,
+    rgba(76, 49, 18, 0.88) 100%
+  );
+  --dock-card-active-border: rgba(255, 238, 194, 0.98);
+  --dock-card-active-frame: rgba(255, 215, 124, 0.86);
+  --dock-card-active-corner: rgba(255, 205, 104, 0.98);
+  --dock-submenu-shadow: rgba(41, 25, 7, 0.34);
+  --dock-submenu-option-text: rgba(255, 248, 233, 0.92);
+  --dock-submenu-option-muted: rgba(248, 228, 188, 0.72);
+  --dock-submenu-option-bg: rgba(255, 247, 230, 0.08);
+  --dock-submenu-option-border: rgba(255, 225, 171, 0.14);
+  --dock-submenu-option-hover: rgba(255, 247, 230, 0.14);
 }
 
 .dock-container.show-user-sidebar {
-  right: calc(320px + 96px);
+  right: 96px;
 }
 
 .dock-container.locked {
@@ -8060,6 +8437,10 @@ onUnmounted(() => {
   z-index: 115;
 }
 
+.dock-card-hitbox-disabled {
+  pointer-events: none !important;
+}
+
 .dock-card {
   --active-breathe-y: 0px;
   position: absolute;
@@ -8094,6 +8475,10 @@ onUnmounted(() => {
     filter 0.52s ease,
     opacity 0.32s ease,
     border-color 0.52s ease;
+}
+
+.dock-card.selector {
+  cursor: default;
 }
 
 .dock-card-body {
@@ -8465,6 +8850,113 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.dock-card-face--theme-selector {
+  gap: 0;
+  padding: 20px 16px 18px;
+}
+
+.dock-theme-inline {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.dock-theme-inline__eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dock-card-order);
+}
+
+.dock-theme-inline__title {
+  margin-bottom: 16px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--card-ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.dock-theme-inline__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dock-theme-inline-option {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 11px 12px;
+  font: inherit;
+  border-radius: 18px;
+  border: 2px solid rgba(186, 154, 98, 0.72);
+  background: #ffffff;
+  color: #23170c;
+  text-align: left;
+  box-shadow:
+    0 10px 20px -16px rgba(15, 12, 10, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.54);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.dock-theme-inline-option:hover,
+.dock-theme-inline-option:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(161, 124, 57, 0.88);
+  background: #ffffff;
+  box-shadow:
+    0 14px 24px -20px rgba(15, 12, 10, 0.46),
+    0 0 0 1px rgba(180, 139, 67, 0.2);
+}
+
+.dock-theme-inline-option.active {
+  border-color: #c99a2e;
+  background: #ffffff;
+  box-shadow:
+    0 16px 28px -20px rgba(15, 12, 10, 0.4),
+    0 0 0 2px rgba(217, 176, 74, 0.38);
+}
+
+.dock-theme-inline-option.disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  box-shadow: none;
+  background: #ffffff;
+  border-color: rgba(175, 154, 118, 0.72);
+  color: rgba(61, 47, 33, 0.88);
+}
+
+.dock-theme-inline-option__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.dock-theme-inline-option__meta {
+  font-size: 11px;
+  color: rgba(69, 54, 35, 0.82);
+}
+
 .dock-card-pattern {
   position: absolute;
   inset: 28px 26px;
@@ -8536,6 +9028,15 @@ onUnmounted(() => {
 @media (max-width: 960px) {
   .dock-card-info {
     display: none;
+  }
+
+  .dock-theme-inline__title {
+    margin-bottom: 14px;
+    font-size: 18px;
+  }
+
+  .dock-theme-inline-option {
+    padding: 10px 11px;
   }
 
   .dock-card {
@@ -12865,32 +13366,50 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 2px solid rgba(0, 0, 0, 0.14);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.18);
   transition: all 0.25s ease;
 }
 /* 浅色模式暖色调 */
 .map-search-bar:not(.dark) .map-search-input-wrap {
   background: linear-gradient(135deg, rgba(250, 239, 217, 0.92) 0%, rgba(240, 223, 191, 0.92) 100%);
-  border-color: rgba(196, 142, 48, 0.28);
-  box-shadow: 0 4px 20px rgba(7, 11, 22, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.4);
+  border-color: rgba(22, 18, 12, 0.72);
+  box-shadow:
+    0 10px 28px rgba(7, 11, 22, 0.2),
+    0 0 0 1px rgba(255, 248, 232, 0.72),
+    0 0 24px rgba(114, 80, 22, 0.18);
 }
 .map-search-bar:not(.dark) .map-search-input-wrap:focus-within {
-  border-color: rgba(196, 142, 48, 0.5);
-  box-shadow: 0 4px 24px rgba(196, 142, 48, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.5);
+  border-color: rgba(12, 10, 8, 0.88);
+  box-shadow:
+    0 12px 32px rgba(7, 11, 22, 0.24),
+    0 0 0 1px rgba(255, 248, 232, 0.86),
+    0 0 0 5px rgba(35, 29, 18, 0.14),
+    0 0 34px rgba(196, 142, 48, 0.28);
 }
 .map-search-bar.dark .map-search-input-wrap {
   background: rgba(20, 28, 42, 0.88);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border-color: rgba(248, 251, 255, 0.78);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 22px rgba(214, 230, 255, 0.18);
 }
 .map-search-input-wrap:focus-within {
-  border-color: rgba(102, 126, 234, 0.5);
-  box-shadow: 0 4px 24px rgba(102, 126, 234, 0.15);
+  border-color: rgba(102, 126, 234, 0.62);
+  box-shadow:
+    0 12px 30px rgba(102, 126, 234, 0.18),
+    0 0 0 4px rgba(102, 126, 234, 0.12);
 }
 .map-search-bar.dark .map-search-input-wrap:focus-within {
-  border-color: rgba(143, 180, 255, 0.5);
-  box-shadow: 0 4px 24px rgba(143, 180, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.44),
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 5px rgba(230, 240, 255, 0.14),
+    0 0 34px rgba(143, 180, 255, 0.34);
 }
 /* 浅色模式文字颜色 */
 .map-search-bar:not(.dark) .map-search-icon { color: #8b6d3a; }

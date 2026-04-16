@@ -139,7 +139,7 @@ function detectTheme() {
     isDark.value = false;
     return;
   }
-  if (saved === "dark") {
+  if (saved === "dark" || saved === "vip") {
     isDark.value = true;
     return;
   }
