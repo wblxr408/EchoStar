@@ -90,7 +90,8 @@ const MapServiceUtil = {
         ? {
             id: story.author.id,
             username: story.author.username || '匿名用户',
-            avatar: story.author.avatarUrl || null
+            avatar: story.author.avatarUrl || null,
+            vip: story.author.vip || 0
           }
         : null,
       location: {
@@ -119,11 +120,11 @@ export const MapService = {
       },
       replacements: { lat: latitude, lng: longitude, radius },
       attributes: MapServiceUtil.STORY_ATTRIBUTES,
-      include: [{
+      include: [({
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
-      }],
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
+      })],
       order: [['createdAt', 'DESC']],
       limit: CONSTANTS.MAX_EXPLORE_LIMIT
     });
@@ -184,7 +185,7 @@ export const MapService = {
       include: [{
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: CONSTANTS.MAX_WALL_LIMIT

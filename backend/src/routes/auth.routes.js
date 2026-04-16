@@ -46,6 +46,11 @@ router.get('/me', authenticateJWT, authController.getCurrentUser);
 router.delete('/me', authenticateJWT, authController.deleteAccount);
 
 /**
+ * GET /api/auth/users/search - 根据用户名模糊搜索用户
+ */
+router.get('/users/search', authController.searchUsersByUsername);
+
+/**
  * GET /api/users/:userId - 查看其他用户信息
  */
 router.get('/users/:userId', authController.getUserById);

@@ -110,7 +110,7 @@ async function fetchCandidateStories(options = {}) {
     include: [{
       model: User,
       as: 'author',
-      attributes: ['id', 'username', 'avatarUrl']
+      attributes: ['id', 'username', 'avatarUrl', 'vip']
     }],
     order: [['createdAt', 'DESC']],
     limit: RECOMMENDATION.CANDIDATE_POOL_SIZE
@@ -201,7 +201,8 @@ function formatStoryForResponse(story) {
       ? {
           id: story.author.id,
           username: story.author.username || '匿名用户',
-          avatar: story.author.avatarUrl || null
+          avatar: story.author.avatarUrl || null,
+          vip: story.author.vip || 0
         }
       : null,
     location: { latitude: lat, longitude: lng },

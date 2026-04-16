@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div class="paper-plane-overlay" @click="handleClose">
+    <div class="paper-plane-overlay" :class="{ dark: isDark }" @click="handleClose">
       <div class="paper-sheet" @click.stop>
         <div class="paper-texture"></div>
         <span class="tarot-suit suit-top">✦</span>
@@ -30,7 +30,7 @@
                 <span v-else class="avatar-fallback">{{ getInitial(storyAuthorName) }}</span>
               </div>
               <div class="user-details">
-                <span class="username">{{ storyAuthorName }}</span>
+                <span class="vip-name-row"><span class="username vip-username" :class="{ 'has-vip': storyAuthorVip }">{{ storyAuthorName }}</span><span class="vip-text-badge-sm" v-if="storyAuthorVip">VIP</span></span>
                 <span class="time">{{ formatRelativeTime(story.createdAt) }}</span>
               </div>
             </div>
@@ -134,7 +134,7 @@
                 </div>
                 <div class="comment-content">
                   <div class="comment-header">
-                    <span class="comment-author">{{ comment.author }}</span>
+                    <span class="vip-name-row"><span class="comment-author vip-username" :class="{ 'has-vip': comment.vip }">{{ comment.author }}</span><span class="vip-text-badge-sm" v-if="comment.vip">VIP</span></span>
                     <span class="comment-time">{{ formatRelativeTime(comment.createdAt) }}</span>
                   </div>
                   <p class="comment-text">{{ comment.content }}</p>
@@ -150,7 +150,7 @@
     </div>
 
     <Teleport to="body" v-if="showReportModal">
-      <div class="report-modal-overlay" @click.self="closeReportModal">
+      <div class="report-modal-overlay" :class="{ dark: isDark }" @click.self="closeReportModal">
         <div class="report-modal-content">
           <span class="tarot-suit suit-top report-suit">✦</span>
           <span class="tarot-suit suit-bottom report-suit">✦</span>
@@ -251,6 +251,10 @@ const props = defineProps({
   favoritePending: {
     type: Boolean,
     default: false
+  },
+  isDark: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -290,6 +294,13 @@ const storyAuthorAvatar = computed(() => {
     : null;
 
   return authorObject?.avatar || props.story?.avatar || '';
+});
+
+const storyAuthorVip = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
+  return Boolean(authorObject?.vip || props.story?.vip);
 });
 
 function resolveLikeCount(story) {
@@ -693,12 +704,47 @@ async function submitReport() {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  align-items: flex-start;
 }
 
 .username {
   font-size: 16px;
   font-weight: 700;
   color: var(--story-detail-text);
+}
+
+.vip-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.vip-username.has-vip {
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+.vip-text-badge-sm {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #5d4037;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  line-height: 14px;
+  margin-top: 1px;
+}
+
+@keyframes vipGoldFlow {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .time {
@@ -1012,6 +1058,7 @@ async function submitReport() {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 6px;
+  flex-wrap: wrap;
 }
 
 .comment-author {
@@ -1360,5 +1407,186 @@ async function submitReport() {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* ===== 深色模式 ===== */
+.paper-plane-overlay.dark {
+  --story-detail-surface: linear-gradient(160deg, rgba(28, 34, 56, 0.98) 0%, rgba(22, 28, 48, 0.98) 54%, rgba(18, 22, 38, 0.98) 100%);
+  --story-detail-border: rgba(80, 100, 140, 0.35);
+  --story-detail-frame: rgba(90, 115, 160, 0.25);
+  --story-detail-pattern: rgba(120, 145, 190, 0.1);
+  --story-detail-panel: rgba(35, 45, 70, 0.6);
+  --story-detail-panel-strong: rgba(40, 52, 80, 0.75);
+  --story-detail-text: #d8e2f0;
+  --story-detail-muted: rgba(180, 195, 220, 0.65);
+  --story-detail-accent: #7b9ce0;
+  --story-detail-accent-soft: rgba(123, 156, 224, 0.12);
+  background:
+    radial-gradient(circle at top, rgba(60, 80, 140, 0.2) 0%, transparent 30%),
+    rgba(4, 6, 14, 0.78);
+}
+
+.paper-plane-overlay.dark .paper-sheet {
+  box-shadow:
+    0 40px 88px -36px rgba(2, 4, 10, 0.88),
+    0 0 0 1px rgba(100, 130, 180, 0.1),
+    inset 0 1px 0 rgba(120, 150, 200, 0.1);
+}
+
+.paper-plane-overlay.dark .paper-texture {
+  background:
+    radial-gradient(circle at top, rgba(100, 140, 220, 0.08) 0%, transparent 26%),
+    linear-gradient(180deg, rgba(100, 140, 220, 0.04) 0%, transparent 100%);
+  opacity: 0.6;
+}
+
+.paper-plane-overlay.dark .close-btn {
+  background: rgba(20, 28, 50, 0.9);
+  border-color: rgba(100, 130, 180, 0.2);
+  color: #c8d8f0;
+}
+
+.paper-plane-overlay.dark .close-btn:hover {
+  background: rgba(30, 40, 65, 0.96);
+  border-color: rgba(120, 150, 200, 0.35);
+}
+
+.paper-plane-overlay.dark .paper-sheet::before,
+.paper-plane-overlay.dark .report-modal-content::before {
+  border-color: var(--story-detail-frame);
+  background:
+    radial-gradient(circle at center, rgba(100, 140, 220, 0.08) 0 18%, transparent 18.5%),
+    radial-gradient(circle at center, transparent 0 40%, var(--story-detail-pattern) 40.5%, transparent 41.5%),
+    linear-gradient(0deg, transparent calc(50% - 1px), var(--story-detail-pattern) 50%, transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent calc(50% - 1px), var(--story-detail-pattern) 50%, transparent calc(50% + 1px));
+}
+
+.paper-plane-overlay.dark .paper-sheet::after,
+.paper-plane-overlay.dark .report-modal-content::after {
+  background:
+    radial-gradient(circle at top center, rgba(100, 140, 220, 0.1) 0%, transparent 24%),
+    repeating-linear-gradient(135deg, rgba(100, 140, 220, 0.02) 0 6px, rgba(100, 140, 220, 0) 6px 12px);
+}
+
+.paper-plane-overlay.dark .avatar-shell,
+.paper-plane-overlay.dark .comment-avatar {
+  background: linear-gradient(145deg, rgba(60, 80, 120, 0.4) 0%, var(--story-detail-accent-soft) 100%);
+  border-color: rgba(100, 130, 180, 0.15);
+}
+
+.paper-plane-overlay.dark .story-images img {
+  background: linear-gradient(145deg, rgba(25, 35, 55, 0.9) 0%, rgba(18, 25, 42, 0.7) 100%);
+}
+
+.paper-plane-overlay.dark .story-images img:hover {
+  border-color: var(--story-detail-accent);
+  box-shadow: 0 18px 30px -24px rgba(0, 0, 0, 0.6);
+}
+
+.paper-plane-overlay.dark .btn-cancel {
+  border-color: rgba(80, 100, 140, 0.25);
+}
+
+.paper-plane-overlay.dark .btn-submit {
+  background: linear-gradient(135deg, rgba(55, 75, 120, 0.96) 0%, rgba(70, 95, 145, 0.96) 100%);
+  box-shadow: 0 20px 30px -24px rgba(10, 15, 30, 0.7);
+}
+
+.paper-plane-overlay.dark .action-btn:hover {
+  box-shadow: 0 18px 28px -24px rgba(0, 0, 0, 0.6);
+}
+
+.paper-plane-overlay.dark .action-btn.liked,
+.paper-plane-overlay.dark .action-btn.favorited {
+  box-shadow:
+    0 0 0 2px var(--story-detail-accent-soft),
+    0 20px 30px -24px rgba(0, 0, 0, 0.6);
+}
+
+.paper-plane-overlay.dark .emotion-icon {
+  background: var(--story-detail-panel-strong);
+}
+
+/* 深色 - 举报弹窗 */
+.report-modal-overlay.dark {
+  background:
+    radial-gradient(circle at top, rgba(50, 70, 130, 0.12) 0%, transparent 30%),
+    rgba(4, 6, 14, 0.7);
+}
+
+.report-modal-overlay.dark .report-modal-content {
+  box-shadow:
+    0 40px 88px -36px rgba(2, 4, 10, 0.88),
+    0 0 0 1px rgba(100, 130, 180, 0.1),
+    inset 0 1px 0 rgba(120, 150, 200, 0.1);
+}
+
+.report-modal-overlay.dark .report-card-headline,
+.report-modal-overlay.dark .report-panel {
+  background: linear-gradient(180deg, rgba(30, 40, 65, 0.9) 0%, rgba(25, 34, 56, 0.72) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(100, 140, 200, 0.15),
+    0 18px 30px -26px rgba(4, 8, 18, 0.5);
+}
+
+.report-modal-overlay.dark .reason-option span {
+  background: linear-gradient(180deg, rgba(30, 40, 65, 0.98) 0%, rgba(25, 34, 56, 0.92) 100%);
+  border-color: rgba(80, 100, 140, 0.25);
+  color: var(--story-detail-text);
+  box-shadow:
+    0 16px 26px -24px rgba(4, 8, 18, 0.6),
+    inset 0 1px 0 rgba(100, 140, 200, 0.1);
+}
+
+.report-modal-overlay.dark .reason-option span:hover {
+  border-color: rgba(123, 156, 224, 0.4);
+  box-shadow:
+    0 22px 32px -24px rgba(4, 8, 18, 0.7),
+    0 0 0 1px rgba(100, 140, 200, 0.12);
+}
+
+.report-modal-overlay.dark .reason-option input:checked + span {
+  border-color: var(--story-detail-accent);
+  background: linear-gradient(180deg, rgba(35, 48, 78, 1) 0%, rgba(28, 38, 62, 0.96) 100%);
+  box-shadow:
+    0 0 0 3px var(--story-detail-accent-soft),
+    0 24px 36px -26px rgba(4, 8, 18, 0.7);
+}
+
+.report-modal-overlay.dark .report-actions .btn-cancel {
+  border-color: rgba(80, 100, 140, 0.2);
+  background: linear-gradient(180deg, rgba(30, 40, 65, 0.96) 0%, rgba(25, 34, 56, 0.92) 100%);
+  color: #a0b4d0;
+  box-shadow:
+    0 16px 26px -24px rgba(4, 8, 18, 0.5),
+    inset 0 1px 0 rgba(100, 140, 200, 0.1);
+}
+
+.report-modal-overlay.dark .report-actions .btn-cancel:hover {
+  border-color: rgba(123, 156, 224, 0.35);
+  background: linear-gradient(180deg, rgba(35, 48, 78, 0.98) 0%, rgba(28, 38, 62, 0.94) 100%);
+}
+
+.report-modal-overlay.dark .report-actions .btn-submit {
+  background: linear-gradient(135deg, rgba(50, 68, 110, 0.98) 0%, rgba(65, 88, 135, 0.98) 100%);
+  box-shadow:
+    0 22px 34px -24px rgba(4, 8, 18, 0.88),
+    0 0 0 1px rgba(100, 140, 200, 0.1);
+}
+
+.report-modal-overlay.dark .report-actions .btn-submit:hover {
+  box-shadow:
+    0 28px 38px -24px rgba(4, 8, 18, 0.92),
+    0 0 0 1px rgba(100, 140, 200, 0.15);
+}
+
+.report-modal-overlay.dark .report-error {
+  background: rgba(179, 52, 43, 0.12);
+  color: #e88;
+}
+
+.report-modal-overlay.dark .comment-textarea,
+.report-modal-overlay.dark .report-textarea {
+  background: var(--story-detail-panel-strong);
 }
 </style>

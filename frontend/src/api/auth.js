@@ -101,4 +101,11 @@ export const authApi = {
     }
     return api.get("/v1/auth/avatar/upload-token");
   },
+
+  searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    if (authApiProxy) {
+      return authApiProxy.searchUsersByUsername(keyword, { page, limit });
+    }
+    return api.get("/v1/auth/users/search", { params: { keyword, page, limit } });
+  },
 };

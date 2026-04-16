@@ -186,7 +186,7 @@ class LikeServiceClass {
         include: [{
           model: User,
           as: 'author',
-          attributes: ['id', 'username', 'avatarUrl']
+          attributes: ['id', 'username', 'avatarUrl', 'vip']
         }]
       }],
       order: [['createdAt', 'DESC']],
@@ -226,7 +226,8 @@ class LikeServiceClass {
             ? {
                 id: like.story.author.id,
                 username: like.story.author.username,
-                avatar: like.story.author.avatarUrl || null
+                avatar: like.story.author.avatarUrl || null,
+                vip: like.story.author.vip || 0
               }
             : null
         }
