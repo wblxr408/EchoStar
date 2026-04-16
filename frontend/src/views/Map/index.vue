@@ -489,6 +489,7 @@
           ref="dockCardStackRef"
           class="dock-card-stack"
           :class="{
+            'selected-state': Boolean(selectedDockCard),
             'selection-motion': Boolean(
               selectedDockCard ||
               drawingDockCard ||
@@ -1394,7 +1395,7 @@ let geocoderPromise = null;
 const reverseGeocodeCache = new Map();
 const reverseGeocodePending = new Map();
 
-const DOCK_CARD_PREP_MS = 110;
+const DOCK_CARD_PREP_MS = 80;
 const DOCK_CARD_DRAW_MS = 100;
 const DOCK_CARD_RETURN_MS = 300;
 const STORY_MODAL_OPEN_DELAY_MS = 420;
@@ -7888,7 +7889,9 @@ onUnmounted(() => {
   transform-origin: center bottom;
   opacity: 0;
   pointer-events: auto;
-  will-change: transform, box-shadow, opacity, filter;
+  will-change: transform, opacity, filter;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
   transition:
     transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.52s ease,
@@ -7902,6 +7905,8 @@ onUnmounted(() => {
   height: 100%;
   border-radius: inherit;
   overflow: hidden;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .dock-card::before {
@@ -7970,6 +7975,18 @@ onUnmounted(() => {
   transition-delay: 0ms !important;
 }
 
+.dock-container.dock-dark .dock-card-stack.selected-state
+  .dock-card:not(.active):not(.drawing):not(.lifting):not(.returning) {
+  opacity: 1;
+  filter: saturate(0.9) brightness(0.86) contrast(0.94);
+}
+
+.dock-container.dock-light .dock-card-stack.selected-state
+  .dock-card:not(.active):not(.drawing):not(.lifting):not(.returning) {
+  opacity: 1;
+  filter: saturate(0.9) brightness(0.95) contrast(0.94);
+}
+
 .dock-card-stack.selection-motion
   .dock-card:not(.drawing):not(.lifting):not(.active):not(.returning) {
   transition-duration: 0.24s, 0.26s, 0.26s, 0.18s, 0.26s;
@@ -8011,8 +8028,9 @@ onUnmounted(() => {
     )
     rotate(var(--hover-rotate))
     scale(var(--hover-scale));
-  transition-duration: 0.16s, 0.22s, 0.22s, 0.16s, 0.22s;
-  animation: dockCardActiveBreath 2.7s ease-in-out infinite;
+  transition-duration: 0.12s, 0.16s, 0.16s, 0.12s, 0.16s;
+  animation: dockCardActiveBreath 2.4s linear 0.5s infinite;
+  animation-fill-mode: backwards;
   box-shadow:
     0 24px 44px rgba(8, 12, 24, 0.34),
     0 0 0 1px var(--dock-card-edge-ring),
@@ -8152,21 +8170,27 @@ onUnmounted(() => {
   0%,
   100% {
     --active-breathe-y: 0px;
-    box-shadow:
-      0 24px 44px rgba(8, 12, 24, 0.34),
-      0 0 0 1px var(--dock-card-edge-ring),
-      0 0 28px -5px var(--card-accent-soft),
-      inset 0 0 0 2px rgba(255, 246, 223, 0.84),
-      inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  }
+  12.5% {
+    --active-breathe-y: -1.15px;
+  }
+  25% {
+    --active-breathe-y: -2px;
+  }
+  37.5% {
+    --active-breathe-y: -1.15px;
   }
   50% {
-    --active-breathe-y: -3px;
-    box-shadow:
-      0 28px 50px rgba(8, 12, 24, 0.38),
-      0 0 0 1px var(--dock-card-edge-ring),
-      0 0 34px -3px var(--card-accent-soft),
-      inset 0 0 0 2px rgba(255, 246, 223, 0.9),
-      inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    --active-breathe-y: 0px;
+  }
+  62.5% {
+    --active-breathe-y: 1.15px;
+  }
+  75% {
+    --active-breathe-y: 2px;
+  }
+  87.5% {
+    --active-breathe-y: 1.15px;
   }
 }
 

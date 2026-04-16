@@ -552,6 +552,80 @@ const AuthServiceImpl = {
         totalPages: Math.ceil(count / pageSize)
       }
     };
+  },
+
+  /**
+   * 根据用户名模糊搜索用户
+   * @param {string} keyword - 搜索关键词
+   * @param {number} page - 页码
+   * @param {number} limit - 每页数量
+   */
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    // =====================
+    // 业务逻辑验证
+    // =====================
+
+    // 1. 验证关键词
+    if (!keyword || typeof keyword !== 'string') {
+      throw new Error('请提供搜索关键词');
+    }
+
+    const trimmedKeyword = keyword.trim();
+
+    if (trimmedKeyword === '') {
+      throw new Error('搜索关键词不能为空');
+    }
+
+    // 关键词长度限制
+    if (trimmedKeyword.length < 2) {
+      throw new Error('搜索关键词至少需要2个字符');
+    }
+
+    if (trimmedKeyword.length > 50) {
+      throw new Error('搜索关键词不能超过50个字符');
+    }
+
+    // 2. 验证分页参数
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    if (isNaN(pageNum) || pageNum < 1) {
+      throw new Error('页码必须大于0');
+    }
+
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      throw new Error('每页数量必须在1-100之间');
+    }
+
+    // =====================
+    // 业务逻辑处理
+    // =====================
+
+    const offset = (pageNum - 1) * limitNum;
+
+    // 使用pg_trgm索引进行模糊搜索
+    const { count, rows } = await User.findAndCountAll({
+      where: {
+        username: {
+          [Op.iLike]: `%${trimmedKeyword}%`
+        },
+        status: ['normal', 'recommended']
+      },
+      attributes: ['id', 'username', 'avatarUrl', 'bio', 'vip', 'createdAt'],
+      order: [['createdAt', 'DESC']],
+      offset,
+      limit: limitNum
+    });
+
+    return {
+      users: rows,
+      pagination: {
+        total: count,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(count / limitNum)
+      }
+    };
   }
 };
 
