@@ -1049,8 +1049,8 @@
                         <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
                         <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                       </div>
-                      <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(story)"><span>🗑️</span></button>
-                      <PolishStory :story-id="story.id" @polished="handleStoryPolished" @error="handlePolishError" />
+                      <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(item.data)"><span>🗑️</span></button>
+                      <PolishStory :story-id="item.data.id" @polished="handleStoryPolished" @error="handlePolishError" />
                     </div>
                     <p class="item-content">{{ item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
@@ -12987,9 +12987,17 @@ onUnmounted(() => {
 }
 
 .vip-text-badge--inactive {
-  background: rgba(184, 135, 46, 0.12);
-  color: #8e6c1a;
-  border: 1px dashed rgba(184, 135, 46, 0.3);
+  background-color: transparent;
+  background-image: linear-gradient(90deg, #8b6914 0%, #c9a227 25%, #c9b896 50%, #c9a227 75%, #8b6914 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  border: 1.5px solid rgba(184, 135, 46, 0.45);
+  font-style: normal;
+  animation: vipGoldFlow 3s linear infinite;
+  box-shadow: 0 0 6px rgba(255, 215, 0, 0.15);
 }
 
 /* VIP 用户名+徽标行内容器 - 保持同行 */
