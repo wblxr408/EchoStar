@@ -45,13 +45,13 @@ export const VipOrder = sequelize.define('VipOrder', {
   },
   adminId: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
     field: 'admin_id',
     references: {
       model: 'users',
       key: 'id'
     },
-    comment: '操作管理员ID'
+    comment: '操作管理员ID（激活码方式可为空）'
   }
 }, {
   tableName: 'vip_orders',

@@ -3,7 +3,41 @@ import { User } from '../auth/auth.model.js';
 import { clearUserCache } from '../auth/auth.middleware.js';
 import { Op } from 'sequelize';
 
+// 激活码配置：key为激活码，value为VIP天数
+const ACTIVATION_CODES = new Map([
+  ['_echostar', 30],
+]);
+
 export const VipService = {
+  /**
+   * 使用激活码开通/续费VIP
+   * @param {number} userId - 用户ID
+   * @param {string} code - 激活码
+   * @returns {Promise<{success: boolean, message: string, expiresAt?: Date}>}
+   */
+  async activateByCode(userId, code) {
+    if (!code || typeof code !== 'string') {
+      return { success: false, message: '请输入有效的激活码' };
+    }
+
+    const days = ACTIVATION_CODES.get(code.trim());
+    if (!days) {
+      return { success: false, message: '激活码无效，请检查后重试' };
+    }
+
+    // 复用升级逻辑
+    try {
+      const result = await this.upgradeUserToVip(userId, null, days);
+      return {
+        success: true,
+        message: `VIP激活成功，获得${days}天会员时长`,
+        expiresAt: result.expiresAt,
+      };
+    } catch (err) {
+      return { success: false, message: err.message || '激活失败，请稍后重试' };
+    }
+  },
+
   /**
    * 检查用户VIP状态（供其他模块调用）
    * @param {number} userId - 用户ID

@@ -22,27 +22,29 @@ const AuthServiceImpl = {
     const codeKey = `verification_code:${fixedEmail}`;
 
     try {
-      // 1. 先打印Redis客户端，看看拿到的是什么
       const redis = redisClient.getClient();
-      console.log('🔍 拿到的Redis客户端:', redis);
 
-      // 2. 邮件发送
-      const transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT,
-        secure: process.env.EMAIL_SECURE === 'true',
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-      });
+      // 开发环境：跳过邮件发送，验证码直接打印到控制台
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`\n🔑 [开发模式] 验证码: ${code} (邮箱: ${fixedEmail}, 5分钟有效)\n`);
+      } else {
+        const transporter = nodemailer.createTransport({
+          host: process.env.EMAIL_HOST,
+          port: process.env.EMAIL_PORT,
+          secure: process.env.EMAIL_SECURE === 'true',
+          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        });
 
-      const mailOptions = {
-        from: `"EchoStar 官方团队" <${process.env.EMAIL_USER}>`,
-        to: fixedEmail,
-        subject: 'EchoStar 验证码',
-        html: `你的验证码：${code}（5分钟有效）`
-      };
+        const mailOptions = {
+          from: `"EchoStar 官方团队" <${process.env.EMAIL_USER}>`,
+          to: fixedEmail,
+          subject: 'EchoStar 验证码',
+          html: `你的验证码：${code}（5分钟有效）`
+        };
 
-      await transporter.sendMail(mailOptions);
-      console.log('✅ 邮件发送成功');
+        await transporter.sendMail(mailOptions);
+        console.log('✅ 邮件发送成功');
+      }
 
       // ===================== 终极调试：用最原始的方式 =====================
       console.log('🔍 准备执行Redis SET，Key:', codeKey, 'Value:', code);

@@ -257,6 +257,34 @@
       @story-click="handleStoryClick"
     />
 
+    <!-- VIP Center -->
+    <VipCenter
+      :visible="showVipCenter"
+      :is-dark="effectiveMapTheme === 'dark'"
+      @close="showVipCenter = false"
+      @open-polish="showVipCenter = false; showToast('在我的故事中点击擦亮按钮即可使用')"
+      @open-comment-settings="showVipCenter = false; showCommentSettings = true"
+      @open-visual="showVipCenter = false; showVisualCustomizer = true"
+    />
+
+    <!-- Comment Settings -->
+    <CommentSettings
+      :visible="showCommentSettings"
+      :is-dark="effectiveMapTheme === 'dark'"
+      @close="showCommentSettings = false"
+      @request-vip="showCommentSettings = false; showVipCenter = true"
+      @saved="handleCommentSettingsSaved"
+    />
+
+    <!-- Visual Customizer -->
+    <VisualCustomizer
+      :visible="showVisualCustomizer"
+      :is-dark="effectiveMapTheme === 'dark'"
+      @close="showVisualCustomizer = false"
+      @request-vip="showVisualCustomizer = false; showVipCenter = true"
+      @saved="handleVisualCustomizerSaved"
+    />
+
     <transition name="publish-modal">
       <div
         v-if="showSidebar"
@@ -910,7 +938,17 @@
                     <span
                       v-if="userStore.user?.vip"
                       class="vip-text-badge"
+                      style="cursor: pointer;"
+                      title="VIP 中心"
+                      @click="showVipCenter = true"
                     >VIP</span>
+                    <span
+                      v-else
+                      class="vip-text-badge vip-text-badge--inactive"
+                      style="cursor: pointer;"
+                      title="开通 VIP"
+                      @click="showVipCenter = true"
+                    >👑 开通</span>
                     <span class="user-display-name" :class="{ 'has-vip': userStore.user?.vip }">{{
                       userStore.user?.username || userStore.user?.name || "未设置"
                     }}</span>
@@ -1011,7 +1049,8 @@
                         <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
                         <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                       </div>
-                      <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(item.data)"><span>🗑️</span></button>
+                      <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(story)"><span>🗑️</span></button>
+                      <PolishStory :story-id="story.id" @polished="handleStoryPolished" @error="handlePolishError" />
                     </div>
                     <p class="item-content">{{ item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
@@ -1426,8 +1465,13 @@ import StoryCard from "../../components/StoryCard.vue";
 import ClusterPopover from "../../components/ClusterPopover.vue";
 import ImageLightbox from "../../components/ImageLightbox.vue";
 import MyFootprints from "../../components/MyFootprints.vue";
+import VipCenter from "../../components/VipCenter.vue";
+import CommentSettings from "../../components/CommentSettings.vue";
+import VisualCustomizer from "../../components/VisualCustomizer.vue";
+import PolishStory from "../../components/PolishStory.vue";
 import PublishForm from "../../components/PublishForm.vue";
 import LoginModal from "../Home/components/LoginModal.vue";
+import { useVipStore } from "../../stores/vip";
 import { formatRelativeTime } from "../../utils/time";
 import { getEmotionEmoji } from "../../utils/emotion";
 import { getAnnouncementTypeIcon } from "../../utils/announcement";
@@ -1804,6 +1848,10 @@ const showSwitchAccountModal = ref(false);
 const savedAccounts = ref([]);
 const isSwitchingAccount = ref(false); // 标记是否在切换账号流程中
 const showFootprints = ref(false);
+const showVipCenter = ref(false);
+const showCommentSettings = ref(false);
+const showVisualCustomizer = ref(false);
+const vipStore = useVipStore();
 const likesList = ref([]);
 const postsList = ref([]);
 const favoritesList = ref([]);
@@ -5259,6 +5307,31 @@ function handleFootprints() {
   if (showFavoritesPanel.value) showFavoritesPanel.value = false;
   showFootprints.value = !showFootprints.value;
   isDockExpanded.value = false;
+}
+
+// --- VIP handlers ---
+function handleStoryPolished({ storyId }) {
+  const story = postsList.value.find(s => String(s.id) === String(storyId));
+  if (story) {
+    story._polished = true;
+    story._polishedAt = new Date().toISOString();
+  }
+}
+
+function handlePolishError({ type, message }) {
+  if (type === 'not_vip') {
+    showVipCenter.value = true;
+  } else {
+    showToast(message);
+  }
+}
+
+function handleCommentSettingsSaved(settings) {
+  console.log('[Map] Comment settings saved:', settings);
+}
+
+function handleVisualCustomizerSaved(settings) {
+  console.log('[Map] Visual customizer saved:', settings);
 }
 
 async function loadLikesData(isLoadMore = false) {
@@ -12864,6 +12937,33 @@ onUnmounted(() => {
 
 /* VIP 样式已移除 */
 
+/* VIP 文字标签 - 头像旁的VIP标识（鎏金渐变斜体浮夸风） */
+.vip-text-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1.5px solid rgba(255, 215, 0, 0.55);
+  border-radius: 6px;
+  background-color: #ffd700;
+  background-image: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff5cc 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-size: 16px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 1px;
+  line-height: 1.3;
+  animation: vipGoldFlow 3s linear infinite;
+  box-shadow: 0 0 8px rgba(255, 215, 0, 0.2), inset 0 0 4px rgba(255, 215, 0, 0.08);
+}
+
+.vip-text-badge:hover {
+  transform: scale(1.08);
+  filter: brightness(1.15);
+}
+
 /* VIP 小徽标 - 用于紧凑列表（item-meta内、slot内等） */
 .vip-text-badge-sm {
   display: inline-block;
@@ -12875,9 +12975,21 @@ onUnmounted(() => {
   font-weight: 800;
   letter-spacing: 0.5px;
   flex-shrink: 0;
+  transition: all 0.2s ease;
   line-height: 16px;
   vertical-align: middle;
   margin-left: 4px;
+}
+
+.vip-text-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+}
+
+.vip-text-badge--inactive {
+  background: rgba(184, 135, 46, 0.12);
+  color: #8e6c1a;
+  border: 1px dashed rgba(184, 135, 46, 0.3);
 }
 
 /* VIP 用户名+徽标行内容器 - 保持同行 */
