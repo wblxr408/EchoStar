@@ -61,6 +61,11 @@ router.put('/users/me', authenticateJWT, authController.updateProfile);
 router.get('/avatar/upload-token', authenticateJWT, authController.getAvatarUploadToken);
 
 /**
+ * GET /api/auth/users/search - 根据用户名模糊搜索用户
+ */
+router.get('/users/search', authController.searchUsersByUsername);
+
+/**
  * PUT /api/users/me/password - 修改密码
  */
 router.put('/users/me/password', authenticateJWT, authController.changePassword);

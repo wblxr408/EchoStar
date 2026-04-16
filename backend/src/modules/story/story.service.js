@@ -513,13 +513,53 @@ class StoryServiceClass {
 
   //搜索故事（模糊匹配 content）
   async searchStories(keyword, { page = 1, limit = 10 } = {}) {
-    const offset = (page - 1) * limit;
+    // =====================
+    // 业务逻辑验证
+    // =====================
+
+    // 1. 验证关键词
+    if (!keyword || typeof keyword !== 'string') {
+      throw new Error('请提供搜索关键词');
+    }
+
+    const trimmedKeyword = keyword.trim();
+
+    if (trimmedKeyword === '') {
+      throw new Error('搜索关键词不能为空');
+    }
+
+    // 关键词长度限制
+    if (trimmedKeyword.length < 2) {
+      throw new Error('搜索关键词至少需要2个字符');
+    }
+
+    if (trimmedKeyword.length > 100) {
+      throw new Error('搜索关键词不能超过100个字符');
+    }
+
+    // 2. 验证分页参数
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    if (isNaN(pageNum) || pageNum < 1) {
+      throw new Error('页码必须大于0');
+    }
+
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      throw new Error('每页数量必须在1-100之间');
+    }
+
+    // =====================
+    // 业务逻辑处理
+    // =====================
+
+    const offset = (pageNum - 1) * limitNum;
 
     const { rows, count } = await Story.findAndCountAll({
       where: {
         visibility: 'public',
         content: {
-          [Op.iLike]: `%${keyword}%`  // PostgreSQL 不区分大小写模糊匹配
+          [Op.iLike]: `%${trimmedKeyword}%`  // pg_trgm索引会自动优化此查询
         },
         [Op.and]: [getVisibilityTimeCondition()]
       },
@@ -529,13 +569,13 @@ class StoryServiceClass {
         attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
+      limit: limitNum,
       offset: parseInt(offset)
     });
 
     // 验证页码是否超出范围
-    const totalPages = Math.ceil(count / limit);
-    if (page > totalPages && count > 0) {
+    const totalPages = Math.ceil(count / limitNum);
+    if (pageNum > totalPages && count > 0) {
       throw new Error(`请求的页码超出范围，共 ${totalPages} 页`);
     }
 
@@ -552,15 +592,7 @@ class StoryServiceClass {
 
     // PostGIS 坐标转换
     const storiesWithLocation = rows.map((story, index) => {
-      let location = null;
-      if (story.location) {
-        if (story.location.type === 'Point' && Array.isArray(story.location.coordinates)) {
-          location = {
-            lng: story.location.coordinates[0],
-            lat: story.location.coordinates[1]
-          };
-        }
-      }
+      const location = parseStoryLocationValue(story.location);
 
       return {
         id: normalizeStoryId(story.id),
@@ -588,8 +620,8 @@ class StoryServiceClass {
       stories: storiesWithLocation,
       pagination: {
         total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         totalPages
       }
     };
