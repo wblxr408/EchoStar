@@ -17,4 +17,9 @@ router.get('/status', vipController.getCurrentUserVipStatus);
  */
 router.get('/history', vipController.getUserVipHistory);
 
+/**
+ * POST /api/v1/vip/activate - 使用激活码激活VIP
+ */
+router.post('/activate', vipController.activateVipByCode);
+
 export default router;
