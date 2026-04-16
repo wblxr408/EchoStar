@@ -570,15 +570,15 @@ const AuthServiceImpl = {
       throw new Error('请提供搜索关键词');
     }
 
-    const trimmedKeyword = keyword.trim();
+    const trimmedKeyword = keyword.trim().replace(/[%_\\]/g, '\\$&');
 
     if (trimmedKeyword === '') {
       throw new Error('搜索关键词不能为空');
     }
 
     // 关键词长度限制
-    if (trimmedKeyword.length < 2) {
-      throw new Error('搜索关键词至少需要2个字符');
+    if (trimmedKeyword.length < 1) {
+      throw new Error('搜索关键词不能为空');
     }
 
     if (trimmedKeyword.length > 50) {

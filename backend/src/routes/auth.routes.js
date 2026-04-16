@@ -46,6 +46,11 @@ router.get('/me', authenticateJWT, authController.getCurrentUser);
 router.delete('/me', authenticateJWT, authController.deleteAccount);
 
 /**
+ * GET /api/auth/users/search - 根据用户名模糊搜索用户
+ */
+router.get('/users/search', authController.searchUsersByUsername);
+
+/**
  * GET /api/users/:userId - 查看其他用户信息
  */
 router.get('/users/:userId', authController.getUserById);
@@ -59,11 +64,6 @@ router.put('/users/me', authenticateJWT, authController.updateProfile);
  * GET /api/auth/avatar/upload-token - 获取头像上传凭证
  */
 router.get('/avatar/upload-token', authenticateJWT, authController.getAvatarUploadToken);
-
-/**
- * GET /api/auth/users/search - 根据用户名模糊搜索用户
- */
-router.get('/users/search', authController.searchUsersByUsername);
 
 /**
  * PUT /api/users/me/password - 修改密码

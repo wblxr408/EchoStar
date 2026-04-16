@@ -529,8 +529,8 @@ class StoryServiceClass {
     }
 
     // 关键词长度限制
-    if (trimmedKeyword.length < 2) {
-      throw new Error('搜索关键词至少需要2个字符');
+    if (trimmedKeyword.length < 1) {
+      throw new Error('搜索关键词不能为空');
     }
 
     if (trimmedKeyword.length > 100) {
