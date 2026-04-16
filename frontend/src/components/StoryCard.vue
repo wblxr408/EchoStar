@@ -1,5 +1,5 @@
 <template>
-  <div class="story-card" :class="emotionClass" @click="handleSelect">
+  <div class="story-card" :class="[emotionClass, { 'is-vip-card': storyAuthorVip }]" @click="handleSelect">
     <div class="story-header">
       <div class="user-info">
         <div class="avatar-shell">

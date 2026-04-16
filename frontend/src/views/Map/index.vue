@@ -16,7 +16,7 @@
           </p>
         </div>
       </div>
-    </transition>
+      </transition>
 
     <!-- 搜索框 -->
     <div class="map-search-bar" :class="{ dark: effectiveMapTheme === 'dark' }" @click.stop>
@@ -61,6 +61,7 @@
               v-for="story in searchResults"
               :key="story.id"
               class="map-search-card panel-item"
+              :class="{ 'is-vip-card': story.author?.vip }"
               @click="openStoryFromCollection(story)"
             >
               <div class="item-header">
@@ -92,6 +93,7 @@
               v-for="user in searchUserResults"
               :key="user.id"
               class="search-user-card"
+              :class="{ 'is-vip-card': user.vip }"
               @click="openUserDetail(user)"
             >
               <div class="search-user-card__avatar">
@@ -110,11 +112,12 @@
           </template>
         </div>
       </div>
-    </transition>
+      </transition>
 
     <!-- 用户详情弹窗 -->
-    <transition name="publish-modal">
-      <div v-if="searchUserDetailOpen && searchedUser" class="search-user-modal-shell" @click.self="closeUserDetail">
+    <Teleport to="body">
+      <transition name="publish-modal">
+        <div v-if="searchUserDetailOpen && searchedUser" class="search-user-modal-shell" @click.self="closeUserDetail">
         <div class="map-search-user-detail" :class="{ dark: effectiveMapTheme === 'dark' }">
           <div class="user-sidebar-header">
             <h3>个人信息</h3>
@@ -160,7 +163,7 @@
                   <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
                 </div>
                 <div v-else class="panel-list">
-                  <div v-for="story in searchedUserStories" :key="story.id" class="panel-item" @click="openStoryFromCollection(story)">
+                  <div v-for="story in searchedUserStories" :key="story.id" class="panel-item" :class="{ 'is-vip-card': searchedUser.vip }" @click="openStoryFromCollection(story)">
                     <div class="item-header">
                       <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
                       <div class="item-meta">
@@ -181,7 +184,8 @@
           </div>
         </div>
       </div>
-    </transition>
+      </transition>
+    </Teleport>
 
     <div class="map-container">
       <AMap
@@ -449,6 +453,7 @@
                   v-for="story in featuredStories"
                   :key="story.id"
                   class="featured-story-card"
+                  :class="{ 'is-vip-card': getStoryAuthorVip(story) }"
                   @click="openFeaturedStory(story)"
                 >
                   <div v-if="story.images?.length" class="featured-image">
@@ -487,7 +492,7 @@
           </div>
         </div>
       </div>
-    </transition>
+      </transition>
 
     <div
       :class="[
@@ -725,7 +730,7 @@
           </div>
         </div>
       </div>
-    </transition>
+      </transition>
 
     <transition name="publish-modal">
       <div v-if="showUserSidebar" class="user-modal-shell">
@@ -915,7 +920,7 @@
                   <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
                 </div>
                 <div v-else class="panel-list">
-                  <div v-for="story in postsList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+                  <div v-for="story in postsList" :key="story.id" class="panel-item" :class="{ 'is-vip-card': getStoryAuthorVip(story) }" @click="handleStoryClick(story)">
                     <div class="item-header">
                       <img :src="story.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
@@ -945,7 +950,7 @@
                   <span class="empty-icon">💝</span><span>还没有点赞任何故事</span>
                 </div>
                 <div v-else class="panel-list">
-                  <div v-for="story in likesList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+                  <div v-for="story in likesList" :key="story.id" class="panel-item" :class="{ 'is-vip-card': getStoryAuthorVip(story) }" @click="handleStoryClick(story)">
                     <div class="item-header">
                       <img :src="story.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
@@ -975,7 +980,7 @@
                   <span class="empty-icon">⭐</span><span>还没有收藏任何故事</span>
                 </div>
                 <div v-else class="panel-list">
-                  <div v-for="story in favoritesList" :key="story.id" class="panel-item" @click="handleStoryClick(story)">
+                  <div v-for="story in favoritesList" :key="story.id" class="panel-item" :class="{ 'is-vip-card': getStoryAuthorVip(story) }" @click="handleStoryClick(story)">
                     <div class="item-header">
                       <img :src="story.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
@@ -1004,7 +1009,7 @@
           </div>
         </div>
       </div>
-    </transition>
+      </transition>
 
     <!-- 编辑资料弹窗（修改用户名、邮箱、密码） -->
     <div v-if="showEditProfileModal" class="modal-overlay" :class="{ dark: effectiveMapTheme === 'dark' }" @click.self="handleCloseEditProfile">
@@ -1147,6 +1152,7 @@
       @comment="handleStoryComment"
       @submit-comment="handleSubmitCommentFromStory"
       @report="handleStoryReport"
+      @view-user-profile="openUserDetail"
     />
 
     <div class="msg-trigger-wrapper">
@@ -1291,7 +1297,7 @@
           </div>
         </div>
       </div>
-    </transition>
+      </transition>
 
     <LoginModal v-if="showLoginModal" @close="handleLoginModalClose" />
   </div>
@@ -1905,6 +1911,7 @@ function normalizeStoryComment(comment) {
 
   return {
     id: comment.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    userId: commentUser?.id ?? comment.userId ?? null,
     author,
     avatar: firstNonEmptyString(commentUser?.avatar, comment.avatar),
     vip: Boolean(commentUser?.vip ?? false),
@@ -2325,6 +2332,8 @@ function openStoryFromCollection(story) {
   if (!story) {
     return;
   }
+
+  searchUserDetailOpen.value = false;
 
   const coords =
     extractCoordinates(story.location) || extractCoordinates(story);
@@ -12125,17 +12134,8 @@ onUnmounted(() => {
   100% { background-position: -100% 0; }
 }
 
-.vip-text-badge {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, #ffd700, #ffaa00);
-  color: #5d4037;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-}
+
+/* VIP 样式已移除 */
 
 /* VIP 小徽标 - 用于紧凑列表（item-meta内、slot内等） */
 .vip-text-badge-sm {
@@ -13154,7 +13154,7 @@ onUnmounted(() => {
 .search-user-modal-shell {
   position: fixed;
   inset: 0;
-  z-index: 340;
+  z-index: 10100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -13212,24 +13212,29 @@ onUnmounted(() => {
 .map-search-user-detail:not(.dark) {
   background: linear-gradient(
     160deg,
-    rgba(255, 252, 245, 0.98) 0%,
-    rgba(255, 248, 238, 0.99) 56%,
-    rgba(255, 250, 242, 0.98) 100%
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 52%,
+    rgba(229, 206, 166, 0.98) 100%
   );
   border-color: rgba(196, 142, 48, 0.38);
   box-shadow:
-    0 40px 80px -32px rgba(98, 75, 34, 0.35),
-    0 0 0 1px rgba(164, 122, 48, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 .map-search-user-detail:not(.dark)::before {
   border-color: rgba(199, 151, 60, 0.22);
 }
 .map-search-user-detail:not(.dark) .user-sidebar-header {
   border-bottom-color: rgba(148, 111, 46, 0.18);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 245, 0.42) 0%,
+    rgba(255, 245, 227, 0.14) 100%
+  );
 }
 .map-search-user-detail:not(.dark) .user-sidebar-header h3 {
-  color: #333;
+  color: #3c2910;
 }
 .map-search-user-detail .close-btn {
   position: absolute;
@@ -13265,24 +13270,27 @@ onUnmounted(() => {
 }
 .map-search-user-detail:not(.dark) .close-btn {
   border-color: rgba(255, 255, 255, 0.26);
-  background: rgba(255, 255, 255, 0.82);
-  color: #8b6d3a;
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .map-search-user-detail:not(.dark) .close-btn:hover {
-  background: rgba(139, 109, 58, 0.1);
-  border-color: rgba(139, 109, 58, 0.3);
+  background: rgba(53, 34, 13, 0.92);
+  border-color: rgba(255, 255, 255, 0.42);
 }
 .map-search-user-detail:not(.dark) .user-content-list .panel-item {
   border-color: rgba(164, 122, 48, 0.25);
 }
-.map-search-user-detail:not(.dark) .user-content-list .item-author { color: #333; }
-.map-search-user-detail:not(.dark) .user-content-list .item-content { color: #2c2c2c; }
-.map-search-user-detail:not(.dark) .user-content-list .item-time { color: #888; }
-.map-search-user-detail:not(.dark) .user-content-list .item-footer { color: #666; }
-.map-search-user-detail:not(.dark) .bio-text { color: #555; }
-.map-search-user-detail:not(.dark) .panel-empty { color: #999; }
-.map-search-user-detail:not(.dark) .content-tab { color: #666; }
-.map-search-user-detail:not(.dark) .content-tab.active { color: #8b6d3a; }
+.map-search-user-detail:not(.dark) .user-content-list .item-author { color: #3c2910; }
+.map-search-user-detail:not(.dark) .user-content-list .item-content { color: #3c2910; }
+.map-search-user-detail:not(.dark) .user-content-list .item-time { color: #3c2910; }
+.map-search-user-detail:not(.dark) .user-content-list .item-footer { color: #3c2910; }
+.map-search-user-detail:not(.dark) .bio-text { color: #3c2910; }
+.map-search-user-detail:not(.dark) .panel-empty { color: #3c2910; }
+.map-search-user-detail:not(.dark) .content-tab { color: #3c2910; }
+.map-search-user-detail:not(.dark) .content-tab.active { color: #5e3f14; }
 
 /* ===== 搜索用户信息面板 ===== */
 .search-user-profile {
@@ -13323,14 +13331,14 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .map-search-user-detail.dark .search-user-profile .user-display-name { color: #edf3ff; }
-.map-search-user-detail:not(.dark) .search-user-profile .user-display-name { color: #333; }
+.map-search-user-detail:not(.dark) .search-user-profile .user-display-name { color: #3c2910; }
 .search-user-profile .user-star-id {
   font-size: 12px;
   color: #999;
   margin-top: 4px;
 }
 .map-search-user-detail.dark .search-user-profile .user-star-id { color: #556677; }
-.map-search-user-detail:not(.dark) .search-user-profile .user-star-id { color: #888; }
+.map-search-user-detail:not(.dark) .search-user-profile .user-star-id { color: #3c2910; }
 .search-user-bio {
   cursor: default !important;
   margin-top: 12px;

@@ -25,12 +25,12 @@
         <div class="story-content-wrapper">
           <div class="story-header">
             <div class="user-info">
-              <div class="avatar-shell">
+              <div class="avatar-shell clickable-avatar" @click.stop="handleViewAuthorProfile">
                 <img v-if="storyAuthorAvatar" :src="storyAuthorAvatar" :alt="storyAuthorName" class="avatar" />
                 <span v-else class="avatar-fallback">{{ getInitial(storyAuthorName) }}</span>
               </div>
               <div class="user-details">
-                <span class="vip-name-row"><span class="username vip-username" :class="{ 'has-vip': storyAuthorVip }">{{ storyAuthorName }}</span><span class="vip-text-badge-sm" v-if="storyAuthorVip">VIP</span></span>
+                <span class="vip-name-row" @click.stop="handleViewAuthorProfile" style="cursor:pointer"><span class="username vip-username" :class="{ 'has-vip': storyAuthorVip }">{{ storyAuthorName }}</span><span class="vip-text-badge-sm" v-if="storyAuthorVip">VIP</span></span>
                 <span class="time">{{ formatRelativeTime(story.createdAt) }}</span>
               </div>
             </div>
@@ -127,14 +127,14 @@
             </div>
 
             <div class="comments-list">
-              <div v-for="comment in comments" :key="comment.id" class="comment-item">
-                <div class="comment-avatar">
+              <div v-for="comment in comments" :key="comment.id" class="comment-item" :class="{ 'is-vip-card': comment.vip }">
+                <div class="comment-avatar clickable-avatar" @click.stop="handleViewCommentProfile(comment)">
                   <img v-if="comment.avatar" :src="comment.avatar" :alt="comment.author" />
                   <span v-else>{{ getInitial(comment.author) }}</span>
                 </div>
                 <div class="comment-content">
                   <div class="comment-header">
-                    <span class="vip-name-row"><span class="comment-author vip-username" :class="{ 'has-vip': comment.vip }">{{ comment.author }}</span><span class="vip-text-badge-sm" v-if="comment.vip">VIP</span></span>
+                    <span class="vip-name-row" @click.stop="handleViewCommentProfile(comment)" style="cursor:pointer"><span class="comment-author vip-username" :class="{ 'has-vip': comment.vip }">{{ comment.author }}</span><span class="vip-text-badge-sm" v-if="comment.vip">VIP</span></span>
                     <span class="comment-time">{{ formatRelativeTime(comment.createdAt) }}</span>
                   </div>
                   <p class="comment-text">{{ comment.content }}</p>
@@ -258,7 +258,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report']);
+const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile']);
 
 const isLiked = ref(false);
 const likeCount = ref(0);
@@ -294,6 +294,13 @@ const storyAuthorAvatar = computed(() => {
     : null;
 
   return authorObject?.avatar || props.story?.avatar || '';
+});
+
+const storyAuthorId = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
+  return authorObject?.id ?? props.story?.authorId ?? props.story?.userId ?? null;
 });
 
 const storyAuthorVip = computed(() => {
@@ -409,6 +416,16 @@ function submitComment() {
 function openReportModal() {
   reportError.value = '';
   showReportModal.value = true;
+}
+
+function handleViewAuthorProfile() {
+  if (!storyAuthorId.value) return;
+  emit('view-user-profile', { id: storyAuthorId.value, username: storyAuthorName.value, avatar: storyAuthorAvatar.value, vip: storyAuthorVip.value });
+}
+
+function handleViewCommentProfile(comment) {
+  if (!comment.userId) return;
+  emit('view-user-profile', { id: comment.userId, username: comment.author, avatar: comment.avatar, vip: comment.vip });
 }
 
 function closeReportModal() {
@@ -697,6 +714,14 @@ async function submitReport() {
 .comment-avatar span {
   font-size: 20px;
   line-height: 1;
+}
+
+.clickable-avatar {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.clickable-avatar:hover {
+  opacity: 0.75;
 }
 
 .user-details {
