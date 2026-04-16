@@ -82,63 +82,98 @@
         </div>
 
         <!-- 用户标签页 -->
-        <div v-else class="map-search-results-list">
+        <div v-else class="map-search-results-list" @scroll="handleUserSearchScroll">
           <div v-if="searchUserLoading" class="map-search-empty">搜索中...</div>
           <div v-else-if="searchKeyword.trim() && !searchUserSearched" class="map-search-empty">搜索中...</div>
-          <div v-else-if="searchKeyword.trim() && !searchedUser" class="map-search-empty">未找到该用户</div>
-          <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入用户ID查找用户</div>
-
-          <!-- 搜索到的用户信息面板（只读，与"我的信息"一致但去除操作） -->
-          <div v-else class="search-user-profile">
-            <!-- 头像 + 用户名/ID -->
-            <div class="user-profile-new">
-              <div class="user-avatar-wrapper">
-                <div class="user-avatar-large">
-                  <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
-                </div>
+          <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入用户名或ID搜索用户</div>
+          <div v-else-if="searchUserResults.length === 0" class="map-search-empty">未找到相关用户</div>
+          <template v-else>
+            <div
+              v-for="user in searchUserResults"
+              :key="user.id"
+              class="search-user-card"
+              @click="openUserDetail(user)"
+            >
+              <div class="search-user-card__avatar">
+                <img :src="user.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
               </div>
-              <div class="user-identity-area">
-                <div class="user-identity-top">
-                  <div class="user-name-row">
-                    <span class="vip-text-badge" v-if="searchedUser.vip">VIP</span>
-                    <span class="user-display-name" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '未设置' }}</span>
+              <div class="search-user-card__info">
+                <div class="search-user-card__name-row">
+                  <span class="vip-name-row"><span class="search-user-card__name vip-username" :class="{ 'has-vip': user.vip }">{{ user.username || '未设置' }}</span><span class="vip-text-badge-sm" v-if="user.vip">VIP</span></span>
+                </div>
+                <div class="search-user-card__id">STAR-ID: {{ user.id }}</div>
+              </div>
+              <svg class="search-user-card__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+            <div v-if="searchUserLoadingMore" class="map-search-empty">加载更多...</div>
+            <div v-else-if="searchUserHasMore && searchUserResults.length > 0" class="map-search-empty" style="cursor:pointer" @click="performUserSearch(searchKeyword.trim(), true)">点击加载更多</div>
+          </template>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 用户详情弹窗 -->
+    <transition name="publish-modal">
+      <div v-if="searchUserDetailOpen && searchedUser" class="search-user-modal-shell" @click.self="closeUserDetail">
+        <div class="map-search-user-detail" :class="{ dark: effectiveMapTheme === 'dark' }">
+          <div class="user-sidebar-header">
+            <h3>个人信息</h3>
+            <button class="close-btn" @click.stop="closeUserDetail">
+              <span>×</span>
+            </button>
+          </div>
+          <div class="user-sidebar-content">
+            <div class="search-user-profile">
+              <!-- 头像 + 用户名/ID -->
+              <div class="user-profile-new">
+                <div class="user-avatar-wrapper">
+                  <div class="user-avatar-large">
+                    <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
                   </div>
-                  <div class="user-star-id">STAR-ID: {{ searchedUser.id ?? '' }}</div>
                 </div>
-              </div>
-            </div>
-
-            <!-- 签名 -->
-            <div v-if="searchedUser.bio" class="user-bio-area search-user-bio">
-              <div class="bio-content">
-                <span class="bio-text">{{ searchedUser.bio }}</span>
-              </div>
-            </div>
-
-            <!-- 标签栏 -->
-            <div class="user-content-tabs">
-              <button class="content-tab active">作品<span class="tab-count">{{ searchedUserStories.length }}</span></button>
-            </div>
-
-            <!-- 故事列表 -->
-            <div class="user-content-list">
-              <div v-if="searchedUserStories.length === 0" class="panel-empty">
-                <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
-              </div>
-              <div v-else class="panel-list">
-                <div v-for="story in searchedUserStories" :key="story.id" class="panel-item" @click="openStoryFromCollection(story)">
-                  <div class="item-header">
-                    <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
-                    <div class="item-meta">
-                      <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="searchedUser.vip">VIP</span></span>
-                      <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+                <div class="user-identity-area">
+                  <div class="user-identity-top">
+                    <div class="user-name-row">
+                      <span class="vip-text-badge" v-if="searchedUser.vip">VIP</span>
+                      <span class="user-display-name" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '未设置' }}</span>
                     </div>
+                    <div class="user-star-id">STAR-ID: {{ searchedUser.id ?? '' }}</div>
                   </div>
-                  <p class="item-content">{{ story.content }}</p>
-                  <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
-                  <div class="item-footer">
-                    <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-                    <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                </div>
+              </div>
+
+              <!-- 签名 -->
+              <div v-if="searchedUser.bio" class="user-bio-area search-user-bio">
+                <div class="bio-content">
+                  <span class="bio-text">{{ searchedUser.bio }}</span>
+                </div>
+              </div>
+
+              <!-- 标签栏 -->
+              <div class="user-content-tabs">
+                <button class="content-tab active">作品<span class="tab-count">{{ searchedUserStories.length }}</span></button>
+              </div>
+
+              <!-- 故事列表 -->
+              <div class="user-content-list">
+                <div v-if="searchedUserStories.length === 0" class="panel-empty">
+                  <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
+                </div>
+                <div v-else class="panel-list">
+                  <div v-for="story in searchedUserStories" :key="story.id" class="panel-item" @click="openStoryFromCollection(story)">
+                    <div class="item-header">
+                      <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
+                      <div class="item-meta">
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="searchedUser.vip">VIP</span></span>
+                        <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+                      </div>
+                    </div>
+                    <p class="item-content">{{ story.content }}</p>
+                    <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                    <div class="item-footer">
+                      <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1682,8 +1717,14 @@ const searchPageSize = 10;
 const searchStorySearched = ref(false);
 const searchUserLoading = ref(false);
 const searchUserSearched = ref(false);
+const searchUserResults = ref([]);
+const searchUserPage = ref(1);
+const searchUserHasMore = ref(false);
+const searchUserLoadingMore = ref(false);
+const searchUserPageSize = 20;
 const searchedUser = ref(null);
 const searchedUserStories = ref([]);
+const searchUserDetailOpen = ref(false);
 
 const showSearchPanel = computed(() => {
   return searchFocused.value;
@@ -1695,8 +1736,13 @@ function clearSearch() {
   searchHasMore = false;
   searchStorySearched.value = false;
   searchUserSearched.value = false;
+  searchUserResults.value = [];
+  searchUserPage.value = 1;
+  searchUserHasMore.value = false;
+  searchUserLoadingMore.value = false;
   searchedUser.value = null;
   searchedUserStories.value = [];
+  searchUserDetailOpen.value = false;
 }
 
 function switchSearchTab(tab) {
@@ -1707,7 +1753,7 @@ function switchSearchTab(tab) {
   if (tab === 'story') {
     loadSearchResults(false);
   } else {
-    searchUserById(keyword);
+    performUserSearch(keyword, false);
   }
 }
 
@@ -1720,7 +1766,7 @@ watch(searchKeyword, (keyword) => {
     if (searchTab.value === 'story') {
       loadSearchResults(false);
     } else {
-      searchUserById(trimmed);
+      performUserSearch(trimmed, false);
     }
   }, 350);
 });
@@ -5073,18 +5119,148 @@ async function loadSearchResults(isLoadMore = false) {
   }
 }
 
-async function searchUserById(keyword) {
+
+const escapeLikeKeyword = (s) => s.replace(/[%_\\]/g, '\\$&');
+const isPureNumber = (s) => /^\d+$/.test(s);
+
+async function performUserSearch(keyword, isLoadMore = false) {
   if (!keyword) return;
-  searchUserLoading.value = true;
-  searchUserSearched.value = true;
+
+  if (isLoadMore) {
+    if (searchUserLoadingMore.value || !searchUserHasMore.value) return;
+    searchUserLoadingMore.value = true;
+    searchUserPage.value++;
+  } else {
+    searchUserLoading.value = true;
+    searchUserPage.value = 1;
+    searchUserResults.value = [];
+    searchUserHasMore.value = false;
+    searchUserSearched.value = true;
+    searchedUser.value = null;
+    searchedUserStories.value = [];
+    searchUserDetailOpen.value = false;
+  }
+
+  try {
+    const escapedKeyword = escapeLikeKeyword(keyword);
+    const pureNum = isPureNumber(keyword);
+    let exactUser = null;
+    let fuzzyUsers = [];
+
+    // 如果是纯数字，并行：精确ID查找 + 模糊用户名搜索
+    if (pureNum && !isLoadMore) {
+      const [exactResult, fuzzyResult] = await Promise.allSettled([
+        authApi.getUserById(keyword),
+        authApi.searchUsersByUsername(escapedKeyword, { page: 1, limit: searchUserPageSize }),
+      ]);
+
+      if (exactResult.status === 'fulfilled') {
+        const data = exactResult.value?.data || exactResult.value;
+        if (data && !data._updating) {
+          exactUser = {
+            id: normalizeStoryIdKey(data.id),
+            username: data.username || '未设置',
+            avatar: data.avatar || data.avatarUrl || null,
+            bio: data.bio || null,
+            vip: data.vip || 0,
+          };
+        }
+      }
+
+      if (fuzzyResult.status === 'fulfilled') {
+        const fuzzyData = fuzzyResult.value?.data || fuzzyResult.value;
+        fuzzyUsers = Array.isArray(fuzzyData?.users)
+          ? fuzzyData.users.map(normalizeSearchUserResult)
+          : [];
+        const total = fuzzyData?.pagination?.total ?? 0;
+        searchUserHasMore.value = searchUserPageSize < total;
+      }
+    } else if (pureNum && isLoadMore) {
+      // 加载更多时只需模糊搜索（精确ID已查过）
+      const fuzzyResult = await authApi.searchUsersByUsername(escapedKeyword, {
+        page: searchUserPage.value,
+        limit: searchUserPageSize,
+      });
+      const fuzzyData = fuzzyResult?.data || fuzzyResult;
+      fuzzyUsers = Array.isArray(fuzzyData?.users)
+        ? fuzzyData.users.map(normalizeSearchUserResult)
+        : [];
+      const total = fuzzyData?.pagination?.total ?? 0;
+      searchUserHasMore.value = searchUserPage.value < Math.ceil(total / searchUserPageSize);
+    } else {
+      // 非纯数字：只做模糊用户名搜索
+      const fuzzyResult = await authApi.searchUsersByUsername(escapedKeyword, {
+        page: isLoadMore ? searchUserPage.value : 1,
+        limit: searchUserPageSize,
+      });
+      const fuzzyData = fuzzyResult?.data || fuzzyResult;
+      fuzzyUsers = Array.isArray(fuzzyData?.users)
+        ? fuzzyData.users.map(normalizeSearchUserResult)
+        : [];
+      const total = fuzzyData?.pagination?.total ?? 0;
+      const totalPages = Math.ceil(total / searchUserPageSize);
+      if (!isLoadMore) {
+        searchUserHasMore.value = 1 < totalPages;
+        searchUserPage.value = 1;
+      } else {
+        searchUserHasMore.value = searchUserPage.value < totalPages;
+      }
+    }
+
+    if (isLoadMore) {
+      searchUserResults.value.push(...fuzzyUsers);
+    } else {
+      // 合并：精确ID匹配排第一，去除模糊结果中的重复
+      const fuzzyIds = new Set(fuzzyUsers.map((u) => u.id));
+      const merged = exactUser && !fuzzyIds.has(exactUser.id)
+        ? [exactUser, ...fuzzyUsers]
+        : fuzzyUsers;
+      searchUserResults.value = merged;
+    }
+  } catch (error) {
+    console.error("搜索用户失败:", error);
+    if (!isLoadMore) {
+      searchUserResults.value = [];
+    }
+  } finally {
+    searchUserLoading.value = false;
+    searchUserLoadingMore.value = false;
+  }
+}
+
+function normalizeSearchUserResult(user) {
+  if (!user) return null;
+  return {
+    id: normalizeStoryIdKey(user.id),
+    username: user.username || '未设置',
+    avatar: user.avatar || user.avatarUrl || null,
+    bio: user.bio || null,
+    vip: user.vip || 0,
+  };
+}
+
+function handleUserSearchScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  if (scrollHeight - scrollTop - clientHeight < 50 && searchUserHasMore.value && !searchUserLoadingMore.value) {
+    const keyword = searchKeyword.value.trim();
+    if (keyword) performUserSearch(keyword, true);
+  }
+}
+
+async function openUserDetail(user) {
+  if (!user?.id) return;
+  searchUserDetailOpen.value = true;
   searchedUser.value = null;
   searchedUserStories.value = [];
 
   try {
-    const result = await authApi.getUserById(keyword);
+    const result = await authApi.getUserById(user.id);
     const data = result.data || result;
     if (data && !data._updating) {
-      searchedUser.value = data;
+      searchedUser.value = {
+        ...data,
+        avatar: data.avatar || data.avatarUrl || null,
+      };
       const rawStories = Array.isArray(data.stories) ? data.stories : [];
       searchedUserStories.value = rawStories.map((s) => ({
         ...s,
@@ -5095,14 +5271,19 @@ async function searchUserById(keyword) {
           id: normalizeStoryIdKey(data.id),
           username: data.username || '匿名用户',
           avatar: data.avatar || null,
+          vip: data.vip || 0,
         },
       }));
     }
   } catch (error) {
-    searchedUser.value = null;
-  } finally {
-    searchUserLoading.value = false;
+    console.error("获取用户详情失败:", error);
+    showToast("获取用户信息失败", "error");
+    searchUserDetailOpen.value = false;
   }
+}
+
+function closeUserDetail() {
+  searchUserDetailOpen.value = false;
 }
 
 function handleSearchSubmit() {
@@ -5113,7 +5294,7 @@ function handleSearchSubmit() {
   if (searchTab.value === 'story') {
     loadSearchResults(false);
   } else {
-    searchUserById(keyword);
+    performUserSearch(keyword, false);
   }
 }
 
@@ -5620,6 +5801,7 @@ function handlePageClick(event) {
   const postsPanel = document.querySelector(".posts-panel");
   const favoritesPanel = document.querySelector(".favorites-panel");
   const dockContainer = document.querySelector(".dock-container");
+  const userDetail = document.querySelector(".search-user-modal-shell");
 
   if (
     likesPanel?.contains(target) ||
@@ -5636,6 +5818,10 @@ function handlePageClick(event) {
     return;
   }
 
+  if (userDetail?.contains(target)) {
+    return;
+  }
+
   if (
     storySidebar?.contains(target) ||
     storyTarotShell?.contains(target) ||
@@ -5648,6 +5834,7 @@ function handlePageClick(event) {
   closeStoryPanel();
   closePublishPanel();
   searchFocused.value = false;
+  searchUserDetailOpen.value = false;
 }
 
 const stories = computed(() => mapStore.stories);
@@ -8366,6 +8553,13 @@ onUnmounted(() => {
     opacity 0.26s ease;
 }
 
+.publish-modal-enter-active .map-search-user-detail,
+.publish-modal-leave-active .map-search-user-detail {
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease;
+}
+
 .publish-modal-enter-from,
 .publish-modal-leave-to {
   opacity: 0;
@@ -8373,6 +8567,12 @@ onUnmounted(() => {
 
 .publish-modal-enter-from .publish-modal,
 .publish-modal-leave-to .publish-modal {
+  opacity: 0;
+  transform: translateY(26px) scale(0.96);
+}
+
+.publish-modal-enter-from .map-search-user-detail,
+.publish-modal-leave-to .map-search-user-detail {
   opacity: 0;
   transform: translateY(26px) scale(0.96);
 }
@@ -12892,6 +13092,198 @@ onUnmounted(() => {
 .map-search-results.dark .search-tab.active { color: #8fb4ff; }
 .map-search-results.dark .search-tab.active::after { background: #8fb4ff; }
 
+/* ===== 搜索用户卡片 ===== */
+.search-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+.search-user-card:hover {
+  background: rgba(139, 170, 220, 0.12);
+}
+.map-search-results:not(.dark) .search-user-card:hover {
+  background: rgba(139, 110, 50, 0.08);
+}
+.search-user-card__avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.search-user-card__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.search-user-card__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.search-user-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #edf3ff;
+}
+.map-search-results:not(.dark) .search-user-card__name { color: #333; }
+.search-user-card__id {
+  font-size: 11px;
+  color: #667788;
+}
+.map-search-results:not(.dark) .search-user-card__id { color: #999; }
+.search-user-card__arrow {
+  width: 16px;
+  height: 16px;
+  color: #667788;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+.map-search-results:not(.dark) .search-user-card__arrow { color: #999; }
+
+/* ===== 用户详情弹窗 ===== */
+.search-user-modal-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 340;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 11, 22, 0.55);
+  backdrop-filter: blur(6px);
+}
+.map-search-user-detail .user-sidebar-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  padding: 20px 28px 28px;
+  display: flex;
+  flex-direction: column;
+}
+.map-search-user-detail .search-user-profile {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-search-user-detail {
+  position: relative;
+  width: min(900px, calc(100vw - 48px));
+  height: min(90vh, 960px);
+  max-height: min(90vh, 960px);
+  border-radius: 36px;
+  border: 1px solid rgba(196, 142, 48, 0.34);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 23, 37, 0.97) 0%,
+    rgba(31, 42, 64, 0.98) 56%,
+    rgba(17, 25, 42, 0.98) 100%
+  );
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.map-search-user-detail::before {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(199, 151, 60, 0.22);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 浅色模式 */
+.map-search-user-detail:not(.dark) {
+  background: linear-gradient(
+    160deg,
+    rgba(255, 252, 245, 0.98) 0%,
+    rgba(255, 248, 238, 0.99) 56%,
+    rgba(255, 250, 242, 0.98) 100%
+  );
+  border-color: rgba(196, 142, 48, 0.38);
+  box-shadow:
+    0 40px 80px -32px rgba(98, 75, 34, 0.35),
+    0 0 0 1px rgba(164, 122, 48, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.map-search-user-detail:not(.dark)::before {
+  border-color: rgba(199, 151, 60, 0.22);
+}
+.map-search-user-detail:not(.dark) .user-sidebar-header {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+}
+.map-search-user-detail:not(.dark) .user-sidebar-header h3 {
+  color: #333;
+}
+.map-search-user-detail .close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  min-width: 88px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(13, 19, 34, 0.82);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.map-search-user-detail .close-btn:hover {
+  background: rgba(26, 35, 58, 0.96);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+.map-search-user-detail .close-btn span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 100%;
+  width: 100%;
+  transform: translate(-0.25px, -1.25px);
+}
+.map-search-user-detail:not(.dark) .close-btn {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.82);
+  color: #8b6d3a;
+}
+.map-search-user-detail:not(.dark) .close-btn:hover {
+  background: rgba(139, 109, 58, 0.1);
+  border-color: rgba(139, 109, 58, 0.3);
+}
+.map-search-user-detail:not(.dark) .user-content-list .panel-item {
+  border-color: rgba(164, 122, 48, 0.25);
+}
+.map-search-user-detail:not(.dark) .user-content-list .item-author { color: #333; }
+.map-search-user-detail:not(.dark) .user-content-list .item-content { color: #2c2c2c; }
+.map-search-user-detail:not(.dark) .user-content-list .item-time { color: #888; }
+.map-search-user-detail:not(.dark) .user-content-list .item-footer { color: #666; }
+.map-search-user-detail:not(.dark) .bio-text { color: #555; }
+.map-search-user-detail:not(.dark) .panel-empty { color: #999; }
+.map-search-user-detail:not(.dark) .content-tab { color: #666; }
+.map-search-user-detail:not(.dark) .content-tab.active { color: #8b6d3a; }
+
 /* ===== 搜索用户信息面板 ===== */
 .search-user-profile {
   padding: 12px 8px 4px;
@@ -12926,25 +13318,32 @@ onUnmounted(() => {
 .search-user-profile .user-display-name {
   font-size: 18px;
   font-weight: 600;
-  color: #333;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.map-search-results.dark .search-user-profile .user-display-name { color: #edf3ff; }
+.map-search-user-detail.dark .search-user-profile .user-display-name { color: #edf3ff; }
+.map-search-user-detail:not(.dark) .search-user-profile .user-display-name { color: #333; }
 .search-user-profile .user-star-id {
   font-size: 12px;
   color: #999;
   margin-top: 4px;
 }
-.map-search-results.dark .search-user-profile .user-star-id { color: #556677; }
+.map-search-user-detail.dark .search-user-profile .user-star-id { color: #556677; }
+.map-search-user-detail:not(.dark) .search-user-profile .user-star-id { color: #888; }
 .search-user-bio {
   cursor: default !important;
   margin-top: 12px;
 }
 .search-user-bio .bio-edit-icon { display: none; }
 .search-user-profile .user-content-list {
-  max-height: none;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: none;
+}
+.search-user-profile .user-content-list::-webkit-scrollbar {
+  display: none;
 }
 .map-search-results-list {
   max-height: calc(100vh - 160px);

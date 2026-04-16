@@ -189,6 +189,27 @@ export const mockAuthApi = {
         }
       }
     };
+  },
+
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    await delay();
+    const results = mockUsers.filter(u =>
+      u.status !== 'deleted' &&
+      u.username.toLowerCase().includes(keyword.trim().toLowerCase())
+    );
+    const start = (page - 1) * limit;
+    return {
+      code: 0,
+      data: {
+        users: results.slice(start, start + limit),
+        pagination: {
+          total: results.length,
+          page,
+          limit,
+          totalPages: Math.ceil(results.length / limit)
+        }
+      }
+    };
   }
 };
 
@@ -385,6 +406,27 @@ export const mockStoryApi = {
         }
       }
     };
+  },
+
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    await delay();
+    const results = mockUsers.filter(u =>
+      u.status !== 'deleted' &&
+      u.username.toLowerCase().includes(keyword.trim().toLowerCase())
+    );
+    const start = (page - 1) * limit;
+    return {
+      code: 0,
+      data: {
+        users: results.slice(start, start + limit),
+        pagination: {
+          total: results.length,
+          page,
+          limit,
+          totalPages: Math.ceil(results.length / limit)
+        }
+      }
+    };
   }
 };
 
@@ -551,6 +593,27 @@ export const mockMapApi = {
         id: Date.now(),
         ...data,
         createdAt: new Date().toISOString()
+      }
+    };
+  },
+
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    await delay();
+    const results = mockUsers.filter(u =>
+      u.status !== 'deleted' &&
+      u.username.toLowerCase().includes(keyword.trim().toLowerCase())
+    );
+    const start = (page - 1) * limit;
+    return {
+      code: 0,
+      data: {
+        users: results.slice(start, start + limit),
+        pagination: {
+          total: results.length,
+          page,
+          limit,
+          totalPages: Math.ceil(results.length / limit)
+        }
       }
     };
   }
@@ -1055,6 +1118,27 @@ export const mockAdminApi = {
           page,
           pageSize,
           totalPages: Math.ceil(filteredUsers.length / pageSize)
+        }
+      }
+    };
+  },
+
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    await delay();
+    const results = mockUsers.filter(u =>
+      u.status !== 'deleted' &&
+      u.username.toLowerCase().includes(keyword.trim().toLowerCase())
+    );
+    const start = (page - 1) * limit;
+    return {
+      code: 0,
+      data: {
+        users: results.slice(start, start + limit),
+        pagination: {
+          total: results.length,
+          page,
+          limit,
+          totalPages: Math.ceil(results.length / limit)
         }
       }
     };
