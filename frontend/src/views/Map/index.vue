@@ -457,6 +457,7 @@
       :class="[
         'dock-container',
         effectiveMapTheme === 'dark' ? 'dock-dark' : 'dock-light',
+        { 'dock-vip-theme': isVipTheme },
         {
           'show-publish-sidebar': showPublishSidebar,
           'show-user-sidebar': showUserSidebar,
@@ -556,6 +557,7 @@
                 returning: returningDockCard === action.key,
                 disabled: action.disabled,
                 rippling: ripplingDockCard === action.key,
+                selector: action.key === themeSelectorCardKey,
               }"
               :style="
                 getDockCardStyle(index, visibleDockActions.length, action)
@@ -575,11 +577,68 @@
                 <span class="dock-card-corner corner-top-right"></span>
                 <span class="dock-card-corner corner-bottom-left"></span>
 
-                <div class="dock-card-face">
+                <div
+                  class="dock-card-face"
+                  :class="{
+                    'dock-card-face--theme-selector':
+                      action.key === themeSelectorCardKey &&
+                      themeDockSubmenuVisible,
+                  }"
+                >
                   <span class="dock-card-pattern"></span>
-                  <span class="dock-card-icon">{{ action.icon }}</span>
-                  <span class="dock-card-title">{{ action.title }}</span>
-                  <span class="dock-card-subtitle">{{ action.subtitle }}</span>
+
+                  <template
+                    v-if="
+                      action.key === themeSelectorCardKey &&
+                      themeDockSubmenuVisible
+                    "
+                  >
+                    <div class="dock-theme-inline">
+                      <p class="dock-theme-inline__eyebrow">Theme Select</p>
+                      <strong class="dock-theme-inline__title">切换主题</strong>
+
+                      <div class="dock-theme-inline__list">
+                        <div
+                          v-for="option in dockThemeOptions"
+                          :key="option.key"
+                          class="dock-theme-inline-option"
+                          :class="{
+                            active: option.key === selectedThemeChoice,
+                            disabled: option.disabled,
+                          }"
+                          :style="{
+                            '--theme-option-accent': option.accent,
+                            '--theme-option-accent-soft': option.accentSoft,
+                          }"
+                          :role="option.disabled ? undefined : 'button'"
+                          :tabindex="option.disabled ? -1 : 0"
+                          :title="option.tooltip"
+                          @pointerdown.stop.prevent="
+                            !option.disabled && handleThemeOptionClick(option)
+                          "
+                          @keydown.enter.stop.prevent="
+                            !option.disabled && handleThemeOptionClick(option)
+                          "
+                          @keydown.space.stop.prevent="
+                            !option.disabled && handleThemeOptionClick(option)
+                          "
+                        >
+                          <span class="dock-theme-inline-option__label">
+                            {{ option.label }}
+                          </span>
+                          <small class="dock-theme-inline-option__meta">
+                            {{ option.helper }}
+                          </small>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else>
+                    <span class="dock-card-icon">{{ action.icon }}</span>
+                    <span class="dock-card-title">{{ action.title }}</span>
+                    <span class="dock-card-subtitle">{{ action.subtitle }}</span>
+                  </template>
                 </div>
 
                 <span class="dock-card-suit suit-bottom">{{
@@ -1338,6 +1397,8 @@ const storyStartPosition = ref({
   y: window.innerHeight / 2,
 });
 const storyDirectOpen = ref(true); // `false` 时从地图起点飞入
+const THEME_SELECTOR_CARD_KEY = "theme";
+const themeSelectorCardKey = THEME_SELECTOR_CARD_KEY;
 const mapTheme = ref(localStorage.getItem("mapTheme") || "auto");
 const amapRef = ref(null);
 const minuteTicker = ref(0);
@@ -1347,12 +1408,27 @@ function getTimeBasedTheme() {
   const hour = new Date().getHours();
   return hour >= 6 && hour < 18 ? "light" : "dark";
 }
+function normalizeThemeChoice(theme) {
+  return ["auto", "light", "dark", "vip"].includes(theme) ? theme : "auto";
+}
+
+const selectedThemeChoice = computed(() => {
+  const normalized = normalizeThemeChoice(mapTheme.value);
+
+  if (normalized === "auto") {
+    return getTimeBasedTheme();
+  }
+
+  return normalized;
+});
+
 const effectiveMapTheme = computed(() => {
   void minuteTicker.value;
-  if (mapTheme.value === "light" || mapTheme.value === "dark") {
-    return mapTheme.value;
+  if (selectedThemeChoice.value === "vip") {
+    return "dark";
   }
-  return getTimeBasedTheme();
+
+  return selectedThemeChoice.value;
 });
 const nearbyCenterSummary = computed(() => {
   if (!nearbyCenterLabel.value) {
@@ -1376,6 +1452,13 @@ const dockCardStackRef = ref(null);
 const ripplingDockCard = ref("");
 const dockActionPending = ref(false);
 const isDarkMap = computed(() => effectiveMapTheme.value === "dark");
+const isVipTheme = computed(() => selectedThemeChoice.value === "vip");
+const canUseVipTheme = computed(
+  () =>
+    Boolean(userStore.user?.vip) &&
+    Boolean(userStore.isLoggedIn) &&
+    !userStore.isGuest,
+);
 let dockHoverClearTimer = null;
 let dockSelectionTimer = null;
 let dockPointerX = null;
@@ -2588,21 +2671,18 @@ const dockActions = computed(() => [
   },
   {
     key: "theme",
-    tag: "Theme Shift",
-    title: effectiveMapTheme.value === "dark" ? "切到浅色地图" : "切到深色地图",
+    tag: "Theme Atelier",
+    title: "切换主题氛围",
     subtitle: "切换当前场景氛围",
-    description:
-      effectiveMapTheme.value === "dark"
-        ? "把地图切回更明亮的视觉主题。"
-        : "切到更沉浸的深色地图主题。",
-    icon: effectiveMapTheme.value === "dark" ? "☀" : "☾",
+    description: "在明亮、暗色与会员主题之间切换当前地图氛围。",
+    icon: "☯",
     suit: "♣",
     accent: "#8e6cff",
     accentSoft: "rgba(142, 108, 255, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#241a3f",
     visible: true,
     disabled: false,
-    handler: toggleTheme,
+    handler: () => {},
   },
   {
     key: "user",
@@ -2639,7 +2719,79 @@ const dockActions = computed(() => [
 ]);
 
 const visibleDockActions = computed(() =>
-  dockActions.value.filter((action) => action.visible),
+  dockActions.value
+    .filter((action) => action.visible)
+    .map((action) => {
+      if (action.key !== THEME_SELECTOR_CARD_KEY) {
+        return action;
+      }
+
+      return {
+        ...action,
+        title:
+          selectedThemeChoice.value === "vip"
+            ? "会员主题"
+            : selectedThemeChoice.value === "dark"
+              ? "暗色主题"
+              : "明亮主题",
+        subtitle: "选择你想使用的主题",
+        description: canUseVipTheme.value
+          ? "你可以在这里切换你喜欢的主题：明、暗、会员专属。"
+          : "你可以在这里切换你喜欢的主题：明、暗、会员专属。",
+        icon: selectedThemeChoice.value === "vip" ? "✦" : "☯",
+        accent: selectedThemeChoice.value === "vip" ? "#d6b36c" : "#8e6cff",
+        accentSoft:
+          selectedThemeChoice.value === "vip"
+            ? "rgba(214, 179, 108, 0.3)"
+            : "rgba(142, 108, 255, 0.24)",
+        title: "切换主题",
+        subtitle: action.subtitle,
+        description: action.description,
+        title: "切换主题氛围",
+      };
+    }),
+);
+
+const dockThemeOptions = computed(() => [
+  {
+    key: "light",
+    icon: "明",
+    label: "明亮主题",
+    helper: "晨光琉璃",
+    accent: "#c98c3d",
+    accentSoft: "rgba(201, 140, 61, 0.24)",
+    disabled: false,
+    tooltip: "切换到明亮主题",
+  },
+  {
+    key: "dark",
+    icon: "暗",
+    label: "暗色主题",
+    helper: "深空星幕",
+    accent: "#79a6ff",
+    accentSoft: "rgba(121, 166, 255, 0.24)",
+    disabled: false,
+    tooltip: "切换到暗色主题",
+  },
+  {
+    key: "vip",
+    icon: "VIP",
+    label: "会员主题",
+    helper: "即将开放",
+    accent: "#d6b36c",
+    accentSoft: "rgba(214, 179, 108, 0.26)",
+    disabled: true,
+    tooltip: "会员主题即将开放",
+  },
+]);
+
+const themeDockSubmenuVisible = computed(
+  () =>
+    isDockExpanded.value &&
+    selectedDockCard.value === THEME_SELECTOR_CARD_KEY &&
+    !drawingDockCard.value &&
+    !liftingDockCard.value &&
+    !returningDockCard.value,
 );
 
 const activeDockAction = computed(() => {
@@ -2809,6 +2961,12 @@ watch(isDockExpanded, (expanded) => {
 
   hoveredDockCard.value = "";
   resetDockSelectionMotion();
+});
+
+watch(canUseVipTheme, (allowed) => {
+  if (!allowed && mapTheme.value === "vip") {
+    handleThemeChange("dark");
+  }
 });
 
 watch(visibleDockActions, (actions) => {
@@ -2987,6 +3145,10 @@ function handleDockCardClick(action) {
     return;
   }
 
+  if (action.key === THEME_SELECTOR_CARD_KEY) {
+    return;
+  }
+
   if (action.disabled) {
     return;
   }
@@ -3014,6 +3176,27 @@ function handleDockCardClick(action) {
     isDockExpanded.value = false;
     action.handler();
   }, 500);
+}
+
+function handleThemeOptionClick(option) {
+  if (!option || dockActionPending.value) {
+    return;
+  }
+
+  if (option.disabled) {
+    showToast("VIP 主题仅对 VIP 用户开放", "warning");
+    return;
+  }
+
+  dockActionPending.value = true;
+
+  window.setTimeout(() => {
+    handleThemeChange(option.key);
+    dockActionPending.value = false;
+    isDockExpanded.value = false;
+    hoveredDockCard.value = "";
+    resetDockSelectionMotion();
+  }, 140);
 }
 
 function getDockLayoutMetrics(index, total, actionKey = "") {
@@ -6385,11 +6568,18 @@ async function handleStoryReport({ storyId, reason, description }) {
 }
 
 function handleThemeChange(theme) {
-  mapTheme.value = theme;
-  localStorage.setItem("mapTheme", theme);
+  const normalizedTheme = normalizeThemeChoice(theme);
+  const nextTheme =
+    normalizedTheme === "vip" && !canUseVipTheme.value ? "dark" : normalizedTheme;
+
+  mapTheme.value = nextTheme;
+  localStorage.setItem("mapTheme", nextTheme);
   window.dispatchEvent(
     new CustomEvent("map-theme-change", {
-      detail: { theme },
+      detail: {
+        theme: nextTheme === "vip" ? "dark" : nextTheme,
+        selectedTheme: nextTheme,
+      },
     }),
   );
 }
@@ -7553,6 +7743,12 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(255, 239, 192, 0.98);
   --dock-card-active-frame: rgba(236, 190, 96, 0.82);
   --dock-card-active-corner: rgba(228, 176, 66, 0.92);
+  --dock-submenu-shadow: rgba(8, 13, 29, 0.28);
+  --dock-submenu-option-text: rgba(255, 255, 255, 0.84);
+  --dock-submenu-option-muted: rgba(255, 255, 255, 0.6);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.08);
+  --dock-submenu-option-border: rgba(255, 255, 255, 0.08);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.14);
   position: fixed;
   bottom: 32px;
   right: 96px;
@@ -7602,6 +7798,12 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(255, 245, 213, 1);
   --dock-card-active-frame: rgba(222, 164, 61, 0.88);
   --dock-card-active-corner: rgba(215, 151, 41, 0.96);
+  --dock-submenu-shadow: rgba(72, 41, 15, 0.18);
+  --dock-submenu-option-text: rgba(255, 249, 238, 0.9);
+  --dock-submenu-option-muted: rgba(255, 238, 214, 0.66);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.1);
+  --dock-submenu-option-border: rgba(255, 242, 220, 0.12);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.16);
 }
 
 .dock-container.dock-dark {
@@ -7642,6 +7844,58 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(226, 238, 255, 0.98);
   --dock-card-active-frame: rgba(155, 193, 255, 0.78);
   --dock-card-active-corner: rgba(155, 193, 255, 0.96);
+  --dock-submenu-shadow: rgba(5, 8, 20, 0.34);
+  --dock-submenu-option-text: rgba(238, 244, 255, 0.88);
+  --dock-submenu-option-muted: rgba(198, 214, 245, 0.62);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.06);
+  --dock-submenu-option-border: rgba(198, 214, 245, 0.08);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.1);
+}
+
+.dock-container.dock-vip-theme {
+  --dock-main-gradient: linear-gradient(
+    135deg,
+    rgba(56, 37, 17, 0.98) 0%,
+    rgba(97, 70, 28, 0.97) 48%,
+    rgba(39, 25, 11, 0.98) 100%
+  );
+  --dock-main-shadow: rgba(39, 24, 7, 0.42);
+  --dock-main-border: rgba(248, 225, 171, 0.26);
+  --dock-info-bg: linear-gradient(
+    145deg,
+    rgba(42, 26, 10, 0.98) 0%,
+    rgba(92, 63, 23, 0.96) 100%
+  );
+  --dock-info-border: rgba(248, 225, 171, 0.22);
+  --dock-info-kicker: rgba(255, 224, 163, 0.94);
+  --dock-info-text: rgba(255, 247, 231, 0.82);
+  --dock-card-surface: linear-gradient(
+    160deg,
+    #24150a 0%,
+    #5b3b16 52%,
+    #8c6730 100%
+  );
+  --dock-card-border: rgba(236, 196, 112, 0.5);
+  --dock-card-frame: rgba(242, 210, 139, 0.34);
+  --dock-card-pattern: rgba(255, 225, 161, 0.16);
+  --dock-card-edge-ring: rgba(255, 221, 145, 0.14);
+  --dock-card-edge-glow: rgba(255, 210, 116, 0.24);
+  --dock-card-order: rgba(255, 232, 187, 0.46);
+  --dock-card-subtitle: rgba(255, 244, 222, 0.74);
+  --dock-card-icon-bg: linear-gradient(
+    145deg,
+    rgba(137, 100, 37, 0.92) 0%,
+    rgba(76, 49, 18, 0.88) 100%
+  );
+  --dock-card-active-border: rgba(255, 238, 194, 0.98);
+  --dock-card-active-frame: rgba(255, 215, 124, 0.86);
+  --dock-card-active-corner: rgba(255, 205, 104, 0.98);
+  --dock-submenu-shadow: rgba(41, 25, 7, 0.34);
+  --dock-submenu-option-text: rgba(255, 248, 233, 0.92);
+  --dock-submenu-option-muted: rgba(248, 228, 188, 0.72);
+  --dock-submenu-option-bg: rgba(255, 247, 230, 0.08);
+  --dock-submenu-option-border: rgba(255, 225, 171, 0.14);
+  --dock-submenu-option-hover: rgba(255, 247, 230, 0.14);
 }
 
 .dock-container.show-user-sidebar {
@@ -7880,6 +8134,10 @@ onUnmounted(() => {
     filter 0.52s ease,
     opacity 0.32s ease,
     border-color 0.52s ease;
+}
+
+.dock-card.selector {
+  cursor: default;
 }
 
 .dock-card-body {
@@ -8251,6 +8509,109 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.dock-card-face--theme-selector {
+  gap: 0;
+  padding: 20px 16px 18px;
+}
+
+.dock-theme-inline {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.dock-theme-inline__eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dock-card-order);
+}
+
+.dock-theme-inline__title {
+  margin-bottom: 16px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--card-ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.dock-theme-inline__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dock-theme-inline-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 11px 12px;
+  border-radius: 18px;
+  border: 2px solid rgba(186, 154, 98, 0.72);
+  background: #efe2c8;
+  color: #23170c;
+  text-align: left;
+  box-shadow:
+    0 10px 20px -16px rgba(15, 12, 10, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.54);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.dock-theme-inline-option:hover,
+.dock-theme-inline-option:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(161, 124, 57, 0.88);
+  background: #f4e8d1;
+  box-shadow:
+    0 14px 24px -20px rgba(15, 12, 10, 0.46),
+    0 0 0 1px rgba(180, 139, 67, 0.2);
+}
+
+.dock-theme-inline-option.active {
+  border-color: #c99a2e;
+  background: #efe2c8;
+  box-shadow:
+    0 16px 28px -20px rgba(15, 12, 10, 0.4),
+    0 0 0 2px rgba(217, 176, 74, 0.38);
+}
+
+.dock-theme-inline-option.disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  box-shadow: none;
+  background: #e2d5bf;
+  border-color: rgba(175, 154, 118, 0.72);
+  color: rgba(61, 47, 33, 0.88);
+}
+
+.dock-theme-inline-option__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.dock-theme-inline-option__meta {
+  font-size: 11px;
+  color: rgba(69, 54, 35, 0.82);
+}
+
 .dock-card-pattern {
   position: absolute;
   inset: 28px 26px;
@@ -8322,6 +8683,15 @@ onUnmounted(() => {
 @media (max-width: 960px) {
   .dock-card-info {
     display: none;
+  }
+
+  .dock-theme-inline__title {
+    margin-bottom: 14px;
+    font-size: 18px;
+  }
+
+  .dock-theme-inline-option {
+    padding: 10px 11px;
   }
 
   .dock-card {
