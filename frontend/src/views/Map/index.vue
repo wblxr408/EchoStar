@@ -51,64 +51,72 @@
         </div>
 
         <!-- 故事标签页 -->
-        <div v-if="searchTab === 'story'" class="map-search-results-list" @scroll="handleSearchScroll">
+        <div ref="searchVScrollContainerRef" v-if="searchTab === 'story'" class="map-search-results-list">
           <div v-if="searchLoading" class="map-search-empty">搜索中...</div>
           <div v-else-if="searchKeyword.trim() && !searchStorySearched" class="map-search-empty">搜索中...</div>
           <div v-else-if="searchKeyword.trim() && searchResults.length === 0" class="map-search-empty">未找到相关故事</div>
           <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入关键词搜索故事</div>
           <template v-else>
+            <div class="vscroll-spacer" :style="{ height: searchVScrollTotalHeight + 'px' }"></div>
             <div
-              v-for="story in searchResults"
-              :key="story.id"
-              class="map-search-card panel-item"
-              :class="{ 'is-vip-card': story.author?.vip }"
-              @click="openStoryFromCollection(story)"
+              v-for="item in searchVScrollVisibleItems"
+              :key="item.data.id"
+              ref="searchVScrollItemRefs"
+              :data-search-story-index="item.index"
+              class="map-search-card panel-item vscroll-item"
+              :class="{ 'is-vip-card': item.data.author?.vip }"
+              :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+              @click="openStoryFromCollection(item.data)"
             >
               <div class="item-header">
-                <img :src="story.avatar" class="item-avatar" alt="头像" />
+                <img :src="item.data.avatar" class="item-avatar" alt="头像" />
                 <div class="item-meta">
-                  <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': story.author?.vip }">{{ story.author?.username || story.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="story.author?.vip">VIP</span></span>
-                  <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ story.locationName || '' }}</span>
+                  <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': item.data.author?.vip }">{{ item.data.author?.username || item.data.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="item.data.author?.vip">VIP</span></span>
+                  <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ item.data.locationName || '' }}</span>
                 </div>
               </div>
-              <p class="item-content">{{ story.content }}</p>
-              <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+              <p class="item-content">{{ item.data.content }}</p>
+              <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
               <div class="item-footer">
-                <span class="item-likes">👁 {{ story.viewCount ?? 0 }}</span>
+                <span class="item-likes">👁 {{ item.data.viewCount ?? 0 }}</span>
               </div>
             </div>
             <div v-if="searchLoadingMore" class="map-search-empty">加载更多...</div>
-            <div v-else-if="searchHasMore && searchResults.length > 0" class="map-search-empty" style="cursor:pointer" @click="loadSearchResults(true)">点击加载更多</div>
+            <div v-if="!searchHasMore && searchResults.length > 0" class="map-search-empty">没有更多了</div>
           </template>
         </div>
 
         <!-- 用户标签页 -->
-        <div v-else class="map-search-results-list" @scroll="handleUserSearchScroll">
+        <div ref="userSearchVScrollContainerRef" v-else class="map-search-results-list">
           <div v-if="searchUserLoading" class="map-search-empty">搜索中...</div>
           <div v-else-if="searchKeyword.trim() && !searchUserSearched" class="map-search-empty">搜索中...</div>
           <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入用户名或ID搜索用户</div>
           <div v-else-if="searchUserResults.length === 0" class="map-search-empty">未找到相关用户</div>
           <template v-else>
+            <div class="vscroll-spacer" :style="{ height: userSearchVScrollTotalHeight + 'px' }"></div>
             <div
-              v-for="user in searchUserResults"
-              :key="user.id"
-              class="search-user-card"
-              :class="{ 'is-vip-card': user.vip }"
-              @click="openUserDetail(user)"
+              v-for="item in userSearchVScrollVisibleItems"
+              :key="item.data.id"
+              ref="userSearchVScrollItemRefs"
+              :data-search-user-index="item.index"
+              class="search-user-card vscroll-item"
+              :class="{ 'is-vip-card': item.data.vip }"
+              :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+              @click="openUserDetail(item.data)"
             >
               <div class="search-user-card__avatar">
-                <img :src="user.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
+                <img :src="item.data.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
               </div>
               <div class="search-user-card__info">
                 <div class="search-user-card__name-row">
-                  <span class="vip-name-row"><span class="search-user-card__name vip-username" :class="{ 'has-vip': user.vip }">{{ user.username || '未设置' }}</span><span class="vip-text-badge-sm" v-if="user.vip">VIP</span></span>
+                  <span class="vip-name-row"><span class="search-user-card__name vip-username" :class="{ 'has-vip': item.data.vip }">{{ item.data.username || '未设置' }}</span><span class="vip-text-badge-sm" v-if="item.data.vip">VIP</span></span>
                 </div>
-                <div class="search-user-card__id">STAR-ID: {{ user.id }}</div>
+                <div class="search-user-card__id">STAR-ID: {{ item.data.id }}</div>
               </div>
               <svg class="search-user-card__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
             <div v-if="searchUserLoadingMore" class="map-search-empty">加载更多...</div>
-            <div v-else-if="searchUserHasMore && searchUserResults.length > 0" class="map-search-empty" style="cursor:pointer" @click="performUserSearch(searchKeyword.trim(), true)">点击加载更多</div>
+            <div v-if="!searchUserHasMore && searchUserResults.length > 0" class="map-search-empty">没有更多了</div>
           </template>
         </div>
       </div>
@@ -423,24 +431,24 @@
                   发布故事或点赞更多内容，会为你推荐更懂你的故事
                 </p>
               </div>
-              <div v-else class="story-list">
-                <StoryCard
-                  v-for="story in feedStories"
-                  :key="story.id"
-                  :story="story"
-                  @preview-image="handlePreviewImage"
-                  @select-story="openStoryFromCollection"
-                />
-                <div v-if="feedHasMore" class="load-more-wrap">
-                  <button
-                    class="load-more-btn"
-                    :disabled="feedLoadingMore"
-                    @click="loadMoreFeed"
-                  >
-                    {{ feedLoadingMore ? "加载中..." : "加载更多" }}
-                  </button>
+              <template v-else>
+                <div ref="feedVScrollContainerRef" class="story-list vscroll-container">
+                  <div class="vscroll-spacer" :style="{ height: feedVScrollTotalHeight + 'px' }"></div>
+                  <StoryCard
+                    v-for="item in feedVScrollVisibleItems"
+                    :key="item.data.id"
+                    ref="feedVScrollItemRefs"
+                    :data-feed-index="item.index"
+                    :story="item.data"
+                    class="vscroll-item"
+                    :style="{ position: 'absolute', top: item.top + 'px', width: '100%' }"
+                    @preview-image="handlePreviewImage"
+                    @select-story="openStoryFromCollection"
+                  />
+                  <div v-if="!feedHasMore && feedStories.length > 0" class="load-more-wrap"><span class="load-more-btn" style="cursor:default;border:none;background:none;">没有更多了</span></div>
+                  <div v-else-if="feedLoadingMore" class="load-more-wrap"><span class="load-more-btn" style="cursor:default;border:none;background:none;">加载中...</span></div>
                 </div>
-              </div>
+              </template>
             </div>
 
             <div v-if="sidebarTab === 'featured'">
@@ -975,8 +983,8 @@
               </button>
             </div>
 
-            <!-- 标签内容区 -->
-            <div class="user-content-list" @scroll="handleContentListScroll">
+            <!-- 标签内容区（虚拟滚动） -->
+            <div ref="vScrollContainerRef" class="user-content-list">
               <!-- 作品 -->
               <template v-if="userContentTab === 'posts'">
                 <div v-if="postsLoading && postsList.length === 0" class="panel-loading">
@@ -985,26 +993,36 @@
                 <div v-else-if="postsList.length === 0" class="panel-empty">
                   <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
                 </div>
-                <div v-else class="panel-list">
-                  <div v-for="story in postsList" :key="story.id" class="panel-item" :class="{ 'is-vip-card': getStoryAuthorVip(story) }" @click="handleStoryClick(story)">
+                <template v-else>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
+                  <div
+                    v-for="item in vScrollVisibleItems"
+                    :key="item.data.id"
+                    ref="vScrollItemRefs"
+                    :data-virtual-index="item.index"
+                    class="panel-item vscroll-item"
+                    :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+                    @click="handleStoryClick(item.data)"
+                  >
                     <div class="item-header">
-                      <img :src="story.avatar" class="item-avatar" alt="头像" />
+                      <img :src="item.data.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
-                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(story) }">{{ getStoryAuthorName(story) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(story)">VIP</span></span>
-                        <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
+                        <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                       </div>
-                      <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(story)"><span>🗑️</span></button>
+                      <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(item.data)"><span>🗑️</span></button>
                     </div>
-                    <p class="item-content">{{ story.content }}</p>
-                    <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                    <p class="item-content">{{ item.data.content }}</p>
+                    <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
-                      <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-                      <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                      <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
                     </div>
                   </div>
                   <div v-if="postsLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
                   <div v-if="!postsHasMore && postsList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
-                </div>
+                </template>
               </template>
 
               <!-- 点赞 -->
@@ -1015,26 +1033,36 @@
                 <div v-else-if="likesList.length === 0" class="panel-empty">
                   <span class="empty-icon">💝</span><span>还没有点赞任何故事</span>
                 </div>
-                <div v-else class="panel-list">
-                  <div v-for="story in likesList" :key="story.id" class="panel-item" :class="{ 'is-vip-card': getStoryAuthorVip(story) }" @click="handleStoryClick(story)">
+                <template v-else>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
+                  <div
+                    v-for="item in vScrollVisibleItems"
+                    :key="item.data.id"
+                    ref="vScrollItemRefs"
+                    :data-virtual-index="item.index"
+                    class="panel-item vscroll-item"
+                    :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+                    @click="handleStoryClick(item.data)"
+                  >
                     <div class="item-header">
-                      <img :src="story.avatar" class="item-avatar" alt="头像" />
+                      <img :src="item.data.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
-                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(story) }">{{ getStoryAuthorName(story) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(story)">VIP</span></span>
-                        <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
+                        <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                       </div>
-                      <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(story)"><span>❌</span></button>
+                      <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(item.data)"><span>❌</span></button>
                     </div>
-                    <p class="item-content">{{ story.content }}</p>
-                    <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                    <p class="item-content">{{ item.data.content }}</p>
+                    <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
-                      <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-                      <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                      <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
                     </div>
                   </div>
                   <div v-if="likesLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
                   <div v-if="!likesHasMore && likesList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
-                </div>
+                </template>
               </template>
 
               <!-- 收藏 -->
@@ -1045,31 +1073,41 @@
                 <div v-else-if="favoritesList.length === 0" class="panel-empty">
                   <span class="empty-icon">⭐</span><span>还没有收藏任何故事</span>
                 </div>
-                <div v-else class="panel-list">
-                  <div v-for="story in favoritesList" :key="story.id" class="panel-item" :class="{ 'is-vip-card': getStoryAuthorVip(story) }" @click="handleStoryClick(story)">
+                <template v-else>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
+                  <div
+                    v-for="item in vScrollVisibleItems"
+                    :key="item.data.id"
+                    ref="vScrollItemRefs"
+                    :data-virtual-index="item.index"
+                    class="panel-item vscroll-item"
+                    :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+                    @click="handleStoryClick(item.data)"
+                  >
                     <div class="item-header">
-                      <img :src="story.avatar" class="item-avatar" alt="头像" />
+                      <img :src="item.data.avatar" class="item-avatar" alt="头像" />
                       <div class="item-meta">
-                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(story) }">{{ getStoryAuthorName(story) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(story)">VIP</span></span>
-                        <span class="item-time">{{ formatRelativeTime(story.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(story) }}</span>
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
+                        <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                       </div>
                       <button
                         class="item-action-btn unfavorite-btn"
-                        :class="{ 'is-restorable': story.isFavorited === false }"
-                        :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
-                        @click.stop="handleToggleFavoriteFromList(story)"
-                      ><span>{{ story.isFavorited !== false ? "❌" : "✨" }}</span></button>
+                        :class="{ 'is-restorable': item.data.isFavorited === false }"
+                        :title="item.data.isFavorited !== false ? '取消收藏' : '重新收藏'"
+                        @click.stop="handleToggleFavoriteFromList(item.data)"
+                      ><span>{{ item.data.isFavorited !== false ? "❌" : "✨" }}</span></button>
                     </div>
-                    <p class="item-content">{{ story.content }}</p>
-                    <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                    <p class="item-content">{{ item.data.content }}</p>
+                    <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
-                      <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-                      <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                      <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
                     </div>
                   </div>
                   <div v-if="favoritesLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
                   <div v-if="!favoritesHasMore && favoritesList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
-                </div>
+                </template>
               </template>
             </div>
           </div>
@@ -1396,6 +1434,7 @@ import { getAnnouncementTypeIcon } from "../../utils/announcement";
 import { searchPoisWithContext } from "../../utils/poiSearch";
 import { REPORT_TYPES } from "../../utils/report";
 import { uploadAvatar as uploadToOSS, validateImage } from "../../utils/upload";
+import { useVirtualScroll } from "../../composables/useVirtualScroll.js";
 
 const mapStore = useMapStore();
 const userStore = useUserStore();
@@ -1784,9 +1823,104 @@ const likesPageSize = 10;
 const postsPageSize = 10;
 const favoritesPageSize = 10;
 
+// 虚拟滚动：根据当前标签页动态切换数据源
+const currentVirtualList = computed(() => {
+  if (userContentTab.value === 'posts') return postsList.value;
+  if (userContentTab.value === 'likes') return likesList.value;
+  if (userContentTab.value === 'favorites') return favoritesList.value;
+  return [];
+});
+
+const {
+  containerRef: vScrollContainerRef,
+  totalHeight: vScrollTotalHeight,
+  visibleItems: vScrollVisibleItems,
+  connect: vScrollConnect,
+  disconnect: vScrollDisconnect,
+  scheduleMeasure: vScrollScheduleMeasure,
+  flushMeasurements: vScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: currentVirtualList,
+  estimatedHeight: 160,
+  gap: 12, // 卡片间距（替代原 flex gap）
+  bufferCount: 4,
+  onNearBottom: () => {
+    // 滚动到底部附近时加载更多
+    if (userContentTab.value === 'posts') loadPostsData(true);
+    else if (userContentTab.value === 'likes') loadLikesData(true);
+    else if (userContentTab.value === 'favorites') loadFavoritesData(true);
+  },
+});
+
+// 虚拟滚动项的 DOM 引用（用于测量实际高度）
+const vScrollItemRefs = ref([]);
+
+// 监听虚拟滚动项的 DOM 变化，实时测量高度
+watch(vScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (const el of refs) {
+    if (el) {
+      const idx = parseInt(el.dataset.virtualIndex, 10);
+      if (!isNaN(idx)) {
+        vScrollScheduleMeasure(idx, el);
+      }
+    }
+  }
+}, { flush: 'post', deep: true });
+
+// 每次可见项更新后刷新测量
+watch(vScrollVisibleItems, () => {
+  nextTick(() => { vScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+// ========== 搜索虚拟滚动（声明后移至 searchResults/searchUserResults 之后）==========
+
+// ========== Feed 推荐流虚拟滚动 ==========
+const feedVScrollItemRefs = ref([]);
+const {
+  containerRef: feedVScrollContainerRef,
+  totalHeight: feedVScrollTotalHeight,
+  visibleItems: feedVScrollVisibleItems,
+  connect: feedVScrollConnect,
+  disconnect: feedVScrollDisconnect,
+  scheduleMeasure: feedVScrollScheduleMeasure,
+  flushMeasurements: feedVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: computed(() => feedStories.value),
+  estimatedHeight: 220,
+  gap: 14, // story-list 的 gap
+  bufferCount: 3,
+  onNearBottom: () => loadMoreFeed(),
+});
+
+watch(feedVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (const el of refs) {
+    if (el) {
+      const idx = parseInt(el.dataset.feedIndex, 10);
+      if (!isNaN(idx)) feedVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(feedVScrollVisibleItems, () => {
+  nextTick(() => { feedVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
 const sidebarTab = ref("nearby");
 const featuredStories = ref([]);
 const announcements = ref([]);
+
+// 搜索面板打开/关闭时连接/断开搜索虚拟滚动（移至搜索 VS 实例声明后）
+
+// Feed 区域在 recommend tab 激活时连接
+watch(sidebarTab, (tab) => {
+  if (tab === 'recommend') {
+    nextTick(() => feedVScrollConnect());
+  } else {
+    feedVScrollDisconnect();
+  }
+});
 
 const storyCommentComposerOpen = ref(false);
 const storyCommentDraft = ref("");
@@ -1821,6 +1955,83 @@ const searchUserPageSize = 20;
 const searchedUser = ref(null);
 const searchedUserStories = ref([]);
 const searchUserDetailOpen = ref(false);
+
+// ========== 搜索故事虚拟滚动 ==========
+const searchVScrollItemRefs = ref([]);
+const {
+  containerRef: searchVScrollContainerRef,
+  totalHeight: searchVScrollTotalHeight,
+  visibleItems: searchVScrollVisibleItems,
+  connect: searchVScrollConnect,
+  disconnect: searchVScrollDisconnect,
+  scheduleMeasure: searchVScrollScheduleMeasure,
+  flushMeasurements: searchVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: computed(() => searchResults.value),
+  estimatedHeight: 130,
+  gap: 8,
+  bufferCount: 4,
+  onNearBottom: () => loadSearchResults(true),
+});
+
+watch(searchVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (const el of refs) {
+    if (el) {
+      const idx = parseInt(el.dataset.searchStoryIndex, 10);
+      if (!isNaN(idx)) searchVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(searchVScrollVisibleItems, () => {
+  nextTick(() => { searchVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+// ========== 搜索用户虚拟滚动 ==========
+const userSearchVScrollItemRefs = ref([]);
+const {
+  containerRef: userSearchVScrollContainerRef,
+  totalHeight: userSearchVScrollTotalHeight,
+  visibleItems: userSearchVScrollVisibleItems,
+  connect: userSearchVScrollConnect,
+  disconnect: userSearchVScrollDisconnect,
+  scheduleMeasure: userSearchVScrollScheduleMeasure,
+  flushMeasurements: userSearchVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: computed(() => searchUserResults.value),
+  estimatedHeight: 68,
+  gap: 0,
+  bufferCount: 6,
+  onNearBottom: () => performUserSearch(searchKeyword.value.trim(), true),
+});
+
+watch(userSearchVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (const el of refs) {
+    if (el) {
+      const idx = parseInt(el.dataset.searchUserIndex, 10);
+      if (!isNaN(idx)) userSearchVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(userSearchVScrollVisibleItems, () => {
+  nextTick(() => { userSearchVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+// 搜索面板打开/关闭时连接/断开搜索虚拟滚动
+watch(searchFocused, (focused) => {
+  if (focused) {
+    nextTick(() => {
+      searchVScrollConnect();
+      userSearchVScrollConnect();
+    });
+  } else {
+    searchVScrollDisconnect();
+    userSearchVScrollDisconnect();
+  }
+});
 
 const showSearchPanel = computed(() => {
   return searchFocused.value;
@@ -3654,6 +3865,7 @@ function closeUserPanel() {
   // 关闭时保存 bio 和编辑资料弹窗中的更改
   savePendingChanges();
   showUserSidebar.value = false;
+  vScrollDisconnect();
   showLikesPanel.value = false;
   showPostsPanel.value = false;
   showFavoritesPanel.value = false;
@@ -4997,6 +5209,8 @@ function handleUserClick() {
   }
   setTimeout(() => {
     showUserSidebar.value = true;
+    // 面板打开后连接虚拟滚动（等 DOM 渲染完）
+    nextTick(() => vScrollConnect());
   }, 100);
   isDockExpanded.value = false;
 
@@ -5203,6 +5417,11 @@ async function loadPostsData(isLoadMore = false) {
       postsTotalCount.value = data.pagination.total;
     } else if (!isLoadMore) {
       postsTotalCount.value = stories.length;
+    }
+
+    // 判断是否已到最后一页
+    if (stories.length < postsPageSize) {
+      postsHasMore.value = false;
     }
 
     void hydrateStoryLocations(stories);
@@ -7595,9 +7814,14 @@ onUnmounted(() => {
 }
 
 .story-list {
+  position: relative;
+  padding-bottom: 64px;
+}
+
+/* 非 Feed 的 story-list 保持 grid 布局（如精选等） */
+.story-list:not(.vscroll-container) {
   display: grid;
   gap: 14px;
-  padding-bottom: 64px;
 }
 
 .story-list :deep(.story-card),
@@ -7873,7 +8097,7 @@ onUnmounted(() => {
   overflow: hidden;
   cursor: pointer;
   transition: all 0.3s;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
 .featured-story-card:hover {
@@ -9577,10 +9801,11 @@ onUnmounted(() => {
 
 .user-sidebar-content {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   z-index: 1;
-  padding: 20px 28px 28px;
+  padding: 20px 36px 28px;
 }
 
 .guest-profile {
@@ -10382,16 +10607,17 @@ onUnmounted(() => {
 .panel-item {
   padding: 16px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 3px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: scale(0.98);
 }
 
 .panel-item:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(102, 126, 234, 0.3);
-  transform: translateX(-2px);
+  transform: scale(1);
 }
 
 .item-avatar {
@@ -11472,7 +11698,7 @@ onUnmounted(() => {
 
 /* 浅色模式下内容列表的卡片样式 */
 .user-sidebar:not(.dark) .user-content-list .panel-item {
-  border-color: rgba(164, 122, 48, 0.25);
+  border-color: rgba(164, 122, 48, 0.38);
 }
 
 .user-sidebar:not(.dark) .user-content-list .item-author {
@@ -12873,12 +13099,26 @@ onUnmounted(() => {
 
 /* 内容列表区域 */
 .user-content-list {
+  position: relative; /* 虚拟滚动子元素绝对定位需要 */
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 4px 8px;
   min-height: 200px;
   max-height: calc(100vh - 420px);
 }
+
+/* 虚拟滚动相关样式 */
+.vscroll-spacer {
+  position: relative;
+  width: 100%;
+  pointer-events: none;
+}
+
+.vscroll-item {
+  box-sizing: border-box;
+}
+
+/* 用户面板卡片间距（由 composable gap:12 处理，此处不再重复） */
 
 /* 隐藏整个侧边栏的外层滚动条 */
 .user-sidebar {
@@ -13375,14 +13615,16 @@ onUnmounted(() => {
 /* 浅色模式暖色调 */
 .map-search-bar:not(.dark) .map-search-input-wrap {
   background: linear-gradient(135deg, rgba(250, 239, 217, 0.92) 0%, rgba(240, 223, 191, 0.92) 100%);
-  border-color: rgba(22, 18, 12, 0.72);
+  border-color: rgba(92, 51, 20, 0.65);
+  border-width: 3px;
   box-shadow:
     0 10px 28px rgba(7, 11, 22, 0.2),
     0 0 0 1px rgba(255, 248, 232, 0.72),
     0 0 24px rgba(114, 80, 22, 0.18);
 }
 .map-search-bar:not(.dark) .map-search-input-wrap:focus-within {
-  border-color: rgba(12, 10, 8, 0.88);
+  border-color: rgba(72, 38, 12, 0.82);
+  border-width: 3px;
   box-shadow:
     0 12px 32px rgba(7, 11, 22, 0.24),
     0 0 0 1px rgba(255, 248, 232, 0.86),
@@ -13497,6 +13739,7 @@ onUnmounted(() => {
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
 }
 .map-search-results-list {
+  position: relative; /* 虚拟滚动子元素绝对定位需要 */
   overflow-y: auto;
   max-height: calc(100vh - 120px);
   padding: 8px;
@@ -13504,9 +13747,8 @@ onUnmounted(() => {
 }
 .map-search-results-list::-webkit-scrollbar { display: none; }
 .map-search-card {
-  margin-bottom: 8px;
 }
-.map-search-card:last-child { margin-bottom: 0; }
+.map-search-card:last-child { }
 .map-search-results.dark .map-search-card.panel-item {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(182, 208, 255, 0.12);
@@ -13517,7 +13759,8 @@ onUnmounted(() => {
 .map-search-results.dark .map-search-card .item-footer { color: rgba(255, 255, 255, 0.5); }
 .map-search-results:not(.dark) .map-search-card.panel-item {
   background: rgba(255, 252, 246, 0.34);
-  border-color: rgba(164, 122, 48, 0.25);
+  border-color: rgba(164, 122, 48, 0.35);
+  border-width: 1.5px;
   box-shadow: 0 18px 26px -22px rgba(98, 75, 34, 0.18);
 }
 .map-search-results:not(.dark) .map-search-card.panel-item:hover {
@@ -13531,12 +13774,12 @@ onUnmounted(() => {
 /* 搜索用户结果面板内故事列表浅色模式文字 */
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item {
   background: rgba(255, 252, 246, 0.34);
-  border-color: rgba(164, 122, 48, 0.25);
+  border-color: rgba(164, 122, 48, 0.38);
   box-shadow: 0 18px 26px -22px rgba(98, 75, 34, 0.18);
 }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item:hover {
   background: rgba(255, 250, 242, 0.52);
-  border-color: rgba(164, 122, 48, 0.35);
+  border-color: rgba(164, 122, 48, 0.52);
 }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-content { color: #2c2c2c; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-author { color: #333; }
@@ -13800,7 +14043,7 @@ onUnmounted(() => {
   border-color: rgba(255, 255, 255, 0.42);
 }
 .map-search-user-detail:not(.dark) .user-content-list .panel-item {
-  border-color: rgba(164, 122, 48, 0.25);
+  border-color: rgba(164, 122, 48, 0.38);
 }
 .map-search-user-detail:not(.dark) .user-content-list .item-author { color: #3c2910; }
 .map-search-user-detail:not(.dark) .user-content-list .item-content { color: #3c2910; }

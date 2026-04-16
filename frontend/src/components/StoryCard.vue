@@ -303,22 +303,22 @@ function handleSelect() {
 }
 
 .story-card.emotion-happy {
-  border-left: 4px solid #ffd93d;
+  border-left: 12px solid #ffd93d;
 }
 
 .story-card.emotion-sad {
-  border-left: 4px solid #6bceff;
+  border-left: 12px solid #6bceff;
 }
 
 .story-card.emotion-neutral {
-  border-left: 4px solid #c8d6e5;
+  border-left: 12px solid #c8d6e5;
 }
 
 .story-card.emotion-excited {
-  border-left: 4px solid #ff6b9d;
+  border-left: 12px solid #ff6b9d;
 }
 
 .story-card.emotion-peaceful {
-  border-left: 4px solid #a8e6cf;
+  border-left: 12px solid #a8e6cf;
 }
 </style>
