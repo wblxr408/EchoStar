@@ -150,7 +150,48 @@
     <!-- 用户详情弹窗 -->
     <Teleport to="body">
       <transition name="publish-modal">
-        <div v-if="searchUserDetailOpen && searchedUser" class="search-user-modal-shell" @click.self="closeUserDetail">
+        <div v-if="searchUserDetailOpen && searchedUser" class="search-user-modal-shell" :class="{ 'has-profile-search': userDetailSearchActive }" @click.self="closeUserDetail">
+        <!-- 左侧搜索结果面板 -->
+        <transition name="profile-search-panel">
+          <div v-if="userDetailSearchQuery" class="profile-search-panel" :class="{ dark: effectiveMapTheme === 'dark' }">
+            <div class="profile-search-header">
+              <h3>搜索结果 <span class="profile-search-count" v-if="userDetailSearchResults.length">({{ userDetailSearchResults.length }})</span></h3>
+              <button class="close-btn" @click.stop="userDetailSearchQuery = ''"><span>×</span></button>
+            </div>
+            <div ref="userDetailSearchVScrollContainerRef" class="profile-search-list">
+              <div v-if="userDetailSearchResults.length === 0" class="panel-empty">
+                <span class="empty-icon">🔍</span><span>没有找到匹配的故事</span>
+              </div>
+              <template v-else>
+                <div class="vscroll-spacer" :style="{ height: userDetailSearchVScrollTotalHeight + 'px' }"></div>
+                <div
+                  v-for="item in userDetailSearchVScrollVisibleItems"
+                  :key="item.data.id + '-search-' + searchAnimationKey"
+                  ref="userDetailSearchVScrollItemRefs"
+                  :data-virtual-index="item.index"
+                  class="panel-item vscroll-item story-card-enter"
+                  :class="{ 'is-vip-card': searchedUser.vip }"
+                  :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                  @click="openStoryFromCollection(item.data)"
+                >
+                  <div class="item-header">
+                    <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
+                    <div class="item-meta">
+                      <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="searchedUser.vip">VIP</span></span>
+                      <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
+                    </div>
+                  </div>
+                  <p class="item-content">{{ item.data.content }}</p>
+                  <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                  <div class="item-footer">
+                    <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                    <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </transition>
         <div class="map-search-user-detail" :class="{ dark: effectiveMapTheme === 'dark' }">
           <div class="user-sidebar-header">
             <h3>个人信息</h3>
@@ -183,6 +224,12 @@
                 <div class="bio-content">
                   <span class="bio-text">{{ searchedUser.bio }}</span>
                 </div>
+              </div>
+
+              <!-- 搜索框 -->
+              <div class="profile-search-input-wrapper">
+                <input v-model="userDetailSearchQuery" placeholder="搜索故事..." class="profile-search-input" />
+                <button v-if="userDetailSearchQuery" class="search-clear-btn" @click="userDetailSearchQuery = ''">×</button>
               </div>
 
               <!-- 标签栏 -->
@@ -802,7 +849,48 @@
       </transition>
 
     <transition name="publish-modal">
-      <div v-if="showUserSidebar" class="user-modal-shell">
+      <div v-if="showUserSidebar" class="user-modal-shell" :class="{ 'has-profile-search': myProfileSearchActive }">
+        <!-- 左侧搜索结果面板 -->
+        <transition name="profile-search-panel">
+          <div v-if="myProfileSearchQuery" class="profile-search-panel" :class="{ dark: effectiveMapTheme === 'dark' }">
+            <div class="profile-search-header">
+              <h3>搜索结果 <span class="profile-search-count" v-if="myProfileSearchResults.length">({{ myProfileSearchResults.length }})</span></h3>
+              <button class="close-btn" @click.stop="myProfileSearchQuery = ''"><span>×</span></button>
+            </div>
+            <div ref="myProfileSearchVScrollContainerRef" class="profile-search-list">
+              <div v-if="myProfileSearchResults.length === 0" class="panel-empty">
+                <span class="empty-icon">🔍</span><span>没有找到匹配的故事</span>
+              </div>
+              <template v-else>
+                <div class="vscroll-spacer" :style="{ height: myProfileSearchVScrollTotalHeight + 'px' }"></div>
+                <div
+                  v-for="item in myProfileSearchVScrollVisibleItems"
+                  :key="item.data.id + '-mysearch-' + storyCardAnimationKey"
+                  ref="myProfileSearchVScrollItemRefs"
+                  :data-virtual-index="item.index"
+                  class="panel-item vscroll-item story-card-enter"
+                  :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
+                  :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                  @click="handleStoryClick(item.data)"
+                >
+                  <div class="item-header">
+                    <img :src="item.data.avatar" class="item-avatar" alt="头像" />
+                    <div class="item-meta">
+                      <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
+                      <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
+                    </div>
+                  </div>
+                  <p class="item-content">{{ item.data.content }}</p>
+                  <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                  <div class="item-footer">
+                    <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                    <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </transition>
         <div
           class="user-sidebar"
           :class="{
@@ -961,6 +1049,12 @@
               <div class="bio-edit-icon">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </div>
+            </div>
+
+            <!-- 搜索框 -->
+            <div class="profile-search-input-wrapper">
+              <input v-model="myProfileSearchQuery" placeholder="搜索故事..." class="profile-search-input" />
+              <button v-if="myProfileSearchQuery" class="search-clear-btn" @click="myProfileSearchQuery = ''">×</button>
             </div>
 
             <!-- 标签栏 -->
@@ -2265,6 +2359,120 @@ watch(userDetailVScrollItemRefs, (refs) => {
 watch(userDetailVScrollVisibleItems, () => {
   nextTick(() => { userDetailVScrollFlushMeasurements(); });
 }, { flush: 'post' });
+
+// ========== 个人主页搜索（左侧弹窗）==========
+
+// --- 他人主页搜索 ---
+const userDetailSearchQuery = ref('');
+const userDetailSearchActive = ref(false);
+let userDetailSearchActiveTimer = null;
+const userDetailSearchResults = computed(() => {
+  const query = userDetailSearchQuery.value.trim().toLowerCase();
+  if (!query) return [];
+  return searchedUserStories.value.filter(s => s.content && s.content.toLowerCase().includes(query));
+});
+
+const {
+  containerRef: userDetailSearchVScrollContainerRef,
+  totalHeight: userDetailSearchVScrollTotalHeight,
+  visibleItems: userDetailSearchVScrollVisibleItems,
+  connect: userDetailSearchVScrollConnect,
+  disconnect: userDetailSearchVScrollDisconnect,
+  scheduleMeasure: userDetailSearchVScrollScheduleMeasure,
+  flushMeasurements: userDetailSearchVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: userDetailSearchResults,
+  estimatedHeight: 160,
+  gap: 12,
+  bufferCount: 4,
+});
+
+const userDetailSearchVScrollItemRefs = ref([]);
+
+watch(userDetailSearchVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.virtualIndex, 10);
+      if (!isNaN(idx)) userDetailSearchVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(userDetailSearchVScrollVisibleItems, () => {
+  nextTick(() => { userDetailSearchVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+watch(userDetailSearchQuery, (val) => {
+  if (val.trim()) {
+    if (userDetailSearchActiveTimer) { clearTimeout(userDetailSearchActiveTimer); userDetailSearchActiveTimer = null; }
+    userDetailSearchActive.value = true;
+    nextTick(() => userDetailSearchVScrollConnect());
+  } else {
+    userDetailSearchVScrollDisconnect();
+    userDetailSearchActiveTimer = setTimeout(() => {
+      userDetailSearchActive.value = false;
+      userDetailSearchActiveTimer = null;
+    }, 400);
+  }
+});
+
+// --- 我的主页搜索 ---
+const myProfileSearchQuery = ref('');
+const myProfileSearchActive = ref(false);
+let myProfileSearchActiveTimer = null;
+const myProfileSearchResults = computed(() => {
+  const query = myProfileSearchQuery.value.trim().toLowerCase();
+  if (!query) return [];
+  return currentVirtualList.value.filter(s => s.content && s.content.toLowerCase().includes(query));
+});
+
+const {
+  containerRef: myProfileSearchVScrollContainerRef,
+  totalHeight: myProfileSearchVScrollTotalHeight,
+  visibleItems: myProfileSearchVScrollVisibleItems,
+  connect: myProfileSearchVScrollConnect,
+  disconnect: myProfileSearchVScrollDisconnect,
+  scheduleMeasure: myProfileSearchVScrollScheduleMeasure,
+  flushMeasurements: myProfileSearchVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: myProfileSearchResults,
+  estimatedHeight: 160,
+  gap: 12,
+  bufferCount: 4,
+});
+
+const myProfileSearchVScrollItemRefs = ref([]);
+
+watch(myProfileSearchVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.virtualIndex, 10);
+      if (!isNaN(idx)) myProfileSearchVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(myProfileSearchVScrollVisibleItems, () => {
+  nextTick(() => { myProfileSearchVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+watch(myProfileSearchQuery, (val) => {
+  if (val.trim()) {
+    if (myProfileSearchActiveTimer) { clearTimeout(myProfileSearchActiveTimer); myProfileSearchActiveTimer = null; }
+    myProfileSearchActive.value = true;
+    nextTick(() => myProfileSearchVScrollConnect());
+  } else {
+    myProfileSearchVScrollDisconnect();
+    myProfileSearchActiveTimer = setTimeout(() => {
+      myProfileSearchActive.value = false;
+      myProfileSearchActiveTimer = null;
+    }, 400);
+  }
+});
 
 // --- 地点搜索状态 ---
 const searchPlaceResults = ref([]);
@@ -4206,6 +4414,10 @@ function closeUserPanel() {
   savePendingChanges();
   showUserSidebar.value = false;
   vScrollDisconnect();
+  myProfileSearchQuery.value = '';
+  myProfileSearchVScrollDisconnect();
+  if (myProfileSearchActiveTimer) { clearTimeout(myProfileSearchActiveTimer); myProfileSearchActiveTimer = null; }
+  myProfileSearchActive.value = false;
   showLikesPanel.value = false;
   showPostsPanel.value = false;
   showFavoritesPanel.value = false;
@@ -4468,6 +4680,10 @@ function switchUserContentTab(tab) {
   // 触发入场动画
   storyCardAnimationKey.value++;
   resetProfileScrollState();
+  myProfileSearchQuery.value = '';
+  myProfileSearchVScrollDisconnect();
+  if (myProfileSearchActiveTimer) { clearTimeout(myProfileSearchActiveTimer); myProfileSearchActiveTimer = null; }
+  myProfileSearchActive.value = false;
   if (tab === 'posts' && postsList.value.length === 0) loadPostsData();
   else if (tab === 'likes' && likesList.value.length === 0) loadLikesData();
   else if (tab === 'favorites' && favoritesList.value.length === 0) loadFavoritesData();
@@ -6349,6 +6565,10 @@ async function openUserDetail(user) {
 function closeUserDetail() {
   searchUserDetailOpen.value = false;
   userDetailVScrollDisconnect();
+  userDetailSearchQuery.value = '';
+  userDetailSearchVScrollDisconnect();
+  if (userDetailSearchActiveTimer) { clearTimeout(userDetailSearchActiveTimer); userDetailSearchActiveTimer = null; }
+  userDetailSearchActive.value = false;
   resetProfileScrollState();
 }
 
@@ -14816,6 +15036,296 @@ onUnmounted(() => {
 .map-search-user-detail:not(.dark) .content-tab.active { color: #5e3f14; }
 
 /* ===== 搜索用户信息面板 ===== */
+
+/* ===== 个人主页搜索（左侧弹窗） ===== */
+.profile-search-panel {
+  position: relative;
+  width: min(480px, 42vw);
+  height: min(90vh, 960px);
+  border-radius: 36px;
+  border: 1px solid rgba(196, 142, 48, 0.34);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 23, 37, 0.97) 0%,
+    rgba(31, 42, 64, 0.98) 56%,
+    rgba(17, 25, 42, 0.98) 100%
+  );
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.profile-search-panel::before {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(199, 151, 60, 0.22);
+  pointer-events: none;
+  z-index: 0;
+}
+.profile-search-panel:not(.dark) {
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 52%,
+    rgba(229, 206, 166, 0.98) 100%
+  );
+  border-color: rgba(196, 142, 48, 0.38);
+  box-shadow:
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+.profile-search-panel:not(.dark)::before {
+  border-color: rgba(199, 151, 60, 0.22);
+}
+
+.profile-search-header {
+  position: relative;
+  z-index: 1;
+  padding: 28px 28px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-right: 108px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+}
+.profile-search-panel:not(.dark) .profile-search-header {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 245, 0.42) 0%,
+    rgba(255, 245, 227, 0.14) 100%
+  );
+}
+.profile-search-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+}
+.profile-search-panel:not(.dark) .profile-search-header h3 {
+  color: #3c2910;
+}
+.profile-search-count {
+  font-size: 14px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+.profile-search-header .close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  min-width: 88px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(13, 19, 34, 0.82);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.profile-search-header .close-btn:hover {
+  background: rgba(26, 35, 58, 0.96);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+.profile-search-panel:not(.dark) .close-btn {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+}
+.profile-search-panel:not(.dark) .close-btn:hover {
+  background: rgba(53, 34, 13, 0.92);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.profile-search-list {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  padding: 16px 20px 20px;
+  scrollbar-width: none;
+}
+.profile-search-list::-webkit-scrollbar {
+  display: none;
+}
+.profile-search-panel:not(.dark) .panel-empty {
+  color: #3c2910;
+}
+.profile-search-panel:not(.dark) .panel-item {
+  border-color: rgba(164, 122, 48, 0.38);
+}
+.profile-search-panel:not(.dark) .item-author {
+  color: #3c2910;
+}
+.profile-search-panel:not(.dark) .item-content {
+  color: #2c2c2c;
+}
+.profile-search-panel:not(.dark) .item-time {
+  color: #888;
+}
+.profile-search-panel:not(.dark) .item-footer {
+  color: #666;
+}
+
+/* 搜索面板入场/出场动画 */
+.profile-search-panel-enter-active,
+.profile-search-panel-leave-active {
+  transition: opacity 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.profile-search-panel-enter-from,
+.profile-search-panel-leave-to {
+  opacity: 0;
+  transform: translateX(-30px) scale(0.97);
+  transform: translateX(-40px) scale(0.95);
+}
+
+/* 搜索框样式 */
+.profile-search-input-wrapper {
+  position: relative;
+  margin-bottom: 4px;
+}
+.profile-search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 36px 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+  box-sizing: border-box;
+}
+.profile-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+.profile-search-input:focus {
+  border-color: rgba(199, 151, 60, 0.5);
+  background: rgba(255, 255, 255, 0.09);
+}
+.search-clear-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.search-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 浅色模式搜索框 */
+.user-sidebar:not(.dark) .profile-search-input,
+.map-search-user-detail:not(.dark) .profile-search-input {
+  border-color: rgba(164, 122, 48, 0.18);
+  background: rgba(255, 253, 248, 0.74);
+  color: #3c2910;
+}
+.user-sidebar:not(.dark) .profile-search-input::placeholder,
+.map-search-user-detail:not(.dark) .profile-search-input::placeholder {
+  color: rgba(94, 63, 20, 0.5);
+}
+.user-sidebar:not(.dark) .profile-search-input:focus,
+.map-search-user-detail:not(.dark) .profile-search-input:focus {
+  border-color: rgba(164, 122, 48, 0.4);
+  background: rgba(255, 253, 248, 0.9);
+}
+.user-sidebar:not(.dark) .search-clear-btn,
+.map-search-user-detail:not(.dark) .search-clear-btn {
+  background: rgba(164, 122, 48, 0.15);
+  color: #5e3f14;
+}
+.user-sidebar:not(.dark) .search-clear-btn:hover,
+.map-search-user-detail:not(.dark) .search-clear-btn:hover {
+  background: rgba(164, 122, 48, 0.3);
+}
+
+/* shell 内两个面板并排时的布局 */
+.search-user-modal-shell.has-profile-search,
+.user-modal-shell.has-profile-search {
+  gap: 20px;
+}
+
+/* 他人主页：主面板缩小 + 动画过渡 */
+.search-user-modal-shell.has-profile-search .map-search-user-detail {
+  width: min(560px, 44vw);
+  height: min(88vh, 920px);
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 我的主页：覆盖 fixed 定位改由 flex 居中 + 动画过渡 */
+.user-modal-shell.has-profile-search .user-sidebar {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: min(560px, 44vw);
+  height: min(88vh, 920px);
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.user-modal-shell.has-profile-search .user-sidebar.show-sidebar {
+  transform: none !important;
+}
+
+@media (max-width: 960px) {
+  .search-user-modal-shell.has-profile-search .map-search-user-detail,
+  .user-modal-shell.has-profile-search .user-sidebar {
+    width: min(500px, 46vw);
+  }
+  .profile-search-panel {
+    width: min(380px, 40vw);
+  }
+}
+@media (max-width: 700px) {
+  .search-user-modal-shell.has-profile-search,
+  .user-modal-shell.has-profile-search {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .search-user-modal-shell.has-profile-search .map-search-user-detail,
+  .user-modal-shell.has-profile-search .user-sidebar {
+    width: min(900px, calc(100vw - 48px));
+    height: min(50vh, 480px);
+  }
+  .profile-search-panel {
+    width: min(900px, calc(100vw - 48px));
+    height: min(35vh, 340px);
+  }
+}
 .search-user-profile {
   padding: 12px 8px 4px;
 }
