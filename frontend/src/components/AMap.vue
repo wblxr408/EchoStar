@@ -2257,6 +2257,24 @@ watch(
   background: #d0d0d0;
 }
 
+/* 禁止选中地图上的所有标记图标 */
+:deep(.amap-marker),
+:deep(.amap-marker-content),
+:deep(.amap-icon),
+:deep(.amap-maps-marker) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 禁止选中地图上的所有标记图标 */
+:deep(.amap-marker),
+:deep(.amap-marker-content),
+:deep(.amap-icon),
+:deep(.amap-maps-marker) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 :deep(.custom-marker) {
   position: relative;
   width: 50px;
@@ -2471,7 +2489,16 @@ watch(
     opacity: 0.7;
     transform: translate(-50%, -50%);
   }
-  :deep(.custom-marker) {
+  /* 禁止选中地图上的所有标记图标 */
+:deep(.amap-marker),
+:deep(.amap-marker-content),
+:deep(.amap-icon),
+:deep(.amap-maps-marker) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+:deep(.custom-marker) {
     transition-duration: 0s !important;
   }
   :deep(.marker-glow) {
