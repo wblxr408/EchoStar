@@ -541,7 +541,7 @@ function createPaperPlaneMarker(coords) {
   if (!coords || !window.AMap) return null;
 
   const planeSvg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42" fill="none">
+    <svg xmlns="http://www.w3.org/2000/svg" width="54" height="63" viewBox="0 0 36 42" fill="none">
       <!-- 左翼（暗面） -->
       <path d="M18 2 L4 36 L18 26 Z" fill="#FF6B6B" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
       <!-- 右翼（亮面） -->
@@ -559,15 +559,15 @@ function createPaperPlaneMarker(coords) {
     </svg>
   `.trim();
 
-  // 视觉中心约在 (18, 20)，offset 使该点对准经纬度坐标
-  const cx = 18, cy = 20;
+  // 视觉中心约在 viewBox (18, 20)，1.5x 后为 (27, 30)，offset 使该点对准经纬度坐标
+  const cx = 27, cy = 30;
 
   return new window.AMap.Marker({
     position: [coords.longitude, coords.latitude],
     icon: new window.AMap.Icon({
-      size: new window.AMap.Size(36, 42),
+      size: new window.AMap.Size(54, 63),
       image: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(planeSvg)}`,
-      imageSize: new window.AMap.Size(36, 42),
+      imageSize: new window.AMap.Size(54, 63),
     }),
     offset: new window.AMap.Pixel(-cx, -cy),
     zIndex: 1300,
