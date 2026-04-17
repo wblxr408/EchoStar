@@ -189,12 +189,13 @@ function scoreAndSortStories(stories, options) {
   return scored;
 }
 
-function formatStoryForResponse(story) {
+function formatStoryForResponse(story, options = {}) {
   const { lat, lng } = story._coords || parsePoint(story.location);
+  const rawImages = safeParseJSONB(story.images, []);
   return {
     id: normalizeStoryId(story.id),
     content: story.content,
-    images: safeParseJSONB(story.images, []),
+    images: options.summary && rawImages.length > 1 ? [rawImages[0]] : rawImages,
     username: story.author?.username || story.username || '',
     avatar: story.author?.avatarUrl || story.avatar || null,
     author: story.author
@@ -247,7 +248,7 @@ export const RecommendationService = {
   },
 
   async getFeed(options = {}) {
-    const { userId, lat, lng, moodFilter, page = 1, limit = RECOMMENDATION.FEED_PAGE_SIZE } = options;
+    const { userId, lat, lng, moodFilter, page = 1, limit = RECOMMENDATION.FEED_PAGE_SIZE, summary } = options;
     const userPreferredTags = await getUserPreferredEmotionTags(userId);
     const candidates = await fetchCandidateStories({
       lat: lat ?? 39.9,
@@ -267,7 +268,7 @@ export const RecommendationService = {
 
     return {
       stories: pageItems.map(({ story }) => ({
-        ...formatStoryForResponse(story),
+        ...formatStoryForResponse(story, { summary }),
         content: story.content?.length > 100 ? story.content.substring(0, 100) + '...' : story.content
       })),
       pagination: {

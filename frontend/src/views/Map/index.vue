@@ -26,7 +26,7 @@
           v-model="searchKeyword"
           class="map-search-input"
           type="text"
-          placeholder="搜索故事/用户"
+          placeholder="搜索故事/用户/地点"
           @keydown.enter="handleSearchSubmit"
           @focus="searchFocused = true"
         />
@@ -46,6 +46,7 @@
       >
         <!-- 标签页切换 -->
         <div class="search-tabs">
+          <button class="search-tab" :class="{ active: searchTab === 'place' }" @click="switchSearchTab('place')">地点</button>
           <button class="search-tab" :class="{ active: searchTab === 'story' }" @click="switchSearchTab('story')">故事</button>
           <button class="search-tab" :class="{ active: searchTab === 'user' }" @click="switchSearchTab('user')">用户</button>
         </div>
@@ -86,8 +87,32 @@
           </template>
         </div>
 
+        <!-- 地点标签页 -->
+        <div v-if="searchTab === 'place'" class="map-search-results-list">
+          <div v-if="searchPlaceLoading" class="map-search-empty">搜索地点中...</div>
+          <div v-else-if="searchKeyword.trim() && !searchPlaceSearched" class="map-search-empty">搜索地点中...</div>
+          <div v-else-if="searchPlaceError" class="map-search-empty">{{ searchPlaceError }}</div>
+          <div v-else-if="searchKeyword.trim() && searchPlaceResults.length === 0" class="map-search-empty">未找到相关地点</div>
+          <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入地点名称搜索</div>
+          <template v-else>
+            <div
+              v-for="(poi, idx) in searchPlaceResults"
+              :key="poi.id || idx"
+              class="search-place-item panel-item"
+              @click.stop="handlePlaceSelect(poi)"
+            >
+              <div class="search-place-icon">📍</div>
+              <div class="search-place-info">
+                <div class="search-place-name">{{ poi.name }}</div>
+                <div class="search-place-addr">{{ poi.address || poi.cityname || '' }}</div>
+              </div>
+              <div v-if="poi.distance" class="search-place-dist">{{ formatDistance(poi.distance) }}</div>
+            </div>
+          </template>
+        </div>
+
         <!-- 用户标签页 -->
-        <div ref="userSearchVScrollContainerRef" v-else class="map-search-results-list">
+        <div ref="userSearchVScrollContainerRef" v-else-if="searchTab === 'user'" class="map-search-results-list">
           <div v-if="searchUserLoading" class="map-search-empty">搜索中...</div>
           <div v-else-if="searchKeyword.trim() && !searchUserSearched" class="map-search-empty">搜索中...</div>
           <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入用户名或ID搜索用户</div>
@@ -190,6 +215,17 @@
               </div>
             </div>
           </div>
+          <!-- 返回顶部按钮 -->
+          <transition name="back-to-top">
+            <button
+              v-if="showWallBackToTop"
+              class="wall-back-to-top"
+              :class="{ dark: effectiveMapTheme === 'dark' }"
+              @click="scrollWallToTop"
+            >
+              <span>^</span>
+            </button>
+          </transition>
         </div>
       </div>
       </transition>
@@ -206,11 +242,14 @@
         :theme="effectiveMapTheme"
         :point-pick-mode="isPickingPublishLocation"
         :temp-picked-location="pickedPublishLocation"
+        :paper-plane-position="planePosition"
         @marker-click="handleMarkerClick"
         @map-click="handlePublishMapClick"
         @map-move="handleMapMove"
         @cluster-click="handleClusterClick"
         @theme-change="handleThemeChange"
+        @paper-plane-click="handlePaperPlaneClick"
+        @paper-plane-move="handlePaperPlaneMove"
       />
     </div>
 
@@ -303,28 +342,15 @@
             <div class="sidebar-tabs">
               <button
                 class="tab-btn"
-                :class="{ active: sidebarTab === 'nearby' }"
-                @click="sidebarTab = 'nearby'"
-              >
-                附近故事
-              </button>
-              <button
-                class="tab-btn"
                 :class="{ active: sidebarTab === 'featured' }"
-                @click="
-                  sidebarTab = 'featured';
-                  loadFeaturedStories();
-                "
+                @click="sidebarTab = 'featured'"
               >
                 精选推荐
               </button>
               <button
                 class="tab-btn"
                 :class="{ active: sidebarTab === 'recommend' }"
-                @click="
-                  sidebarTab = 'recommend';
-                  loadRecommendationFeed();
-                "
+                @click="sidebarTab = 'recommend'"
               >
                 为你推荐
               </button>
@@ -334,202 +360,132 @@
             </button>
           </div>
 
-          <div class="sidebar-content">
-            <div v-if="sidebarTab === 'nearby'">
-              <section class="nearby-search-panel">
-                <div class="nearby-search-panel__heading">
-                  <div>
-                    <p class="nearby-search-panel__kicker">Place Search</p>
-                    <h3>搜索附近地点</h3>
-                    <p class="nearby-search-panel__summary">
-                      {{ nearbyCenterSummary }}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    class="nearby-search-panel__ghost-btn"
-                    @click="handleLocate"
-                  >
-                    我的定位
-                  </button>
-                </div>
-
-                <div class="nearby-search-panel__controls">
-                  <input
-                    v-model="nearbySearchQuery"
-                    type="text"
-                    class="nearby-search-panel__input"
-                    placeholder="搜索商圈、地标、街道或店铺"
-                    @keyup.enter="performNearbyPoiSearch"
-                  />
-                  <button
-                    type="button"
-                    class="nearby-search-panel__submit"
-                    :disabled="
-                      nearbySearching || nearbySearchQuery.trim().length < 2
-                    "
-                    @click="performNearbyPoiSearch"
-                  >
-                    {{ nearbySearching ? "搜索中..." : "搜索地点" }}
-                  </button>
-                </div>
-
-                <div class="nearby-search-panel__actions">
-                  <button
-                    v-if="
-                      nearbySearchQuery ||
-                      nearbySearchResults.length > 0 ||
-                      nearbySearchError
-                    "
-                    type="button"
-                    class="nearby-search-panel__text-btn"
-                    @click="clearNearbyPoiSearch"
-                  >
-                    清空搜索
-                  </button>
-                  <span class="nearby-search-panel__tip"
-                    >会优先参考附近结果，但明确地标也能跳出本地</span
-                  >
-                </div>
-
-                <p
-                  v-if="nearbySearchError"
-                  class="nearby-search-panel__feedback nearby-search-panel__feedback--error"
-                >
-                  {{ nearbySearchError }}
-                </p>
-                <p
-                  v-else-if="nearbySearching"
-                  class="nearby-search-panel__feedback"
-                >
-                  正在查找相关地点...
-                </p>
-                <p
-                  v-else-if="
-                    nearbyHasSearched && nearbySearchResults.length === 0
-                  "
-                  class="nearby-search-panel__feedback"
-                >
-                  没找到匹配地点，可以换个关键词，或者直接拖动地图继续找。
-                </p>
-
-                <div
-                  v-if="nearbySearchResults.length > 0"
-                  class="nearby-search-panel__results"
-                >
-                  <button
-                    v-for="poi in nearbySearchResults"
-                    :key="poi.id"
-                    type="button"
-                    class="nearby-search-panel__result"
-                    @click="focusNearbyStoriesOnPoi(poi)"
-                  >
-                    <div class="nearby-search-panel__result-copy">
-                      <strong>{{ poi.name }}</strong>
-                      <span>{{ poi.address }}</span>
-                    </div>
-                    <div class="nearby-search-panel__result-meta">
-                      <span>{{ formatPoiDistrictLabel(poi) }}</span>
-                    </div>
-                  </button>
-                </div>
-              </section>
-
-              <div v-if="loading" class="loading">加载中...</div>
-              <div v-else-if="stories.length === 0" class="empty">
-                <p>附近还没有故事</p>
-                <p class="hint">点击发布按钮,留下你的第一个故事吧</p>
+          <div ref="sidebarContentRef" class="sidebar-content" @scroll="handleWallScroll($event, sidebarTab)">
+            <!-- 精选推荐 - Grid 卡片 -->
+            <div v-show="sidebarTab === 'featured'" class="wall-tab-scroll">
+              <div v-if="wallTabs.featured.loading" class="loading">加载中...</div>
+              <div v-else-if="wallTabs.featured.error" class="empty">
+                <p>{{ wallTabs.featured.error }}</p>
               </div>
-              <div v-else class="story-list">
-                <StoryCard
-                  v-for="story in stories"
-                  :key="story.id"
-                  :story="story"
-                  @preview-image="handlePreviewImage"
-                  @select-story="openStoryFromCollection"
-                />
-              </div>
-            </div>
-
-            <div v-if="sidebarTab === 'recommend'">
-              <div v-if="feedLoading" class="loading">加载中...</div>
-              <div v-else-if="feedStories.length === 0" class="empty">
-                <p>暂无推荐内容</p>
-                <p class="hint">
-                  发布故事或点赞更多内容，会为你推荐更懂你的故事
-                </p>
-              </div>
-              <template v-else>
-                <div ref="feedVScrollContainerRef" class="story-list vscroll-container">
-                  <div class="vscroll-spacer" :style="{ height: feedVScrollTotalHeight + 'px' }"></div>
-                  <StoryCard
-                    v-for="item in feedVScrollVisibleItems"
-                    :key="item.data.id + '-feed-' + storyCardAnimationKey"
-                    ref="feedVScrollItemRefs"
-                    :data-feed-index="item.index"
-                    :story="item.data"
-                    class="vscroll-item story-card-enter"
-                    :style="{ position: 'absolute', top: item.top + 'px', width: '100%' }"
-                    @preview-image="handlePreviewImage"
-                    @select-story="openStoryFromCollection"
-                  />
-                  <div v-if="!feedHasMore && feedStories.length > 0" class="load-more-wrap"><span class="load-more-btn" style="cursor:default;border:none;background:none;">没有更多了</span></div>
-                  <div v-else-if="feedLoadingMore" class="load-more-wrap"><span class="load-more-btn" style="cursor:default;border:none;background:none;">加载中...</span></div>
-                </div>
-              </template>
-            </div>
-
-            <div v-if="sidebarTab === 'featured'">
-              <div v-if="featuredStories.length === 0" class="empty">
+              <div v-else-if="wallTabs.featured.items.length === 0" class="empty">
                 <p>暂无精选内容</p>
                 <p class="hint">管理员会定期挑选优质内容展示在这里</p>
               </div>
-              <div v-else class="story-list">
-                <div
-                  v-for="(story, idx) in featuredStories"
-                  :key="story.id + '-featured-' + storyCardAnimationKey"
-                  class="featured-story-card story-card-enter"
-                  :class="{ 'is-vip-card': getStoryAuthorVip(story) }"
+              <div v-else class="story-wall-grid">
+                <StoryWallCard
+                  v-for="(story, idx) in wallTabs.featured.items"
+                  :key="story.id + '-wall-featured-' + idx"
+                  :story="story"
+                  :class="['story-card-enter', { 'no-anim-delay': idx >= 18 }]"
                   :data-virtual-index="idx"
-                  @click="openFeaturedStory(story)"
-                >
-                  <div v-if="story.images?.length" class="featured-image">
-                    <img :src="story.images[0]" alt="故事图片" />
-                    <div class="featured-badges">
-                      <span v-if="story.isPinned" class="badge pinned">📌</span>
-                    </div>
-                  </div>
-                  <div class="featured-content">
-                    <div class="featured-author">
-                      <div class="featured-author-avatar">
-                        <img
-                          v-if="getStoryAuthorAvatar(story)"
-                          :src="getStoryAuthorAvatar(story)"
-                          :alt="getStoryAuthorName(story)"
-                        />
-                        <span v-else>{{ getStoryAuthorInitial(story) }}</span>
-                      </div>
-                      <span class="vip-name-row"><span class="featured-author-name vip-username" :class="{ 'has-vip': getStoryAuthorVip(story) }">{{
-                        getStoryAuthorName(story)
-                      }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(story)">VIP</span></span>
-                    </div>
-                    <p class="featured-text">{{ story.content }}</p>
-                    <div class="featured-meta">
-                      <span class="emotion">{{
-                        getEmotionEmoji(story.emotionTag || story.emotion)
-                      }}</span>
-                      <span class="stats"
-                        >❤️ {{ story.likeCount || story.likes || 0 }}</span
-                      >
-                    </div>
-                  </div>
-                </div>
+                  :style="{ animationDelay: idx < 18 ? idx * 0.12 + 's' : '0s' }"
+                  @select="handleWallCardSelect"
+                />
               </div>
+              <div v-if="wallTabs.featured.loadingMore" class="wall-loading-more">加载中...</div>
+              <div v-else-if="!wallTabs.featured.hasMore && wallTabs.featured.items.length > 0" class="wall-loading-more">没有更多了</div>
+            </div>
+
+            <!-- 为你推荐 - Grid 卡片 -->
+            <div v-show="sidebarTab === 'recommend'" class="wall-tab-scroll">
+              <div v-if="wallTabs.recommend.loading" class="loading">加载中...</div>
+              <div v-else-if="wallTabs.recommend.error" class="empty">
+                <p>{{ wallTabs.recommend.error }}</p>
+              </div>
+              <div v-else-if="wallTabs.recommend.items.length === 0" class="empty">
+                <p>暂无推荐内容</p>
+                <p class="hint">发布故事或点赞更多内容，会为你推荐更懂你的故事</p>
+              </div>
+              <div v-else class="story-wall-grid">
+                <StoryWallCard
+                  v-for="(story, idx) in wallTabs.recommend.items"
+                  :key="story.id + '-wall-recommend-' + idx"
+                  :story="story"
+                  :class="['story-card-enter', { 'no-anim-delay': idx >= 18 }]"
+                  :data-virtual-index="idx"
+                  :style="{ animationDelay: idx < 18 ? idx * 0.12 + 's' : '0s' }"
+                  @select="handleWallCardSelect"
+                />
+              </div>
+              <div v-if="wallTabs.recommend.loadingMore" class="wall-loading-more">加载中...</div>
+              <div v-else-if="!wallTabs.recommend.hasMore && wallTabs.recommend.items.length > 0" class="wall-loading-more">没有更多了</div>
             </div>
           </div>
+          <!-- 返回顶部按钮 -->
+          <transition name="back-to-top">
+            <button
+              v-if="showWallBackToTop"
+              class="wall-back-to-top"
+              :class="{ dark: effectiveMapTheme === 'dark' }"
+              @click="scrollWallToTop"
+            >
+              <span>^</span>
+            </button>
+          </transition>
         </div>
       </div>
       </transition>
+
+    <!-- 纸飞机附近故事面板 -->
+    <transition name="publish-modal">
+      <div
+        v-if="showPlaneNearby"
+        class="story-modal-shell"
+        @click.self="closePlaneNearby"
+      >
+        <div
+          class="plane-nearby-sidebar"
+          :class="{ dark: effectiveMapTheme === 'dark' }"
+          @click.stop
+        >
+          <div class="plane-nearby-header">
+            <div class="plane-nearby-header__left">
+              <h3>附近故事</h3>
+            </div>
+            <button class="close-btn" @click.stop="closePlaneNearby">
+              <span>×</span>
+            </button>
+          </div>
+          <div ref="planeNearbyContentRef" class="plane-nearby-content" @scroll="handlePlaneNearbyScroll($event)">
+            <div v-if="planeNearbyLoading && !planeNearbyInitialDone" class="loading">加载中...</div>
+            <div v-else-if="planeNearbyError" class="empty">
+              <p>{{ planeNearbyError }}</p>
+            </div>
+            <div v-else-if="planeNearbyItems.length === 0 && planeNearbyInitialDone" class="empty">
+              <p>附近暂无故事</p>
+              <p class="hint">换个位置试试？</p>
+            </div>
+            <template v-else>
+              <div class="story-wall-grid">
+                <StoryWallCard
+                  v-for="(story, idx) in planeNearbyItems"
+                  :key="story.id + '-plane-nearby-' + idx"
+                  :story="story"
+                  :theme="effectiveMapTheme"
+                  :class="['story-card-enter', { 'no-anim-delay': idx >= 18 }]"
+                  :data-virtual-index="idx"
+                  :style="{ animationDelay: idx < 18 ? idx * 0.12 + 's' : '0s' }"
+                  @select="openStoryFromCollection(story)"
+                />
+              </div>
+              <div v-if="planeNearbyLoadingMore" class="wall-loading-more">加载中...</div>
+              <div v-else-if="!planeNearbyHasMore && planeNearbyItems.length > 0" class="wall-loading-more">没有更多了</div>
+            </template>
+          </div>
+          <!-- 返回顶部按钮 -->
+          <transition name="back-to-top">
+            <button
+              v-if="showPlaneNearbyBackToTop"
+              class="wall-back-to-top"
+              :class="{ dark: effectiveMapTheme === 'dark' }"
+              @click="scrollPlaneNearbyToTop"
+            >
+              <span>^</span>
+            </button>
+          </transition>
+        </div>
+      </div>
+    </transition>
 
     <div
       :class="[
@@ -1151,6 +1107,17 @@
               </template>
             </div>
           </div>
+          <!-- 返回顶部按钮 -->
+          <transition name="back-to-top">
+            <button
+              v-if="showWallBackToTop"
+              class="wall-back-to-top"
+              :class="{ dark: effectiveMapTheme === 'dark' }"
+              @click="scrollWallToTop"
+            >
+              <span>^</span>
+            </button>
+          </transition>
         </div>
       </div>
       </transition>
@@ -1275,6 +1242,17 @@
               <span class="slot-name">添加账号</span>
             </div>
           </div>
+          <!-- 返回顶部按钮 -->
+          <transition name="back-to-top">
+            <button
+              v-if="showWallBackToTop"
+              class="wall-back-to-top"
+              :class="{ dark: effectiveMapTheme === 'dark' }"
+              @click="scrollWallToTop"
+            >
+              <span>^</span>
+            </button>
+          </transition>
         </div>
       </div>
     </div>
@@ -1463,6 +1441,7 @@ import { notificationApi } from "../../api/notification";
 import { showToast, showConfirm } from "../../composables/useToast.js";
 import AMap from "../../components/AMap.vue";
 import StoryCard from "../../components/StoryCard.vue";
+import StoryWallCard from "../../components/StoryWallCard.vue";
 import ClusterPopover from "../../components/ClusterPopover.vue";
 import ImageLightbox from "../../components/ImageLightbox.vue";
 import MyFootprints from "../../components/MyFootprints.vue";
@@ -1572,7 +1551,7 @@ const nearbyCenterSummary = computed(() => {
   return `当前显示的是 ${nearbyCenterLabel.value} 附近的故事。`;
 });
 const anyPanelOpen = computed(() => {
-  return showSidebar.value || showUserSidebar.value || showPublishSidebar.value
+  return showSidebar.value || showPlaneNearby.value || showUserSidebar.value || showPublishSidebar.value
     || showSwitchAccountModal.value || showLoginModal.value || showNotificationPanel.value
     || showEditProfileModal.value || isDockExpanded.value;
 });
@@ -1908,7 +1887,7 @@ const vScrollItemRefs = ref([]);
 // 监听虚拟滚动项的 DOM 变化，实时测量高度
 watch(vScrollItemRefs, (refs) => {
   if (!refs || refs.length === 0) return;
-  for (const el of refs) {
+  for (let el of refs) {
     if (el && el.$el) el = el.$el;
     if (el && el.dataset) {
       const idx = parseInt(el.dataset.virtualIndex, 10);
@@ -1946,7 +1925,7 @@ const {
 
 watch(feedVScrollItemRefs, (refs) => {
   if (!refs || refs.length === 0) return;
-  for (const el of refs) {
+  for (let el of refs) {
     if (el && el.$el) el = el.$el;
     if (el && el.dataset) {
       const idx = parseInt(el.dataset.feedIndex, 10);
@@ -1959,14 +1938,220 @@ watch(feedVScrollVisibleItems, () => {
   nextTick(() => { feedVScrollFlushMeasurements(); });
 }, { flush: 'post' });
 
-const sidebarTab = ref("nearby");
+const sidebarTab = ref("featured");
 const featuredStories = ref([]);
 const announcements = ref([]);
+
+// ========== 故事墙 Grid 卡片数据（每个标签页独立管理） ==========
+const WALL_INITIAL_LIMIT = 18; // 初始加载量（6行×3列）
+const WALL_PAGE_SIZE = 12; // 每次加载更多
+const WALL_MAX_CACHE = 500; // 单标签最大缓存条数
+
+function createWallTabState() {
+  return {
+    items: [], // 缓存的 story 列表
+    page: 0,
+    totalPages: 1,
+    loading: false,
+    loadingMore: false,
+    initialLoadDone: false,
+    hasMore: true,
+    error: null,
+  };
+}
+
+const wallTabs = ref({
+  featured: createWallTabState(),
+  recommend: createWallTabState(),
+});
+const wallAllInitialDone = computed(
+  () =>
+    wallTabs.value.featured.initialLoadDone &&
+    wallTabs.value.recommend.initialLoadDone,
+);
+
+// 故事墙两个标签页同时加载
+async function loadAllWallTabs() {
+  const center =
+    extractCoordinates(mapStore.center) ||
+    extractCoordinates(mapStore.userLocation);
+  const lat = center?.latitude;
+  const lng = center?.longitude;
+
+  // 重置所有标签页状态
+  for (const key of Object.keys(wallTabs.value)) {
+    wallTabs.value[key] = createWallTabState();
+  }
+
+  // 同时请求两个标签页
+  await Promise.allSettled([
+    loadWallFeatured(),
+    loadWallRecommend(lat, lng),
+  ]);
+
+  storyCardAnimationKey.value++;
+}
+
+async function loadWallFeatured() {
+  const tab = wallTabs.value.featured;
+  tab.loading = true;
+  tab.error = null;
+  try {
+    const res = await storyApi.getFeaturedStories({
+      limit: WALL_INITIAL_LIMIT,
+      summary: true,
+    });
+    const data = res?.data ?? res;
+    const stories = (data?.stories ?? [])
+      .map((s) => normalizeStoryForMap(s))
+      .filter(Boolean);
+    tab.items = stories;
+    tab.page = 1;
+    tab.totalPages = data?.pagination?.totalPages ?? 1;
+    tab.hasMore = tab.page < tab.totalPages;
+    tab.initialLoadDone = true;
+  } catch (e) {
+    console.error('[wall-featured] load failed:', e);
+    tab.error = '加载失败';
+    tab.initialLoadDone = true;
+  } finally {
+    tab.loading = false;
+  }
+}
+
+async function loadWallRecommend(lat, lng) {
+  const tab = wallTabs.value.recommend;
+  tab.loading = true;
+  tab.error = null;
+  try {
+    const res = await mapApi.getRecommendationFeed({
+      lat,
+      lng,
+      limit: WALL_INITIAL_LIMIT,
+      summary: true,
+    });
+    const data = res?.data ?? res;
+    const stories = (data?.stories ?? [])
+      .map((s) => normalizeStoryForMap(s))
+      .filter(Boolean);
+    tab.items = stories;
+    tab.page = 1;
+    tab.totalPages = data?.pagination?.totalPages ?? 1;
+    tab.hasMore = tab.page < tab.totalPages;
+    tab.initialLoadDone = true;
+  } catch (e) {
+    console.error('[wall-recommend] load failed:', e);
+    tab.error = '加载失败';
+    tab.initialLoadDone = true;
+  } finally {
+    tab.loading = false;
+  }
+}
+
+// 加载更多（下滑触发）
+async function loadWallMore(tabName) {
+  const tab = wallTabs.value[tabName];
+  if (tab.loadingMore || !tab.hasMore || tab.loading) return;
+  tab.loadingMore = true;
+  try {
+    const center =
+      extractCoordinates(mapStore.center) ||
+      extractCoordinates(mapStore.userLocation);
+    const lat = center?.latitude;
+    const lng = center?.longitude;
+    const nextPage = tab.page + 1;
+
+    let stories = [];
+    if (tabName === 'featured') {
+      const res = await storyApi.getFeaturedStories({
+        page: nextPage,
+        limit: WALL_PAGE_SIZE,
+        summary: true,
+      });
+      const data = res?.data ?? res;
+      stories = (data?.stories ?? [])
+        .map((s) => normalizeStoryForMap(s))
+        .filter(Boolean);
+      tab.totalPages = data?.pagination?.totalPages ?? tab.totalPages;
+    } else if (tabName === 'recommend') {
+      const res = await mapApi.getRecommendationFeed({
+        lat,
+        lng,
+        page: nextPage,
+        limit: WALL_PAGE_SIZE,
+        summary: true,
+      });
+      const data = res?.data ?? res;
+      stories = (data?.stories ?? [])
+        .map((s) => normalizeStoryForMap(s))
+        .filter(Boolean);
+      tab.totalPages = data?.pagination?.totalPages ?? tab.totalPages;
+    }
+
+    if (stories.length > 0) {
+      tab.items = [...tab.items, ...stories];
+      tab.page = nextPage;
+      tab.hasMore = nextPage < tab.totalPages;
+    } else {
+      tab.hasMore = false;
+    }
+
+    // 缓存溢出淘汰：移除最旧的条目
+    if (tab.items.length > WALL_MAX_CACHE) {
+      const excess = tab.items.length - WALL_MAX_CACHE;
+      tab.items = tab.items.slice(excess);
+    }
+  } catch (e) {
+    console.error(`[wall-${tabName}] loadMore failed:`, e);
+  } finally {
+    tab.loadingMore = false;
+  }
+}
+
+// 点击 Grid 卡片 → 打开故事详情弹窗
+// watcher (hydrateSelectedStoryDetail) 会自动获取完整数据
+function handleWallCardSelect(story) {
+  if (!story?.id) return;
+  openStoryModal(story, 0, {
+    directOpen: true,
+    startPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+  });
+}
+
+// 滚动事件处理：检测接近底部 + 返回顶部按钮
+const sidebarContentRef = ref(null);
+const showWallBackToTop = ref(false);
+let wallLastScrollTop = 0;
+
+function handleWallScroll(e, tabName) {
+  const el = e.target;
+  if (!el) return;
+  const threshold = 200;
+  const { scrollTop, scrollHeight, clientHeight } = el;
+  if (scrollHeight - scrollTop - clientHeight < threshold) {
+    loadWallMore(tabName);
+  }
+  // 上滑显示返回顶部，下滑隐藏
+  if (scrollTop < wallLastScrollTop && scrollTop > 10) {
+    showWallBackToTop.value = true;
+  } else if (scrollTop > wallLastScrollTop) {
+    showWallBackToTop.value = false;
+  }
+  wallLastScrollTop = scrollTop;
+}
+
+function scrollWallToTop() {
+  sidebarContentRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
+  wallLastScrollTop = 0;
+  showWallBackToTop.value = false;
+}
 
 // 搜索面板打开/关闭时连接/断开搜索虚拟滚动（移至搜索 VS 实例声明后）
 
 // Feed 区域在 recommend tab 激活时连接
 watch(sidebarTab, (tab) => {
+  wallLastScrollTop = 0;
+  showWallBackToTop.value = false;
   if (tab === 'recommend') {
     nextTick(() => feedVScrollConnect());
   } else {
@@ -2009,6 +2194,26 @@ const searchedUser = ref(null);
 const searchedUserStories = ref([]);
 const searchUserDetailOpen = ref(false);
 
+// --- 地点搜索状态 ---
+const searchPlaceResults = ref([]);
+const searchPlaceLoading = ref(false);
+const searchPlaceError = ref('');
+const searchPlaceSearched = ref(false);
+
+// ========== 纸飞机附近故事面板 ==========
+const showPlaneNearby = ref(false);
+const planeNearbyLoading = ref(false);
+const planeNearbyLoadingMore = ref(false);
+const planeNearbyItems = ref([]);
+const planeNearbyPage = ref(0);
+const planeNearbyTotalPages = ref(1);
+const planeNearbyHasMore = computed(
+  () => planeNearbyPage.value < planeNearbyTotalPages.value,
+);
+const planeNearbyError = ref(null);
+const planeNearbyInitialDone = ref(false);
+const planePosition = ref(null); // { latitude, longitude }
+
 // ========== 搜索故事虚拟滚动 ==========
 const searchVScrollItemRefs = ref([]);
 const {
@@ -2029,7 +2234,7 @@ const {
 
 watch(searchVScrollItemRefs, (refs) => {
   if (!refs || refs.length === 0) return;
-  for (const el of refs) {
+  for (let el of refs) {
     if (el && el.$el) el = el.$el;
     if (el && el.dataset) {
       const idx = parseInt(el.dataset.searchStoryIndex, 10);
@@ -2062,7 +2267,7 @@ const {
 
 watch(userSearchVScrollItemRefs, (refs) => {
   if (!refs || refs.length === 0) return;
-  for (const el of refs) {
+  for (let el of refs) {
     if (el && el.$el) el = el.$el;
     if (el && el.dataset) {
       const idx = parseInt(el.dataset.searchUserIndex, 10);
@@ -2095,7 +2300,7 @@ const showSearchPanel = computed(() => {
 function clearSearch() {
   searchKeyword.value = '';
   searchResults.value = [];
-  searchHasMore = false;
+  searchHasMore.value = false;
   searchStorySearched.value = false;
   searchUserSearched.value = false;
   searchUserResults.value = [];
@@ -2105,6 +2310,10 @@ function clearSearch() {
   searchedUser.value = null;
   searchedUserStories.value = [];
   searchUserDetailOpen.value = false;
+  searchPlaceResults.value = [];
+  searchPlaceLoading.value = false;
+  searchPlaceError.value = '';
+  searchPlaceSearched.value = false;
 }
 
 function switchSearchTab(tab) {
@@ -2112,7 +2321,9 @@ function switchSearchTab(tab) {
   searchTab.value = tab;
   const keyword = searchKeyword.value.trim();
   if (!keyword) return;
-  if (tab === 'story') {
+  if (tab === 'place') {
+    performGlobalPlaceSearch(keyword);
+  } else if (tab === 'story') {
     loadSearchResults(false);
   } else {
     performUserSearch(keyword, false);
@@ -2125,7 +2336,9 @@ watch(searchKeyword, (keyword) => {
   searchDebounceTimer = setTimeout(() => {
     const trimmed = keyword.trim();
     if (!trimmed) return;
-    if (searchTab.value === 'story') {
+    if (searchTab.value === 'place') {
+      performGlobalPlaceSearch(trimmed);
+    } else if (searchTab.value === 'story') {
       loadSearchResults(false);
     } else {
       performUserSearch(trimmed, false);
@@ -2975,8 +3188,8 @@ const dockActions = computed(() => [
     key: "stories",
     tag: "Story Wall",
     title: "故事墙",
-    subtitle: "打开故事墙",
-    description: "展开故事墙，浏览附近故事、精选故事和为你推荐。",
+    subtitle: "打开故事墙，浏览精选故事",
+    description: "打开故事墙，浏览精选故事和为你推荐。",
     icon: "✉",
     suit: "♣",
     accent: "#5f7cff",
@@ -4986,6 +5199,200 @@ function focusNearbyStoriesOnPoi(poi) {
   scheduleNearbyStoriesReload();
 }
 
+// ========== 全局搜索 - 地点搜索 ==========
+async function performGlobalPlaceSearch(keyword) {
+  if (!keyword || keyword.trim().length < 2) {
+    searchPlaceResults.value = [];
+    return;
+  }
+
+  searchPlaceLoading.value = true;
+  searchPlaceError.value = '';
+
+  try {
+    await ensureNearbyPlaceSearch();
+    const anchor =
+      extractCoordinates(mapStore.userLocation) ||
+      extractCoordinates(mapStore.center);
+    const sortAnchor = extractCoordinates(mapStore.userLocation) || anchor;
+    const { pois, errorMessage } = await searchPoisWithContext({
+      createPlaceSearch: (options = {}) =>
+        new window.AMap.PlaceSearch({
+          pageSize: 10,
+          pageIndex: 1,
+          extensions: 'all',
+          ...options,
+        }),
+      keyword: keyword.trim(),
+      anchor,
+      sortAnchor,
+      locality: currentUserSearchLocality.value,
+      radius: POI_SEARCH_RADIUS_METERS,
+      normalizePoi: normalizeNearbyPoiFromGeocode,
+    });
+
+    searchPlaceResults.value = pois || [];
+    searchPlaceError.value = errorMessage || '';
+    searchPlaceSearched.value = true;
+  } catch (err) {
+    searchPlaceResults.value = [];
+    searchPlaceError.value = '地点搜索暂不可用';
+    console.error('[Map] Place search failed:', err);
+  } finally {
+    searchPlaceLoading.value = false;
+  }
+}
+
+function handlePlaceSelect(poi) {
+  const coords = extractCoordinates(poi);
+  if (!coords) return;
+
+  // 计算当前位置到目标位置的距离（简化计算）
+  const currentCenter = mapStore.center;
+  const distance = Math.sqrt(
+    Math.pow(coords.latitude - currentCenter.latitude, 2) + 
+    Math.pow(coords.longitude - currentCenter.longitude, 2)
+  );
+  
+  // 如果距离较远，先缩小地图，移动后再放大
+  if (distance > 0.1) {
+    console.log('[Map] Long distance move detected, zooming out first');
+    mapStore.updateZoom(10); // 缩小地图
+    
+    setTimeout(() => {
+      // 移动纸飞机到选中地点
+      planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
+      
+      // 延迟放大地图
+      setTimeout(() => {
+        mapStore.updateCenter(coords.latitude, coords.longitude);
+        mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
+      }, 1000); // 等待纸飞机移动动画完成
+    }, 500); // 等待缩小的动画完成
+  } else {
+    // 短距离直接移动
+    planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
+    mapStore.updateCenter(coords.latitude, coords.longitude);
+    mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
+  }
+
+  // 关闭搜索面板
+  searchFocused.value = false;
+}
+
+function formatDistance(meters) {
+  if (meters == null) return '';
+  if (meters < 1000) return Math.round(meters) + 'm';
+  return (meters / 1000).toFixed(1) + 'km';
+}
+
+// ========== 纸飞机附近故事面板 ==========
+async function loadPlaneNearby(isLoadMore = false) {
+  const pos = planePosition.value || extractCoordinates(mapStore.userLocation) || extractCoordinates(mapStore.center);
+  if (!pos) {
+    planeNearbyError.value = '无法获取位置';
+    return;
+  }
+
+  const page = isLoadMore ? planeNearbyPage.value + 1 : 1;
+  const limit = isLoadMore ? WALL_PAGE_SIZE : WALL_INITIAL_LIMIT;
+
+  if (isLoadMore) {
+    planeNearbyLoadingMore.value = true;
+  } else {
+    planeNearbyLoading.value = true;
+    planeNearbyItems.value = [];
+    planeNearbyPage.value = 0;
+    planeNearbyError.value = null;
+  }
+
+  try {
+    const res = await mapApi.exploreStories(pos.latitude, pos.longitude, 5000, {
+      page,
+      limit,
+      summary: '1',
+    });
+    const data = res?.data || res;
+    const stories = data?.stories || data?.list || data?.items || (Array.isArray(data) ? data : []);
+
+    if (isLoadMore) {
+      planeNearbyItems.value.push(...stories);
+    } else {
+      planeNearbyItems.value = stories;
+    }
+    planeNearbyPage.value = page;
+    planeNearbyTotalPages.value = data?.totalPages || data?.pagination?.totalPages || 1;
+    planeNearbyInitialDone.value = true;
+    planeNearbyError.value = null;
+  } catch (err) {
+    if (!isLoadMore) planeNearbyError.value = '加载附近故事失败';
+    console.error('[PlaneNearby] load failed:', err);
+  } finally {
+    planeNearbyLoading.value = false;
+    planeNearbyLoadingMore.value = false;
+  }
+}
+
+function openPlaneNearby() {
+  if (showPublishSidebar.value) closePublishPanel();
+  if (showUserSidebar.value) closeUserPanel();
+  showPlaneNearby.value = true;
+  isDockExpanded.value = false;
+  loadPlaneNearby(false);
+}
+
+function closePlaneNearby() {
+  showPlaneNearby.value = false;
+  planeNearbyLastScrollTop = 0;
+  showPlaneNearbyBackToTop.value = false;
+}
+
+const planeNearbyContentRef = ref(null);
+const showPlaneNearbyBackToTop = ref(false);
+let planeNearbyLastScrollTop = 0;
+
+function handlePlaneNearbyScroll(e) {
+  const el = e.target;
+  if (!el) return;
+  // 加载更多
+  if (planeNearbyLoadingMore.value || !planeNearbyHasMore.value) {
+    // 仍然检测滚动方向
+  } else {
+    const threshold = 100;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
+      loadPlaneNearby(true);
+    }
+  }
+  // 上滑显示返回顶部，下滑隐藏
+  if (el.scrollTop < planeNearbyLastScrollTop && el.scrollTop > 10) {
+    showPlaneNearbyBackToTop.value = true;
+  } else if (el.scrollTop > planeNearbyLastScrollTop) {
+    showPlaneNearbyBackToTop.value = false;
+  }
+  planeNearbyLastScrollTop = el.scrollTop;
+}
+
+function scrollPlaneNearbyToTop() {
+  planeNearbyContentRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
+  planeNearbyLastScrollTop = 0;
+  showPlaneNearbyBackToTop.value = false;
+}
+
+function handlePaperPlaneClick(point) {
+  openPlaneNearby();
+}
+
+function handlePaperPlaneMove(point) {
+  // 始终同步纸飞机实际位置
+  if (point?.latitude != null && point?.longitude != null) {
+    planePosition.value = { latitude: point.latitude, longitude: point.longitude };
+  }
+  // 如果附近故事面板已打开，重新加载
+  if (showPlaneNearby.value) {
+    loadPlaneNearby(false);
+  }
+}
+
 function ensureGeocoder() {
   if (geocoderInstance) {
     return Promise.resolve(geocoderInstance);
@@ -5235,7 +5642,40 @@ function reverseGeocodePickedLocation(latitude, longitude) {
 }
 
 async function handlePublishMapClick(point) {
+  console.log('[Map] handlePublishMapClick called:', { point, showPublishSidebar: showPublishSidebar.value, isPickingPublishLocation: isPickingPublishLocation.value });
+  // 点击地图时关闭搜索面板
+  searchFocused.value = false;
+  // 非发布选点模式下，移动纸飞机
   if (!showPublishSidebar.value || !isPickingPublishLocation.value) {
+    const coords = extractCoordinates(point);
+    console.log('[Map] Moving paper plane to:', coords);
+    if (coords) {
+      // 计算当前位置到目标位置的距离
+      const currentCenter = mapStore.center;
+      const distance = Math.sqrt(
+        Math.pow(coords.latitude - currentCenter.latitude, 2) + 
+        Math.pow(coords.longitude - currentCenter.longitude, 2)
+      );
+      
+      // 如果距离较远，先缩小地图，移动后再放大
+      if (distance > 0.1) {
+        console.log('[Map] Long distance move detected, zooming out first');
+        mapStore.updateZoom(10); // 缩小地图
+        
+        setTimeout(() => {
+          planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
+          
+          // 延迟放大地图
+          setTimeout(() => {
+            mapStore.updateCenter(coords.latitude, coords.longitude);
+            mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
+          }, 1000);
+        }, 500);
+      } else {
+        // 短距离直接移动
+        planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
+      }
+    }
     return;
   }
 
@@ -6225,6 +6665,10 @@ function handleStoriesClick() {
   }
   showSidebar.value = !showSidebar.value;
   isDockExpanded.value = false;
+  // 打开侧边栏时同时加载三个标签页
+  if (showSidebar.value && !wallAllInitialDone.value) {
+    loadAllWallTabs();
+  }
 }
 
 function handleLocate() {
@@ -7701,7 +8145,7 @@ onUnmounted(() => {
   bottom: auto;
   right: auto;
   width: min(860px, calc(100vw - 48px));
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
   border-radius: 32px;
   border: 1px solid rgba(196, 142, 48, 0.36);
   background: linear-gradient(
@@ -7879,10 +8323,104 @@ onUnmounted(() => {
 
 .sidebar-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   z-index: 1;
+  padding: 0;
+  /* 隐藏滚动条但保留滚轮功能 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sidebar-content::-webkit-scrollbar {
+  display: none;
+}
+
+/* 故事墙标签页 - 不产生独立滚动，由 sidebar-content 统一滚动 */
+.wall-tab-scroll {
+  overflow: visible;
   padding: 16px 24px 24px;
+}
+
+/* 返回顶部按钮 - 固定在容器右上角 */
+.wall-back-to-top {
+  position: absolute;
+  top: 70px;
+  right: 20px;
+  z-index: 10;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(13, 19, 34, 0.82);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.wall-back-to-top:hover {
+  background: rgba(26, 35, 58, 0.96);
+  border-color: rgba(255, 255, 255, 0.36);
+  transform: scale(1.08);
+}
+.wall-back-to-top span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+.wall-back-to-top.dark {
+  border-color: rgba(141, 176, 235, 0.24);
+  background: rgba(15, 22, 40, 0.9);
+}
+.wall-back-to-top:not(.dark) {
+  border-color: rgba(196, 142, 48, 0.28);
+  background: rgba(63, 40, 11, 0.82);
+  color: #fffaf1;
+}
+.wall-back-to-top:not(.dark):hover {
+  background: rgba(88, 56, 18, 0.95);
+}
+
+/* 返回顶部过渡动画 */
+.back-to-top-enter-active,
+.back-to-top-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.back-to-top-enter-from,
+.back-to-top-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* 故事墙 Grid 布局 */
+.story-wall-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding-bottom: 20px;
+}
+
+/* 响应式：窄屏改为 2 列 */
+@media (max-width: 480px) {
+  .story-wall-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 加载更多提示 */
+.wall-loading-more {
+  text-align: center;
+  padding: 16px 0 24px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .loading {
@@ -9433,7 +9971,7 @@ onUnmounted(() => {
 .publish-modal {
   position: relative;
   width: min(980px, calc(100vw - 48px));
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
   border-radius: 36px;
   overflow: hidden;
   border: 1px solid rgba(196, 142, 48, 0.38);
@@ -9561,7 +10099,7 @@ onUnmounted(() => {
 .publish-modal-scroll {
   position: relative;
   z-index: 1;
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
   overflow-y: auto;
   padding: 28px;
 }
@@ -9744,7 +10282,7 @@ onUnmounted(() => {
   bottom: auto;
   width: min(900px, calc(100vw - 48px));
   height: min(90vh, 960px);
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
   border-radius: 36px;
   border: 1px solid rgba(196, 142, 48, 0.34);
   background: linear-gradient(
@@ -9763,8 +10301,8 @@ onUnmounted(() => {
     opacity 0.26s ease,
     visibility 0.26s ease;
   z-index: 341;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr;
   visibility: hidden;
   pointer-events: none;
   opacity: 0;
@@ -10551,8 +11089,8 @@ onUnmounted(() => {
     transform 0.3s ease,
     visibility 0.3s ease;
   z-index: 149;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr;
   visibility: hidden;
   pointer-events: none;
 }
@@ -10735,6 +11273,16 @@ onUnmounted(() => {
 
 .story-card-enter {
   animation: storyCardEntrance 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* 动态加载的卡片：快速淡入，无延迟等待 */
+.story-wall-grid .story-card-enter.no-anim-delay {
+  animation: storyCardFadeIn 0.3s ease forwards;
+}
+
+@keyframes storyCardFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .story-list :deep(.story-card.story-card-enter) {
@@ -12190,7 +12738,7 @@ onUnmounted(() => {
   .story-tarot-stage,
   .user-sub-sidebar {
     width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
+    height: calc(100vh - 24px);
     border-radius: 28px;
   }
 
@@ -14119,7 +14667,7 @@ onUnmounted(() => {
   position: relative;
   width: min(900px, calc(100vw - 48px));
   height: min(90vh, 960px);
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
   border-radius: 36px;
   border: 1px solid rgba(196, 142, 48, 0.34);
   background: linear-gradient(
@@ -14300,7 +14848,241 @@ onUnmounted(() => {
 .search-blur .map-search-results {
   filter: blur(4px);
   opacity: 0.6;
-  pointer-events: none;
   transition: filter 0.3s ease, opacity 0.3s ease;
 }
+/* 搜索面板始终保持可交互，不受 blur 影响 */
+.map-search-results {
+  pointer-events: auto !important;
+}
+.map-search-bar {
+  pointer-events: auto !important;
+}
+
+/* ===== 地点搜索结果项 ===== */
+.search-place-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.search-place-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.search-place-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(255, 107, 107, 0.1);
+}
+.search-place-info {
+  flex: 1;
+  min-width: 0;
+}
+.search-place-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-search-results.dark .search-place-name { color: #edf3ff; }
+.map-search-results:not(.dark) .search-place-name { color: #1a1a2e; }
+.search-place-addr {
+  font-size: 12px;
+  color: #8899aa;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-search-results:not(.dark) .search-place-addr { color: #666; }
+.search-place-dist {
+  font-size: 12px;
+  color: #8899aa;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.map-search-results:not(.dark) .search-place-dist { color: #999; }
+
+/* ===== 纸飞机附近故事面板 ===== */
+.plane-nearby-sidebar {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  right: auto;
+  width: min(860px, calc(100vw - 48px));
+  height: min(90vh, 960px);
+  border-radius: 32px;
+  border: 1px solid rgba(196, 142, 48, 0.36);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 23, 37, 0.96) 0%,
+    rgba(31, 42, 64, 0.97) 56%,
+    rgba(17, 25, 42, 0.98) 100%
+  );
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translate(-50%, -50%) scale(0.96);
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease,
+    visibility 0.26s ease;
+  z-index: 340;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 亮色模式 - 与故事墙一致暖色调 */
+.plane-nearby-sidebar:not(.dark) {
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 52%,
+    rgba(229, 206, 166, 0.98) 100%
+  );
+  border-color: rgba(196, 142, 48, 0.38);
+  box-shadow:
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+  color: #3c2910;
+}
+
+.publish-modal-enter-active .plane-nearby-sidebar,
+.publish-modal-leave-active .plane-nearby-sidebar {
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease;
+}
+.publish-modal-enter-from .plane-nearby-sidebar {
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0;
+}
+.publish-modal-leave-to .plane-nearby-sidebar {
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0;
+}
+
+.plane-nearby-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.plane-nearby-sidebar:not(.dark) .plane-nearby-header {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+}
+
+.plane-nearby-header__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.plane-nearby-header__icon {
+  font-size: 22px;
+}
+.plane-nearby-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+.plane-nearby-sidebar.dark .plane-nearby-header h3 { color: #edf3ff; }
+.plane-nearby-sidebar:not(.dark) .plane-nearby-header h3 { color: #3c2910; }
+
+.plane-nearby-sidebar .close-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.plane-nearby-sidebar:not(.dark) .close-btn {
+  background: rgba(196, 142, 48, 0.15);
+  color: #5c3a13;
+}
+.plane-nearby-sidebar .close-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.plane-nearby-sidebar:not(.dark) .close-btn:hover {
+  background: rgba(196, 142, 48, 0.28);
+}
+
+.plane-nearby-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 24px 24px;
+  position: relative;
+  /* 隐藏滚动条但保留滚轮功能 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.plane-nearby-content::-webkit-scrollbar {
+  display: none;
+}
+
+.plane-nearby-sidebar .map-search-empty {
+  text-align: center;
+  padding: 16px 0;
+  font-size: 13px;
+}
+.plane-nearby-sidebar.dark .map-search-empty { color: #667788; }
+.plane-nearby-sidebar:not(.dark) .map-search-empty { color: rgba(75, 48, 16, 0.78); }
+
+.plane-nearby-sidebar .loading,
+.plane-nearby-sidebar .empty {
+  text-align: center;
+  padding: 40px 20px;
+  font-size: 14px;
+}
+.plane-nearby-sidebar.dark .loading,
+.plane-nearby-sidebar.dark .empty { color: #8899aa; }
+.plane-nearby-sidebar:not(.dark) .loading,
+.plane-nearby-sidebar:not(.dark) .empty { color: #3c2910; }
+.plane-nearby-sidebar .empty .hint {
+  font-size: 12px;
+  color: #667788;
+  margin-top: 6px;
+}
+.plane-nearby-sidebar:not(.dark) .empty .hint { color: rgba(75, 48, 16, 0.78); }
+
+/* 纸飞机附近面板 - Grid 布局 */
+.plane-nearby-sidebar .story-wall-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding-bottom: 20px;
+}
+@media (max-width: 480px) {
+  .plane-nearby-sidebar .story-wall-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.plane-nearby-sidebar .wall-loading-more {
+  text-align: center;
+  padding: 16px 0;
+  font-size: 13px;
+}
+.plane-nearby-sidebar.dark .wall-loading-more { color: #667788; }
+.plane-nearby-sidebar:not(.dark) .wall-loading-more { color: rgba(75, 48, 16, 0.78); }
 </style>

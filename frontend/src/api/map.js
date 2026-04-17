@@ -2,13 +2,15 @@ import api from "./index";
 import { mapApiProxy } from "./mockProxy";
 
 export const mapApi = {
-  exploreStories(lat, lng, radius = 1000) {
+  exploreStories(lat, lng, radius = 1000, { page, limit, summary } = {}) {
     if (mapApiProxy) {
       return mapApiProxy.exploreStories(lat, lng, radius);
     }
-    return api.get("/v1/map/explore", {
-      params: { lat, lng, radius },
-    });
+    const params = { lat, lng, radius };
+    if (page != null) params.page = page;
+    if (limit != null) params.limit = limit;
+    if (summary) params.summary = '1';
+    return api.get("/v1/map/explore", { params });
   },
 
   randomWalk(lat, lng, mood) {
@@ -24,7 +26,7 @@ export const mapApi = {
     return api.get("/v1/map/random", { params });
   },
 
-  getRecommendationFeed({ lat, lng, mood, page = 1, limit = 20 } = {}) {
+  getRecommendationFeed({ lat, lng, mood, page = 1, limit = 20, summary } = {}) {
     if (mapApiProxy) {
       return Promise.resolve({
         data: {
@@ -39,6 +41,7 @@ export const mapApi = {
       params.lng = lng;
     }
     if (mood) params.mood = mood;
+    if (summary) params.summary = '1';
     return api.get("/v1/map/feed", { params });
   },
 

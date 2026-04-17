@@ -56,3 +56,5 @@ backend/scripts/seed-data.js
 # Project folders
 .codebuddy/
 pro/
+
+docs/

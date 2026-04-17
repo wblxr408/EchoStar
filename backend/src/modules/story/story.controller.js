@@ -153,8 +153,9 @@ export const searchStories = async (req, res, next) => {
  */
 export const getFeaturedStories = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const result = await StoryService.getFeaturedStories({ page, limit });
+    const { page = 1, limit = 20, summary } = req.query;
+    const isSummary = summary === '1' || summary === 'true';
+    const result = await StoryService.getFeaturedStories({ page, limit, summary: isSummary });
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);

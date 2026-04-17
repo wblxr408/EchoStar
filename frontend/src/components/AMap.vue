@@ -8,6 +8,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from "vue";
+import AMapLoader from "@amap/amap-jsapi-loader";
 import { fromEmotionTag, getEmotionEmoji } from "../utils/emotion";
 
 const props = defineProps({
@@ -43,6 +44,10 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  paperPlanePosition: {
+    type: Object,
+    default: null,
+  },
 });
 
 const emit = defineEmits([
@@ -51,6 +56,8 @@ const emit = defineEmits([
   "theme-change",
   "map-click",
   "cluster-click",
+  "paper-plane-click",
+  "paper-plane-move",
 ]);
 
 const mapContainer = ref(null);
@@ -78,6 +85,11 @@ let markers = [];
 let clusterMarkers = [];
 let userLocationMarker = null;
 let tempPickedMarker = null;
+let paperPlaneMarker = null;
+let paperPlaneTooltipEl = null;
+let paperPlaneTooltipTimer = null;
+let paperPlaneInitialized = false;
+let moveAnimationReady = true; // 改为默认 true，因为插件将通过 URL 同步加载
 const isDarkMode = ref(props.theme === "dark");
 const isSidebarHidden = ref(false);
 const isPublishSidebarOpen = ref(false);
@@ -250,23 +262,15 @@ function dedupeStories(stories = []) {
 }
 
 function addMapControls() {
-  if (!map || !window.AMap?.plugin) {
-    return;
+  if (!map || !window.AMap) return;
+
+  if (window.AMap.Scale) {
+    map.addControl(new window.AMap.Scale());
   }
 
-  window.AMap.plugin(["AMap.Scale", "AMap.ToolBar"], () => {
-    if (!map) {
-      return;
-    }
-
-    if (window.AMap.Scale) {
-      map.addControl(new window.AMap.Scale());
-    }
-
-    if (window.AMap.ToolBar) {
-      map.addControl(new window.AMap.ToolBar());
-    }
-  });
+  if (window.AMap.ToolBar) {
+    map.addControl(new window.AMap.ToolBar());
+  }
 }
 
 function updateMapCursor() {
@@ -305,6 +309,16 @@ function initMap() {
     dragEnable: true,
     scrollWheel: true,
   });
+
+  // 同步加载所需插件
+  window.AMap.plugin(
+    ["AMap.Scale", "AMap.ToolBar"],
+    () => {
+      if (!map) return;
+      addMapControls();
+      console.log('[AMap] Basic controls loaded.');
+    }
+  );
 
   map.on("move", () => {
     if (!map) {
@@ -393,7 +407,6 @@ function initMap() {
     });
   });
 
-  addMapControls();
   updateMapCursor();
 }
 
@@ -521,6 +534,237 @@ function updateUserLocationMarker(location = props.userLocation) {
   }
 
   userLocationMarker.setPosition([coords.longitude, coords.latitude]);
+}
+
+// ========== 纸飞机地标 ==========
+function createPaperPlaneMarker(coords) {
+  if (!coords || !window.AMap) return null;
+
+  const planeSvg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42" fill="none">
+      <!-- 左翼（暗面） -->
+      <path d="M18 2 L4 36 L18 26 Z" fill="#FF6B6B" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
+      <!-- 右翼（亮面） -->
+      <path d="M18 2 L32 36 L18 26 Z" fill="#FF9E9E" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
+      <!-- 中心折脊（深色，立体感） -->
+      <path d="M15 26 L18 2 L21 26 Z" fill="#E05050" opacity="0.6"/>
+      <!-- 尾翼左 -->
+      <path d="M4 36 L18 26 L18 30 L10 38 Z" fill="#D94444" stroke="#fff" stroke-width="0.6" stroke-linejoin="round"/>
+      <!-- 尾翼右 -->
+      <path d="M32 36 L18 26 L18 30 L26 38 Z" fill="#FFB0B0" stroke="#fff" stroke-width="0.6" stroke-linejoin="round"/>
+      <!-- 折痕线 -->
+      <line x1="18" y1="2" x2="18" y2="26" stroke="#fff" stroke-width="0.6" stroke-opacity="0.5"/>
+      <line x1="18" y1="8" x2="10" y2="33" stroke="#fff" stroke-width="0.4" stroke-opacity="0.25"/>
+      <line x1="18" y1="8" x2="26" y2="33" stroke="#fff" stroke-width="0.4" stroke-opacity="0.25"/>
+    </svg>
+  `.trim();
+
+  // 视觉中心约在 (18, 20)，offset 使该点对准经纬度坐标
+  const cx = 18, cy = 20;
+
+  return new window.AMap.Marker({
+    position: [coords.longitude, coords.latitude],
+    icon: new window.AMap.Icon({
+      size: new window.AMap.Size(36, 42),
+      image: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(planeSvg)}`,
+      imageSize: new window.AMap.Size(36, 42),
+    }),
+    offset: new window.AMap.Pixel(-cx, -cy),
+    zIndex: 1300,
+    cursor: 'pointer',
+  });
+}
+
+function initPaperPlane(coords) {
+  if (paperPlaneInitialized || !map || !window.AMap) return;
+  // 稍微偏南一点，避免和用户定位标完全重叠
+  const offsetCoords = { latitude: coords.latitude - 0.0008, longitude: coords.longitude };
+  paperPlaneMarker = createPaperPlaneMarker(offsetCoords);
+  if (paperPlaneMarker) {
+    map.add(paperPlaneMarker);
+    paperPlaneMarker.on('click', () => {
+      const pos = paperPlaneMarker.getPosition();
+      emit('paper-plane-click', {
+        latitude: pos.getLat(),
+        longitude: pos.getLng(),
+      });
+    });
+    paperPlaneInitialized = true;
+    // 更新 planePosition 以反映实际位置
+    emit('paper-plane-move', { latitude: offsetCoords.latitude, longitude: offsetCoords.longitude });
+    showPaperPlaneTooltip();
+  }
+}
+
+function movePaperPlane(lat, lng, showTip = true) {
+  if (!map || !window.AMap || !paperPlaneMarker) {
+    if (!paperPlaneInitialized) {
+      initPaperPlane({ latitude: lat, longitude: lng });
+    }
+    return;
+  }
+  const target = new window.AMap.LngLat(lng, lat);
+
+  manualAnimatePaperPlane(target, showTip);
+}
+
+function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
+  const start = paperPlaneMarker.getPosition();
+  const moveDuration = 800;
+  const rotateDuration = 300;
+
+  // 计算移动方位角（0=正北/上方，顺时针为正）
+  const bearing = Math.atan2(target.getLng() - start.getLng(), target.getLat() - start.getLat()) * (180 / Math.PI);
+  // 平滑旋转到目标朝向
+  setMarkerRotation(bearing, rotateDuration);
+
+  const animStart = Date.now();
+
+  function step() {
+    const elapsed = Date.now() - animStart;
+
+    // 平移进度
+    const moveProgress = Math.min(elapsed / moveDuration, 1);
+    const easeProgress = 1 - Math.pow(1 - moveProgress, 3);
+
+    const currentLat = start.getLat() + (target.getLat() - start.getLat()) * easeProgress;
+    const currentLng = start.getLng() + (target.getLng() - start.getLng()) * easeProgress;
+
+    const currentPos = new window.AMap.LngLat(currentLng, currentLat);
+    paperPlaneMarker.setPosition(currentPos);
+
+    // 手动更新 tooltip 位置（基于视觉中心偏移）
+    if (showTip && paperPlaneTooltipEl && paperPlaneTooltipEl.style && paperPlaneTooltipEl.style.opacity !== '0' && map) {
+      const pixel = map.lngLatToContainer(currentPos);
+      paperPlaneTooltipEl.style.left = (pixel.getX() - 55) + 'px';
+      paperPlaneTooltipEl.style.top = (pixel.getY() - 40) + 'px';
+    }
+
+    if (moveProgress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      // 到达目标，保持当前朝向不回转
+      if (showTip) {
+        showPaperPlaneTooltip();
+      }
+      emit('paper-plane-move', { latitude: target.getLat(), longitude: target.getLng() });
+      if (onComplete) onComplete();
+    }
+  }
+
+  // 旋转和平移同时开始
+  requestAnimationFrame(step);
+}
+
+function getPaperPlaneDom() {
+  if (!paperPlaneMarker) return null;
+  const container = paperPlaneMarker.dom || paperPlaneMarker.De || paperPlaneMarker.contentDom || paperPlaneMarker.getContentDom?.();
+  if (!container) return null;
+  // AMap 的外层容器有定位用的 transform，不能旋转
+  // 需要找到内部的实际内容元素 (.amap-marker-content 或 img)
+  const inner = container.querySelector('.amap-marker-content') || container.querySelector('img');
+  return inner || container;
+}
+
+function setMarkerRotation(deg, animDuration = 200, onComplete = null) {
+  const dom = getPaperPlaneDom();
+  console.log('[PaperPlane] setMarkerRotation:', deg, 'dom:', !!dom);
+
+  if (!dom) {
+    // fallback: 通过 className 在 map container 中查找
+    const container = map?.getContainer?.();
+    if (container) {
+      const markerEl = container.querySelector('.amap-marker-content img, .amap-icon img');
+      if (markerEl) {
+        applyRotation(markerEl, deg, animDuration, onComplete);
+        return;
+      }
+    }
+    console.warn('[PaperPlane] Cannot find marker DOM for rotation');
+    if (onComplete) setTimeout(onComplete, animDuration || 0);
+    return;
+  }
+
+  applyRotation(dom, deg, animDuration, onComplete);
+}
+
+function applyRotation(el, deg, animDuration, onComplete) {
+  if (animDuration > 0) {
+    el.style.transition = `transform ${animDuration}ms ease-out`;
+  } else {
+    el.style.transition = 'none';
+  }
+  el.style.transformOrigin = '50% 47.6%'; // 视觉中心 (18/36, 20/42)
+
+  requestAnimationFrame(() => {
+    el.style.transform = `rotate(${deg}deg)`;
+  });
+
+  if (onComplete && animDuration > 0) {
+    setTimeout(() => {
+      el.style.transition = 'none';
+      if (onComplete) onComplete();
+    }, animDuration);
+  }
+}
+
+function onPlaneMoving(e) {
+  if (!paperPlaneTooltipEl || !paperPlaneTooltipEl.style || paperPlaneTooltipEl.style.opacity === '0') {
+    paperPlaneMarker?.off('moving', onPlaneMoving);
+    return;
+  }
+  const pos = paperPlaneMarker?.getPosition();
+  if (pos && map) {
+    const pixel = map.lngLatToContainer(pos);
+    paperPlaneTooltipEl.style.left = (pixel.getX() - 55) + 'px';
+    paperPlaneTooltipEl.style.top = (pixel.getY() - 56) + 'px';
+  }
+}
+
+function showPaperPlaneTooltip() {
+  if (paperPlaneTooltipTimer) {
+    clearTimeout(paperPlaneTooltipTimer);
+    paperPlaneTooltipTimer = null;
+  }
+  if (!paperPlaneTooltipEl) {
+    paperPlaneTooltipEl = document.createElement('div');
+    paperPlaneTooltipEl.className = 'paper-plane-tooltip';
+    paperPlaneTooltipEl.innerHTML = '<span>点击纸飞机</span><span>查看附近故事</span>';
+    paperPlaneTooltipEl.style.pointerEvents = 'none';
+    paperPlaneTooltipEl.style.zIndex = '1100';
+    document.body.appendChild(paperPlaneTooltipEl);
+  }
+
+  const pos = paperPlaneMarker.getPosition();
+  if (pos && map) {
+    const pixel = map.lngLatToContainer(pos);
+    paperPlaneTooltipEl.style.left = (pixel.getX() - 55) + 'px';
+    paperPlaneTooltipEl.style.top = (pixel.getY() - 56) + 'px';
+  }
+
+  paperPlaneTooltipEl.classList.toggle('dark', isDarkMode.value);
+  paperPlaneTooltipEl.style.opacity = '1';
+  paperPlaneTooltipEl.style.transition = 'none';
+
+  paperPlaneTooltipTimer = setTimeout(() => {
+    if (paperPlaneTooltipEl) {
+      paperPlaneTooltipEl.style.transition = 'opacity 1s ease-out';
+      paperPlaneTooltipEl.style.opacity = '0';
+    }
+  }, 1000);
+}
+
+function clearPaperPlaneTooltip() {
+  if (paperPlaneTooltipTimer) {
+    clearTimeout(paperPlaneTooltipTimer);
+    paperPlaneTooltipTimer = null;
+  }
+  if (paperPlaneTooltipEl) {
+    if (paperPlaneTooltipEl.parentNode) {
+      paperPlaneTooltipEl.parentNode.removeChild(paperPlaneTooltipEl);
+    }
+    paperPlaneTooltipEl = null;
+  }
 }
 
 function createTempPickedMarker(location) {
@@ -1690,61 +1934,64 @@ defineExpose({
   },
 });
 
-function loadAMapScript() {
-  return new Promise((resolve, reject) => {
-    if (window.AMap) {
-      resolve();
-      return;
-    }
+// 移除传统的script加载方式，只使用官方AMapLoader
 
-    const existingScript = document.querySelector(
-      'script[data-amap-script="true"]',
-    );
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", reject, { once: true });
-      return;
-    }
-
-    const key = import.meta.env.VITE_AMAP_KEY || "test_key";
-    const securityJsCode = import.meta.env.VITE_AMAP_SECURITY_JS_CODE;
-
-    if (securityJsCode) {
-      window._AMapSecurityConfig = {
-        ...(window._AMapSecurityConfig || {}),
-        securityJsCode,
-      };
-    }
-
-    const script = document.createElement("script");
-    script.dataset.amapScript = "true";
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}&plugin=AMap.Scale,AMap.ToolBar`;
-    script.onload = () => resolve();
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-}
-
-onMounted(async () => {
-  try {
-    await loadAMapScript();
-    initMap();
-    updateClusterMarkers();
-    updateMarkers();
-    updateUserLocationMarker();
-    updateTempPickedMarker();
-
-    window.addEventListener("sidebar-toggle", handleSidebarToggle);
-    window.addEventListener(
-      "publish-sidebar-toggle",
-      handlePublishSidebarToggle,
-    );
-  } catch (error) {
-    console.error("[AMap] Failed to initialize map resources:", error);
+onMounted(() => {
+  // 设置安全代码配置
+  const securityJsCode = import.meta.env.VITE_AMAP_SECURITY_JS_CODE;
+  if (securityJsCode) {
+    window._AMapSecurityConfig = {
+      ...(window._AMapSecurityConfig || {}),
+      securityJsCode,
+    };
   }
+  // 只使用官方AMapLoader，避免混用多种加载方式
+  AMapLoader.load({
+    key: import.meta.env.VITE_AMAP_KEY,
+    version: "2.0",
+    plugins: ["AMap.Scale", "AMap.ToolBar", "AMap.moveAnimation"],
+  })
+    .then(async (AMap) => {
+      window.AMap = AMap;
+      console.log('[AMapLoader] AMap loaded successfully, checking plugins...');
+      console.log('[AMapLoader] Available plugins:', Object.keys(AMap));
+      console.log('[AMapLoader] moveAnimation available:', typeof AMap.moveAnimation);
+      
+      initMap();
+      updateClusterMarkers();
+      updateMarkers();
+      updateUserLocationMarker();
+      updateTempPickedMarker();
+
+      // Init paper plane at user location
+      const userCoords = resolveCoordinates(props.userLocation);
+      if (userCoords) {
+        initPaperPlane(userCoords);
+      }
+
+      window.addEventListener("sidebar-toggle", handleSidebarToggle);
+      window.addEventListener(
+        "publish-sidebar-toggle",
+        handlePublishSidebarToggle,
+      );
+    })
+    .catch((e) => {
+      console.error("[AMapLoader] Failed to load AMap:", e);
+      console.error("[AMapLoader] Error details:", {
+        message: e.message,
+        stack: e.stack,
+        envKey: import.meta.env.VITE_AMAP_KEY ? 'exists' : 'missing',
+        keyLength: import.meta.env.VITE_AMAP_KEY?.length
+      });
+    });
 });
 
 onUnmounted(() => {
+  clearPaperPlaneTooltip();
+  if (paperPlaneMarker && map) {
+    map.remove(paperPlaneMarker);
+    paperPlaneMarker = null;
+  }
   clearUserLocationMarker();
   clearTempPickedMarker();
   clearClusterMarkers();
@@ -1805,9 +2052,40 @@ watch(
   () => props.userLocation,
   (newLocation) => {
     updateUserLocationMarker(newLocation);
+    // Init paper plane on first user location
+    if (!paperPlaneInitialized) {
+      const coords = resolveCoordinates(newLocation);
+      if (coords) initPaperPlane(coords);
+    }
   },
   { deep: true },
 );
+
+watch(
+  () => props.paperPlanePosition,
+  (newPos) => {
+    if (!newPos) return;
+    const coords = resolveCoordinates(newPos);
+    if (!coords) return;
+    // 如果纸飞机已存在且位置接近，跳过移动
+    if (paperPlaneMarker && paperPlaneInitialized) {
+      const current = paperPlaneMarker.getPosition();
+      if (current) {
+        const dLat = Math.abs(current.getLat() - coords.latitude);
+        const dLng = Math.abs(current.getLng() - coords.longitude);
+        if (dLat < 0.00005 && dLng < 0.00005) return;
+      }
+    }
+    movePaperPlane(coords.latitude, coords.longitude);
+  },
+  { deep: true },
+);
+
+watch(isDarkMode, (dark) => {
+  if (paperPlaneTooltipEl) {
+    paperPlaneTooltipEl.classList.toggle('dark', dark);
+  }
+});
 
 watch(
   () => props.center,

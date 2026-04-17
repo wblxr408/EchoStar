@@ -630,7 +630,7 @@ class StoryServiceClass {
   /**
    * 获取精选推荐故事（公开接口）
    */
-  async getFeaturedStories({ page = 1, limit = 20 } = {}) {
+  async getFeaturedStories({ page = 1, limit = 20, summary } = {}) {
     const offset = (page - 1) * limit;
     
     const { rows, count } = await Story.findAndCountAll({
@@ -658,10 +658,11 @@ class StoryServiceClass {
       stories: rows.map((story, index) => {
         const coords = parseStoryLocationValue(story.location) || { lat: 0, lng: 0 };
         const { lat, lng } = coords;
+        const rawImages = safeParseJSONB(story.images, []);
         return {
           id: normalizeStoryId(story.id),
           content: story.content,
-          images: safeParseJSONB(story.images, []),
+          images: summary && rawImages.length > 1 ? [rawImages[0]] : rawImages,
           username: story.author?.username || '',
           avatar: story.author?.avatarUrl || null,
           author: story.author ? {

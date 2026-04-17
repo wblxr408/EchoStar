@@ -7,7 +7,7 @@ import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
  */
 export const exploreStories = async (req, res, next) => {
   try {
-    const { lat, lng, radius = 1000 } = req.query;
+    const { lat, lng, radius = 1000, page, limit, summary } = req.query;
 
     if (!lat || !lng) {
       return res.status(400).json({
@@ -42,13 +42,25 @@ export const exploreStories = async (req, res, next) => {
       });
     }
 
-    const stories = await MapService.exploreStories(
+    // 解析可选参数
+    const isSummary = summary === '1' || summary === 'true';
+    const opts = { summary: isSummary };
+    if (page != null) opts.page = parseInt(page);
+    if (limit != null) opts.limit = parseInt(limit);
+    const usePagination = opts.page != null || opts.limit != null;
+
+    const result = await MapService.exploreStories(
       latitude,
       longitude,
-      radiusNum
+      radiusNum,
+      opts
     );
 
-    res.json({ code: 0, data: { stories } });
+    if (usePagination) {
+      res.json({ code: 0, data: result }); // { stories, pagination }
+    } else {
+      res.json({ code: 0, data: { stories: result } }); // 向后兼容
+    }
   } catch (error) {
     next(error);
   }
@@ -258,7 +270,7 @@ export const getClusterData = async (req, res, next) => {
  */
 export const getRecommendationFeed = async (req, res, next) => {
   try {
-    const { lat, lng, mood, page = 1, limit = 20 } = req.query;
+    const { lat, lng, mood, page = 1, limit = 20, summary } = req.query;
     const userId = req.user?.id;
 
     // 验证经纬度参数格式（如果提供了的话）
@@ -306,6 +318,7 @@ export const getRecommendationFeed = async (req, res, next) => {
     const moodFilter = mood || null;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
+    const isSummary = summary === '1' || summary === 'true';
 
     const result = await RecommendationService.getFeed({
       userId,
@@ -313,7 +326,8 @@ export const getRecommendationFeed = async (req, res, next) => {
       lng: Number.isFinite(longitude) ? longitude : undefined,
       moodFilter,
       page: pageNum,
-      limit: limitNum
+      limit: limitNum,
+      summary: isSummary
     });
     res.json({ code: 0, data: result });
   } catch (error) {

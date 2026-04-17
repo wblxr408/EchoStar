@@ -16,6 +16,7 @@
     "mock:api": "prism mock ../docs/openapi.yaml --port 4010"
   },
   "dependencies": {
+    "@amap/amap-jsapi-loader": "^1.0.1",
     "ali-oss": "^6.18.1",
     "axios": "^1.6.2",
     "pinia": "^2.1.7",
