@@ -154,26 +154,42 @@ class CommentConsumer {
    * 处理创建评论
    */
   async handleCreate(payload) {
-    const { commentId, userId, storyId, content } = payload;
+    const { commentId, userId, storyId, content, lockKey } = payload;
 
-    const comment = await Comment.create({
-      id: commentId,
-      userId,
-      storyId,
-      content
-    });
+    const { redisClient } = await import('../common/utils/redis.js');
+    const redis = redisClient.getClient();
 
-    await commentCacheUtil.incrementCommentCount(storyId);
-
-    const { Story } = await import('../modules/story/story.model.js');
-    const story = await Story.findByPk(storyId);
-    if (story && story.userId !== userId) {
-      NotificationService.createNotification('comment', story.userId, userId, storyId, content).catch(err => {
-        console.error('❌ 发送评论通知失败:', err);
+    try {
+      const comment = await Comment.create({
+        id: commentId,
+        userId,
+        storyId,
+        content
       });
-    }
 
-    console.log(`✅ 创建评论成功: commentId=${comment.id}, storyId=${storyId}`);
+      await commentCacheUtil.incrementCommentCount(storyId);
+
+      const { Story } = await import('../modules/story/story.model.js');
+      const story = await Story.findByPk(storyId);
+      if (story && story.userId !== userId) {
+        NotificationService.createNotification('comment', story.userId, userId, storyId, content).catch(err => {
+          console.error('❌ 发送评论通知失败:', err);
+        });
+      }
+
+      console.log(`✅ 创建评论成功: commentId=${comment.id}, storyId=${storyId}`);
+    } catch (dbError) {
+      console.error(`❌ 评论创建失败 [commentId: ${commentId}]:`, dbError);
+
+      // 主键冲突不抛异常
+      if (dbError.name !== 'SequelizeUniqueConstraintError' && dbError.code !== '23505') {
+        throw dbError;
+      }
+    } finally {
+      // 释放锁（无论成功失败）
+      await redis.del(lockKey);
+      console.log(`🔓 评论锁已释放 [lockKey: ${lockKey}]`);
+    }
   }
 
   /**

@@ -97,6 +97,26 @@ class StoryServiceClass {
       finalEndTime = null;
     }
 
+    // =====================
+    // 基于用户ID + 时间窗口获取分布式锁
+    // =====================
+    const windowSize = 3; // 3秒窗口
+    const timestampWindow = Math.floor(Date.now() / 1000 / windowSize);
+    const lockKey = `story:create:lock:${userId}:${timestampWindow}`;
+
+    const redis = redisClient.getClient();
+    const acquired = await redis.set(
+      lockKey,
+      '1',
+      'NX',
+      'EX',
+      windowSize
+    );
+
+    if (!acquired) {
+      throw new Error('发布过于频繁，请3秒后再试');
+    }
+
     // 生成雪花ID
     const storyId = snowflake.nextId();
 
@@ -104,27 +124,36 @@ class StoryServiceClass {
     await setUpdatingMarker(`story:raw:${storyId}`, 5);
 
     // 发送 MQ 消息，让消费者异步写入数据库
-    rocketmqClient.sendOrderly(
-      MessageModule.STORY,
-      StoryOperation.CREATE,
-      {
-        storyId,  // 预先生成的真实 ID
-        userId,
-        content,
-        images: safeImages,
-        location,
-        locationName,
-        emotionTag,
-        isTimeCapsule,
-        unlockAt,
-        visibility,
-        visibilityStartTime,
-        visibilityEndTime
-      },
-      storyId
-    ).catch(err => {
-      console.error(`❌ 发送 CREATE 消息失败:`, err);
-    });
+    const messageData = {
+      storyId,
+      userId,
+      content,
+      images: safeImages,
+      location,
+      locationName,
+      emotionTag,
+      isTimeCapsule,
+      unlockAt,
+      visibility,
+      visibilityStartTime,
+      visibilityEndTime,
+      lockKey
+    };
+
+    try {
+      await rocketmqClient.sendOrderly(
+        MessageModule.STORY,
+        StoryOperation.CREATE,
+        messageData,
+        storyId
+      );
+    } catch (mqError) {
+      // 发送失败，手动释放锁（保底）
+      console.error(`❌ 发送 CREATE 消息失败 [storyId: ${storyId}]:`, mqError);
+      await redis.del(lockKey);
+      await redis.del(`story:raw:${storyId}`);
+      throw new Error('发布失败，请稍后重试');
+    }
 
     // 立即返回真实的 ID
     return {
