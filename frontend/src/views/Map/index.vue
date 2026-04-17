@@ -46,9 +46,9 @@
       >
         <!-- 标签页切换 -->
         <div class="search-tabs">
-          <button class="search-tab" :class="{ active: searchTab === 'place' }" @click="switchSearchTab('place')">地点</button>
           <button class="search-tab" :class="{ active: searchTab === 'story' }" @click="switchSearchTab('story')">故事</button>
           <button class="search-tab" :class="{ active: searchTab === 'user' }" @click="switchSearchTab('user')">用户</button>
+          <button class="search-tab" :class="{ active: searchTab === 'place' }" @click="switchSearchTab('place')">地点</button>
         </div>
 
         <!-- 故事标签页 -->
