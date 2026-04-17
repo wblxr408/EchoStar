@@ -40,6 +40,11 @@ export const AdminService = {
       throw new AdminError('故事已经是推荐状态', 400);
     }
 
+    // 禁止推荐未解锁的时光胶囊
+    if (story.isTimeCapsule && story.unlockAt && new Date(story.unlockAt) > new Date()) {
+      throw new AdminError('无法推荐未解锁的时光胶囊故事', 400);
+    }
+
     // 更新推荐状态
     await story.update({ isRecommended: true });
 

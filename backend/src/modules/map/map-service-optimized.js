@@ -126,6 +126,9 @@ class StoryFormatter {
       },
       locationName: story.locationName,
       emotionTag: story.emotionTag,
+      isTimeCapsule: !!story.isTimeCapsule,
+      unlockAt: story.unlockAt || null,
+      isUnlocked: !story.isTimeCapsule || (story.unlockAt && new Date(story.unlockAt) <= new Date()),
       isRecommended: story.isRecommended,
       createdAt: story.createdAt
     };
@@ -165,6 +168,8 @@ class QueryBuilder {
       'location',
       'locationName',
       'emotionTag',
+      'isTimeCapsule',
+      'unlockAt',
       'isRecommended',
       'createdAt'
     ];
@@ -215,7 +220,8 @@ class HighPerformanceMapService {
         where: {
           ...QueryBuilder.getBaseQuery().where,
           [Op.and]: [
-            QueryBuilder.getDWithinCondition(latitude, longitude, radius)
+            QueryBuilder.getDWithinCondition(latitude, longitude, radius),
+            sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
           ]
         },
         replacements: { lat: latitude, lng: longitude, radius },
@@ -252,7 +258,12 @@ class HighPerformanceMapService {
 
     try {
       const story = await Story.findOne({
-        where: QueryBuilder.getBaseQuery().where,
+        where: {
+          ...QueryBuilder.getBaseQuery().where,
+          [Op.and]: [
+            sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
+          ]
+        },
         order: [
           [sequelize.literal('is_recommended DESC NULLS LAST')],
           [sequelize.random()]
@@ -301,7 +312,8 @@ class HighPerformanceMapService {
         where: {
           ...QueryBuilder.getBaseQuery().where,
           [Op.and]: [
-            QueryBuilder.getDWithinCondition(latitude, longitude, radius)
+            QueryBuilder.getDWithinCondition(latitude, longitude, radius),
+            sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
           ]
         },
         replacements: { lat: latitude, lng: longitude, radius },

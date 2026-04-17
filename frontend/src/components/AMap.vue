@@ -934,13 +934,14 @@ function createMarker(story) {
   }
 
   const content = document.createElement("div");
-  content.className = "custom-marker";
 
   const colors = isDarkMode.value ? emotionColorsDark : emotionColors;
   const emotion = fromEmotionTag(story.emotionTag) || story.emotion;
   const color = colors[emotion] || "#667eea";
-  const isLocked = story.isTimeCapsule && !story.isUnlocked;
+  const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
   const isDark = isDarkMode.value;
+
+  content.className = "custom-marker" + (isLocked ? " is-time-capsule-locked" : "");
 
   // 双层设计：外圈发光底座 + 内核情绪色块 + 呼吸动画
   const glowOpacity = isDark ? "0.4" : "0.2";
@@ -949,19 +950,101 @@ function createMarker(story) {
     ? `rgba(143, 180, 255, 0.35)`
     : `rgba(0, 0, 0, 0.25)`;
   const darkClass = isDark ? " marker-dark" : "";
-  const lockStyle = isLocked ? "opacity: 0.55;" : "";
+
+  // 时光胶囊漂流瓶 SVG
+  const emotionEmoji = getEmotionEmoji(story.emotionTag || story.emotion);
+  // 漂流瓶固定色：浅蓝水 + 深蓝光晕
+  const waterColor = isDark ? "#5ba8d9" : "#7ec8e3";
+  const waterColorDeep = isDark ? "#3a7cb8" : "#5aa9d5";
+  const glowColor = isDark ? "#1a3a6e" : "#1e3f73";
+  const glowRgb = isDark ? "26,58,110" : "30,63,115";
+
+  const markerInner = isLocked
+    ? `<div class="capsule-glow"></div>
+       <div class="capsule-pulse"></div>
+       <div class="capsule-bottle">
+         <svg class="bottle-svg" viewBox="-2 0 56 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+           <defs>
+             <clipPath id="bottleClip-${story.id || 'c'}">
+               <rect x="13" y="18" width="26" height="36" rx="5"/>
+             </clipPath>
+             <linearGradient id="waterG-${story.id || 'c'}" x1="0" y1="0" x2="0" y2="1">
+               <stop offset="0%" stop-color="${waterColor}" stop-opacity="0.75"/>
+               <stop offset="100%" stop-color="${waterColorDeep}" stop-opacity="0.95"/>
+             </linearGradient>
+             <linearGradient id="glassG-${story.id || 'c'}" x1="0" y1="0" x2="1" y2="1">
+               <stop offset="0%" stop-color="rgba(255,255,255,0.28)"/>
+               <stop offset="100%" stop-color="rgba(255,255,255,0.08)"/>
+             </linearGradient>
+             <linearGradient id="corkG-${story.id || 'c'}" x1="0" y1="0" x2="0" y2="1">
+               <stop offset="0%" stop-color="#d4a76a"/>
+               <stop offset="40%" stop-color="#c49058"/>
+               <stop offset="100%" stop-color="#a07040"/>
+             </linearGradient>
+             <linearGradient id="paperG-${story.id || 'c'}" x1="0" y1="0" x2="0.3" y2="1">
+               <stop offset="0%" stop-color="#fef9ef"/>
+               <stop offset="100%" stop-color="#f5e6c8"/>
+             </linearGradient>
+           </defs>
+
+           <!-- 瓶颈 -->
+           <rect x="20" y="8" width="12" height="12" rx="2" fill="url(#glassG-${story.id || 'c'})" stroke="rgba(255,255,255,0.45)" stroke-width="0.8"/>
+
+           <!-- 瓶身（圆柱形圆角矩形） -->
+           <rect x="13" y="18" width="26" height="36" rx="5" fill="url(#glassG-${story.id || 'c'})" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
+
+           <!-- 水（半满，从 y=32 开始） -->
+           <g clip-path="url(#bottleClip-${story.id || 'c'})">
+             <g class="bottle-water">
+               <rect x="11" y="33" width="30" height="23" fill="url(#waterG-${story.id || 'c'})"/>
+               <path class="wave1" d="M11 33 Q18 30 26 33 Q34 36 41 33 L41 37 Q34 40 26 37 Q18 34 11 37 Z" fill="${waterColor}" opacity="0.5"/>
+               <path class="wave2" d="M11 33 Q19 36 26 33 Q33 30 41 33 L41 39 Q33 36 26 39 Q19 42 11 39 Z" fill="${waterColorDeep}" opacity="0.3"/>
+             </g>
+           </g>
+
+           <!-- 瓶身左侧高光 -->
+           <rect x="15" y="20" width="4" height="30" rx="2" fill="rgba(255,255,255,0.32)" opacity="0.7"/>
+           <rect x="16.5" y="22" width="1.8" height="18" rx="0.9" fill="rgba(255,255,255,0.5)"/>
+
+           <!-- 气泡 -->
+           <circle cx="22" cy="44" r="1.1" fill="rgba(255,255,255,0.28)" class="bubble b1"/>
+           <circle cx="30" cy="46" r="0.7" fill="rgba(255,255,255,0.22)" class="bubble b2"/>
+           <circle cx="26" cy="41" r="0.9" fill="rgba(255,255,255,0.2)" class="bubble b3"/>
+
+           <!-- 木塞（瓶口上方） -->
+           <rect x="19" y="2" width="14" height="8" rx="2" fill="url(#corkG-${story.id || 'c'})" stroke="#9a6e3a" stroke-width="0.6"/>
+           <line x1="21" y1="4" x2="21" y2="8" stroke="#b8895a" stroke-width="0.5" opacity="0.5"/>
+           <line x1="24" y1="3" x2="24" y2="9" stroke="#b8895a" stroke-width="0.4" opacity="0.4"/>
+           <line x1="28" y1="4" x2="28" y2="8" stroke="#b8895a" stroke-width="0.5" opacity="0.5"/>
+           <line x1="31" y1="3.5" x2="31" y2="8.5" stroke="#b8895a" stroke-width="0.4" opacity="0.3"/>
+
+           <!-- 绑线（绕瓶颈一圈后延伸到左侧纸条） -->
+           <ellipse cx="26" cy="10" rx="7.5" ry="1.3" stroke="#8b6b4a" stroke-width="0.65" fill="none"/>
+           <!-- 线从左侧引出到纸条 -->
+           <path d="M18.5 10 Q16 10 15 11.5" stroke="#8b6b4a" stroke-width="0.6" fill="none" stroke-linecap="round"/>
+
+           <!-- 纸条（贴在瓶口左侧，微微飘起） -->
+           <g class="paper-note">
+             <rect x="3" y="7" width="10" height="14" rx="1" fill="url(#paperG-${story.id || 'c'})" stroke="#d4b896" stroke-width="0.4" transform="rotate(-8 8 14)"/>
+             <line x1="5.5" y1="10.5" x2="10.5" y2="10" stroke="#c4a882" stroke-width="0.4" transform="rotate(-8 8 14)"/>
+             <line x1="5.5" y1="13.5" x2="10" y2="13" stroke="#c4a882" stroke-width="0.4" transform="rotate(-8 8 14)"/>
+             <line x1="6" y1="16.5" x2="9.5" y2="16" stroke="#c4a882" stroke-width="0.4" transform="rotate(-8 8 14)"/>
+           </g>
+         </svg>
+       </div>`
+    : `<div class="marker-glow"></div>
+       <div class="marker-pulse"></div>
+       <div class="marker-emotion">${emotionEmoji}</div>`;
 
   content.innerHTML = `
     <div class="marker-wrapper${darkClass}"
-         style="--marker-color: ${color};
-                --marker-glow-rgb: ${hexToRgb(color)};
-                --glow-opacity: ${glowOpacity};
-                --hover-shadow: ${hoverShadowColor};
-                background: ${color};
-                ${lockStyle}">
-      <div class="marker-glow"></div>
-      <div class="marker-pulse"></div>
-      <div class="marker-emotion">${isLocked ? "\uD83D\uDD12" : getEmotionEmoji(story.emotionTag || story.emotion)}</div>
+         style="--marker-color: ${isLocked ? glowColor : color};
+                --marker-glow-rgb: ${isLocked ? glowRgb : hexToRgb(color)};
+                --glow-opacity: ${isLocked ? (isDark ? '0.55' : '0.4') : glowOpacity};
+                --hover-shadow: ${isLocked ? `rgba(${glowRgb}, 0.5)` : hoverShadowColor};
+                background: ${isLocked ? 'transparent' : color};
+                ${isLocked ? 'border: none; box-shadow: none;' : ''}">
+      ${markerInner}
     </div>
   `;
 
@@ -2536,6 +2619,182 @@ watch(
   font-size: 20px;
   z-index: 1;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ── 时光胶囊漂流瓶效果 ── */
+:deep(.custom-marker.is-time-capsule-locked) {
+  cursor: not-allowed;
+}
+:deep(.custom-marker.is-time-capsule-locked:hover) {
+  transform: scale(1.1);
+}
+
+/* 深蓝光晕发光层 */
+:deep(.capsule-glow) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(100% + 16px);
+  height: calc(100% + 16px);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 14px 4px rgba(var(--marker-glow-rgb), var(--glow-opacity)),
+              0 0 28px 8px rgba(var(--marker-glow-rgb), calc(var(--glow-opacity) * 0.5));
+  transition: box-shadow 0.2s ease;
+}
+:deep(.custom-marker.is-time-capsule-locked:hover .capsule-glow) {
+  box-shadow: 0 0 20px 8px rgba(var(--marker-glow-rgb), calc(var(--glow-opacity) * 1.8)),
+              0 0 40px 14px rgba(var(--marker-glow-rgb), calc(var(--glow-opacity) * 0.7));
+}
+
+/* 深蓝呼吸脉动 */
+:deep(.capsule-pulse) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  transform: translate(-50%, -50%);
+  animation: capsule-breathe 3.5s ease-in-out infinite;
+}
+@keyframes capsule-breathe {
+  0% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(0.96);
+    box-shadow: 0 0 6px rgba(var(--marker-glow-rgb), 0.15);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.04);
+    box-shadow: 0 0 18px rgba(var(--marker-glow-rgb), 0.45),
+                0 0 30px rgba(var(--marker-glow-rgb), 0.15);
+  }
+  100% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(0.96);
+    box-shadow: 0 0 6px rgba(var(--marker-glow-rgb), 0.15);
+  }
+}
+
+/* 暗色模式呼吸动画 */
+:deep(.amap-container.dark-mode .capsule-pulse) {
+  animation-name: capsule-breathe-dark;
+}
+@keyframes capsule-breathe-dark {
+  0% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(0.96);
+    box-shadow: 0 0 8px rgba(var(--marker-glow-rgb), 0.2);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+    box-shadow: 0 0 22px rgba(var(--marker-glow-rgb), 0.5),
+                0 0 38px rgba(var(--marker-glow-rgb), 0.2);
+  }
+  100% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(0.96);
+    box-shadow: 0 0 8px rgba(var(--marker-glow-rgb), 0.2);
+  }
+}
+
+:deep(.capsule-bottle) {
+  position: absolute;
+  inset: 5px 0px -5px 0px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+  overflow: visible;
+}
+
+:deep(.bottle-svg) {
+  width: 42px;
+  height: 48px;
+  overflow: visible;
+}
+
+/* 纸条微摆动画 */
+:deep(.paper-note) {
+  animation: paper-sway 4s ease-in-out infinite;
+  transform-origin: 13px 11px;
+}
+@keyframes paper-sway {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(30deg); }
+  75% { transform: rotate(5deg); }
+}
+
+/* 水面波浪动画 */
+:deep(.wave1) {
+  animation: bottle-wave-1 3s ease-in-out infinite;
+  transform-origin: center center;
+}
+:deep(.wave2) {
+  animation: bottle-wave-2 2.6s ease-in-out infinite;
+  animation-delay: -0.8s;
+  transform-origin: center center;
+}
+:deep(.bottle-water) {
+  animation: bottle-water-sway 4s ease-in-out infinite;
+}
+
+@keyframes bottle-wave-1 {
+  0%, 100% { transform: translateX(0) scaleY(1); }
+  50% { transform: translateX(1px) scaleY(1.1); }
+}
+@keyframes bottle-wave-2 {
+  0%, 100% { transform: translateX(0) scaleY(1); }
+  50% { transform: translateX(-1px) scaleY(0.9); }
+}
+@keyframes bottle-water-sway {
+  0%, 100% { transform: translateX(0); }
+  33% { transform: translateX(0.6px); }
+  66% { transform: translateX(-0.4px); }
+}
+
+/* 气泡上浮动画 */
+:deep(.b1) { animation: bubble-rise 3.5s ease-in infinite; }
+:deep(.b2) { animation: bubble-rise 4.2s ease-in infinite; animation-delay: -1.2s; }
+:deep(.b3) { animation: bubble-rise 3s ease-in infinite; animation-delay: -2s; }
+
+@keyframes bubble-rise {
+  0% { transform: translateY(0); opacity: 0.25; }
+  60% { opacity: 0.35; }
+  100% { transform: translateY(-10px); opacity: 0; }
+}
+
+/* 暗色模式漂流瓶 */
+:deep(.amap-container.dark-mode .capsule-bottle) {
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4)) drop-shadow(0 0 8px rgba(26,58,110,0.25));
+}
+
+/* 缩放时隐藏动画 */
+:deep(.amap-container.is-zooming .capsule-glow),
+:deep(.amap-container.is-zooming .capsule-pulse) {
+  opacity: 0 !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+
+/* prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  :deep(.capsule-pulse),
+  :deep(.wave1),
+  :deep(.wave2),
+  :deep(.bottle-water),
+  :deep(.paper-note),
+  :deep(.bubble) {
+    animation: none !important;
+  }
 }
 
 @keyframes user-location-pulse {

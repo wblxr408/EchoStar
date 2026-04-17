@@ -1,4 +1,4 @@
-import { Story } from './story.model.js';
+import { Story, TimeCapsule } from './story.model.js';
 import { User } from '../auth/auth.model.js';
 import { generateStoryUploadToken } from '../../common/utils/oss.js';
 import { wrapWithCache, redisClient, setUpdatingMarker } from '../../common/utils/redis.js';
@@ -357,6 +357,11 @@ class StoryServiceClass {
         model: User,
         as: 'author',
         attributes: ['id', 'username', 'avatarUrl', 'vip']
+      }, {
+        model: TimeCapsule,
+        as: 'timeCapsule',
+        attributes: ['isUnlocked'],
+        required: false
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -384,6 +389,14 @@ class StoryServiceClass {
       return (story.viewCount || 0) + delta;
     });
 
+    // 计算时光胶囊是否已解锁
+    function computeIsUnlocked(story) {
+      if (!story.isTimeCapsule) return true;
+      if (story.unlockAt && new Date(story.unlockAt) <= new Date()) return true;
+      if (story.timeCapsule?.isUnlocked === true) return true;
+      return false;
+    }
+
     return {
       stories: rows.map((story, index) => ({
         id: normalizeStoryId(story.id),
@@ -396,6 +409,9 @@ class StoryServiceClass {
         visibility: story.visibility,
         location: parseStoryLocationValue(story.location),
         locationName: story.locationName,
+        isTimeCapsule: story.isTimeCapsule || false,
+        unlockAt: story.unlockAt || null,
+        isUnlocked: computeIsUnlocked(story),
         author: {
           id: story.userId,
           username: story.author?.username || '匿名用户',

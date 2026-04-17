@@ -86,7 +86,17 @@ async function fetchCandidateStories(options = {}) {
   const where = {
     visibility: 'public',
     location: { [Op.not]: null },
-    [Op.and]: [getVisibilityTimeCondition()]
+    [Op.and]: [
+      getVisibilityTimeCondition(),
+      // 排除未解锁的时光胶囊：是时光胶囊且有 unlockAt 且未到解锁时间
+      sequelize.literal(`
+        NOT (
+          is_time_capsule = true
+          AND unlock_at IS NOT NULL
+          AND unlock_at > NOW()
+        )
+      `)
+    ]
   };
 
   let replacements = {};
@@ -106,7 +116,7 @@ async function fetchCandidateStories(options = {}) {
   const stories = await Story.findAll({
     where,
     replacements: Object.keys(replacements).length ? replacements : undefined,
-    attributes: ['id', 'content', 'images', 'location', 'locationName', 'emotionTag', 'isRecommended', 'createdAt'],
+    attributes: ['id', 'content', 'images', 'location', 'locationName', 'emotionTag', 'isRecommended', 'isTimeCapsule', 'unlockAt', 'createdAt'],
     include: [{
       model: User,
       as: 'author',
