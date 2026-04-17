@@ -191,12 +191,12 @@
               </div>
 
               <!-- 故事列表 -->
-              <div class="user-content-list">
+              <div ref="searchedUserContentRef" class="user-content-list" @scroll="handleProfileScroll">
                 <div v-if="searchedUserStories.length === 0" class="panel-empty">
                   <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
                 </div>
                 <div v-else class="panel-list">
-                  <div v-for="(story, idx) in searchedUserStories" :key="story.id + '-detail-' + searchAnimationKey" class="panel-item story-card-enter" :class="{ 'is-vip-card': searchedUser.vip }" :data-virtual-index="idx" @click="openStoryFromCollection(story)">
+                  <div v-for="(story, idx) in searchedUserStories" :key="story.id + '-detail-' + searchAnimationKey" class="panel-item story-card-enter" :class="{ 'is-vip-card': searchedUser.vip }" :data-virtual-index="idx" :style="{ animationDelay: idx * 0.12 + 's' }" @click="openStoryFromCollection(story)">
                     <div class="item-header">
                       <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
                       <div class="item-meta">
@@ -218,10 +218,10 @@
           <!-- 返回顶部按钮 -->
           <transition name="back-to-top">
             <button
-              v-if="showWallBackToTop"
+              v-if="showProfileBackToTop"
               class="wall-back-to-top"
               :class="{ dark: effectiveMapTheme === 'dark' }"
-              @click="scrollWallToTop"
+              @click="scrollProfileToTop(searchedUserContentRef)"
             >
               <span>^</span>
             </button>
@@ -979,7 +979,7 @@
             </div>
 
             <!-- 标签内容区（虚拟滚动） -->
-            <div ref="vScrollContainerRef" class="user-content-list">
+            <div ref="vScrollContainerRef" class="user-content-list" @scroll="handleProfileScroll">
               <!-- 作品 -->
               <template v-if="userContentTab === 'posts'">
                 <div v-if="postsLoading && postsList.length === 0" class="panel-loading">
@@ -997,7 +997,7 @@
                     :data-virtual-index="item.index"
                     class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
-                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
                     @click="handleStoryClick(item.data)"
                   >
                     <div class="item-header">
@@ -1038,7 +1038,7 @@
                     :data-virtual-index="item.index"
                     class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
-                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
                     @click="handleStoryClick(item.data)"
                   >
                     <div class="item-header">
@@ -1078,7 +1078,7 @@
                     :data-virtual-index="item.index"
                     class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
-                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0' }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
                     @click="handleStoryClick(item.data)"
                   >
                     <div class="item-header">
@@ -1110,10 +1110,10 @@
           <!-- 返回顶部按钮 -->
           <transition name="back-to-top">
             <button
-              v-if="showWallBackToTop"
+              v-if="showProfileBackToTop"
               class="wall-back-to-top"
               :class="{ dark: effectiveMapTheme === 'dark' }"
-              @click="scrollWallToTop"
+              @click="scrollProfileToTop(vScrollContainerRef)"
             >
               <span>^</span>
             </button>
@@ -1748,6 +1748,7 @@ const postsTotalCount = ref(-1);
 const likesTotalCount = ref(-1);
 const favoritesTotalCount = ref(-1);
 const storyCardAnimationKey = ref(0); // 用于触发入场动画的版本号
+const searchedUserContentRef = ref(null); // 他人主页故事列表容器
 
 // Bio 编辑
 const editingBioInline = ref(false);
@@ -2144,6 +2145,33 @@ function scrollWallToTop() {
   sidebarContentRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
   wallLastScrollTop = 0;
   showWallBackToTop.value = false;
+}
+
+// 个人主页面板滚动：返回顶部按钮（我的主页 + 他人主页共用）
+const showProfileBackToTop = ref(false);
+let profileLastScrollTop = 0;
+
+function handleProfileScroll(e) {
+  const el = e.target;
+  if (!el) return;
+  const scrollTop = el.scrollTop;
+  if (scrollTop < profileLastScrollTop && scrollTop > 10) {
+    showProfileBackToTop.value = true;
+  } else if (scrollTop > profileLastScrollTop) {
+    showProfileBackToTop.value = false;
+  }
+  profileLastScrollTop = scrollTop;
+}
+
+function scrollProfileToTop(targetRef) {
+  targetRef?.scrollTo({ top: 0, behavior: 'smooth' });
+  profileLastScrollTop = 0;
+  showProfileBackToTop.value = false;
+}
+
+function resetProfileScrollState() {
+  profileLastScrollTop = 0;
+  showProfileBackToTop.value = false;
 }
 
 // 搜索面板打开/关闭时连接/断开搜索虚拟滚动（移至搜索 VS 实例声明后）
@@ -4139,6 +4167,7 @@ function closeUserPanel() {
   showFavoritesPanel.value = false;
   editingBioInline.value = false;
   bioChanged.value = false;
+  resetProfileScrollState();
 }
 
 // --- 新增：Bio 编辑 ---
@@ -4394,6 +4423,7 @@ function switchUserContentTab(tab) {
   userContentTab.value = tab;
   // 触发入场动画
   storyCardAnimationKey.value++;
+  resetProfileScrollState();
   if (tab === 'posts' && postsList.value.length === 0) loadPostsData();
   else if (tab === 'likes' && likesList.value.length === 0) loadLikesData();
   else if (tab === 'favorites' && favoritesList.value.length === 0) loadFavoritesData();
@@ -5662,6 +5692,7 @@ function handleUserClick() {
   if (showSidebar.value) {
     closeStoryPanel();
   }
+  resetProfileScrollState();
   setTimeout(() => {
     showUserSidebar.value = true;
     // 面板打开后连接虚拟滚动（等 DOM 渲染完）
@@ -6238,6 +6269,7 @@ async function openUserDetail(user) {
   searchUserDetailOpen.value = true;
   searchedUser.value = null;
   searchedUserStories.value = [];
+  resetProfileScrollState();
 
   try {
     const result = await authApi.getUserById(user.id);
@@ -6271,6 +6303,7 @@ async function openUserDetail(user) {
 
 function closeUserDetail() {
   searchUserDetailOpen.value = false;
+  resetProfileScrollState();
 }
 
 function handleSearchSubmit() {
