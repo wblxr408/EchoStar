@@ -191,27 +191,37 @@
               </div>
 
               <!-- 故事列表 -->
-              <div ref="searchedUserContentRef" class="user-content-list" @scroll="handleProfileScroll">
+              <div ref="userDetailVScrollContainerRef" class="user-content-list" @scroll="handleProfileScroll">
                 <div v-if="searchedUserStories.length === 0" class="panel-empty">
                   <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
                 </div>
-                <div v-else class="panel-list">
-                  <div v-for="(story, idx) in searchedUserStories" :key="story.id + '-detail-' + searchAnimationKey" class="panel-item story-card-enter" :class="{ 'is-vip-card': searchedUser.vip }" :data-virtual-index="idx" :style="{ animationDelay: idx * 0.12 + 's' }" @click="openStoryFromCollection(story)">
+                <template v-else>
+                  <div class="vscroll-spacer" :style="{ height: userDetailVScrollTotalHeight + 'px' }"></div>
+                  <div
+                    v-for="item in userDetailVScrollVisibleItems"
+                    :key="item.data.id + '-detail-' + searchAnimationKey"
+                    ref="userDetailVScrollItemRefs"
+                    :data-virtual-index="item.index"
+                    class="panel-item vscroll-item story-card-enter"
+                    :class="{ 'is-vip-card': searchedUser.vip }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                    @click="openStoryFromCollection(item.data)"
+                  >
                     <div class="item-header">
                       <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
                       <div class="item-meta">
                         <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="searchedUser.vip">VIP</span></span>
-                        <span class="item-time">{{ formatRelativeTime(story.createdAt) }}</span>
+                        <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                       </div>
                     </div>
-                    <p class="item-content">{{ story.content }}</p>
-                    <div v-if="story.images?.length" class="item-images"><img :src="story.images[0]" alt="配图" /></div>
+                    <p class="item-content">{{ item.data.content }}</p>
+                    <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
-                      <span class="item-likes">❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
-                      <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+                      <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
                     </div>
                   </div>
-                </div>
+                </template>
               </div>
             </div>
           </div>
@@ -221,7 +231,7 @@
               v-if="showProfileBackToTop"
               class="wall-back-to-top"
               :class="{ dark: effectiveMapTheme === 'dark' }"
-              @click="scrollProfileToTop(searchedUserContentRef)"
+              @click="scrollProfileToTop(userDetailVScrollContainerRef)"
             >
               <span>^</span>
             </button>
@@ -1748,7 +1758,6 @@ const postsTotalCount = ref(-1);
 const likesTotalCount = ref(-1);
 const favoritesTotalCount = ref(-1);
 const storyCardAnimationKey = ref(0); // 用于触发入场动画的版本号
-const searchedUserContentRef = ref(null); // 他人主页故事列表容器
 
 // Bio 编辑
 const editingBioInline = ref(false);
@@ -2221,6 +2230,41 @@ const searchUserPageSize = 20;
 const searchedUser = ref(null);
 const searchedUserStories = ref([]);
 const searchUserDetailOpen = ref(false);
+
+// 他人主页虚拟滚动
+const {
+  containerRef: userDetailVScrollContainerRef,
+  totalHeight: userDetailVScrollTotalHeight,
+  visibleItems: userDetailVScrollVisibleItems,
+  connect: userDetailVScrollConnect,
+  disconnect: userDetailVScrollDisconnect,
+  scheduleMeasure: userDetailVScrollScheduleMeasure,
+  flushMeasurements: userDetailVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: searchedUserStories,
+  estimatedHeight: 160,
+  gap: 12,
+  bufferCount: 4,
+});
+
+const userDetailVScrollItemRefs = ref([]);
+
+watch(userDetailVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.virtualIndex, 10);
+      if (!isNaN(idx)) {
+        userDetailVScrollScheduleMeasure(idx, el);
+      }
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(userDetailVScrollVisibleItems, () => {
+  nextTick(() => { userDetailVScrollFlushMeasurements(); });
+}, { flush: 'post' });
 
 // --- 地点搜索状态 ---
 const searchPlaceResults = ref([]);
@@ -6293,6 +6337,7 @@ async function openUserDetail(user) {
         },
       }));
       searchAnimationKey.value++; // 触发入场动画
+      nextTick(() => userDetailVScrollConnect());
     }
   } catch (error) {
     console.error("获取用户详情失败:", error);
@@ -6303,6 +6348,7 @@ async function openUserDetail(user) {
 
 function closeUserDetail() {
   searchUserDetailOpen.value = false;
+  userDetailVScrollDisconnect();
   resetProfileScrollState();
 }
 
