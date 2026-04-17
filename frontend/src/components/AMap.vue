@@ -608,6 +608,87 @@ function movePaperPlane(lat, lng, showTip = true) {
   manualAnimatePaperPlane(target, showTip);
 }
 
+// 纸飞机从屏幕边缘飞入（用于搜索跳转等场景）
+function flyPaperPlaneFromEdge(targetLat, targetLng, showTip = true) {
+  if (!map || !window.AMap || !paperPlaneMarker) {
+    if (!paperPlaneInitialized) {
+      initPaperPlane({ latitude: targetLat, longitude: targetLng });
+    }
+    return;
+  }
+
+  const target = new window.AMap.LngLat(targetLng, targetLat);
+  const start = paperPlaneMarker.getPosition();
+  if (!start) return;
+
+  // 将起点和终点转为屏幕像素坐标
+  const startPixel = map.lngLatToContainer(start);
+  const targetPixel = map.lngLatToContainer(target);
+
+  // 起点在屏幕外时，找线段与屏幕边框的交点作为飞入起点
+  const containerSize = map.getSize();
+  const W = containerSize.getWidth();
+  const H = containerSize.getHeight();
+  const padding = 60; // 屏幕外留一点距离
+
+  let startPxX = startPixel.getX();
+  let startPxY = startPixel.getY();
+  const endPxX = targetPixel.getX();
+  const endPxY = targetPixel.getY();
+
+  // 判断起点是否在屏幕内
+  const isInScreen = startPxX >= -padding && startPxX <= W + padding &&
+                     startPxY >= -padding && startPxY <= H + padding;
+
+  if (!isInScreen) {
+    // 起点→终点方向向量
+    const dx = endPxX - startPxX;
+    const dy = endPxY - startPxY;
+
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+      // 几乎重叠，直接飞
+      manualAnimatePaperPlane(target, showTip);
+      return;
+    }
+
+    // 找到从屏幕外到屏幕边框的交点
+    // 用参数方程 P = start + t * (end - start)，求 t 使得 P 在屏幕边框上
+    // 取 t ∈ [0, 1] 范围内的交点（靠近起点的那个）
+    let tMin = 1;
+    const edges = [
+      { val: startPxX, delta: dx, bound: -padding },      // 左边 x = -padding
+      { val: startPxX, delta: dx, bound: W + padding },   // 右边 x = W+padding
+      { val: startPxY, delta: dy, bound: -padding },       // 上边 y = -padding
+      { val: startPxY, delta: dy, bound: H + padding },   // 下边 y = H+padding
+    ];
+
+    for (const edge of edges) {
+      if (Math.abs(edge.delta) < 0.001) continue;
+      const t = (edge.bound - edge.val) / edge.delta;
+      if (t > 0.01 && t < tMin) {
+        // 验证另一个分量在屏幕范围内
+        const crossX = startPxX + t * dx;
+        const crossY = startPxY + t * dy;
+        if (crossX >= -padding && crossX <= W + padding && crossY >= -padding && crossY <= H + padding) {
+          tMin = t;
+        }
+      }
+    }
+
+    // 计算交点像素坐标，转为经纬度作为飞入起点
+    const entryPxX = startPxX + tMin * dx;
+    const entryPxY = startPxY + tMin * dy;
+    const entryLngLat = map.containerToLngLat(new window.AMap.Pixel(entryPxX, entryPxY));
+
+    if (entryLngLat) {
+      // 先瞬移到边缘起点
+      paperPlaneMarker.setPosition(entryLngLat);
+    }
+  }
+
+  manualAnimatePaperPlane(target, showTip);
+}
+
 function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
   const start = paperPlaneMarker.getPosition();
   const moveDuration = 800;
@@ -1893,6 +1974,7 @@ function addNewStoryMarker(story) {
 
 defineExpose({
   addNewStoryMarker,
+  flyPaperPlaneFromEdge,
   getMap: () => map,
   getBounds: () => {
     console.log("[AMap] getBounds called, map:", !!map);

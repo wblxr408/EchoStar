@@ -5247,34 +5247,16 @@ function handlePlaceSelect(poi) {
   const coords = extractCoordinates(poi);
   if (!coords) return;
 
-  // 计算当前位置到目标位置的距离（简化计算）
-  const currentCenter = mapStore.center;
-  const distance = Math.sqrt(
-    Math.pow(coords.latitude - currentCenter.latitude, 2) + 
-    Math.pow(coords.longitude - currentCenter.longitude, 2)
-  );
-  
-  // 如果距离较远，先缩小地图，移动后再放大
-  if (distance > 0.1) {
-    console.log('[Map] Long distance move detected, zooming out first');
-    mapStore.updateZoom(10); // 缩小地图
-    
-    setTimeout(() => {
-      // 移动纸飞机到选中地点
-      planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
-      
-      // 延迟放大地图
-      setTimeout(() => {
-        mapStore.updateCenter(coords.latitude, coords.longitude);
-        mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
-      }, 1000); // 等待纸飞机移动动画完成
-    }, 500); // 等待缩小的动画完成
-  } else {
-    // 短距离直接移动
-    planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
-    mapStore.updateCenter(coords.latitude, coords.longitude);
-    mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
-  }
+  // 先移动地图到目标位置并放大
+  mapStore.updateCenter(coords.latitude, coords.longitude);
+  mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
+
+  // 等待地图动画稳定后，纸飞机从屏幕边缘飞入
+  setTimeout(() => {
+    if (amapRef.value) {
+      amapRef.value.flyPaperPlaneFromEdge(coords.latitude, coords.longitude);
+    }
+  }, 800);
 
   // 关闭搜索面板
   searchFocused.value = false;
@@ -5650,31 +5632,7 @@ async function handlePublishMapClick(point) {
     const coords = extractCoordinates(point);
     console.log('[Map] Moving paper plane to:', coords);
     if (coords) {
-      // 计算当前位置到目标位置的距离
-      const currentCenter = mapStore.center;
-      const distance = Math.sqrt(
-        Math.pow(coords.latitude - currentCenter.latitude, 2) + 
-        Math.pow(coords.longitude - currentCenter.longitude, 2)
-      );
-      
-      // 如果距离较远，先缩小地图，移动后再放大
-      if (distance > 0.1) {
-        console.log('[Map] Long distance move detected, zooming out first');
-        mapStore.updateZoom(10); // 缩小地图
-        
-        setTimeout(() => {
-          planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
-          
-          // 延迟放大地图
-          setTimeout(() => {
-            mapStore.updateCenter(coords.latitude, coords.longitude);
-            mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
-          }, 1000);
-        }, 500);
-      } else {
-        // 短距离直接移动
-        planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
-      }
+      planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
     }
     return;
   }
