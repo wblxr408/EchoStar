@@ -548,11 +548,20 @@
       </div>
     </transition>
 
+    <button
+      type="button"
+      class="poker-theme-toggle"
+      :title="usePokerTheme ? '切换到经典主题' : '切换到扑克主题'"
+      @click.stop="usePokerTheme = !usePokerTheme"
+    >
+      {{ usePokerTheme ? '🂠' : '🃏' }}
+    </button>
+
     <div
       :class="[
         'dock-container',
         effectiveMapTheme === 'dark' ? 'dock-dark' : 'dock-light',
-        { 'dock-vip-theme': isVipTheme },
+        { 'dock-vip-theme': isVipTheme, 'poker-mode': usePokerTheme },
         {
           'show-publish-sidebar': showPublishSidebar,
           'show-user-sidebar': showUserSidebar,
@@ -680,72 +689,93 @@
               @click.stop="handleDockCardClick(action)"
             >
               <div class="dock-card-body">
+                <!-- ── 经典主题 ── -->
+                <template v-if="!usePokerTheme">
                 <span class="dock-card-suit suit-top">{{ action.suit }}</span>
-                <span class="dock-card-order">{{
-                  String(index + 1).padStart(2, "0")
-                }}</span>
+                <span class="dock-card-order">{{ String(index + 1).padStart(2, "0") }}</span>
                 <span class="dock-card-corner corner-top-right"></span>
                 <span class="dock-card-corner corner-bottom-left"></span>
-
                 <div
                   class="dock-card-face"
-                  :class="{
-                    'dock-card-face--theme-selector':
-                      action.key === themeSelectorCardKey &&
-                      themeDockSubmenuVisible,
-                  }"
+                  :class="{ 'dock-card-face--theme-selector': action.key === themeSelectorCardKey && themeDockSubmenuVisible }"
                 >
                   <span class="dock-card-pattern"></span>
-
-                  <template
-                    v-if="
-                      action.key === themeSelectorCardKey &&
-                      themeDockSubmenuVisible
-                    "
-                  >
+                  <template v-if="action.key === themeSelectorCardKey && themeDockSubmenuVisible">
                     <div class="dock-theme-inline">
                       <p class="dock-theme-inline__eyebrow">Theme Select</p>
                       <strong class="dock-theme-inline__title">切换主题</strong>
-
                       <div class="dock-theme-inline__list">
                         <button
                           v-for="option in dockThemeOptions"
                           :key="option.key"
                           type="button"
                           class="dock-theme-inline-option"
-                          :class="{
-                            active: option.key === selectedThemeChoice,
-                            disabled: option.disabled,
-                          }"
-                          :style="{
-                            '--theme-option-accent': option.accent,
-                            '--theme-option-accent-soft': option.accentSoft,
-                          }"
+                          :class="{ active: option.key === selectedThemeChoice, disabled: option.disabled }"
+                          :style="{ '--theme-option-accent': option.accent, '--theme-option-accent-soft': option.accentSoft }"
                           :disabled="option.disabled"
                           :title="option.tooltip"
                           @click.stop.prevent="handleThemeOptionClick(option)"
                         >
-                          <span class="dock-theme-inline-option__label">
-                            {{ option.label }}
-                          </span>
-                          <small class="dock-theme-inline-option__meta">
-                            {{ option.helper }}
-                          </small>
+                          <span class="dock-theme-inline-option__label">{{ option.label }}</span>
+                          <small class="dock-theme-inline-option__meta">{{ option.helper }}</small>
                         </button>
                       </div>
                     </div>
                   </template>
-
                   <template v-else>
                     <span class="dock-card-icon">{{ action.icon }}</span>
                     <span class="dock-card-title">{{ action.title }}</span>
                     <span class="dock-card-subtitle">{{ action.subtitle }}</span>
                   </template>
                 </div>
+                <span class="dock-card-suit suit-bottom">{{ action.suit }}</span>
+                </template>
 
-                <span class="dock-card-suit suit-bottom">{{
-                  action.suit
-                }}</span>
+                <!-- ── 扑克主题 ── -->
+                <template v-else>
+                  <span class="poker-corner poker-corner--tr">
+                    <span class="poker-corner__value">{{ action.cornerValue }}</span>
+                    <span class="poker-corner__suit" :class="{ 'suit-red': action.suit === '♥' || action.suit === '♦' }">{{ action.suit }}</span>
+                  </span>
+                  <span class="poker-corner poker-corner--bl">
+                    <span class="poker-corner__value">{{ action.cornerValue }}</span>
+                    <span class="poker-corner__suit" :class="{ 'suit-red': action.suit === '♥' || action.suit === '♦' }">{{ action.suit }}</span>
+                  </span>
+                  <div
+                    class="dock-card-face"
+                    :class="{ 'dock-card-face--theme-selector': action.key === themeSelectorCardKey && themeDockSubmenuVisible }"
+                  >
+                    <span v-if="action.cornerValue === 'K'" class="poker-figure" aria-hidden="true">♛</span>
+                    <span v-else-if="action.cornerValue === 'Q'" class="poker-figure" aria-hidden="true">♕</span>
+                    <span v-else-if="action.cornerValue === 'J'" class="poker-figure" aria-hidden="true">♞</span>
+                    <template v-if="action.key === themeSelectorCardKey && themeDockSubmenuVisible">
+                      <div class="dock-theme-inline">
+                        <p class="dock-theme-inline__eyebrow">Theme Select</p>
+                        <strong class="dock-theme-inline__title">切换主题</strong>
+                        <div class="dock-theme-inline__list">
+                          <button
+                            v-for="option in dockThemeOptions"
+                            :key="option.key"
+                            type="button"
+                            class="dock-theme-inline-option"
+                            :class="{ active: option.key === selectedThemeChoice, disabled: option.disabled }"
+                            :style="{ '--theme-option-accent': option.accent, '--theme-option-accent-soft': option.accentSoft }"
+                            :disabled="option.disabled"
+                            :title="option.tooltip"
+                            @click.stop.prevent="handleThemeOptionClick(option)"
+                          >
+                            <span class="dock-theme-inline-option__label">{{ option.label }}</span>
+                            <small class="dock-theme-inline-option__meta">{{ option.helper }}</small>
+                          </button>
+                        </div>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span class="poker-center-icon">{{ action.icon }}</span>
+                      <span class="poker-center-title">{{ action.title }}</span>
+                    </template>
+                  </div>
+                </template>
               </div>
               <span class="dock-card-ripple"></span>
             </component>
@@ -1691,6 +1721,7 @@ const dockMenuRef = ref(null);
 const dockCardStackRef = ref(null);
 const ripplingDockCard = ref("");
 const dockActionPending = ref(false);
+const usePokerTheme = ref(true);
 const isDarkMap = computed(() => effectiveMapTheme.value === "dark");
 const isVipTheme = computed(() => selectedThemeChoice.value === "vip");
 const canUseVipTheme = computed(
@@ -3493,7 +3524,8 @@ const dockActions = computed(() => [
     subtitle: "你有什么想说的？",
     description: "打开发布面板，把此刻的情绪和故事写进地图里。",
     icon: "✦",
-    suit: "♦",
+    suit: "♠",
+    cornerValue: "A",
     accent: "#ff7a59",
     accentSoft: "rgba(255, 122, 89, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#432013",
@@ -3508,7 +3540,8 @@ const dockActions = computed(() => [
     subtitle: "打开故事墙，浏览精选故事",
     description: "打开故事墙，浏览精选故事和为你推荐。",
     icon: "✉",
-    suit: "♣",
+    suit: "♥",
+    cornerValue: "K",
     accent: "#5f7cff",
     accentSoft: "rgba(95, 124, 255, 0.25)",
     ink: isDarkMap.value ? "#eef3ff" : "#172042",
@@ -3525,7 +3558,8 @@ const dockActions = computed(() => [
       ? "正在为你寻找新的落点，请稍等片刻。"
       : "随机去往一处新的位置，看看陌生角落里正在发生什么。",
     icon: "✧",
-    suit: "♠",
+    suit: "♦",
+    cornerValue: "Q",
     accent: "#f2a93b",
     accentSoft: "rgba(242, 169, 59, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#3e2811",
@@ -3541,6 +3575,7 @@ const dockActions = computed(() => [
     description: "将你发布过的故事按时间顺序连成轨迹，在地图上重温每一段旅程。",
     icon: "🐾",
     suit: "♣",
+    cornerValue: "J",
     accent: "#e8b86d",
     accentSoft: "rgba(232, 184, 109, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#3e2811",
@@ -3555,7 +3590,8 @@ const dockActions = computed(() => [
     subtitle: "切换当前场景氛围",
     description: "在明亮、暗色与会员主题之间切换当前地图氛围。",
     icon: "☯",
-    suit: "♣",
+    suit: "♥",
+    cornerValue: "10",
     accent: "#8e6cff",
     accentSoft: "rgba(142, 108, 255, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#241a3f",
@@ -3570,7 +3606,8 @@ const dockActions = computed(() => [
     subtitle: "查看个人信息",
     description: "打开个人信息面板，查看头像、点赞、发布记录和账号设置。",
     icon: "◈",
-    suit: "♥",
+    suit: "♠",
+    cornerValue: "9",
     accent: "#35b4d8",
     accentSoft: "rgba(53, 180, 216, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#112b34",
@@ -3587,7 +3624,8 @@ const dockActions = computed(() => [
       ? "结束当前游客体验并返回首页。"
       : "安全退出当前账号并返回首页。",
     icon: "↩",
-    suit: "♠",
+    suit: "♣",
+    cornerValue: "8",
     accent: "#e0677f",
     accentSoft: "rgba(224, 103, 127, 0.26)",
     ink: isDarkMap.value ? "#eef3ff" : "#341723",
@@ -10307,6 +10345,304 @@ onUnmounted(() => {
     height: 68px;
     font-size: 36px;
   }
+
+  .poker-mode .dock-card {
+    width: 186px;
+    height: 262px;
+    border-radius: 24px;
+  }
+
+  .poker-mode .poker-corner {
+    width: 40px;
+    height: 46px;
+  }
+
+  .poker-mode .poker-corner__value {
+    font-size: 22px;
+  }
+
+  .poker-mode .poker-corner__suit {
+    font-size: 17px;
+  }
+
+  .poker-mode .poker-corner--tr {
+    top: 8px;
+    right: 8px;
+  }
+
+  .poker-mode .poker-corner--bl {
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .poker-mode .poker-figure {
+    font-size: 40px;
+  }
+
+  .poker-mode .poker-center-icon {
+    width: 60px;
+    height: 60px;
+    font-size: 32px;
+  }
+
+  .poker-mode .poker-center-title {
+    font-size: 16px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   扑克主题样式 — 仅在 .poker-mode 下激活
+   ═══════════════════════════════════════════════════ */
+
+/* 临时切换按钮 */
+.poker-theme-toggle {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 210;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  color: #1a1a1a;
+}
+
+.poker-theme-toggle:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
+.poker-theme-toggle:active { transform: scale(0.95); }
+
+.map-page:has(.dock-container.dock-dark) .poker-theme-toggle {
+  background: rgba(30, 30, 30, 0.85);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f0f0f0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.map-page:has(.dock-container.dock-dark) .poker-theme-toggle:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 扑克模式 — 卡片外观覆盖 */
+.poker-mode .dock-card {
+  padding: 0;
+  border-radius: 60px;
+  border: 1.5px solid var(--dock-card-border);
+  overflow: hidden;
+  box-shadow:
+    0 20px 38px rgba(8, 12, 24, 0.26),
+    0 0 0 1px var(--dock-card-edge-ring),
+    var(--poker-inner-shadow, inset 0 0 0 1.5px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8));
+}
+
+.poker-mode .dock-card::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 55px;
+  border: 1px solid var(--dock-card-frame);
+  background: none;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.poker-mode .dock-card::after {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 48px;
+  border: 0.5px solid var(--dock-card-pattern);
+  background: none;
+  mix-blend-mode: normal;
+  pointer-events: none;
+}
+
+/* 扑克模式 — 隐藏经典主题元素 */
+.poker-mode .dock-card-suit,
+.poker-mode .dock-card-order,
+.poker-mode .dock-card-corner,
+.poker-mode .dock-card-pattern,
+.poker-mode .dock-card-icon,
+.poker-mode .dock-card-title,
+.poker-mode .dock-card-subtitle {
+  display: none !important;
+}
+
+/* 扑克模式 — 浅色卡片表面 */
+.poker-mode.dock-light .dock-card {
+  background: linear-gradient(165deg, #ffffff 0%, #f8f6f2 48%, #f0ece4 100%);
+  border-color: rgba(30, 30, 30, 0.18);
+}
+
+/* 扑克模式 — 深色卡片表面 */
+.poker-mode.dock-dark .dock-card {
+  background: linear-gradient(165deg, #1a1a1a 0%, #222222 48%, #181818 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 扑克模式 — VIP 卡片表面 */
+.poker-mode.dock-vip-theme .dock-card {
+  background: linear-gradient(165deg, #3d2a14 0%, #2a1e0e 48%, #1a1208 100%);
+  border-color: rgba(236, 196, 112, 0.35);
+}
+
+/* ── 扑克角标 ── */
+.poker-corner {
+  position: absolute;
+  width: 52px;
+  height: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  line-height: 1;
+  gap: 0;
+}
+
+.poker-corner--tr {
+  top: 12px;
+  right: 12px;
+}
+
+.poker-corner--bl {
+  bottom: 12px;
+  left: 12px;
+  transform: rotate(180deg);
+}
+
+.poker-corner__value {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.poker-corner__suit {
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* 花色颜色：♠♣ 黑色，♥♦ 红色 */
+.poker-mode.dock-light .poker-corner__value,
+.poker-mode.dock-light .poker-corner__suit {
+  color: #1a1a1a;
+}
+
+.poker-mode.dock-light .poker-corner__suit.suit-red {
+  color: #c0392b;
+}
+
+.poker-mode.dock-dark .poker-corner__value,
+.poker-mode.dock-dark .poker-corner__suit {
+  color: #e0e0e0;
+}
+
+.poker-mode.dock-dark .poker-corner__suit.suit-red {
+  color: #e74c5c;
+}
+
+.poker-mode.dock-vip-theme .poker-corner__value,
+.poker-mode.dock-vip-theme .poker-corner__suit {
+  color: #f0dca0;
+}
+
+.poker-mode.dock-vip-theme .poker-corner__suit.suit-red {
+  color: #e8a040;
+}
+
+/* ── 扑克人物水印 (J/Q/K) ── */
+.poker-figure {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 64px;
+  line-height: 1;
+  opacity: 0.1;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.poker-mode.dock-light .poker-figure { color: #1a1a1a; }
+.poker-mode.dock-dark .poker-figure { color: #e0e0e0; }
+.poker-mode.dock-vip-theme .poker-figure { color: #f0dca0; }
+
+/* ── 扑克中心图标 ── */
+.poker-center-icon {
+  position: relative;
+  z-index: 2;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  background: var(--dock-card-icon-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease;
+}
+
+.poker-mode.dock-light .poker-center-icon {
+  color: #1a1a1a;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92) 0%, rgba(240, 236, 228, 0.88) 100%);
+}
+
+.poker-mode.dock-dark .poker-center-icon {
+  color: #e0e0e0;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+}
+
+.poker-mode.dock-vip-theme .poker-center-icon {
+  color: #f0dca0;
+  background: linear-gradient(145deg, rgba(137, 100, 37, 0.92) 0%, rgba(76, 49, 18, 0.88) 100%);
+}
+
+/* ── 扑克中心标题 ── */
+.poker-center-title {
+  position: relative;
+  z-index: 2;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin-top: 10px;
+}
+
+.poker-mode.dock-light .poker-center-title { color: #1a1a1a; }
+.poker-mode.dock-dark .poker-center-title { color: #e0e0e0; }
+.poker-mode.dock-vip-theme .poker-center-title { color: #f0dca0; }
+
+/* 扑克模式 — 主题选择器卡片内联 */
+.poker-mode .dock-theme-inline {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+
+/* 扑克模式 — 激活卡片增强 */
+.poker-mode .dock-menu.expanded .dock-card.drawing,
+.poker-mode .dock-menu.expanded .dock-card.lifting,
+.poker-mode .dock-menu.expanded .dock-card.active {
+  border-width: 2px;
+  border-color: var(--dock-card-active-frame, rgba(255, 255, 255, 0.18));
+  box-shadow:
+    0 28px 44px rgba(8, 12, 24, 0.32),
+    0 0 28px -5px var(--card-accent-soft, rgba(255, 255, 255, 0.08)),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .publish-modal-enter-active,
