@@ -21,6 +21,7 @@ export function useVirtualScroll({
   estimatedHeight = 160,
   bufferCount = 3,
   gap = 0, // 项之间的间距（px）
+  maxBottomPadding = 60, // 底部最大允许空白（px）
   onNearBottom,
 }) {
   const containerRef = ref(null)
@@ -33,18 +34,44 @@ export function useVirtualScroll({
   const scrollTop = ref(0)
   const containerHeight = ref(0)
 
+  // 根据已测量项目计算平均高度，用于估算未测量的项目
+  const measuredAvgHeight = computed(() => {
+    const heights = itemHeights.value
+    if (heights.size === 0) return estimatedHeight
+    let sum = 0
+    for (const h of heights.values()) sum += h
+    return sum / heights.size
+  })
+
+  // 获取某项的估计高度（优先实测值，其次平均测量高度，最后初始估计值）
+  function getEstimatedHeight(index) {
+    return itemHeights.value.get(index) ?? measuredAvgHeight.value
+  }
+
   // 计算总高度
   const totalHeight = computed(() => {
     const list = itemList.value
     if (!list || list.length === 0) return 0
     const lastIdx = list.length - 1
     // 最后一项不需要额外间距：offset(最后一项) + 内容高度
-    return getItemOffset(lastIdx) + (itemHeights.value.get(lastIdx) ?? estimatedHeight)
+    const rawHeight = getItemOffset(lastIdx) + getEstimatedHeight(lastIdx)
+
+    // 限制底部空白不超过 maxBottomPadding
+    // 计算最后一个已测量项的底部位置
+    const measuredIndices = [...itemHeights.value.keys()].sort((a, b) => a - b)
+    let measuredBottom = 0
+    if (measuredIndices.length > 0) {
+      const lastMeasured = measuredIndices[measuredIndices.length - 1]
+      measuredBottom = getItemOffset(lastMeasured) + itemHeights.value.get(lastMeasured)
+    }
+    // 如果 rawHeight 超过已测量底部 + maxBottomPadding，则裁剪
+    const maxHeight = measuredBottom > 0 ? measuredBottom + maxBottomPadding : rawHeight
+    return Math.min(rawHeight, maxHeight)
   })
 
   // 获取某一项的高度（含间距，优先用实测值，否则用估计值）
   function getItemOccupiedSpace(index) {
-    return (itemHeights.value.get(index) ?? estimatedHeight) + gap
+    return getEstimatedHeight(index) + gap
   }
 
   // 获取某一项的顶部偏移（带缓存）

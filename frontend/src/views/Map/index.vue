@@ -280,6 +280,7 @@
                       <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
                     </div>
                   </div>
+                  <div v-if="searchedUserStories.length > 0" class="panel-no-more"><span>没有更多了</span></div>
                 </template>
               </div>
             </div>
@@ -2274,6 +2275,13 @@ let profileLastScrollTop = 0;
 function handleProfileScroll(e) {
   const el = e.target;
   if (!el) return;
+
+  // 限制滚动范围：不允许超出内容 + 60px 底部留白
+  const maxScrollTop = el.scrollHeight - el.clientHeight;
+  if (el.scrollTop > maxScrollTop) {
+    el.scrollTop = maxScrollTop;
+  }
+
   const scrollTop = el.scrollTop;
   if (scrollTop < profileLastScrollTop && scrollTop > 10) {
     showProfileBackToTop.value = true;
@@ -10750,11 +10758,12 @@ onUnmounted(() => {
 
 .user-sidebar-content {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   position: relative;
   z-index: 1;
   padding: 20px 36px 28px;
+  display: flex;
+  flex-direction: column;
 }
 
 .guest-profile {
@@ -14266,11 +14275,12 @@ onUnmounted(() => {
 .user-content-list {
   position: relative; /* 虚拟滚动子元素绝对定位需要 */
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 4px 8px;
-  min-height: 200px;
-  max-height: calc(100vh - 420px);
+  overscroll-behavior-y: contain; /* 防止过度滚动 */
 }
+
 
 /* 虚拟滚动相关样式 */
 .vscroll-spacer {
@@ -15810,6 +15820,7 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
   scrollbar-width: none;
+  overscroll-behavior-y: contain;
 }
 .search-user-profile .user-content-list::-webkit-scrollbar {
   display: none;
