@@ -290,6 +290,7 @@ class StoryServiceClass {
       createdAt: story.createdAt,
       visibilityStartTime: story.visibilityStartTime,
       visibilityEndTime: story.visibilityEndTime,
+      polishedAt: story.polishedAt || null,
       author: {
         id: story.userId,
         username: author?.username || '匿名用户',
@@ -411,6 +412,7 @@ class StoryServiceClass {
         isTimeCapsule: story.isTimeCapsule || false,
         unlockAt: story.unlockAt || null,
         isUnlocked: computeIsUnlocked(story),
+        polishedAt: story.polishedAt || null,
         author: {
           id: story.userId,
           username: story.author?.username || '匿名用户',
@@ -836,6 +838,41 @@ class StoryServiceClass {
         limit: parseInt(limit),
         totalPages
       }
+    };
+  }
+
+  /**
+   * 擦亮故事
+   * 设置 polishedAt 为当前时间，24小时有效
+   */
+  async polishStory(storyId, userId) {
+    const story = await Story.findByPk(storyId);
+    if (!story) throw new Error('故事不存在');
+    if (story.userId !== userId) throw new Error('只能擦亮自己的故事');
+
+    // 检查是否在擦亮有效期内（24小时）
+    if (story.polishedAt) {
+      const polishedTime = new Date(story.polishedAt);
+      const expiresAt = new Date(polishedTime.getTime() + 24 * 60 * 60 * 1000);
+      if (expiresAt > new Date()) {
+        throw new Error('故事正在推荐回流中，请稍后再试');
+      }
+    }
+
+    // 更新 polishedAt
+    await story.update({ polishedAt: new Date() });
+
+    // 清除缓存
+    try {
+      const cacheKey = `story:raw:${storyId}`;
+      await redisClient.del(cacheKey);
+    } catch (e) {
+      // 缓存清除失败不影响
+    }
+
+    return {
+      polishedAt: story.polishedAt,
+      polishExpiresAt: new Date(new Date(story.polishedAt).getTime() + 24 * 60 * 60 * 1000).toISOString()
     };
   }
 }

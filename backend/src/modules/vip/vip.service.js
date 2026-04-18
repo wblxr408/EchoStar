@@ -27,7 +27,7 @@ const COIN_RULES = {
     {
       key: 'footprint_animation',
       name: '我的足迹',
-      description: '20币/次，满足 2 个已发布故事后可播放；VIP 免费',
+      description: '非VIP 20币/次，VIP免费',
       cost: 20,
       type: 'consumable',
       vipFree: true
@@ -35,15 +35,15 @@ const COIN_RULES = {
     {
       key: 'message_polish',
       name: '擦亮故事',
-      description: '30币/次，故事重新进入推荐；VIP 免费',
+      description: '非VIP 30币/次，VIP免费',
       cost: 30,
       type: 'consumable',
       vipFree: true
     },
     {
       key: 'bubble_decor_7d',
-      name: '气泡装饰',
-      description: '100币/7天，解锁评论与卡片气泡装饰；VIP 免费',
+      name: '气泡装饰与装扮',
+      description: '非VIP 100币/7天，VIP免费',
       cost: 100,
       type: 'timed',
       durationDays: 7,
@@ -52,7 +52,7 @@ const COIN_RULES = {
     {
       key: 'theme_skin',
       name: '主题皮肤',
-      description: '500币永久；VIP 可免费领取一次',
+      description: '非VIP 500币永久，VIP免费',
       cost: 500,
       type: 'permanent',
       vipFree: true

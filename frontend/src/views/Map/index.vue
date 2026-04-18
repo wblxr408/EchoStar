@@ -219,7 +219,7 @@
               </div>
 
               <!-- 签名 -->
-              <div class="user-bio-area search-user-bio">
+              <div class="user-bio-area search-user-bio" :class="{ 'vip-bio': searchedUser.vip }">
                 <div class="bio-content">
                   <span class="bio-text">{{ searchedUser.bio || '这个人很懒，什么都没有写~' }}</span>
                 </div>
@@ -1083,7 +1083,7 @@
             </div>
 
             <!-- Bio 签名区域 -->
-            <div class="user-bio-area" @click="startEditBio">
+            <div class="user-bio-area" :class="{ 'vip-bio': userStore.user?.vip }" @click="startEditBio">
               <div class="bio-content">
                 <span v-if="editingBioInline" class="bio-input-wrap">
                   <textarea
@@ -1729,7 +1729,12 @@ const dockMenuRef = ref(null);
 const dockCardStackRef = ref(null);
 const ripplingDockCard = ref("");
 const dockActionPending = ref(false);
-const usePokerTheme = ref(true);
+const usePokerTheme = ref(localStorage.getItem("pokerTheme") !== "false");
+const VIP_THEME_KEYS = new Set(["poker"]); // VIP 专属主题集合，后续新增主题直接往这里加
+const DEFAULT_THEME_KEY = "tarot"; // 非 VIP 用户的兜底主题
+function getActiveThemeKey() {
+  return usePokerTheme.value ? "poker" : "tarot";
+}
 const isDarkMap = computed(() => effectiveMapTheme.value === "dark");
 const isVipTheme = computed(() => selectedThemeChoice.value === "vip");
 const canUseVipTheme = computed(
@@ -4164,18 +4169,17 @@ function handleThemeOptionClick(option) {
   }
 
   if (option.type === "theme") {
+    if (VIP_THEME_KEYS.has(option.key) && !canUseVipTheme.value) {
+      showToast("请升级会员后使用", "warning");
+      return;
+    }
     if (option.key === "tarot") {
       usePokerTheme.value = false;
-      return;
-    }
-    if (option.key === "poker") {
-      if (!canUseVipTheme.value) {
-        showToast("请升级会员后使用", "warning");
-        return;
-      }
+    } else if (option.key === "poker") {
       usePokerTheme.value = true;
-      return;
     }
+    localStorage.setItem("pokerTheme", String(usePokerTheme.value));
+    return;
   }
 }
 
@@ -6392,6 +6396,9 @@ async function loadPostsData(isLoadMore = false) {
     }
 
     void hydrateStoryLocations(stories);
+
+    // 从后端数据恢复擦亮状态
+    vipStore.restorePolishedStories(rawStories);
   } catch (error) {
     console.error("加载发布数据失败:", error);
   } finally {
@@ -8314,7 +8321,12 @@ onMounted(() => {
   }, 1100);
 
   if (userStore.isLoggedIn && !userStore.isGuest) {
-    vipStore.fetchStatus().catch(() => {});
+    vipStore.fetchStatus().then(() => {
+      if (!vipStore.isVipActive && VIP_THEME_KEYS.has(getActiveThemeKey())) {
+        usePokerTheme.value = false;
+        localStorage.setItem("pokerTheme", "false");
+      }
+    }).catch(() => {});
     const loadTasks = [loadNotifications(), loadAnnouncements()];
     Promise.all(loadTasks).then(() => {
       const hasUnread =
@@ -14624,6 +14636,31 @@ onUnmounted(() => {
   color: #666;
   line-height: 1.5;
   word-break: break-word;
+}
+
+/* VIP 个性签名样式 */
+.vip-bio {
+  background: rgba(255, 223, 120, 0.45) !important;
+  border-color: rgba(218, 180, 60, 0.5) !important;
+}
+.vip-bio .bio-text {
+  font-size: 15px;
+  font-weight: 600;
+  font-family: 'ZCOOL KuaiLe', 'STKaiti', 'KaiTi', cursive, sans-serif;
+  background: linear-gradient(90deg, #ff4444, #ff8888, #ff5555, #ff3333, #ff7777, #ff4444);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vip-bio-flow 3s linear infinite;
+}
+@keyframes vip-bio-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.dark .vip-bio {
+  background: rgba(255, 215, 0, 0.08) !important;
+  border-color: rgba(255, 200, 0, 0.2) !important;
 }
 
 .bio-input-wrap {
