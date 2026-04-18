@@ -263,7 +263,7 @@
                     :data-virtual-index="item.index"
                     class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': searchedUser.vip }"
-                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.07 + 's' }"
                     @click="openStoryFromCollection(item.data)"
                   >
                     <div class="item-header">
@@ -1117,20 +1117,10 @@
                   收藏<span v-if="favoritesTotalCount >= 0" class="tab-count">{{ favoritesTotalCount }}</span>
                 </button>
               </div>
-              <transition name="back-to-top">
-                <button
-                  v-if="showProfileBackToTop"
-                  class="wall-back-to-top profile-back-to-top"
-                  :class="{ dark: effectiveMapTheme === 'dark' }"
-                  @click="scrollProfileToTop(vScrollContainerRef)"
-                >
-                  <span>^</span>
-                </button>
-              </transition>
             </div>
 
             <!-- 标签内容区（虚拟滚动） -->
-            <div ref="vScrollContainerRef" class="user-content-list" @scroll="handleProfileScroll">
+            <div ref="vScrollContainerRef" class="user-content-list profile-story-list" @scroll="handleProfileScroll">
               <!-- 作品 -->
               <template v-if="userContentTab === 'posts'">
                 <div v-if="postsLoading && postsList.length === 0" class="panel-loading">
@@ -1140,7 +1130,7 @@
                   <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
                 </div>
                 <template v-else>
-                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + profileStoryListTopInset + 'px' }"></div>
                   <div
                     v-for="item in vScrollVisibleItems"
                     :key="item.data.id + '-' + storyCardAnimationKey"
@@ -1148,7 +1138,7 @@
                     :data-virtual-index="item.index"
                     class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data), 'is-capsule-locked': isCapsuleLocked(item.data) }"
-                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                    :style="{ position: 'absolute', top: item.top + profileStoryListTopInset + 'px', left: '0', right: '0', animationDelay: item.index * 0.07 + 's' }"
                     @click="handleStoryClick(item.data)"
                   >
                     <div class="item-header">
@@ -1194,7 +1184,7 @@
                   <span class="empty-icon">💝</span><span>还没有点赞任何故事</span>
                 </div>
                 <template v-else>
-                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + profileStoryListTopInset + 'px' }"></div>
                   <div
                     v-for="item in vScrollVisibleItems"
                     :key="item.data.id + '-' + storyCardAnimationKey"
@@ -1202,7 +1192,7 @@
                     :data-virtual-index="item.index"
                     class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
-                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                    :style="{ position: 'absolute', top: item.top + profileStoryListTopInset + 'px', left: '0', right: '0', animationDelay: item.index * 0.07 + 's' }"
                     @click="handleStoryClick(item.data)"
                   >
                     <div class="item-header">
@@ -1234,7 +1224,7 @@
                   <span class="empty-icon">⭐</span><span>还没有收藏任何故事</span>
                 </div>
                 <template v-else>
-                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + 'px' }"></div>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + profileStoryListTopInset + 'px' }"></div>
                   <div
                     v-for="item in vScrollVisibleItems"
                     :key="item.data.id + '-' + storyCardAnimationKey"
@@ -1242,7 +1232,7 @@
                     :data-virtual-index="item.index"
                     class="panel-item vscroll-item story-card-enter"
                     :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
-                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                    :style="{ position: 'absolute', top: item.top + profileStoryListTopInset + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
                     @click="handleStoryClick(item.data)"
                   >
                     <div class="item-header">
@@ -1270,6 +1260,20 @@
                 </template>
               </template>
             </div>
+            <transition name="back-to-top">
+              <button
+                v-if="showProfileBackToTop"
+                class="wall-back-to-top profile-back-to-top"
+                :class="{ dark: effectiveMapTheme === 'dark' }"
+                @click="scrollProfileToTop(vScrollContainerRef)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 19V6" />
+                  <path d="M6.5 11.5 12 6l5.5 5.5" />
+                  <path d="M8 4h8" />
+                </svg>
+              </button>
+            </transition>
           </div>
           <!-- 返回顶部按钮 (我的主页 - 已移入标签栏内) -->
         </div>
@@ -2015,6 +2019,8 @@ const currentVirtualList = computed(() => {
   return [];
 });
 
+const profileStoryListTopInset = 12;
+
 const {
   containerRef: vScrollContainerRef,
   totalHeight: vScrollTotalHeight,
@@ -2316,11 +2322,7 @@ function handleProfileScroll(e) {
   }
 
   const scrollTop = el.scrollTop;
-  if (scrollTop < profileLastScrollTop && scrollTop > 10) {
-    showProfileBackToTop.value = true;
-  } else if (scrollTop > profileLastScrollTop) {
-    showProfileBackToTop.value = false;
-  }
+  showProfileBackToTop.value = scrollTop > 120;
   profileLastScrollTop = scrollTop;
 }
 
@@ -6220,11 +6222,10 @@ function handleStoryPolished({ storyId }) {
 }
 
 function handlePolishError({ type, message }) {
-  if (type === 'not_vip') {
+  if (type === 'insufficient_coins') {
     showVipCenter.value = true;
-  } else {
-    showToast(message);
   }
+  showToast(message, type === 'insufficient_coins' ? 'warning' : 'error');
 }
 
 function handleCommentSettingsSaved(settings) {
@@ -8861,13 +8862,24 @@ onUnmounted(() => {
 /* 标签栏包裹层 - 为返回顶部按钮提供定位上下文 */
 .user-content-tabs-wrapper {
   position: relative;
+  margin-bottom: 0;
 }
 .wall-back-to-top.profile-back-to-top {
-  top: 6px;
-  right: 20px;
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  top: auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  box-shadow: 0 18px 36px -18px rgba(0, 0, 0, 0.55);
 }
 .wall-back-to-top:not(.dark):hover {
   background: rgba(88, 56, 18, 0.95);
+}
+.wall-back-to-top.profile-back-to-top svg {
+  width: 20px;
+  height: 20px;
 }
 
 /* 返回顶部过渡动画 */
@@ -12015,19 +12027,24 @@ onUnmounted(() => {
 }
 
 .panel-item {
-  padding: 16px;
+  padding: 18px;
   background: rgba(255, 255, 255, 0.05);
   border: 3px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: scale(0.96);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
 }
 
 .panel-item:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(102, 126, 234, 0.3);
-  transform: scale(1);
+  transform: translate3d(0, -3px, 0);
+  box-shadow: 0 18px 30px -24px rgba(0, 0, 0, 0.35);
 }
 
 /* 故事卡片入场动画 - stagger: 0.12s | duration: 0.45s | distance: 80vh */
@@ -12036,23 +12053,20 @@ onUnmounted(() => {
 @keyframes storyCardEntrance {
   0% {
     opacity: 0;
-    transform: translateY(80vh) scale(0.95);
+    transform: translate3d(0, 34px, 0);
   }
-  55% {
+  60% {
     opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  75% {
-    transform: translateY(-8px) scale(1);
+    transform: translate3d(0, -2px, 0);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(0.96);
+    transform: translate3d(0, 0, 0);
   }
 }
 
 .story-card-enter {
-  animation: storyCardEntrance 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: storyCardEntrance 0.52s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 /* 动态加载的卡片：快速淡入，无延迟等待 */
@@ -12066,14 +12080,14 @@ onUnmounted(() => {
 }
 
 .story-list :deep(.story-card.story-card-enter) {
-  animation: storyCardEntrance 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: storyCardEntrance 0.52s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .story-card-enter {
     animation: none;
     opacity: 1;
-    transform: scale(0.96);
+    transform: none;
   }
 }
 
@@ -13294,6 +13308,59 @@ onUnmounted(() => {
 
 .user-sidebar:not(.dark) .user-content-list .item-footer {
   color: #666;
+}
+
+.user-sidebar {
+  --profile-story-card-bg: rgba(24, 34, 56, 0.92);
+  --profile-story-card-bg-hover: rgba(31, 45, 73, 0.98);
+  --profile-story-card-border: rgba(151, 186, 255, 0.3);
+  --profile-story-card-border-hover: rgba(191, 214, 255, 0.52);
+  --profile-story-card-shadow: 0 24px 40px -30px rgba(3, 8, 20, 0.85);
+  --profile-story-card-shadow-hover: 0 26px 42px -28px rgba(3, 8, 20, 0.92);
+  --profile-story-card-text: #ffffff;
+  --profile-story-card-muted: rgba(255, 255, 255, 0.84);
+}
+
+.user-sidebar:not(.dark) {
+  --profile-story-card-bg: rgba(255, 245, 229, 0.96);
+  --profile-story-card-bg-hover: rgba(255, 239, 215, 0.99);
+  --profile-story-card-border: rgba(94, 66, 22, 0.28);
+  --profile-story-card-border-hover: rgba(94, 66, 22, 0.42);
+  --profile-story-card-shadow: 0 24px 40px -30px rgba(94, 66, 22, 0.28);
+  --profile-story-card-shadow-hover: 0 26px 42px -28px rgba(94, 66, 22, 0.34);
+  --profile-story-card-text: #000000;
+  --profile-story-card-muted: rgba(0, 0, 0, 0.82);
+}
+
+.user-sidebar .user-content-list .panel-item {
+  background: var(--profile-story-card-bg);
+  border: 1.5px solid var(--profile-story-card-border);
+  box-shadow: var(--profile-story-card-shadow);
+}
+
+.user-sidebar .user-content-list .panel-item:hover {
+  background: var(--profile-story-card-bg-hover);
+  border-color: var(--profile-story-card-border-hover);
+  box-shadow: var(--profile-story-card-shadow-hover);
+}
+
+.user-sidebar .user-content-list .panel-item.is-capsule-locked:hover {
+  background: var(--profile-story-card-bg);
+}
+
+.user-sidebar .user-content-list .item-author,
+.user-sidebar .user-content-list .item-content {
+  color: var(--profile-story-card-text);
+}
+
+.user-sidebar .user-content-list .item-time,
+.user-sidebar .user-content-list .item-footer,
+.user-sidebar .user-content-list .item-likes {
+  color: var(--profile-story-card-muted);
+}
+
+.user-sidebar .user-content-list .item-action-btn {
+  color: var(--profile-story-card-text);
 }
 
 .story-sidebar.dark .sidebar-header h3,
@@ -14755,7 +14822,7 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 8px;
+  padding: 16px 12px 28px;
   overscroll-behavior-y: contain; /* 防止过度滚动 */
 }
 
@@ -14798,6 +14865,10 @@ onUnmounted(() => {
 
 .user-content-list::-webkit-scrollbar {
   display: none;
+}
+
+.profile-story-list {
+  padding-top: 0;
 }
 
 /* 编辑资料弹窗 */

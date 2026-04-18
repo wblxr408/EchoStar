@@ -17,8 +17,9 @@ export const useVipStore = defineStore('vip', () => {
   const ledger = ref([]);
   const inventory = ref([]);
 
-  const polishCount = ref({ used: 0, total: 3 });
+  const polishCount = ref({ used: 0 });
   const polishedStories = ref(new Map());
+  const STORY_POLISH_COST = 30;
 
   const savedCommentBg = ref(loadFromStorage('vip_comment_bg', null));
   const savedProfileBg = ref(loadFromStorage('vip_profile_bg', null));
@@ -34,8 +35,6 @@ export const useVipStore = defineStore('vip', () => {
     const diff = new Date(expiresAt.value) - new Date();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   });
-
-  const polishRemaining = computed(() => Math.max(0, polishCount.value.total - polishCount.value.used));
 
   const checkedInToday = computed(() => {
     if (!lastCheckInAt.value) return false;
@@ -128,9 +127,9 @@ export const useVipStore = defineStore('vip', () => {
     try {
       const res = await vipApi.activateByCode(code);
       await fetchStatus();
-      return { success: true, message: res.message || 'VIP激活成功' };
+      return { success: true, message: res.message || 'VIP activated successfully.' };
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || '激活失败，请稍后重试';
+      const msg = err?.response?.data?.message || err?.message || 'Activation failed. Please try again later.';
       return { success: false, message: msg };
     } finally {
       loading.value = false;
@@ -145,9 +144,9 @@ export const useVipStore = defineStore('vip', () => {
       lastCheckInAt.value = new Date().toISOString();
       checkInStreak.value = data.streak ?? checkInStreak.value;
       await fetchEconomy();
-      return { success: true, reward: data.reward || 0, message: res.message || '签到成功' };
+      return { success: true, reward: data.reward || 0, message: res.message || '绛惧埌鎴愬姛' };
     } catch (err) {
-      return { success: false, message: err?.response?.data?.message || err?.message || '签到失败' };
+      return { success: false, message: err?.response?.data?.message || err?.message || '绛惧埌澶辫触' };
     }
   }
 
@@ -155,9 +154,9 @@ export const useVipStore = defineStore('vip', () => {
     try {
       const res = await vipApi.rechargeCoins(packageKey);
       await fetchEconomy();
-      return { success: true, message: res.message || '充值成功' };
+      return { success: true, message: res.message || 'Recharge successful.' };
     } catch (err) {
-      return { success: false, message: err?.response?.data?.message || err?.message || '充值失败' };
+      return { success: false, message: err?.response?.data?.message || err?.message || 'Recharge failed.' };
     }
   }
 
@@ -165,9 +164,9 @@ export const useVipStore = defineStore('vip', () => {
     try {
       const res = await vipApi.purchaseItem(itemKey);
       await fetchEconomy();
-      return { success: true, message: res.message || '购买成功', data: res.data || res };
+      return { success: true, message: res.message || '璐拱鎴愬姛', data: res.data || res };
     } catch (err) {
-      return { success: false, message: err?.response?.data?.message || err?.message || '购买失败' };
+      return { success: false, message: err?.response?.data?.message || err?.message || '璐拱澶辫触' };
     }
   }
 
@@ -175,22 +174,19 @@ export const useVipStore = defineStore('vip', () => {
     try {
       const res = await vipApi.consumeItem(itemKey);
       await fetchEconomy();
-      return { success: true, message: res.message || '使用成功', data: res.data || res };
+      return { success: true, message: res.message || '浣跨敤鎴愬姛', data: res.data || res };
     } catch (err) {
-      return { success: false, message: err?.response?.data?.message || err?.message || '使用失败' };
+      return { success: false, message: err?.response?.data?.message || err?.message || '浣跨敤澶辫触' };
     }
   }
 
   function canPolish(storyId) {
-    if (!isVipActive.value) return false;
-    if (polishRemaining.value <= 0) return false;
     const info = polishedStories.value.get(storyId);
     if (info && new Date(info.expiresAt) > new Date()) return false;
-    return true;
+    return isVipActive.value || emotionCoins.value >= STORY_POLISH_COST;
   }
 
-  function polishStory(storyId) {
-    if (!canPolish(storyId)) return false;
+  function markStoryPolished(storyId) {
     polishCount.value.used++;
     const now = new Date();
     const exp = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -198,7 +194,46 @@ export const useVipStore = defineStore('vip', () => {
       polishedAt: now.toISOString(),
       expiresAt: exp.toISOString(),
     });
-    return true;
+  }
+
+  async function polishStory(storyId) {
+    if (isStoryPolished(storyId)) {
+      return { success: false, type: 'already_polished', message: '\u6545\u4e8b\u6b63\u5728\u63a8\u8350\u56de\u6d41\u4e2d' };
+    }
+
+    if (isVipActive.value) {
+      markStoryPolished(storyId);
+      return { success: true, isVip: true, cost: 0 };
+    }
+
+    if (emotionCoins.value < STORY_POLISH_COST) {
+      return {
+        success: false,
+        type: 'insufficient_coins',
+        message: `\u60c5\u7eea\u5e01\u4e0d\u8db3\uff0c\u64e6\u4eae\u4e00\u6b21\u9700\u8981 ${STORY_POLISH_COST} \u5e01`
+      };
+    }
+
+    const purchaseResult = await purchaseItem('message_polish');
+    if (!purchaseResult.success) {
+      return {
+        success: false,
+        type: 'purchase_failed',
+        message: purchaseResult.message || '\u8d2d\u4e70\u64e6\u4eae\u6743\u76ca\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5'
+      };
+    }
+
+    const consumeResult = await consumeItem('message_polish');
+    if (!consumeResult.success) {
+      return {
+        success: false,
+        type: 'consume_failed',
+        message: consumeResult.message || '\u64e6\u4eae\u6743\u76ca\u5df2\u8d2d\u5165\uff0c\u4f46\u6682\u672a\u4f7f\u7528\u6210\u529f\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5'
+      };
+    }
+
+    markStoryPolished(storyId);
+    return { success: true, isVip: false, cost: STORY_POLISH_COST };
   }
 
   function isStoryPolished(storyId) {
@@ -209,6 +244,10 @@ export const useVipStore = defineStore('vip', () => {
 
   function getPolishExpiresAt(storyId) {
     return polishedStories.value.get(storyId)?.expiresAt || null;
+  }
+
+  function getStoryPolishCost() {
+    return STORY_POLISH_COST;
   }
 
   function setCommentBg(bg) {
@@ -254,7 +293,6 @@ export const useVipStore = defineStore('vip', () => {
     savedEmotionStyles,
     isVipActive,
     remainingDays,
-    polishRemaining,
     checkedInToday,
     activeInventory,
     getInventoryItem,
@@ -272,6 +310,7 @@ export const useVipStore = defineStore('vip', () => {
     polishStory,
     isStoryPolished,
     getPolishExpiresAt,
+    getStoryPolishCost,
     setCommentBg,
     setProfileBg,
     setEmotionStyles,

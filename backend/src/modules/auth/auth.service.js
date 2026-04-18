@@ -8,6 +8,7 @@ import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
 import { getRandomDefaultAvatar } from '../../common/utils/oss.js'; 
 import { clearUserCache } from './auth.middleware.js';
+import { VipService } from '../vip/vip.service.js';
 
 /**
  * Auth Service - 认证业务逻辑
@@ -24,13 +25,11 @@ const AuthServiceImpl = {
     try {
       const redis = redisClient.getClient();
 
-      // 开发环境：跳过邮件发送，验证码直接打印到控制台
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`\n🔑 [开发模式] 验证码: ${code} (邮箱: ${fixedEmail}, 5分钟有效)\n`);
-      } else {
+      // 有邮件配置时发送邮件，否则仅打印到控制台
+      if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
         const transporter = nodemailer.createTransport({
           host: process.env.EMAIL_HOST,
-          port: process.env.EMAIL_PORT,
+          port: parseInt(process.env.EMAIL_PORT) || 465,
           secure: process.env.EMAIL_SECURE === 'true',
           auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
         });
@@ -43,7 +42,9 @@ const AuthServiceImpl = {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log('✅ 邮件发送成功');
+        console.log(`✅ 邮件发送成功 (邮箱: ${fixedEmail})`);
+      } else {
+        console.log(`\n🔑 [未配置邮件] 验证码: ${code} (邮箱: ${fixedEmail}, 5分钟有效)\n`);
       }
 
       // ===================== 终极调试：用最原始的方式 =====================
@@ -119,13 +120,20 @@ const AuthServiceImpl = {
       avatarUrl: defaultAvatar 
     });
 
+    // 注册赠送1周VIP
+    try {
+      await VipService.upgradeUserToVip(user.id, null, 7);
+    } catch (vipErr) {
+      console.warn('[register] 赠送VIP失败，不影响注册:', vipErr.message);
+    }
+
     return {
       accessToken: this.generateToken(user.id),
       user: {
         id: user.id,
         username: user.username,
         avatar: user.avatarUrl,
-        vip: user.vip,
+        vip: 1,
         emotionCoins: user.emotionCoins || 0
       }
     };
@@ -170,16 +178,23 @@ const AuthServiceImpl = {
       avatarUrl: defaultAvatar
     });
 
+    // 注册赠送1周VIP
+    try {
+      await VipService.upgradeUserToVip(user.id, null, 7);
+    } catch (vipErr) {
+      console.warn('[register_2] 赠送VIP失败，不影响注册:', vipErr.message);
+    }
+
     // 6. 生成 Token
     const token = this.generateToken(user.id);
 
     return {
-      accessToken: token,  // ✅ 修改为 accessToken
+      accessToken: token,
       user: {
         id: user.id,
-        username: user.username,  // ✅ 普通注册只返回 id 和 username
-        avatar: user.avatarUrl,  // ✅ 返回头像
-        vip: user.vip,
+        username: user.username,
+        avatar: user.avatarUrl,
+        vip: 1,
         emotionCoins: user.emotionCoins || 0
       }
     };
