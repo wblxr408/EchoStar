@@ -219,9 +219,9 @@
               </div>
 
               <!-- 签名 -->
-              <div v-if="searchedUser.bio" class="user-bio-area search-user-bio">
+              <div class="user-bio-area search-user-bio">
                 <div class="bio-content">
-                  <span class="bio-text">{{ searchedUser.bio }}</span>
+                  <span class="bio-text">{{ searchedUser.bio || '这个人很懒，什么都没有写~' }}</span>
                 </div>
               </div>
 
@@ -1091,7 +1091,7 @@
                   ></textarea>
                   <span class="bio-char-count">{{ bioDraft.length }}/200</span>
                 </span>
-                <span v-else class="bio-text">{{ userStore.user?.bio || '点击编辑个性签名' }}</span>
+                <span v-else class="bio-text">{{ userStore.user?.bio || '这个人很懒，什么都没有写~' }}</span>
               </div>
               <div class="bio-edit-icon">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
