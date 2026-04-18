@@ -382,30 +382,30 @@ async function fetchStoryMetrics(storyIds = []) {
 
   const [likes, favorites, comments] = await Promise.all([
     Like.findAll({
-      where: { storyId: { [Op.in]: storyIds } },
+      where: { story_id: { [Op.in]: storyIds } },
       attributes: [
-        ['storyId', 'storyId'],
+        ['story_id', 'storyId'],
         [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
-      group: ['storyId'],
+      group: ['story_id'],
       raw: true
     }),
     Favorite.findAll({
-      where: { storyId: { [Op.in]: storyIds } },
+      where: { story_id: { [Op.in]: storyIds } },
       attributes: [
-        ['storyId', 'storyId'],
+        ['story_id', 'storyId'],
         [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
-      group: ['storyId'],
+      group: ['story_id'],
       raw: true
     }),
     Comment.findAll({
-      where: { storyId: { [Op.in]: storyIds }, status: 'active' },
+      where: { story_id: { [Op.in]: storyIds }, status: 'active' },
       attributes: [
-        ['storyId', 'storyId'],
+        ['story_id', 'storyId'],
         [sequelize.fn('COUNT', sequelize.col('id')), 'count']
       ],
-      group: ['storyId'],
+      group: ['story_id'],
       raw: true
     })
   ]);
