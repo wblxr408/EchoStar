@@ -548,15 +548,6 @@
       </div>
     </transition>
 
-    <button
-      type="button"
-      class="poker-theme-toggle"
-      :title="usePokerTheme ? '切换到经典主题' : '切换到扑克主题'"
-      @click.stop="usePokerTheme = !usePokerTheme"
-    >
-      {{ usePokerTheme ? '🂠' : '🃏' }}
-    </button>
-
     <div
       :class="[
         'dock-container',
@@ -710,13 +701,16 @@
                           :key="option.key"
                           type="button"
                           class="dock-theme-inline-option"
-                          :class="{ active: option.key === selectedThemeChoice, disabled: option.disabled }"
+                          :class="{ active: isThemeOptionActive(option), disabled: option.disabled }"
                           :style="{ '--theme-option-accent': option.accent, '--theme-option-accent-soft': option.accentSoft }"
                           :disabled="option.disabled"
                           :title="option.tooltip"
                           @click.stop.prevent="handleThemeOptionClick(option)"
                         >
-                          <span class="dock-theme-inline-option__label">{{ option.label }}</span>
+                          <div class="dock-theme-inline-option__row">
+                            <span class="dock-theme-inline-option__icon">{{ option.icon }}</span>
+                            <span class="dock-theme-inline-option__label">{{ option.label }}</span>
+                          </div>
                           <small class="dock-theme-inline-option__meta">{{ option.helper }}</small>
                         </button>
                       </div>
@@ -758,13 +752,16 @@
                             :key="option.key"
                             type="button"
                             class="dock-theme-inline-option"
-                            :class="{ active: option.key === selectedThemeChoice, disabled: option.disabled }"
+                            :class="{ active: isThemeOptionActive(option), disabled: option.disabled }"
                             :style="{ '--theme-option-accent': option.accent, '--theme-option-accent-soft': option.accentSoft }"
                             :disabled="option.disabled"
                             :title="option.tooltip"
                             @click.stop.prevent="handleThemeOptionClick(option)"
                           >
-                            <span class="dock-theme-inline-option__label">{{ option.label }}</span>
+                            <div class="dock-theme-inline-option__row">
+                              <span class="dock-theme-inline-option__icon">{{ option.icon }}</span>
+                              <span class="dock-theme-inline-option__label">{{ option.label }}</span>
+                            </div>
                             <small class="dock-theme-inline-option__meta">{{ option.helper }}</small>
                           </button>
                         </div>
@@ -3672,7 +3669,8 @@ const visibleDockActions = computed(() =>
 const dockThemeOptions = computed(() => [
   {
     key: "light",
-    icon: "明",
+    type: "mode",
+    icon: "☀️",
     label: "明亮主题",
     helper: "晨光琉璃",
     accent: "#c98c3d",
@@ -3682,7 +3680,8 @@ const dockThemeOptions = computed(() => [
   },
   {
     key: "dark",
-    icon: "暗",
+    type: "mode",
+    icon: "🌙",
     label: "暗色主题",
     helper: "深空星幕",
     accent: "#79a6ff",
@@ -3691,16 +3690,46 @@ const dockThemeOptions = computed(() => [
     tooltip: "切换到暗色主题",
   },
   {
-    key: "vip",
-    icon: "VIP",
-    label: "会员主题",
-    helper: "即将开放",
-    accent: "#d6b36c",
-    accentSoft: "rgba(214, 179, 108, 0.26)",
+    key: "tarot",
+    type: "theme",
+    icon: "🔮",
+    label: "塔罗牌",
+    helper: "经典卡牌风格",
+    accent: "#8e6cff",
+    accentSoft: "rgba(142, 108, 255, 0.24)",
+    disabled: false,
+    tooltip: "切换到塔罗牌主题",
+  },
+  {
+    key: "poker",
+    type: "theme",
+    icon: "🃏",
+    label: "扑克牌",
+    helper: "经典扑克风格",
+    accent: "#e74c3c",
+    accentSoft: "rgba(231, 76, 60, 0.24)",
+    disabled: false,
+    tooltip: "切换到扑克牌主题",
+    requiresVip: true,
+  },
+  {
+    key: "more",
+    type: "more",
+    icon: "✨",
+    label: "更多主题",
+    helper: "敬请期待",
+    accent: "#aaa",
+    accentSoft: "rgba(170, 170, 170, 0.24)",
     disabled: true,
-    tooltip: "会员主题即将开放",
+    tooltip: "更多主题即将开放",
   },
 ]);
+
+function isThemeOptionActive(option) {
+  if (option.type === "mode") return option.key === selectedThemeChoice.value;
+  if (option.type === "theme") return option.key === (usePokerTheme.value ? "poker" : "tarot");
+  return false;
+}
 
 const themeDockSubmenuVisible = computed(
   () =>
@@ -4101,19 +4130,29 @@ function handleThemeOptionClick(option) {
   }
 
   if (option.disabled) {
-    showToast("VIP 主题仅对 VIP 用户开放", "warning");
+    showToast("更多主题即将开放，敬请期待", "info");
     return;
   }
 
-  dockActionPending.value = true;
-
-  window.setTimeout(() => {
+  if (option.type === "mode") {
     handleThemeChange(option.key);
-    dockActionPending.value = false;
-    isDockExpanded.value = false;
-    hoveredDockCard.value = "";
-    resetDockSelectionMotion();
-  }, 140);
+    return;
+  }
+
+  if (option.type === "theme") {
+    if (option.key === "tarot") {
+      usePokerTheme.value = false;
+      return;
+    }
+    if (option.key === "poker") {
+      if (!canUseVipTheme.value) {
+        showToast("请升级会员后使用", "warning");
+        return;
+      }
+      usePokerTheme.value = true;
+      return;
+    }
+  }
 }
 
 function getDockLayoutMetrics(index, total, actionKey = "") {
@@ -10184,6 +10223,26 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow-y: auto;
+  max-height: 260px;
+  padding-right: 4px;
+}
+
+.dock-theme-inline__list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dock-theme-inline__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dock-theme-inline__list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+.dock-theme-inline__list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .dock-theme-inline-option {
@@ -10240,6 +10299,18 @@ onUnmounted(() => {
   background: #ffffff;
   border-color: rgba(175, 154, 118, 0.72);
   color: rgba(61, 47, 33, 0.88);
+}
+
+.dock-theme-inline-option__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dock-theme-inline-option__icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .dock-theme-inline-option__label {
@@ -10393,43 +10464,6 @@ onUnmounted(() => {
 /* ═══════════════════════════════════════════════════
    扑克主题样式 — 仅在 .poker-mode 下激活
    ═══════════════════════════════════════════════════ */
-
-/* 临时切换按钮 */
-.poker-theme-toggle {
-  position: fixed;
-  top: 24px;
-  right: 24px;
-  z-index: 210;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(0, 0, 0, 0.12);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  font-size: 18px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  color: #1a1a1a;
-}
-
-.poker-theme-toggle:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
-.poker-theme-toggle:active { transform: scale(0.95); }
-
-.map-page:has(.dock-container.dock-dark) .poker-theme-toggle {
-  background: rgba(30, 30, 30, 0.85);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: #f0f0f0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.map-page:has(.dock-container.dock-dark) .poker-theme-toggle:hover {
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
 
 /* 扑克模式 — 卡片外观覆盖 */
 .poker-mode .dock-card {
@@ -10621,6 +10655,10 @@ onUnmounted(() => {
 .poker-mode.dock-vip-theme .poker-center-title { color: #f0dca0; }
 
 /* 扑克模式 — 主题选择器卡片内联 */
+.poker-mode .dock-card-face--theme-selector {
+  padding: 40px 36px 52px 36px;
+}
+
 .poker-mode .dock-theme-inline {
   position: relative;
   z-index: 2;
