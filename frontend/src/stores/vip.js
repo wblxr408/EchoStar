@@ -219,60 +219,143 @@ export const useVipStore = defineStore('vip', () => {
     return { success: true, isVip: false, cost: FOOTPRINT_COST };
   }
 
+  const BUBBLE_DECOR_COST = 100;
+  const THEME_SKIN_COST = 500;
+
+  async function useBubbleDecor() {
+    if (isVipActive.value) {
+      return { success: true, isVip: true, cost: 0 };
+    }
+
+    if (hasActiveItem('bubble_decor_7d')) {
+      return { success: true, isVip: false, cost: 0 };
+    }
+
+    if (emotionCoins.value < BUBBLE_DECOR_COST) {
+      return {
+        success: false,
+        type: 'insufficient_coins',
+        message: `情绪币不足，解锁装扮功能需要 ${BUBBLE_DECOR_COST} 币`
+      };
+    }
+
+    const purchaseResult = await purchaseItem('bubble_decor_7d');
+    if (!purchaseResult.success) {
+      return { success: false, type: 'purchase_failed', message: purchaseResult.message };
+    }
+
+    return { success: true, isVip: false, cost: BUBBLE_DECOR_COST };
+  }
+
+  async function useThemeSkin() {
+    if (isVipActive.value) {
+      return { success: true, isVip: true, cost: 0 };
+    }
+
+    if (hasActiveItem('theme_skin')) {
+      return { success: true, isVip: false, cost: 0 };
+    }
+
+    if (emotionCoins.value < THEME_SKIN_COST) {
+      return {
+        success: false,
+        type: 'insufficient_coins',
+        message: `情绪币不足，解锁主题皮肤需要 ${THEME_SKIN_COST} 币`
+      };
+    }
+
+    const purchaseResult = await purchaseItem('theme_skin');
+    if (!purchaseResult.success) {
+      return { success: false, type: 'purchase_failed', message: purchaseResult.message };
+    }
+
+    return { success: true, isVip: false, cost: THEME_SKIN_COST };
+  }
+
   function canPolish(storyId) {
     const info = polishedStories.value.get(storyId);
     if (info && new Date(info.expiresAt) > new Date()) return false;
     return isVipActive.value || emotionCoins.value >= STORY_POLISH_COST;
   }
 
-  function markStoryPolished(storyId) {
+  function markStoryPolished(storyId, polishedAt, polishExpiresAt) {
     polishCount.value.used++;
-    const now = new Date();
-    const exp = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    polishedStories.value.set(storyId, {
-      polishedAt: now.toISOString(),
-      expiresAt: exp.toISOString(),
+    polishedStories.value.set(String(storyId), {
+      polishedAt,
+      expiresAt: polishExpiresAt,
     });
+  }
+
+  /**
+   * 从后端故事列表数据恢复擦亮状态
+   * @param {Array} stories - 后端返回的故事列表，每项含 polishedAt
+   */
+  function restorePolishedStories(stories) {
+    if (!stories || !Array.isArray(stories)) return;
+    for (const story of stories) {
+      if (story.polishedAt) {
+        const polishedTime = new Date(story.polishedAt);
+        const expiresAt = new Date(polishedTime.getTime() + 24 * 60 * 60 * 1000);
+        if (expiresAt > new Date()) {
+          polishedStories.value.set(String(story.id), {
+            polishedAt: story.polishedAt,
+            expiresAt: expiresAt.toISOString(),
+          });
+        }
+      }
+    }
   }
 
   async function polishStory(storyId) {
     if (isStoryPolished(storyId)) {
-      return { success: false, type: 'already_polished', message: '\u6545\u4e8b\u6b63\u5728\u63a8\u8350\u56de\u6d41\u4e2d' };
+      return { success: false, type: 'already_polished', message: '故事正在推荐回流中' };
     }
 
-    if (isVipActive.value) {
-      markStoryPolished(storyId);
-      return { success: true, isVip: true, cost: 0 };
+    // 非VIP用户先扣费
+    if (!isVipActive.value) {
+      if (emotionCoins.value < STORY_POLISH_COST) {
+        return {
+          success: false,
+          type: 'insufficient_coins',
+          message: `情绪币不足，擦亮一次需要 ${STORY_POLISH_COST} 币`
+        };
+      }
+
+      const purchaseResult = await purchaseItem('message_polish');
+      if (!purchaseResult.success) {
+        return {
+          success: false,
+          type: 'purchase_failed',
+          message: purchaseResult.message || '购买擦亮权益失败，请稍后重试'
+        };
+      }
+
+      const consumeResult = await consumeItem('message_polish');
+      if (!consumeResult.success) {
+        return {
+          success: false,
+          type: 'consume_failed',
+          message: consumeResult.message || '擦亮权益已购入，但暂未使用成功，请稍后重试'
+        };
+      }
     }
 
-    if (emotionCoins.value < STORY_POLISH_COST) {
+    // 调用后端擦亮API
+    try {
+      const res = await vipApi.polishStory(storyId);
+      const { polishedAt, polishExpiresAt } = res.data?.data || {};
+      if (polishedAt && polishExpiresAt) {
+        markStoryPolished(storyId, polishedAt, polishExpiresAt);
+      }
+    } catch (err) {
       return {
         success: false,
-        type: 'insufficient_coins',
-        message: `\u60c5\u7eea\u5e01\u4e0d\u8db3\uff0c\u64e6\u4eae\u4e00\u6b21\u9700\u8981 ${STORY_POLISH_COST} \u5e01`
+        type: 'polish_failed',
+        message: err.response?.data?.message || '擦亮失败，请稍后重试'
       };
     }
 
-    const purchaseResult = await purchaseItem('message_polish');
-    if (!purchaseResult.success) {
-      return {
-        success: false,
-        type: 'purchase_failed',
-        message: purchaseResult.message || '\u8d2d\u4e70\u64e6\u4eae\u6743\u76ca\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5'
-      };
-    }
-
-    const consumeResult = await consumeItem('message_polish');
-    if (!consumeResult.success) {
-      return {
-        success: false,
-        type: 'consume_failed',
-        message: consumeResult.message || '\u64e6\u4eae\u6743\u76ca\u5df2\u8d2d\u5165\uff0c\u4f46\u6682\u672a\u4f7f\u7528\u6210\u529f\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5'
-      };
-    }
-
-    markStoryPolished(storyId);
-    return { success: true, isVip: false, cost: STORY_POLISH_COST };
+    return { success: true, isVip: isVipActive.value, cost: isVipActive.value ? 0 : STORY_POLISH_COST };
   }
 
   function isStoryPolished(storyId) {
@@ -347,13 +430,18 @@ export const useVipStore = defineStore('vip', () => {
     consumeItem,
     purchaseVip,
     useFootprint,
+    useBubbleDecor,
+    useThemeSkin,
     canPolish,
+    restorePolishedStories,
     polishStory,
     isStoryPolished,
     getPolishExpiresAt,
     getStoryPolishCost,
     STORY_POLISH_COST,
     FOOTPRINT_COST,
+    BUBBLE_DECOR_COST,
+    THEME_SKIN_COST,
     VIP_COST,
     setCommentBg,
     setProfileBg,

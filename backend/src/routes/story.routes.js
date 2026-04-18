@@ -58,6 +58,11 @@ router.post(
 );
 
 /**
+ * POST /api/stories/:id/polish - 擦亮故事
+ */
+router.post('/:id/polish', authenticateJWT, storyController.polishStory);
+
+/**
  * PUT /api/stories/:id/visibility - 修改故事可见性
  */
 router.put('/:id/visibility', authenticateJWT, storyController.updateVisibility);

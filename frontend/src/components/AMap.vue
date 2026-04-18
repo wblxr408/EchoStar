@@ -1070,7 +1070,7 @@ function createMarker(story) {
   const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
   const isDark = isDarkMode.value;
 
-  content.className = "custom-marker";
+  content.className = "custom-marker" + (isLocked ? " is-time-capsule-locked" : "");
 
   // 双层设计：外圈发光底座 + 内核情绪色块 + 呼吸动画
   const glowOpacity = isDark ? "0.4" : "0.2";
@@ -1164,19 +1164,15 @@ function createMarker(story) {
     : `<div class="marker-glow"></div>
        <div class="marker-pulse"></div>
        <div class="marker-emotion">${emotionEmoji}</div>`;
-
-  const resolvedMarkerInner = `<div class="marker-glow"></div>
-       <div class="marker-pulse"></div>
-       <div class="marker-emotion">${isLocked ? "🔒" : emotionEmoji}</div>`;
-
   content.innerHTML = `
     <div class="marker-wrapper${darkClass}"
-         style="--marker-color: ${color};
-                --marker-glow-rgb: ${hexToRgb(color)};
-                --glow-opacity: ${glowOpacity};
-                --hover-shadow: ${hoverShadowColor};
-                background: ${color};">
-      ${resolvedMarkerInner}
+         style="--marker-color: ${isLocked ? glowColor : color};
+                --marker-glow-rgb: ${isLocked ? glowRgb : hexToRgb(color)};
+                --glow-opacity: ${isLocked ? (isDark ? '0.55' : '0.4') : glowOpacity};
+                --hover-shadow: ${isLocked ? `rgba(${glowRgb}, 0.5)` : hoverShadowColor};
+                background: ${isLocked ? 'transparent' : color};
+                ${isLocked ? 'border: none; box-shadow: none;' : ''}">
+      ${markerInner}
     </div>
   `;
 

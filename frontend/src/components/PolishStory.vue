@@ -12,6 +12,7 @@
   >
     <span class="polish-btn__icon">{{ isPolished ? '*' : '+' }}</span>
     <span class="polish-btn__label">{{ label }}</span>
+    <span v-if="isPolished" class="polish-btn__countdown">{{ remainingShort }}</span>
   </button>
 
   <transition name="polish-toast">
@@ -30,7 +31,7 @@
 </template>
 
 <script setup>
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useVipStore } from '../stores/vip'
 
 const props = defineProps({
@@ -47,6 +48,7 @@ const toastDesc = ref('\u5df2\u91cd\u65b0\u8fdb\u5165\u63a8\u8350\u5217\u8868')
 const countdownSeconds = ref(0)
 let toastTimer = null
 let countdownTimer = null
+let remainingTimer = null
 
 const TEXT = {
   title: '\u6545\u4e8b\u5df2\u64e6\u4eae',
@@ -86,12 +88,48 @@ const tooltipText = computed(() => {
   return `${TEXT.spendCoins} ${storyPolishCost.value} ${TEXT.spendCoinsSuffix}`
 })
 
+// 剩余时间简短显示（按钮旁边）
+const remainingShort = computed(() => {
+  const s = countdownSeconds.value
+  if (s <= 0) return ''
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (h > 0) return `${h}h${m}m`
+  return `${m}m${s % 60}s`
+})
+
 const countdownText = computed(() => {
   const h = Math.floor(countdownSeconds.value / 3600)
   const m = Math.floor((countdownSeconds.value % 3600) / 60)
   const s = countdownSeconds.value % 60
   return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`
 })
+
+// 持续更新倒计时
+function startRemainingCountdown() {
+  const expiresAt = vipStore.getPolishExpiresAt(props.storyId)
+  if (!expiresAt) return
+
+  const update = () => {
+    const diff = Math.max(0, (new Date(expiresAt) - new Date()) / 1000)
+    countdownSeconds.value = Math.floor(diff)
+    if (diff <= 0 && remainingTimer) {
+      clearInterval(remainingTimer)
+      remainingTimer = null
+    }
+  }
+
+  update()
+  if (remainingTimer) clearInterval(remainingTimer)
+  remainingTimer = setInterval(update, 1000)
+}
+
+// 已擦亮时自动启动倒计时
+watch(isPolished, (val) => {
+  if (val) {
+    startRemainingCountdown()
+  }
+}, { immediate: true })
 
 async function handlePolish() {
   if (props.disabled || isPolished.value || polishing.value) return
@@ -115,6 +153,7 @@ async function handlePolish() {
 
     showToast.value = true
     startCountdown()
+    startRemainingCountdown()
     emit('polished', { storyId: props.storyId, cost: result.cost, isVip: result.isVip })
 
     if (toastTimer) clearTimeout(toastTimer)
@@ -147,6 +186,7 @@ function startCountdown() {
 onUnmounted(() => {
   if (toastTimer) clearTimeout(toastTimer)
   if (countdownTimer) clearInterval(countdownTimer)
+  if (remainingTimer) clearInterval(remainingTimer)
 })
 </script>
 
@@ -194,6 +234,17 @@ onUnmounted(() => {
 
 .polish-btn__label {
   line-height: 1;
+}
+
+.polish-btn__countdown {
+  font-size: 10px;
+  font-weight: 700;
+  color: #b8860b;
+  background: rgba(255, 215, 0, 0.18);
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.3px;
 }
 
 @keyframes polish-glow {

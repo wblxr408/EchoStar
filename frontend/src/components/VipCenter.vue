@@ -41,7 +41,7 @@
                       {{ vipStore.isVipActive ? 'VIP 会员' : '普通用户' }}
                     </p>
                     <p class="vip-card__desc" v-if="!vipStore.isVipActive">
-                      开通VIP，解锁全部高级功能，免费不限次
+                      开通VIP，全部高级功能免费不限次使用
                     </p>
                   </div>
                 </div>
@@ -104,7 +104,7 @@
                   v-for="benefit in benefits"
                   :key="benefit.key"
                   class="vip-benefit"
-                  :class="{ 'vip-benefit--locked': !vipStore.isVipActive, 'dark': isDark }"
+                  :class="{ dark: isDark }"
                   @click="handleBenefitClick(benefit)"
                 >
                   <div class="vip-benefit__icon-wrap">{{ benefit.icon }}</div>
@@ -112,15 +112,15 @@
                     <span class="vip-benefit__name">{{ benefit.name }}</span>
                     <span class="vip-benefit__desc">{{ benefit.desc }}</span>
                   </div>
-                  <span v-if="!vipStore.isVipActive" class="vip-benefit__lock">🔒</span>
+                  <span v-if="!vipStore.isVipActive" class="vip-benefit__coin">🪙</span>
                 </div>
               </div>
             </div>
 
             <div class="vip-section">
               <div class="vip-section__title-row">
-                <h3 class="vip-section__title">VIP 功能详细说明</h3>
-                <span class="vip-section__hint">足迹 / 擦亮 / 装扮，VIP全部免费</span>
+                <h3 class="vip-section__title">功能详细说明</h3>
+                <span class="vip-section__hint">VIP全部免费，非VIP可用情绪币单独购买</span>
               </div>
               <div class="vip-perk-list">
                 <div v-for="perk in privilegeDetails" :key="perk.key" class="vip-perk-card" :class="{ dark: isDark }">
@@ -136,7 +136,7 @@
             <div class="vip-section">
               <div class="vip-section__title-row">
                 <h3 class="vip-section__title">专属图标系统</h3>
-                <span class="vip-section__hint">{{ themeSkinUnlocked ? '主题已点亮' : '解锁主题皮肤后生效' }}</span>
+                <span class="vip-section__hint">{{ themeSkinUnlocked ? '主题已点亮' : 'VIP免费领取 / 非VIP 500币解锁' }}</span>
               </div>
               <div class="vip-icon-grid">
                 <button
@@ -171,7 +171,7 @@
                   <div class="vip-icon-card__body">
                     <strong>{{ icon.title }}</strong>
                     <p>{{ icon.desc }}</p>
-                    <span class="vip-icon-card__status">{{ themeSkinUnlocked ? '已解锁 · 点击播放展开动画' : '未解锁 · 点击领取主题皮肤' }}</span>
+                    <span class="vip-icon-card__status">{{ themeSkinUnlocked ? '已解锁 · 点击播放展开动画' : '未解锁 · 点击花费 500 币解锁' }}</span>
                   </div>
                 </button>
               </div>
@@ -184,7 +184,7 @@
                 <div class="vip-polish-bar__fill" :style="{ width: polishPercent + '%' }"></div>
                 <div class="vip-polish-bar__labels">
                   <span>已用 {{ vipStore.polishCount.used }} 次</span>
-                  <span>剩余 {{ vipStore.polishRemaining }} 次</span>
+                  <span>剩余 不限 次</span>
                 </div>
               </div>
             </div>
@@ -240,9 +240,9 @@ const activateMessage = ref('')
 const activateSuccess = ref(false)
 
 const benefits = [
-  { key: 'footprint', icon: '🗺️', name: '我的足迹', desc: 'VIP免费不限次', action: 'open-footprints' },
-  { key: 'polish', icon: '✨', name: '擦亮故事', desc: 'VIP免费不限次', action: 'open-polish' },
-  { key: 'comment', icon: '💬', name: '评论装扮', desc: '气泡装饰免费使用', action: 'open-comment-settings' },
+  { key: 'footprint', icon: '🗺️', name: '我的足迹', desc: vipStore.isVipActive ? 'VIP免费不限次' : '20币/次', action: 'open-footprints' },
+  { key: 'polish', icon: '✨', name: '擦亮故事', desc: vipStore.isVipActive ? 'VIP免费不限次' : '30币/次', action: 'open-polish' },
+  { key: 'comment', icon: '💬', name: '评论装扮', desc: vipStore.isVipActive ? 'VIP免费使用' : '100币/7天', action: 'open-comment-settings' },
 ]
 
 const privilegeDetails = [
@@ -250,19 +250,19 @@ const privilegeDetails = [
     key: 'footprints',
     icon: '🐾',
     title: '我的足迹动画',
-    desc: '普通用户 20 币/次，VIP 免费。至少拥有 2 个已发布故事即可回放轨迹。',
+    desc: '非VIP 20 币/次，VIP 免费。至少拥有 2 个已发布故事即可回放轨迹。',
   },
   {
     key: 'polish',
     icon: '✨',
     title: '擦亮故事',
-    desc: '普通用户 30 币/次，VIP 免费。故事重新进入推荐列表。',
+    desc: '非VIP 30 币/次，VIP 免费。故事重新进入推荐列表。',
   },
   {
     key: 'comment',
     icon: '💬',
     title: '气泡装饰与评论装扮',
-    desc: 'VIP 免费使用气泡装饰与评论背景样式自定义。',
+    desc: '非VIP 100 币/7天，VIP 免费。解锁评论背景样式自定义。',
   },
 ]
 
@@ -286,8 +286,9 @@ const footprintTicketCount = computed(() => vipStore.getInventoryQuantity('footp
 const themeSkinUnlocked = computed(() => vipStore.hasActiveItem('theme_skin'))
 
 const polishPercent = computed(() => {
-  const { used, total } = vipStore.polishCount
-  return total > 0 ? Math.min(100, (used / total) * 100) : 0
+  const used = vipStore.polishCount.used || 0
+  // VIP擦亮不限次，进度条只做视觉展示
+  return Math.min(100, used * 10)
 })
 
 watch(() => props.visible, async (val) => {
@@ -305,10 +306,6 @@ function handleClose() {
 }
 
 function handleBenefitClick(benefit) {
-  if (!vipStore.isVipActive) {
-    showToast('开通 VIP 后即可使用该权益')
-    return
-  }
   emit(benefit.action)
 }
 
@@ -341,11 +338,11 @@ async function handleUnlockThemeIcons(iconKey) {
 
   if (purchasingItem.value === 'theme_skin') return
   purchasingItem.value = 'theme_skin'
-  const result = await vipStore.purchaseItem('theme_skin')
+  const result = await vipStore.useThemeSkin()
   if (result.success) {
     triggerUnlockAnimation(iconKey)
   }
-  showToast(result.message, result.success ? 'success' : 'error')
+  showToast(result.message || (result.success ? '主题皮肤已解锁' : '解锁失败'), result.success ? 'success' : 'error')
   purchasingItem.value = ''
 }
 

@@ -52,4 +52,8 @@ export const vipApi = {
   purchaseVip() {
     return api.post('/v1/vip/economy/purchase-vip');
   },
+
+  polishStory(storyId) {
+    return api.post(`/stories/${storyId}/polish`);
+  },
 };

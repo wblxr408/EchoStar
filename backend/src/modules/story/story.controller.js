@@ -114,6 +114,21 @@ export const modifyStory = async (req, res, next) => {
 };
 
 /**
+ * 擦亮故事
+ */
+export const polishStory = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const result = await StoryService.polishStory(id, userId);
+    res.json({ code: 0, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * 修改故事可见性
  */
 export const updateVisibility = async (req, res, next) => {
