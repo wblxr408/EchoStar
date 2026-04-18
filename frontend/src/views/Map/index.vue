@@ -313,7 +313,6 @@
         @theme-change="handleThemeChange"
         @paper-plane-click="handlePaperPlaneClick"
         @paper-plane-move="handlePaperPlaneMove"
-        @paper-plane-rightclick="handlePaperPlaneRightClick"
       />
     </div>
 
@@ -5821,11 +5820,95 @@ function scrollPlaneNearbyToTop() {
   showPlaneNearbyBackToTop.value = false;
 }
 
-function handlePaperPlaneClick(point) {
-  openPlaneNearby();
+// 纸飞机菜单 DOM
+let planeMenuEl = null;
+let planeMenuHideTimer = null;
+
+function hidePlaneMenu() {
+  if (planeMenuHideTimer) {
+    clearTimeout(planeMenuHideTimer);
+    planeMenuHideTimer = null;
+  }
+  if (planeMenuEl) {
+    planeMenuEl.style.opacity = '0';
+    planeMenuEl.style.transform = 'translateY(4px)';
+    setTimeout(() => {
+      if (planeMenuEl && planeMenuEl.parentNode) {
+        planeMenuEl.parentNode.removeChild(planeMenuEl);
+      }
+      planeMenuEl = null;
+    }, 200);
+  }
 }
 
-function handlePaperPlaneRightClick(point) {
+function showPlaneMenu(clientX, clientY) {
+  hidePlaneMenu();
+  if (planeMenuHideTimer) {
+    clearTimeout(planeMenuHideTimer);
+    planeMenuHideTimer = null;
+  }
+
+  planeMenuEl = document.createElement('div');
+  planeMenuEl.className = 'paper-plane-menu';
+  planeMenuEl.innerHTML = `
+    <div class="plane-menu-item" data-action="nearby">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <span>附近故事</span>
+    </div>
+    <div class="plane-menu-item" data-action="publish">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      <span>发布故事</span>
+    </div>
+  `;
+
+  // 点击选项
+  planeMenuEl.addEventListener('click', (e) => {
+    const item = e.target.closest('.plane-menu-item');
+    if (!item) return;
+    const action = item.dataset.action;
+    hidePlaneMenu();
+    if (action === 'nearby') {
+      openPlaneNearby();
+    } else if (action === 'publish') {
+      handlePaperPlanePublish();
+    }
+  });
+
+  // 定位菜单在点击位置上方
+  document.body.appendChild(planeMenuEl);
+  const menuW = planeMenuEl.offsetWidth;
+  const menuH = planeMenuEl.offsetHeight;
+  let left = clientX - menuW / 2;
+  let top = clientY - menuH - 12;
+  if (left < 8) left = 8;
+  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+  if (top < 8) top = clientY + 16;
+  planeMenuEl.style.left = left + 'px';
+  planeMenuEl.style.top = top + 'px';
+  planeMenuEl.classList.toggle('dark', effectiveMapTheme.value === 'dark');
+
+  // 触发动画
+  requestAnimationFrame(() => {
+    planeMenuEl.style.opacity = '1';
+    planeMenuEl.style.transform = 'translateY(0)';
+  });
+}
+
+function handlePaperPlaneClick(point) {
+  // 使用纸飞机的屏幕坐标定位菜单（上方）
+  if (point.screenX != null && point.screenY != null) {
+    showPlaneMenu(point.screenX, point.screenY);
+  } else {
+    // fallback
+    const mapRef = document.querySelector('.amap-container');
+    if (mapRef) {
+      const rect = mapRef.getBoundingClientRect();
+      showPlaneMenu(rect.left + rect.width / 2, rect.top + rect.height / 2 - 60);
+    }
+  }
+}
+
+function handlePaperPlanePublish() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
     showToast("请先登录后再发布故事", "warning");
     showLoginModal.value = true;
@@ -5837,14 +5920,13 @@ function handlePaperPlaneRightClick(point) {
   if (showPlaneNearby.value) showPlaneNearby.value = false;
   if (showVipCenter.value) showVipCenter = false;
   // 逆地理编码纸飞机位置
-  const coords = { latitude: point.latitude, longitude: point.longitude };
+  const coords = { latitude: planePosition.value.latitude, longitude: planePosition.value.longitude };
   reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
     if (!location) return;
     const displayName = pickLocationDisplayName(location, location.name || '当前位置');
     suggestedPublishLocations.value = [];
     pickedPublishLocation.value = location;
     isPickingPublishLocation.value = false;
-    // 先打开发布面板，等面板可见后再设置预填充（PublishForm watch 需要 visible=true）
     showPublishSidebar.value = true;
     nextTick(() => {
       publishPrefillQuery.value = displayName;
@@ -6113,7 +6195,7 @@ function reverseGeocodePickedLocation(latitude, longitude) {
 
 async function handlePublishMapClick(point) {
   console.log('[Map] handlePublishMapClick called:', { point, showPublishSidebar: showPublishSidebar.value, isPickingPublishLocation: isPickingPublishLocation.value });
-  // 点击地图时关闭搜索面板
+  hidePlaneMenu();
   searchFocused.value = false;
   // 非发布选点模式下，移动纸飞机
   if (!showPublishSidebar.value || !isPickingPublishLocation.value) {
@@ -16698,4 +16780,72 @@ onUnmounted(() => {
 }
 .plane-nearby-sidebar.dark .wall-loading-more { color: #667788; }
 .plane-nearby-sidebar:not(.dark) .wall-loading-more { color: rgba(75, 48, 16, 0.78); }
+</style>
+
+<style>
+.paper-plane-menu {
+  position: fixed;
+  z-index: 1200;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  padding: 6px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: auto;
+  min-width: 120px;
+}
+.paper-plane-menu.dark {
+  background: #000000;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.paper-plane-menu::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  border-radius: 2px;
+  transform: translateX(-50%) rotate(45deg);
+}
+.plane-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+  color: #000;
+  transition: background 0.15s;
+  user-select: none;
+}
+.paper-plane-menu.dark .plane-menu-item {
+  color: #fff;
+}
+.plane-menu-item[data-action="nearby"] {
+  background: #FF6B6B;
+  border-radius: 10px;
+  color: #fff;
+}
+.plane-menu-item[data-action="publish"] {
+  background: #FF9E9E;
+  border-radius: 10px;
+  color: #fff;
+}
+.paper-plane-menu.dark .plane-menu-item[data-action="nearby"],
+.paper-plane-menu.dark .plane-menu-item[data-action="publish"] {
+  color: #fff;
+}
+.plane-menu-item:hover {
+  filter: brightness(1.1);
+}
+.plane-menu-item svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
 </style>
