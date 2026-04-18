@@ -155,7 +155,7 @@ const textContent = computed(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f6d365 0%, #fda085 50%, #f093fb 100%);
 }
 
 .swc-text-content {
@@ -197,7 +197,7 @@ const textContent = computed(() => {
 .swc-blur-placeholder-bg {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+  background: linear-gradient(135deg, rgba(246, 211, 101, 0.5) 0%, rgba(253, 160, 133, 0.45) 50%, rgba(240, 147, 251, 0.5) 100%);
   filter: blur(8px);
 }
 
@@ -342,7 +342,7 @@ const textContent = computed(() => {
 }
 
 .story-wall-card.swc-light .swc-blur-placeholder-bg {
-  background: linear-gradient(135deg, rgba(180, 170, 220, 0.5) 0%, rgba(170, 150, 190, 0.5) 100%);
+  background: linear-gradient(135deg, rgba(225, 200, 130, 0.5) 0%, rgba(230, 185, 155, 0.45) 50%, rgba(220, 175, 200, 0.5) 100%);
 }
 
 .story-wall-card.swc-light .swc-username {

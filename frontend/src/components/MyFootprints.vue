@@ -130,11 +130,30 @@
             {{ currentEmotionEmoji }}
           </div>
           <div class="story-card-body">
-            <p class="story-card-content">{{ currentStory.content || currentStory.preview || '' }}</p>
-            <div class="story-card-meta">
-              <span class="story-card-location">📍 {{ currentStory.location?.address || currentStory.locationName || '' }}</span>
-              <span class="story-card-time">{{ formatTime(currentStory.createdAt) }}</span>
-            </div>
+            <template v-if="isCurrentStoryLocked">
+              <div class="capsule-lock-cover">
+                <div class="capsule-lock-frost"></div>
+                <div class="capsule-lock-content">
+                  <div class="capsule-lock-icon-wrap">
+                    <svg class="capsule-lock-svg" viewBox="0 0 40 48" fill="none">
+                      <rect x="6" y="22" width="28" height="22" rx="4" fill="currentColor" opacity="0.15" stroke="currentColor" stroke-width="2"/>
+                      <path d="M14 22V14a6 6 0 1 1 12 0v8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                      <circle cx="20" cy="33" r="2.5" fill="currentColor"/>
+                      <rect x="20" y="33" width="4" height="5" rx="1" fill="currentColor"/>
+                    </svg>
+                  </div>
+                  <p class="capsule-lock-title">时光胶囊尚未解锁</p>
+                  <p class="capsule-lock-countdown" v-if="lockCountdownText">{{ lockCountdownText }}</p>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <p class="story-card-content">{{ currentStory.content || currentStory.preview || '' }}</p>
+              <div class="story-card-meta">
+                <span class="story-card-location">📍 {{ currentStory.location?.address || currentStory.locationName || '' }}</span>
+                <span class="story-card-time">{{ formatTime(currentStory.createdAt) }}</span>
+              </div>
+            </template>
           </div>
         </div>
       </transition>
@@ -154,6 +173,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { getEmotionEmoji, getEmotionColor, fromEmotionTag } from '../utils/emotion'
 import { storyApi } from '../api/story'
 import { useMapStore } from '../stores/map'
+import { showToast } from '../composables/useToast.js'
 
 const props = defineProps({
   visible: {
@@ -240,6 +260,27 @@ const currentEmotionColor = computed(() => {
 const currentEmotionEmoji = computed(() => {
   if (!currentStory.value) return '😊'
   return getEmotionEmoji(currentStory.value.emotionTag || currentStory.value.emotion) || '😊'
+})
+
+const isCurrentStoryLocked = computed(() => {
+  if (!currentStory.value) return false
+  if (!currentStory.value.isTimeCapsule) return false
+  if (currentStory.value.isUnlocked === true) return false
+  const unlockAt = currentStory.value.unlockAt
+  if (!unlockAt) return true
+  return new Date(unlockAt) > new Date()
+})
+
+const lockCountdownText = computed(() => {
+  if (!currentStory.value?.unlockAt) return ''
+  const diff = new Date(currentStory.value.unlockAt) - new Date()
+  if (diff <= 0) return ''
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+  if (days > 0) return `${days}天${hours}小时后解锁`
+  if (hours > 0) return `${hours}小时${minutes}分钟后解锁`
+  return `${minutes}分钟后解锁`
 })
 
 // --- Watch visibility ---
@@ -566,23 +607,33 @@ function addEmotionMarkers() {
     const emotionColor = getEmotionColor(emotion) || '#667eea'
     const emoji = getEmotionEmoji(story.emotionTag || story.emotion) || '😊'
     const isDark = props.isDark
+    const isLocked = story.isTimeCapsule && !(story.isUnlocked === true)
 
     // Unique ID for flash targeting
     const markerId = `fp-emotion-${idx}`
 
     const content = document.createElement('div')
-    content.className = 'fp-emotion-marker'
+    content.className = 'fp-emotion-marker' + (isLocked ? ' is-capsule-locked' : '')
     content.id = markerId
     content.dataset.idx = idx
-    content.innerHTML = `
-      <div class="fp-emotion-core" style="
-        --emotion-color: ${emotionColor};
-      ">
-        <div class="fp-emotion-ring"></div>
-        <div class="fp-emotion-ripple"></div>
-        <span class="fp-emotion-emoji">${emoji}</span>
-      </div>
-    `
+
+    const markerInner = isLocked
+      ? `<div class="fp-emotion-core" style="--emotion-color: ${emotionColor};">
+           <div class="fp-emotion-ring"></div>
+           <div class="fp-emotion-ripple"></div>
+           <span class="fp-emotion-emoji">${emoji}</span>
+         </div>
+         <div class="fp-capsule-bottle-overlay">
+           <div class="fp-capsule-cork"></div>
+           <div class="fp-capsule-glass"></div>
+         </div>`
+      : `<div class="fp-emotion-core" style="--emotion-color: ${emotionColor};">
+           <div class="fp-emotion-ring"></div>
+           <div class="fp-emotion-ripple"></div>
+           <span class="fp-emotion-emoji">${emoji}</span>
+         </div>`
+
+    content.innerHTML = markerInner
 
     // Apply dark mode if needed
     if (isDark) {
@@ -601,6 +652,10 @@ function addEmotionMarkers() {
     marker._storyIdx = idx
 
     marker.on('click', () => {
+      if (isLocked) {
+        showToast('时光胶囊未解锁，请等待解锁时间到来', 'warning')
+        return
+      }
       emit('story-click', story)
     })
 
@@ -1071,6 +1126,10 @@ function seekToProgress(progress) {
 }
 
 function handleStoryCardClick() {
+  if (isCurrentStoryLocked.value) {
+    showToast('时光胶囊未解锁，请等待解锁时间到来', 'warning')
+    return
+  }
   if (currentStory.value) {
     emit('story-click', currentStory.value)
   }
@@ -1735,5 +1794,187 @@ onUnmounted(() => {
   .fp-traveler-dot {
     animation: none !important;
   }
+}
+
+/* ── 故事卡片 - 时光胶囊锁定遮罩面板 ── */
+.capsule-lock-cover {
+  position: relative;
+  width: 100%;
+  min-height: 60px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.capsule-lock-frost {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: linear-gradient(
+    135deg,
+    rgba(180, 200, 220, 0.35) 0%,
+    rgba(160, 185, 210, 0.25) 40%,
+    rgba(190, 210, 230, 0.3) 100%
+  );
+  backdrop-filter: blur(8px) saturate(1.3);
+  -webkit-backdrop-filter: blur(8px) saturate(1.3);
+  border: 1px solid rgba(200, 215, 230, 0.5);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+  z-index: 1;
+}
+
+.footprints-dark .capsule-lock-frost {
+  background: linear-gradient(
+    135deg,
+    rgba(40, 60, 100, 0.55) 0%,
+    rgba(30, 50, 85, 0.4) 40%,
+    rgba(50, 70, 110, 0.5) 100%
+  );
+  border-color: rgba(100, 140, 200, 0.25);
+  box-shadow:
+    inset 0 1px 1px rgba(143, 180, 255, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.capsule-lock-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.capsule-lock-icon-wrap {
+  width: 32px;
+  height: 38px;
+  color: #8899aa;
+  animation: capsule-lock-bob 3.5s ease-in-out infinite;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.footprints-dark .capsule-lock-icon-wrap {
+  color: rgba(143, 180, 255, 0.65);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.25));
+}
+
+.capsule-lock-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.capsule-lock-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #7a8da0;
+  letter-spacing: 0.02em;
+}
+
+.footprints-dark .capsule-lock-title {
+  color: rgba(143, 180, 255, 0.7);
+}
+
+.capsule-lock-countdown {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #9aacbc;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 2px 10px;
+  border-radius: 10px;
+  letter-spacing: 0.03em;
+}
+
+.footprints-dark .capsule-lock-countdown {
+  color: rgba(143, 180, 255, 0.5);
+  background: rgba(143, 180, 255, 0.06);
+}
+
+@keyframes capsule-lock-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-2px) rotate(-1deg); }
+  75% { transform: translateY(1px) rotate(1deg); }
+}
+
+/* ── 地图标记 - 时光胶囊玻璃瓶覆盖 ── */
+.fp-emotion-marker.is-capsule-locked {
+  cursor: not-allowed;
+  filter: saturate(0.5);
+}
+.fp-emotion-marker.is-capsule-locked .fp-emotion-emoji {
+  filter: blur(3px) brightness(0.6);
+  opacity: 0.5;
+}
+
+.fp-capsule-bottle-overlay {
+  position: absolute;
+  inset: -2px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.fp-capsule-cork {
+  width: 8px;
+  height: 7px;
+  background: linear-gradient(135deg, #d4a76a, #b8895a);
+  border-radius: 2px 2px 1px 1px;
+  box-shadow: 0 -1px 2px rgba(0,0,0,0.12);
+  z-index: 1;
+  flex-shrink: 0;
+  margin-top: -3px;
+}
+
+.fp-capsule-glass {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.32) 0%,
+    rgba(200,220,240,0.16) 30%,
+    rgba(180,210,235,0.1) 60%,
+    rgba(255,255,255,0.25) 100%
+  );
+  border: 1.5px solid rgba(255,255,255,0.45);
+  box-shadow:
+    inset 0 0 5px rgba(255,255,255,0.18),
+    inset 2px 0 3px rgba(255,255,255,0.12),
+    0 2px 8px rgba(0,0,0,0.08);
+}
+
+.fp-capsule-glass::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 6px;
+  height: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.5), transparent);
+  border-radius: 3px;
+  transform: rotate(-6deg);
+}
+
+.fp-emotion-dark .fp-capsule-glass {
+  background: linear-gradient(
+    135deg,
+    rgba(143,180,255,0.18) 0%,
+    rgba(100,140,220,0.1) 30%,
+    rgba(80,120,200,0.06) 60%,
+    rgba(143,180,255,0.14) 100%
+  );
+  border-color: rgba(143,180,255,0.3);
+}
+.fp-emotion-dark .fp-capsule-cork {
+  background: linear-gradient(135deg, #9a7a50, #7d6040);
 }
 </style>

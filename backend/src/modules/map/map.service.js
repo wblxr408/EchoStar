@@ -53,6 +53,8 @@ const MapServiceUtil = {
     'location', // 直接查原始字段
     'locationName',  // ✅ 新增：地点名称
     'emotionTag',
+    'isTimeCapsule',
+    'unlockAt',
     'isRecommended',
     'createdAt'
   ],
@@ -102,6 +104,9 @@ const MapServiceUtil = {
       },
       locationName: story.locationName,  // ✅ 新增：地点名称
       emotionTag: story.emotionTag,
+      isTimeCapsule: !!story.isTimeCapsule,
+      unlockAt: story.unlockAt || null,
+      isUnlocked: !story.isTimeCapsule || (story.unlockAt && new Date(story.unlockAt) <= new Date()),
       isRecommended: story.isRecommended,
       createdAt: story.createdAt
     };
@@ -132,7 +137,8 @@ export const MapService = {
         location: { [Op.not]: null },
         [Op.and]: [
           MapServiceUtil.getDWithinCondition(),
-          getVisibilityTimeCondition()
+          getVisibilityTimeCondition(),
+          sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
         ]
       },
       replacements: { lat: latitude, lng: longitude, radius },
@@ -188,7 +194,10 @@ export const MapService = {
       where: {
         visibility: CONSTANTS.PUBLIC_VISIBILITY,
         location: { [Op.not]: null },
-        [Op.and]: [getVisibilityTimeCondition()]
+        [Op.and]: [
+          getVisibilityTimeCondition(),
+          sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
+        ]
       },
       order: [
         [sequelize.literal('is_recommended DESC NULLS LAST')],
@@ -220,7 +229,9 @@ export const MapService = {
         location: { [Op.not]: null },
         [Op.and]: [
           MapServiceUtil.getDWithinCondition(),
-          getVisibilityTimeCondition()
+          getVisibilityTimeCondition(),
+          // 排除未解锁的时光胶囊
+          sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
         ]
       },
       replacements: { lat: latitude, lng: longitude, radius },
@@ -266,18 +277,23 @@ export const MapService = {
         neLng: northEast.lng,
         neLat: northEast.lat
       },
-      attributes: ['id', 'location', 'emotionTag']
+      attributes: ['id', 'location', 'emotionTag', 'isTimeCapsule', 'unlockAt']
     });
 
     // 🔥 传入动态计算的网格大小（根据 zoom 级别）
     const gridSize = this.getDynamicGridSize(zoom);
     const points = stories.map(s => {
       const { lat, lng } = parsePoint(s.location);
+      const isLocked = s.isTimeCapsule && (!s.unlockAt || new Date(s.unlockAt) > new Date());
       return {
         id: normalizeStoryId(s.id),
         latitude: lat,
         longitude: lng,
-        emotionTag: s.emotionTag
+        emotionTag: s.emotionTag,
+        isTimeCapsule: !!s.isTimeCapsule,
+        unlockAt: s.unlockAt || null,
+        isUnlocked: !s.isTimeCapsule || (s.unlockAt && new Date(s.unlockAt) <= new Date()),
+        isLocked
       };
     });
 

@@ -83,7 +83,10 @@ export function clusterPoints(points, gridSize = 100) {
         id: p.id,
         latitude: p.latitude,
         longitude: p.longitude,
-        emotionTag: p.emotionTag
+        emotionTag: p.emotionTag,
+        ...(p.isTimeCapsule !== undefined && { isTimeCapsule: p.isTimeCapsule }),
+        ...(p.unlockAt !== undefined && { unlockAt: p.unlockAt }),
+        ...(p.isUnlocked !== undefined && { isUnlocked: p.isUnlocked }),
       });
       return;
     }

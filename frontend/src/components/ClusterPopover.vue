@@ -44,12 +44,21 @@
                   v-for="(story, index) in enrichedStories"
                   :key="story.id || story._id || index"
                   class="popover-item"
+                  :class="{ 'is-capsule-locked': isCapsuleLocked(story) }"
                   :style="{ contentVisibility: enrichedStories.length > 20 ? 'auto' : '' }"
-                  @click="$emit('select-story', story)"
+                  @click="handleItemClick(story)"
                 >
                   <div class="item-emotion-bar" :style="emotionBarStyle(story)"></div>
                   <div class="item-content">
-                    <p class="item-title">{{ story.content || story.preview || '无标题' }}</p>
+                    <template v-if="isCapsuleLocked(story)">
+                      <p class="item-title capsule-locked-title">
+                        <span class="capsule-bottle-icon">⏳</span>
+                        <span>时光胶囊尚未解锁</span>
+                      </p>
+                    </template>
+                    <template v-else>
+                      <p class="item-title">{{ story.content || story.preview || '无标题' }}</p>
+                    </template>
                     <span class="item-meta">
                       {{ formatTime(story.createdAt) }}
                       <span v-if="story.likeCount" class="meta-likes">&#9829; {{ story.likeCount }}</span>
@@ -162,6 +171,19 @@ function emotionBarStyle(story) {
   return {
     background: `linear-gradient(180deg, ${color}, ${color}88)`,
   };
+}
+
+function isCapsuleLocked(story) {
+  if (!story.isTimeCapsule) return false;
+  if (story.isUnlocked === true) return false;
+  const unlockAt = story.unlockAt;
+  if (!unlockAt) return true;
+  return new Date(unlockAt) > new Date();
+}
+
+function handleItemClick(story) {
+  if (isCapsuleLocked(story)) return;
+  emit("select-story", story);
 }
 
 function formatTime(dateStr) {
@@ -415,6 +437,38 @@ onUnmounted(() => {
 
 .popover-item:active {
   transform: translateX(1px) scale(0.995);
+}
+
+/* 时光胶囊锁定状态 */
+.popover-item.is-capsule-locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: saturate(0.5);
+}
+.popover-item.is-capsule-locked:hover {
+  background: transparent;
+  transform: none;
+}
+.popover-item.is-capsule-locked:active {
+  transform: none;
+}
+
+.capsule-locked-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted, #8899aa);
+  font-size: 13px;
+  font-style: italic;
+}
+.capsule-bottle-icon {
+  font-size: 16px;
+  animation: capsule-icon-float 2.5s ease-in-out infinite;
+}
+
+@keyframes capsule-icon-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
 }
 
 .item-emotion-bar {

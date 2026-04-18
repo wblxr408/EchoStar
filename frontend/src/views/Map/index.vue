@@ -1114,7 +1114,7 @@
                     ref="vScrollItemRefs"
                     :data-virtual-index="item.index"
                     class="panel-item vscroll-item story-card-enter"
-                    :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
+                    :class="{ 'is-vip-card': getStoryAuthorVip(item.data), 'is-capsule-locked': isCapsuleLocked(item.data) }"
                     :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
                     @click="handleStoryClick(item.data)"
                   >
@@ -1127,8 +1127,21 @@
                       <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(item.data)"><span>🗑️</span></button>
                       <PolishStory :story-id="item.data.id" @polished="handleStoryPolished" @error="handlePolishError" />
                     </div>
+                    <template v-if="isCapsuleLocked(item.data)">
+                      <div class="capsule-lock-strip">
+                        <svg class="capsule-lock-icon" viewBox="0 0 24 28" fill="none" width="18" height="21">
+                          <rect x="3" y="13" width="18" height="13" rx="3" fill="currentColor" opacity="0.12" stroke="currentColor" stroke-width="1.5"/>
+                          <path d="M8 13V9a4 4 0 1 1 8 0v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+                          <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
+                        </svg>
+                        <span class="capsule-lock-label">时光胶囊未解锁</span>
+                        <span class="capsule-lock-timer" v-if="getCapsuleCountdown(item.data)">{{ getCapsuleCountdown(item.data) }}</span>
+                      </div>
+                    </template>
+                    <template v-else>
                     <p class="item-content">{{ item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                    </template>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
                       <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
@@ -3186,6 +3199,13 @@ function openStoryFromCollection(story) {
     return;
   }
 
+  // 时光胶囊未解锁时，提示用户
+  const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
+  if (isLocked) {
+    showToast("时光胶囊未解锁，请等待解锁时间到来", "warning");
+    return;
+  }
+
   searchUserDetailOpen.value = false;
 
   const coords =
@@ -4950,6 +4970,26 @@ function getStoryAuthorVip(story) {
   return Boolean(resolveStoryAuthor(story).vip);
 }
 
+function isCapsuleLocked(story) {
+  if (!story?.isTimeCapsule) return false;
+  if (story.isUnlocked === true) return false;
+  const unlockAt = story.unlockAt;
+  if (!unlockAt) return true;
+  return new Date(unlockAt) > new Date();
+}
+
+function getCapsuleCountdown(story) {
+  if (!story?.unlockAt) return '';
+  const diff = new Date(story.unlockAt) - new Date();
+  if (diff <= 0) return '';
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  if (days > 0) return `${days}天${hours}小时后解锁`;
+  if (hours > 0) return `${hours}小时${minutes}分钟后解锁`;
+  return `${minutes}分钟后解锁`;
+}
+
 function getStoryAuthorInitial(story) {
   return getStoryAuthorName(story).slice(0, 1).toUpperCase() || "\u533f";
 }
@@ -6636,6 +6676,10 @@ function handleSearchToggleFavorite(story) {
 }
 
 function handleStoryClick(story) {
+  if (isCapsuleLocked(story)) {
+    showToast('时光胶囊未解锁，请等待解锁时间到来', 'warning');
+    return;
+  }
   showFavoritesPanel.value = false;
   showLikesPanel.value = false;
   showPostsPanel.value = false;
@@ -7498,6 +7542,12 @@ async function loadMoreFeed() {
 
 function handleMarkerClick(data) {
   const { story, screenX, screenY } = data;
+  // 时光胶囊未解锁时，提示用户
+  const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
+  if (isLocked) {
+    showToast("时光胶囊未解锁，请等待解锁时间到来", "warning");
+    return;
+  }
   openStoryModal(story, 0, {
     directOpen: true,
     startPosition: { x: screenX, y: screenY },
@@ -11627,6 +11677,67 @@ onUnmounted(() => {
   background: rgba(244, 67, 54, 0.2);
 }
 
+/* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
 .item-content {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.85);
@@ -12651,7 +12762,68 @@ onUnmounted(() => {
   color: #333;
 }
 
-.user-sidebar:not(.dark) .user-content-list .item-content {
+.user-sidebar:not(.dark) .user-content-list /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.item-content {
   color: #2c2c2c;
 }
 
@@ -14746,7 +14918,68 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(182, 208, 255, 0.12);
 }
-.map-search-results.dark .map-search-card .item-content { color: rgba(255, 255, 255, 0.85); }
+.map-search-results.dark .map-search-card /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.item-content { color: rgba(255, 255, 255, 0.85); }
 .map-search-results.dark .map-search-card .item-author { color: #fff; }
 .map-search-results.dark .map-search-card .item-time { color: rgba(255, 255, 255, 0.5); }
 .map-search-results.dark .map-search-card .item-footer { color: rgba(255, 255, 255, 0.5); }
@@ -14760,7 +14993,68 @@ onUnmounted(() => {
   background: rgba(255, 250, 242, 0.52);
   border-color: rgba(164, 122, 48, 0.35);
 }
-.map-search-results:not(.dark) .map-search-card .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .map-search-card /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.item-content { color: #2c2c2c; }
 .map-search-results:not(.dark) .map-search-card .item-author { color: #333; }
 .map-search-results:not(.dark) .map-search-card .item-time { color: #888; }
 .map-search-results:not(.dark) .map-search-card .item-footer { color: #666; }
@@ -14774,7 +15068,68 @@ onUnmounted(() => {
   background: rgba(255, 250, 242, 0.52);
   border-color: rgba(164, 122, 48, 0.52);
 }
-.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.item-content { color: #2c2c2c; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-author { color: #333; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-time { color: #888; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-footer { color: #666; }
@@ -15039,7 +15394,68 @@ onUnmounted(() => {
   border-color: rgba(164, 122, 48, 0.38);
 }
 .map-search-user-detail:not(.dark) .user-content-list .item-author { color: #3c2910; }
-.map-search-user-detail:not(.dark) .user-content-list .item-content { color: #3c2910; }
+.map-search-user-detail:not(.dark) .user-content-list /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.item-content { color: #3c2910; }
 .map-search-user-detail:not(.dark) .user-content-list .item-time { color: #3c2910; }
 .map-search-user-detail:not(.dark) .user-content-list .item-footer { color: #3c2910; }
 .map-search-user-detail:not(.dark) .bio-text { color: #3c2910; }
