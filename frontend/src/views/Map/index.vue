@@ -367,7 +367,7 @@
       @open-polish="showToast('在我的故事中点击擦亮按钮即可使用')"
       @open-comment-settings="showFontPicker = false; showCommentSettings = !showCommentSettings"
       @open-visual="showVipCenter = false; showVisualCustomizer = true"
-      @open-footprints="handleFootprints()"
+      @open-footprints="showVipCenter = false; showUserSidebar = false; handleFootprints()"
       @open-fonts="showCommentSettings = false; showFontPicker = !showFontPicker"
     />
 
