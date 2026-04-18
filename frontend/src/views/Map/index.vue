@@ -1077,6 +1077,7 @@
                 </div>
                 <button class="wallet-inline-btn" @click="showCoinCenter = true">
                   <span class="wallet-inline-btn__icon">🪙</span>
+                  <span class="wallet-inline-btn__label">我的情绪币</span>
                   <span>{{ vipStore.emotionCoins || 0 }}</span>
                 </button>
                 <div class="user-identity-actions">
@@ -14581,6 +14582,10 @@ onUnmounted(() => {
 
 .wallet-inline-btn__icon {
   font-size: 14px;
+}
+
+.wallet-inline-btn__label {
+  opacity: 0.88;
 }
 
 .user-identity-actions {
