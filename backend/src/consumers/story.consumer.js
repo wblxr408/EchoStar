@@ -50,7 +50,8 @@ class StoryConsumer {
       this.consumer = new SimpleConsumer({
         consumerGroup: config.storyConsumerGroup,
         endpoints: config.endpoints,
-        subscriptions: new Map([[config.topic, '*']])
+        //subscriptions: new Map([[config.topic, '*']])
+        subscriptions: new Map([[process.env.ROCKETMQ_STORY_TOPIC, '*']])
       });
 
       await this.consumer.startup();

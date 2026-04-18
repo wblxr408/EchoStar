@@ -8,6 +8,7 @@ import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
 import { getRandomDefaultAvatar } from '../../common/utils/oss.js'; 
 import { clearUserCache } from './auth.middleware.js';
+import { VipService } from '../vip/vip.service.js';
 
 /**
  * Auth Service - 认证业务逻辑
@@ -119,13 +120,20 @@ const AuthServiceImpl = {
       avatarUrl: defaultAvatar 
     });
 
+    // 注册赠送1周VIP
+    try {
+      await VipService.upgradeUserToVip(user.id, null, 7);
+    } catch (vipErr) {
+      console.warn('[register] 赠送VIP失败，不影响注册:', vipErr.message);
+    }
+
     return {
       accessToken: this.generateToken(user.id),
       user: {
         id: user.id,
         username: user.username,
         avatar: user.avatarUrl,
-        vip: user.vip,
+        vip: 1,
         emotionCoins: user.emotionCoins || 0
       }
     };
@@ -170,16 +178,23 @@ const AuthServiceImpl = {
       avatarUrl: defaultAvatar
     });
 
+    // 注册赠送1周VIP
+    try {
+      await VipService.upgradeUserToVip(user.id, null, 7);
+    } catch (vipErr) {
+      console.warn('[register_2] 赠送VIP失败，不影响注册:', vipErr.message);
+    }
+
     // 6. 生成 Token
     const token = this.generateToken(user.id);
 
     return {
-      accessToken: token,  // ✅ 修改为 accessToken
+      accessToken: token,
       user: {
         id: user.id,
-        username: user.username,  // ✅ 普通注册只返回 id 和 username
-        avatar: user.avatarUrl,  // ✅ 返回头像
-        vip: user.vip,
+        username: user.username,
+        avatar: user.avatarUrl,
+        vip: 1,
         emotionCoins: user.emotionCoins || 0
       }
     };

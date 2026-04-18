@@ -245,6 +245,15 @@
                 </tr>
               </tbody>
             </table>
+            <div v-if="bannedUserPage < bannedUserPagination.totalPages" class="load-more-bar">
+              <button class="load-more-btn" :disabled="bannedUserLoadingMore" @click="loadMoreBannedUsers">
+                {{ bannedUserLoadingMore ? '加载中...' : '加载更多' }}
+              </button>
+              <span class="page-info">{{ bannedUsers.length }} / {{ bannedUserPagination.total }} 条</span>
+            </div>
+            <div v-else-if="bannedUsers.length > 0" class="load-more-bar">
+              <span class="page-info">已加载全部 {{ bannedUserPagination.total }} 条</span>
+            </div>
           </div>
 
           <!-- 正常用户 -->
@@ -300,6 +309,15 @@
                 </tr>
               </tbody>
             </table>
+            <div v-if="!userSearch && normalUserPage < normalUserPagination.totalPages" class="load-more-bar">
+              <button class="load-more-btn" :disabled="normalUserLoadingMore" @click="loadMoreNormalUsers">
+                {{ normalUserLoadingMore ? '加载中...' : '加载更多' }}
+              </button>
+              <span class="page-info">{{ normalUsers.length }} / {{ normalUserPagination.total }} 条</span>
+            </div>
+            <div v-else-if="!userSearch && normalUsers.length > 0" class="load-more-bar">
+              <span class="page-info">已加载全部 {{ normalUserPagination.total }} 条</span>
+            </div>
           </div>
         </section>
 
@@ -994,6 +1012,14 @@ const bannedUsers = ref([]);
 const normalUsers = ref([]);
 const userSearch = ref('');
 const userSearchType = ref('username');
+const USER_PAGE_SIZE = 20;
+
+const normalUserPage = ref(1);
+const bannedUserPage = ref(1);
+const normalUserPagination = ref({ total: 0, totalPages: 0 });
+const bannedUserPagination = ref({ total: 0, totalPages: 0 });
+const normalUserLoadingMore = ref(false);
+const bannedUserLoadingMore = ref(false);
 
 const searchPlaceholder = computed(() => {
   const map = { username: '输入用户名搜索...', email: '输入邮箱搜索...', id: '输入用户ID搜索...' };
@@ -1015,42 +1041,100 @@ const filteredNormalUsers = computed(() => {
   );
 });
 
+function mapUserItem(u) {
+  return {
+    id: u.id,
+    name: u.username,
+    username: u.username,
+    email: u.email,
+    avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
+    status: u.status,
+    vip: u.vip || 0,
+    createdAt: u.createdAt,
+    storyCount: 0
+  };
+}
+
+function updateUserTabCounts() {
+  userTabs.value = [
+    { key: 'normal', label: '正常用户', count: normalUserPagination.value.total },
+    { key: 'banned', label: '封禁账号', count: bannedUserPagination.value.total }
+  ];
+}
+
 async function loadUsers() {
   try {
     // 加载正常用户
-    const normalRes = await adminApi.getUsers({ category: 'normal', pageSize: 50 });
+    const normalRes = await adminApi.getUsers({ category: 'normal', page: 1, pageSize: USER_PAGE_SIZE });
     const normalData = normalRes.data || normalRes;
-    normalUsers.value = (normalData?.users || []).map(u => ({
+    normalUsers.value = (normalData?.users || []).map(mapUserItem);
+    normalUserPagination.value = normalData?.pagination || { total: 0, totalPages: 0 };
+    normalUserPage.value = 1;
+
+    // 加载封禁用户
+    const bannedRes = await adminApi.getUsers({ category: 'deleted', page: 1, pageSize: USER_PAGE_SIZE });
+    const bannedData = bannedRes.data || bannedRes;
+    bannedUsers.value = (bannedData?.users || []).map(u => ({
       id: u.id,
       name: u.username,
       username: u.username,
       email: u.email,
       avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
-      status: u.status,
-      vip: u.vip || 0,
-      createdAt: u.createdAt,
-      storyCount: 0
-    }));
-
-    // 加载封禁用户
-    const bannedRes = await adminApi.getUsers({ category: 'deleted', pageSize: 50 });
-    const bannedData = bannedRes.data || bannedRes;
-    bannedUsers.value = (bannedData?.users || []).map(u => ({
-      id: u.id,
-      name: u.username,
-      email: u.email,
-      avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
-      banReason: '违规操作', // 后端暂未返回
+      banReason: '违规操作',
       bannedAt: u.createdAt
     }));
+    bannedUserPagination.value = bannedData?.pagination || { total: 0, totalPages: 0 };
+    bannedUserPage.value = 1;
 
-    // 更新标签计数
-    userTabs.value = [
-      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
-      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
-    ];
+    updateUserTabCounts();
   } catch (error) {
     console.error('加载用户列表失败:', error);
+  }
+}
+
+async function loadMoreNormalUsers() {
+  if (normalUserLoadingMore.value || normalUserPage.value >= normalUserPagination.value.totalPages) return;
+  normalUserLoadingMore.value = true;
+  try {
+    const nextPage = normalUserPage.value + 1;
+    const res = await adminApi.getUsers({ category: 'normal', page: nextPage, pageSize: USER_PAGE_SIZE });
+    const data = res.data || res;
+    const newUsers = (data?.users || []).map(mapUserItem);
+    normalUsers.value = [...normalUsers.value, ...newUsers];
+    normalUserPagination.value = data?.pagination || normalUserPagination.value;
+    normalUserPage.value = nextPage;
+    updateUserTabCounts();
+  } catch (error) {
+    console.error('加载更多正常用户失败:', error);
+  } finally {
+    normalUserLoadingMore.value = false;
+  }
+}
+
+async function loadMoreBannedUsers() {
+  if (bannedUserLoadingMore.value || bannedUserPage.value >= bannedUserPagination.value.totalPages) return;
+  bannedUserLoadingMore.value = true;
+  try {
+    const nextPage = bannedUserPage.value + 1;
+    const res = await adminApi.getUsers({ category: 'deleted', page: nextPage, pageSize: USER_PAGE_SIZE });
+    const data = res.data || res;
+    const newUsers = (data?.users || []).map(u => ({
+      id: u.id,
+      name: u.username,
+      username: u.username,
+      email: u.email,
+      avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
+      banReason: '违规操作',
+      bannedAt: u.createdAt
+    }));
+    bannedUsers.value = [...bannedUsers.value, ...newUsers];
+    bannedUserPagination.value = data?.pagination || bannedUserPagination.value;
+    bannedUserPage.value = nextPage;
+    updateUserTabCounts();
+  } catch (error) {
+    console.error('加载更多封禁用户失败:', error);
+  } finally {
+    bannedUserLoadingMore.value = false;
   }
 }
 
@@ -1103,18 +1187,7 @@ async function confirmBan() {
     await adminApi.banUser(selectedUser.value.id, banReason.value);
     showToast(`已封禁用户: ${selectedUser.value.name}`, 'success');
     showBanModal.value = false;
-    // 从正常用户列表移除，添加到封禁列表
-    normalUsers.value = normalUsers.value.filter(u => u.id !== selectedUser.value.id);
-    bannedUsers.value.push({
-      ...selectedUser.value,
-      banReason: banReason.value,
-      bannedAt: new Date()
-    });
-    // 同步更新标签计数
-    userTabs.value = [
-      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
-      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
-    ];
+    await loadUsers();
   } catch (error) {
     console.error('封禁失败:', error);
     showToast(error.message || '操作失败', 'error');
@@ -1126,23 +1199,7 @@ async function handleUnbanUser(userId) {
   try {
     await adminApi.unbanUser(userId);
     showToast('已解封用户', 'success');
-    // 从封禁列表移除，添加到正常用户列表
-    const user = bannedUsers.value.find(u => u.id === userId);
-    if (user) {
-      bannedUsers.value = bannedUsers.value.filter(u => u.id !== userId);
-      normalUsers.value.push({
-        ...user,
-        storyCount: user.storyCount || 0,
-        createdAt: user.createdAt || new Date(),
-        banReason: undefined,
-        bannedAt: undefined
-      });
-    }
-    // 同步更新标签计数
-    userTabs.value = [
-      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
-      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
-    ];
+    await loadUsers();
   } catch (error) {
     console.error('解封失败:', error);
     showToast(error.message || '操作失败', 'error');
@@ -1832,6 +1889,36 @@ function handleLogout() {
 /* 用户管理 */
 .users-list {
   margin-top: 20px;
+}
+.load-more-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid #eee;
+}
+.load-more-btn {
+  padding: 8px 24px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.load-more-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+  border-color: #bbb;
+}
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.page-info {
+  color: #888;
+  font-size: 13px;
 }
 
 .list-header {

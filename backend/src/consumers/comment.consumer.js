@@ -49,7 +49,8 @@ class CommentConsumer {
       this.consumer = new SimpleConsumer({
         consumerGroup: config.commentConsumerGroup,
         endpoints: config.endpoints,
-        subscriptions: new Map([[config.topic, '*']])
+        //subscriptions: new Map([[config.topic, '*']])
+        subscriptions: new Map([[process.env.ROCKETMQ_COMMENT_TOPIC, '*']])
       });
 
       await this.consumer.startup();
