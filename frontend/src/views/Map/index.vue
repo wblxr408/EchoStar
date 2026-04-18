@@ -361,6 +361,7 @@
       @open-polish="showVipCenter = false; showToast('在我的故事中点击擦亮按钮即可使用')"
       @open-comment-settings="showVipCenter = false; showCommentSettings = true"
       @open-visual="showVipCenter = false; showVisualCustomizer = true"
+      @open-footprints="showVipCenter = false; handleFootprints()"
     />
 
     <!-- Comment Settings -->
@@ -1017,6 +1018,10 @@
                   </div>
                   <div class="user-star-id">STAR-ID: {{ userStore.user?.id ?? "" }}</div>
                 </div>
+                <button class="wallet-inline-btn" @click="showVipCenter = true">
+                  <span class="wallet-inline-btn__icon">🪙</span>
+                  <span>{{ vipStore.emotionCoins || 0 }}</span>
+                </button>
                 <div class="user-identity-actions">
                   <button class="switch-account-btn" @click="handleSwitchAccount">
                     切换账号
@@ -6039,11 +6044,74 @@ function handleMyPosts() {
   }
 }
 
-function handleFootprints() {
+async function handleFootprints() {
   if (showLikesPanel.value) showLikesPanel.value = false;
   if (showPostsPanel.value) showPostsPanel.value = false;
   if (showFavoritesPanel.value) showFavoritesPanel.value = false;
-  showFootprints.value = !showFootprints.value;
+
+  if (showFootprints.value) {
+    showFootprints.value = false;
+    isDockExpanded.value = false;
+    return;
+  }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    showToast("登录后才能使用我的足迹", "warning");
+    isDockExpanded.value = false;
+    return;
+  }
+
+  try {
+    const storiesResp = await storyApi.getMyStories({ page: 1, limit: 2 });
+    const storiesData = storiesResp?.data || storiesResp;
+    const totalStories = Number(
+      storiesData?.pagination?.total
+      ?? storiesData?.stories?.length
+      ?? storiesData?.items?.length
+      ?? 0
+    );
+
+    if (totalStories < 2) {
+      showToast("至少发布 2 个故事后才能播放足迹动画", "warning");
+      isDockExpanded.value = false;
+      return;
+    }
+
+    await vipStore.fetchEconomy();
+
+    if (!vipStore.isVipActive) {
+      let footprintQty = vipStore.getInventoryQuantity('footprint_animation');
+
+      if (footprintQty <= 0) {
+        const purchaseResult = await vipStore.purchaseItem('footprint_animation');
+        if (!purchaseResult.success) {
+          showToast(purchaseResult.message, 'error');
+          isDockExpanded.value = false;
+          return;
+        }
+        footprintQty = vipStore.getInventoryQuantity('footprint_animation');
+      }
+
+      if (footprintQty <= 0) {
+        showToast("足迹次数购买失败，请稍后重试", "error");
+        isDockExpanded.value = false;
+        return;
+      }
+
+      const consumeResult = await vipStore.consumeItem('footprint_animation');
+      if (!consumeResult.success) {
+        showToast(consumeResult.message, 'error');
+        isDockExpanded.value = false;
+        return;
+      }
+    }
+
+    showFootprints.value = true;
+  } catch (error) {
+    console.error("打开足迹失败:", error);
+    showToast(error?.message || "打开足迹失败，请稍后重试", "error");
+  }
+
   isDockExpanded.value = false;
 }
 
@@ -8158,6 +8226,7 @@ onMounted(() => {
   }, 1100);
 
   if (userStore.isLoggedIn && !userStore.isGuest) {
+    vipStore.fetchStatus().catch(() => {});
     const loadTasks = [loadNotifications(), loadAnnouncements()];
     Promise.all(loadTasks).then(() => {
       const hasUnread =
@@ -14079,6 +14148,32 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
 }
 
+.wallet-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.18), rgba(245, 166, 35, 0.24));
+  color: #7a5200;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.wallet-inline-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px -14px rgba(173, 121, 13, 0.7);
+}
+
+.wallet-inline-btn__icon {
+  font-size: 14px;
+}
+
 .user-identity-actions {
   display: flex;
   gap: 8px;
@@ -14707,6 +14802,10 @@ onUnmounted(() => {
 }
 
 .dark .user-star-id { color: #8899aa; }
+.dark .wallet-inline-btn {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.16), rgba(143, 180, 255, 0.18));
+  color: #f4e2a5;
+}
 .dark .user-bio-area { background: #1e2a3a; border-color: #2a3a4a; }
 .dark .bio-text { color: #aabbcc; }
 .dark .bio-input-wrap textarea { background: #0f1a2a; border-color: #2a3a4a; color: #edf3ff; }

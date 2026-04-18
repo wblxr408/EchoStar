@@ -119,7 +119,16 @@ const AuthServiceImpl = {
       avatarUrl: defaultAvatar 
     });
 
-    return { accessToken: this.generateToken(user.id), user: { id: user.id, username: user.username, avatar: user.avatarUrl } };
+    return {
+      accessToken: this.generateToken(user.id),
+      user: {
+        id: user.id,
+        username: user.username,
+        avatar: user.avatarUrl,
+        vip: user.vip,
+        emotionCoins: user.emotionCoins || 0
+      }
+    };
   },
 
   /**
@@ -169,7 +178,9 @@ const AuthServiceImpl = {
       user: {
         id: user.id,
         username: user.username,  // ✅ 普通注册只返回 id 和 username
-        avatar: user.avatarUrl  // ✅ 返回头像
+        avatar: user.avatarUrl,  // ✅ 返回头像
+        vip: user.vip,
+        emotionCoins: user.emotionCoins || 0
       }
     };
   },
@@ -196,7 +207,9 @@ const AuthServiceImpl = {
         id: admin.id,
         email: admin.email,
         username: admin.username,
-        avatar: admin.avatarUrl  // ✅ 映射为 avatar
+        avatar: admin.avatarUrl,  // ✅ 映射为 avatar
+        vip: admin.vip,
+        emotionCoins: admin.emotionCoins || 0
       }
     }
   },
@@ -232,7 +245,9 @@ const AuthServiceImpl = {
         id: user.id,
         email: user.email,
         username: user.username,
-        avatar: user.avatarUrl 
+        avatar: user.avatarUrl,
+        vip: user.vip,
+        emotionCoins: user.emotionCoins || 0
       }
     };
   },
@@ -256,7 +271,7 @@ const AuthServiceImpl = {
    */
   async fetchUserRaw(userId) {
     const user = await User.findByPk(userId, {
-      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'status', 'createdAt', 'vip']
+      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'status', 'createdAt', 'vip', 'emotionCoins', 'lastCheckInAt', 'checkInStreak']
     });
 
     if (!user) return null;
@@ -270,6 +285,9 @@ const AuthServiceImpl = {
       bio: user.bio,
       status: user.status,
       vip: user.vip,
+      emotionCoins: user.emotionCoins || 0,
+      lastCheckInAt: user.lastCheckInAt || null,
+      checkInStreak: user.checkInStreak || 0,
       createdAt: user.createdAt
     };
   },
@@ -302,6 +320,9 @@ const AuthServiceImpl = {
       role: rawData.role,
       status: rawData.status,
       vip: rawData.vip,
+      emotionCoins: rawData.emotionCoins || 0,
+      lastCheckInAt: rawData.lastCheckInAt || null,
+      checkInStreak: rawData.checkInStreak || 0,
       createdAt: rawData.createdAt
     };
   },
@@ -385,6 +406,7 @@ const AuthServiceImpl = {
       avatar: rawData.avatarUrl,
       bio: rawData.bio,
       vip: rawData.vip,
+      emotionCoins: rawData.emotionCoins || 0,
       stories: stories.map(story => ({
         id: story.id,
         content: story.content,
@@ -457,6 +479,8 @@ const AuthServiceImpl = {
       avatar: user.avatarUrl,
       bio: user.bio,
       vip: user.vip
+      ,
+      emotionCoins: user.emotionCoins || 0
     };
   },
 
@@ -539,7 +563,7 @@ const AuthServiceImpl = {
 
     const { count, rows } = await User.findAndCountAll({
       where: { status: statusFilter },
-      attributes: ['id', 'username', 'email', 'role', 'status', 'bio', 'avatarUrl', 'createdAt', 'vip'],
+      attributes: ['id', 'username', 'email', 'role', 'status', 'bio', 'avatarUrl', 'createdAt', 'vip', 'emotionCoins'],
       order: [['createdAt', 'DESC']],
       offset,
       limit: pageSize
@@ -613,7 +637,7 @@ const AuthServiceImpl = {
         },
         status: ['normal', 'recommended']
       },
-      attributes: ['id', 'username', 'avatarUrl', 'bio', 'vip', 'createdAt'],
+      attributes: ['id', 'username', 'avatarUrl', 'bio', 'vip', 'emotionCoins', 'createdAt'],
       order: [['createdAt', 'DESC']],
       offset,
       limit: limitNum

@@ -21,6 +21,7 @@
       <div class="footprints-progress">
         <div class="progress-text">
           <span v-if="phase === 'loading'" class="progress-label">加载故事中…</span>
+          <span v-else-if="phase === 'ready' && !hasMinimumStories" class="progress-label">至少需要 2 个已发布故事才能播放足迹动画</span>
           <span v-else-if="phase === 'ready'" class="progress-label">共 {{ stories.length }} 个足迹，点击播放</span>
           <span v-else-if="phase === 'playing'" class="progress-label">
             途经 {{ Math.round(travelProgress * stories.length) }} / {{ stories.length }}
@@ -64,9 +65,9 @@
       <!-- 控制按钮 -->
       <div class="footprints-controls">
         <template v-if="phase === 'ready'">
-          <button class="ctrl-btn ctrl-primary" @click="startAnimation">
+          <button class="ctrl-btn ctrl-primary" :disabled="!hasMinimumStories" @click="startAnimation">
             <span class="ctrl-icon">▶</span>
-            <span>开始回放</span>
+            <span>{{ hasMinimumStories ? '开始回放' : '故事数量不足' }}</span>
           </button>
         </template>
 
@@ -159,10 +160,10 @@
       </transition>
 
       <!-- 空状态 -->
-      <div v-if="phase === 'ready' && stories.length === 0" class="footprints-empty">
+      <div v-if="phase === 'ready' && !hasMinimumStories" class="footprints-empty">
         <span class="empty-icon">🐾</span>
-        <p>暂无故事足迹</p>
-        <p class="empty-hint">发布你的第一个故事，开启足迹之旅</p>
+        <p>{{ stories.length === 0 ? '暂无故事足迹' : '故事数量不足' }}</p>
+        <p class="empty-hint">{{ stories.length === 0 ? '发布你的第一个故事，开启足迹之旅' : '再发布 1 个故事，即可生成动态轨迹动画' }}</p>
       </div>
     </div>
   </transition>
@@ -250,6 +251,8 @@ const currentStory = computed(() => {
   }
   return null
 })
+
+const hasMinimumStories = computed(() => stories.value.length >= 2)
 
 const currentEmotionColor = computed(() => {
   if (!currentStory.value) return '#667eea'
@@ -443,7 +446,7 @@ function buildAllArcPaths() {
 
 // --- Animation control ---
 function startAnimation() {
-  if (stories.value.length === 0) return
+  if (stories.value.length < 2) return
   phase.value = 'playing'
   travelProgress.value = 0
   currentSegmentIndex.value = 0
@@ -1373,6 +1376,12 @@ onUnmounted(() => {
 .ctrl-btn:hover {
   background: var(--panel-soft-strong);
   transform: translateY(-1px);
+}
+
+.ctrl-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .ctrl-btn.active {

@@ -101,6 +101,19 @@ function assert(condition, message) {
   }
 }
 
+function assertStoryShape(story, messagePrefix = '故事结构') {
+  assert(!!story && typeof story === 'object', `${messagePrefix}存在`);
+  if (!story || typeof story !== 'object') return;
+
+  assert(story.id !== undefined && story.id !== null, `${messagePrefix}包含 id`);
+  assert(typeof story.content === 'string', `${messagePrefix}包含 content`);
+  assert(Array.isArray(story.images), `${messagePrefix}包含 images 数组`);
+  assert(typeof story.location === 'object' && story.location !== null, `${messagePrefix}包含 location`);
+  assert(typeof story.location?.latitude === 'number', `${messagePrefix}包含 location.latitude`);
+  assert(typeof story.location?.longitude === 'number', `${messagePrefix}包含 location.longitude`);
+  assert(typeof story.emotionTag === 'string', `${messagePrefix}包含 emotionTag`);
+}
+
 // ==================== 测试准备 ====================
 
 async function setupTestUsers() {
@@ -235,6 +248,7 @@ async function testRandomWalk() {
   assert(res1.status === 200, '随机漫步成功');
   if (res1.status === 200 && res1.data?.data) {
     console.log(`[INFO] 随机漫步返回故事ID: ${res1.data?.data?.story?.id}`);
+    assertStoryShape(res1.data?.data?.story, '随机漫步返回故事');
   }
 
   // 1.2 带位置参数的随机漫步
@@ -244,6 +258,9 @@ async function testRandomWalk() {
     null, {}, user1Token, '正常测试：带北京位置的随机漫步'
   );
   assert(res2.status === 200, '带位置随机漫步成功');
+  if (res2.status === 200) {
+    assertStoryShape(res2.data?.data?.story, '带位置随机漫步返回故事');
+  }
 
   // 1.3 带情感筛选的随机漫步 - 开心
   console.log('\n--- 1.3 带情感筛选的随机漫步（开心） ---');
@@ -265,6 +282,9 @@ async function testRandomWalk() {
     null, {}, user1Token, '正常测试：筛选难过类故事的随机漫步'
   );
   assert(res4.status === 200, '筛选难过情感成功');
+  if (res4.status === 200) {
+    assert(res4.data?.data?.story?.emotionTag === '难过', '返回的应该是难过类故事');
+  }
 
   // 1.5 带情感筛选的随机漫步 - 治愈
   console.log('\n--- 1.5 带情感筛选的随机漫步（治愈） ---');
@@ -273,6 +293,9 @@ async function testRandomWalk() {
     null, {}, user1Token, '正常测试：筛选治愈类故事的随机漫步'
   );
   assert(res5.status === 200, '筛选治愈情感成功');
+  if (res5.status === 200) {
+    assert(res5.data?.data?.story?.emotionTag === '治愈', '返回的应该是治愈类故事');
+  }
 
   // 1.6 带情感筛选的随机漫步 - 打卡
   console.log('\n--- 1.6 带情感筛选的随机漫步（打卡） ---');
@@ -281,15 +304,17 @@ async function testRandomWalk() {
     null, {}, user1Token, '正常测试：筛选打卡类故事的随机漫步'
   );
   assert(res6.status === 200, '筛选打卡情感成功');
+  if (res6.status === 200) {
+    assert(res6.data?.data?.story?.emotionTag === '打卡', '返回的应该是打卡类故事');
+  }
 
   // 1.7 边界测试：无效的情感标签
   console.log('\n--- 1.7 边界测试：无效的情感标签 ---');
   const res7 = await sendRequest('GET', 
     `${BASE_URL}/api/map/random?mood=无效标签`, 
-    null, {}, user1Token, '边界测试：无效的情感标签（应被忽略或返回错误）'
+    null, {}, user1Token, '边界测试：无效的情感标签（应返回 400）'
   );
-  // 无效标签可能被忽略，返回200也是正常的
-  console.log(`[INFO] 无效情感标签返回状态码: ${res7.status}`);
+  assert(res7.status === 400, '无效情感标签应返回 400');
 
   // 1.8 边界测试：无效的经纬度
   console.log('\n--- 1.8 边界测试：无效的经纬度（非数字） ---');
@@ -297,8 +322,7 @@ async function testRandomWalk() {
     `${BASE_URL}/api/map/random?lat=abc&lng=def`, 
     null, {}, user1Token, '边界测试：无效的经纬度格式'
   );
-  // 应该被解析为NaN，接口可能有默认值
-  console.log(`[INFO] 无效经纬度返回状态码: ${res8.status}`);
+  assert(res8.status === 400, '无效经纬度应返回 400');
 
   // 1.9 无Token的随机漫步（可选认证）
   console.log('\n--- 1.9 无Token的随机漫步 ---');
@@ -339,6 +363,9 @@ async function testRecommendationFeed() {
     const stories = res1.data?.data?.stories || [];
     const pagination = res1.data?.data?.pagination || {};
     console.log(`[INFO] 推荐流返回 ${stories.length} 条故事，总数 ${pagination.total || 0}`);
+    if (stories.length > 0) {
+      assertStoryShape(stories[0], '推荐流故事');
+    }
   }
 
   // 2.2 带位置参数的推荐流
@@ -434,9 +461,9 @@ async function testRecommendationFeed() {
   console.log('\n--- 2.11 边界测试：无效的情感标签 ---');
   const res11 = await sendRequest('GET', 
     `${BASE_URL}/api/map/feed?mood=无效标签`, 
-    null, {}, user1Token, '边界测试：无效的情感标签（应被忽略）'
+    null, {}, user1Token, '边界测试：无效的情感标签（应返回 400）'
   );
-  assert(res11.status === 200, '无效情感标签应被忽略');
+  assert(res11.status === 400, '无效情感标签应返回 400');
 
   // 2.12 无Token获取推荐流
   console.log('\n--- 2.12 无Token获取推荐流 ---');
@@ -450,6 +477,11 @@ async function testRecommendationFeed() {
     null, {}, user1Token, '正常测试：带位置和情感筛选的推荐流'
   );
   assert(res13.status === 200, '带位置和情感筛选成功');
+  if (res13.status === 200) {
+    const stories = res13.data?.data?.stories || [];
+    const allHappy = stories.every(s => s.emotionTag === '开心');
+    assert(allHappy, '带位置和情感筛选后返回的故事应该都是开心类');
+  }
 
   // 2.14 验证用户偏好对推荐的影响
   console.log('\n--- 2.14 验证用户偏好对推荐的影响 ---');
@@ -522,6 +554,7 @@ async function testRecommendationAlgorithm() {
       const stories = res.data?.data?.stories || [];
       const allMatch = stories.every(s => s.emotionTag === mood);
       console.log(`[INFO] ${mood} 筛选返回 ${stories.length} 条，全部匹配: ${allMatch}`);
+      assert(allMatch, `${mood} 筛选结果应全部匹配`);
     }
   }
 }
