@@ -1,32 +1,28 @@
 <template>
-  <!-- Polish button — shown in story list / story detail -->
   <button
     class="polish-btn"
     :class="{
       'polish-btn--active': isPolished,
-      'polish-btn--disabled': !canPolish && !isPolished,
+      'polish-btn--disabled': (!canPolish && !isPolished) || polishing,
       'polish-btn--vip': vipStore.isVipActive,
     }"
     :title="tooltipText"
+    type="button"
     @click.stop="handlePolish"
   >
-    <span class="polish-btn__icon">{{ isPolished ? '✨' : '💎' }}</span>
+    <span class="polish-btn__icon">{{ isPolished ? '*' : '+' }}</span>
     <span class="polish-btn__label">{{ label }}</span>
-    <span v-if="vipStore.isVipActive && !isPolished" class="polish-btn__count">
-      {{ vipStore.polishRemaining }}/{{ vipStore.polishCount.total }}
-    </span>
   </button>
 
-  <!-- Success toast overlay -->
   <transition name="polish-toast">
     <div v-if="showToast" class="polish-toast" @click.stop>
-      <div class="polish-toast__icon">✨</div>
+      <div class="polish-toast__icon">*</div>
       <div class="polish-toast__body">
-        <p class="polish-toast__title">故事已擦亮</p>
-        <p class="polish-toast__desc">已重新进入推荐列表</p>
+        <p class="polish-toast__title">{{ TEXT.title }}</p>
+        <p class="polish-toast__desc">{{ toastDesc }}</p>
         <div class="polish-toast__timer">
-          <span class="polish-toast__timer-icon">⏳</span>
-          <span>剩余 {{ countdownText }}</span>
+          <span class="polish-toast__timer-icon">T</span>
+          <span>{{ TEXT.remaining }} {{ countdownText }}</span>
         </div>
       </div>
     </div>
@@ -34,7 +30,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useVipStore } from '../stores/vip'
 
 const props = defineProps({
@@ -46,56 +42,87 @@ const emit = defineEmits(['polished', 'error'])
 
 const vipStore = useVipStore()
 const showToast = ref(false)
+const polishing = ref(false)
+const toastDesc = ref('\u5df2\u91cd\u65b0\u8fdb\u5165\u63a8\u8350\u5217\u8868')
+const countdownSeconds = ref(0)
 let toastTimer = null
 let countdownTimer = null
-const countdownSeconds = ref(0)
+
+const TEXT = {
+  title: '\u6545\u4e8b\u5df2\u64e6\u4eae',
+  remaining: '\u5269\u4f59',
+  boosted: '\u5df2\u64e6\u4eae',
+  working: '\u5904\u7406\u4e2d',
+  freeBoost: '\u514d\u8d39\u64e6\u4eae',
+  coinSuffix: '\u5e01\u64e6\u4eae',
+  alreadyBoosted: '\u6545\u4e8b\u6b63\u5728\u63a8\u8350\u56de\u6d41\u4e2d',
+  processing: '\u6b63\u5728\u5904\u7406\u64e6\u4eae\u8bf7\u6c42',
+  vipHint: 'VIP \u7528\u6237\u53ef\u514d\u8d39\u4e0d\u9650\u6b21\u64e6\u4eae\u6545\u4e8b',
+  needCoins: '\u60c5\u7eea\u5e01\u4e0d\u8db3\uff0c\u64e6\u4eae\u4e00\u6b21\u9700\u8981',
+  spendCoins: '\u6d88\u8017',
+  spendCoinsSuffix: '\u60c5\u7eea\u5e01\u64e6\u4eae\u6545\u4e8b\uff0c\u4f7f\u5176\u91cd\u65b0\u8fdb\u5165\u63a8\u8350',
+  boostFailed: '\u64e6\u4eae\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5',
+  vipBoosted: 'VIP \u514d\u8d39\u64e6\u4eae\u6210\u529f\uff0c\u5df2\u91cd\u65b0\u8fdb\u5165\u63a8\u8350\u5217\u8868',
+  paidBoostedPrefix: '\u5df2\u6d88\u8017',
+  paidBoostedSuffix: '\u5e01\uff0c\u91cd\u65b0\u8fdb\u5165\u63a8\u8350\u5217\u8868',
+}
 
 const isPolished = computed(() => vipStore.isStoryPolished(props.storyId))
 const canPolish = computed(() => vipStore.canPolish(props.storyId))
+const storyPolishCost = computed(() => vipStore.getStoryPolishCost())
 
 const label = computed(() => {
-  if (isPolished.value) return '已擦亮'
-  if (!vipStore.isVipActive) return 'VIP擦亮'
-  if (vipStore.polishRemaining <= 0) return '次数已用'
-  return '擦亮'
+  if (isPolished.value) return TEXT.boosted
+  if (polishing.value) return TEXT.working
+  if (vipStore.isVipActive) return TEXT.freeBoost
+  return `${storyPolishCost.value}${TEXT.coinSuffix}`
 })
 
 const tooltipText = computed(() => {
-  if (isPolished.value) return '故事正在推荐回流中'
-  if (!vipStore.isVipActive) return '开通VIP即可擦亮故事'
-  if (vipStore.polishRemaining <= 0) return '本月擦亮次数已用完'
-  return `擦亮故事，使其重新进入推荐（剩余${vipStore.polishRemaining}次）`
+  if (isPolished.value) return TEXT.alreadyBoosted
+  if (polishing.value) return TEXT.processing
+  if (vipStore.isVipActive) return TEXT.vipHint
+  if (!canPolish.value) return `${TEXT.needCoins} ${storyPolishCost.value} \u5e01`
+  return `${TEXT.spendCoins} ${storyPolishCost.value} ${TEXT.spendCoinsSuffix}`
 })
 
 const countdownText = computed(() => {
   const h = Math.floor(countdownSeconds.value / 3600)
   const m = Math.floor((countdownSeconds.value % 3600) / 60)
   const s = countdownSeconds.value % 60
-  return `${h}时${String(m).padStart(2, '0')}分${String(s).padStart(2, '0')}秒`
+  return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`
 })
 
-function handlePolish() {
-  if (props.disabled || isPolished.value) return
+async function handlePolish() {
+  if (props.disabled || isPolished.value || polishing.value) return
 
-  if (!vipStore.isVipActive) {
-    emit('error', { type: 'not_vip', message: '开通VIP即可使用擦亮功能' })
-    return
-  }
+  polishing.value = true
 
-  if (!canPolish.value) {
-    emit('error', { type: 'no_quota', message: '本月擦亮次数已用完' })
-    return
-  }
+  try {
+    const result = await vipStore.polishStory(props.storyId)
 
-  const success = vipStore.polishStory(props.storyId)
-  if (success) {
+    if (!result?.success) {
+      emit('error', {
+        type: result?.type || 'polish_failed',
+        message: result?.message || TEXT.boostFailed
+      })
+      return
+    }
+
+    toastDesc.value = result.isVip
+      ? TEXT.vipBoosted
+      : `${TEXT.paidBoostedPrefix} ${result.cost} ${TEXT.paidBoostedSuffix}`
+
     showToast.value = true
     startCountdown()
-    emit('polished', { storyId: props.storyId })
+    emit('polished', { storyId: props.storyId, cost: result.cost, isVip: result.isVip })
 
+    if (toastTimer) clearTimeout(toastTimer)
     toastTimer = setTimeout(() => {
       showToast.value = false
     }, 4000)
+  } finally {
+    polishing.value = false
   }
 }
 
@@ -111,7 +138,9 @@ function startCountdown() {
       countdownTimer = null
     }
   }
+
   update()
+  if (countdownTimer) clearInterval(countdownTimer)
   countdownTimer = setInterval(update, 1000)
 }
 
@@ -167,18 +196,11 @@ onUnmounted(() => {
   line-height: 1;
 }
 
-.polish-btn__count {
-  font-size: 10px;
-  opacity: 0.7;
-  margin-left: 2px;
-}
-
 @keyframes polish-glow {
   0%, 100% { box-shadow: 0 0 4px rgba(255, 215, 0, 0.2); }
   50% { box-shadow: 0 0 12px rgba(255, 215, 0, 0.4); }
 }
 
-/* --- Toast --- */
 .polish-toast {
   position: fixed;
   top: 80px;
@@ -235,17 +257,19 @@ onUnmounted(() => {
   50% { transform: scale(1.2); }
 }
 
-/* Toast transitions */
 .polish-toast-enter-active {
   transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
 .polish-toast-leave-active {
   transition: all 0.25s ease;
 }
+
 .polish-toast-enter-from {
   opacity: 0;
   transform: translateX(-50%) translateY(-16px) scale(0.92);
 }
+
 .polish-toast-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(-8px) scale(0.96);
