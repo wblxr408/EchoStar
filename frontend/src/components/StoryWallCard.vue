@@ -164,6 +164,7 @@ const textContent = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   word-break: break-all;
+  font-family: var(--story-font, inherit);
 }
 
 .story-wall-card.swc-no-image .swc-text-placeholder {
@@ -330,6 +331,7 @@ const textContent = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--story-font, inherit);
 }
 
 .swc-stats {

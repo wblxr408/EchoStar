@@ -363,11 +363,19 @@
     <VipCenter
       :visible="showVipCenter"
       :is-dark="effectiveMapTheme === 'dark'"
-      @close="showVipCenter = false"
-      @open-polish="showVipCenter = false; showToast('在我的故事中点击擦亮按钮即可使用')"
-      @open-comment-settings="showVipCenter = false; showCommentSettings = true"
+      @close="showVipCenter = false; showCommentSettings = false; showFontPicker = false"
+      @open-polish="showToast('在我的故事中点击擦亮按钮即可使用')"
+      @open-comment-settings="showFontPicker = false; showCommentSettings = !showCommentSettings"
       @open-visual="showVipCenter = false; showVisualCustomizer = true"
-      @open-footprints="showVipCenter = false; handleFootprints()"
+      @open-footprints="handleFootprints()"
+      @open-fonts="showCommentSettings = false; showFontPicker = !showFontPicker"
+    />
+
+    <!-- Font Picker -->
+    <FontPicker
+      :visible="showFontPicker"
+      :is-dark="effectiveMapTheme === 'dark'"
+      @close="showFontPicker = false"
     />
 
     <!-- Coin Center -->
@@ -1610,6 +1618,7 @@ import ClusterPopover from "../../components/ClusterPopover.vue";
 import ImageLightbox from "../../components/ImageLightbox.vue";
 import MyFootprints from "../../components/MyFootprints.vue";
 import VipCenter from "../../components/VipCenter.vue";
+import FontPicker from "../../components/FontPicker.vue";
 import CoinCenter from "../../components/CoinCenter.vue";
 import CommentSettings from "../../components/CommentSettings.vue";
 import VisualCustomizer from "../../components/VisualCustomizer.vue";
@@ -2001,6 +2010,7 @@ const savedAccounts = ref([]);
 const isSwitchingAccount = ref(false); // 标记是否在切换账号流程中
 const showFootprints = ref(false);
 const showVipCenter = ref(false);
+const showFontPicker = ref(false);
 const showCoinCenter = ref(false);
 const showCommentSettings = ref(false);
 const showVisualCustomizer = ref(false);
@@ -8302,6 +8312,10 @@ async function prefetchUnreadCount() {
 }
 
 onMounted(() => {
+  const savedFont = localStorage.getItem('storyFont');
+  if (savedFont) {
+    document.documentElement.style.setProperty('--story-font', `'${savedFont}', cursive, sans-serif`);
+  }
   getUserLocation();
   loadStories();
   setTimeout(loadClusterData, 1000);
@@ -12211,6 +12225,7 @@ onUnmounted(() => {
   line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  font-family: var(--story-font, inherit);
 }
 
 .item-images {
@@ -14646,7 +14661,7 @@ onUnmounted(() => {
 .vip-bio .bio-text {
   font-size: 15px;
   font-weight: 600;
-  font-family: 'ZCOOL KuaiLe', 'STKaiti', 'KaiTi', cursive, sans-serif;
+  font-family: var(--story-font, 'ZCOOL KuaiLe', 'STKaiti', 'KaiTi', cursive, sans-serif);
   background: linear-gradient(90deg, #ff4444, #ff8888, #ff5555, #ff3333, #ff7777, #ff4444);
   background-size: 200% 100%;
   -webkit-background-clip: text;
