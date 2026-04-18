@@ -1,29 +1,31 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { computed, ref } from 'vue';
 import { vipApi } from '../api/vip';
 import { useUserStore } from './user';
 
 export const useVipStore = defineStore('vip', () => {
-  // --- State ---
   const isVip = ref(false);
   const expiresAt = ref(null);
   const loading = ref(false);
   const orders = ref([]);
   const pagination = ref({ page: 1, limit: 10, total: 0, totalPages: 0 });
 
-  // Polish (擦亮) state
-  const polishCount = ref({ used: 0, total: 3 }); // VIP每月3次
-  const polishedStories = ref(new Map()); // storyId -> { polishedAt, expiresAt }
+  const emotionCoins = ref(0);
+  const lastCheckInAt = ref(null);
+  const checkInStreak = ref(0);
+  const economy = ref({ earnRules: {}, rechargePackages: [], storeItems: [], vipBenefits: [] });
+  const ledger = ref([]);
+  const inventory = ref([]);
 
-  // Visual customization state (persisted to localStorage)
+  const polishCount = ref({ used: 0, total: 3 });
+  const polishedStories = ref(new Map());
+
   const savedCommentBg = ref(loadFromStorage('vip_comment_bg', null));
   const savedProfileBg = ref(loadFromStorage('vip_profile_bg', null));
   const savedEmotionStyles = ref(loadFromStorage('vip_emotion_styles', []));
 
-  // --- Computed ---
   const isVipActive = computed(() => {
-    if (!isVip.value) return false;
-    if (!expiresAt.value) return false;
+    if (!isVip.value || !expiresAt.value) return false;
     return new Date(expiresAt.value) > new Date();
   });
 
@@ -33,11 +35,42 @@ export const useVipStore = defineStore('vip', () => {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   });
 
-  const polishRemaining = computed(() => {
-    return Math.max(0, polishCount.value.total - polishCount.value.used);
+  const polishRemaining = computed(() => Math.max(0, polishCount.value.total - polishCount.value.used));
+
+  const checkedInToday = computed(() => {
+    if (!lastCheckInAt.value) return false;
+    const now = new Date();
+    const last = new Date(lastCheckInAt.value);
+    return now.getFullYear() === last.getFullYear()
+      && now.getMonth() === last.getMonth()
+      && now.getDate() === last.getDate();
   });
 
-  // --- Actions ---
+  const activeInventory = computed(() => inventory.value.filter(item => item.isActive !== false));
+
+  function getInventoryItem(itemKey) {
+    return activeInventory.value.find(item => item.itemKey === itemKey) || null;
+  }
+
+  function getInventoryQuantity(itemKey) {
+    return Number(getInventoryItem(itemKey)?.quantity || 0);
+  }
+
+  function hasActiveItem(itemKey) {
+    return getInventoryQuantity(itemKey) > 0;
+  }
+
+  function syncUserCoins(patch = {}) {
+    const userStore = useUserStore();
+    if (userStore.user) {
+      userStore.updateUser({
+        vip: isVip.value ? 1 : 0,
+        emotionCoins: emotionCoins.value,
+        ...patch
+      });
+    }
+  }
+
   async function fetchStatus() {
     loading.value = true;
     try {
@@ -45,12 +78,10 @@ export const useVipStore = defineStore('vip', () => {
       const data = res.data || res;
       isVip.value = data.isVip || false;
       expiresAt.value = data.expiresAt || null;
-
-      // Sync to user store
-      const userStore = useUserStore();
-      if (userStore.user) {
-        userStore.updateUser({ vip: data.isVip ? 1 : 0 });
-      }
+      emotionCoins.value = data.emotionCoins || 0;
+      lastCheckInAt.value = data.lastCheckInAt || null;
+      checkInStreak.value = data.checkInStreak || 0;
+      syncUserCoins();
     } catch (err) {
       console.error('[VipStore] fetchStatus failed:', err);
     } finally {
@@ -69,16 +100,33 @@ export const useVipStore = defineStore('vip', () => {
     }
   }
 
-  /**
-   * 使用激活码激活VIP
-   * @param {string} code - 激活码
-   * @returns {Promise<{success: boolean, message: string}>}
-   */
+  async function fetchEconomy() {
+    loading.value = true;
+    try {
+      const res = await vipApi.getEconomy();
+      const data = res.data || res;
+      isVip.value = data.isVip || false;
+      expiresAt.value = data.expiresAt || null;
+      emotionCoins.value = data.emotionCoins || 0;
+      lastCheckInAt.value = data.lastCheckInAt || null;
+      checkInStreak.value = data.checkInStreak || 0;
+      economy.value = data.economy || economy.value;
+      ledger.value = data.ledger || [];
+      inventory.value = data.inventory || [];
+      syncUserCoins();
+      return data;
+    } catch (err) {
+      console.error('[VipStore] fetchEconomy failed:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   async function activateByCode(code) {
     loading.value = true;
     try {
       const res = await vipApi.activateByCode(code);
-      // 激活成功后刷新状态
       await fetchStatus();
       return { success: true, message: res.message || 'VIP激活成功' };
     } catch (err) {
@@ -89,12 +137,55 @@ export const useVipStore = defineStore('vip', () => {
     }
   }
 
-  // Polish (擦亮) logic
+  async function claimDailyCheckIn() {
+    try {
+      const res = await vipApi.claimDailyCheckIn();
+      const data = res.data || res;
+      emotionCoins.value = data.balanceAfter ?? emotionCoins.value;
+      lastCheckInAt.value = new Date().toISOString();
+      checkInStreak.value = data.streak ?? checkInStreak.value;
+      await fetchEconomy();
+      return { success: true, reward: data.reward || 0, message: res.message || '签到成功' };
+    } catch (err) {
+      return { success: false, message: err?.response?.data?.message || err?.message || '签到失败' };
+    }
+  }
+
+  async function rechargeCoins(packageKey) {
+    try {
+      const res = await vipApi.rechargeCoins(packageKey);
+      await fetchEconomy();
+      return { success: true, message: res.message || '充值成功' };
+    } catch (err) {
+      return { success: false, message: err?.response?.data?.message || err?.message || '充值失败' };
+    }
+  }
+
+  async function purchaseItem(itemKey) {
+    try {
+      const res = await vipApi.purchaseItem(itemKey);
+      await fetchEconomy();
+      return { success: true, message: res.message || '购买成功', data: res.data || res };
+    } catch (err) {
+      return { success: false, message: err?.response?.data?.message || err?.message || '购买失败' };
+    }
+  }
+
+  async function consumeItem(itemKey) {
+    try {
+      const res = await vipApi.consumeItem(itemKey);
+      await fetchEconomy();
+      return { success: true, message: res.message || '使用成功', data: res.data || res };
+    } catch (err) {
+      return { success: false, message: err?.response?.data?.message || err?.message || '使用失败' };
+    }
+  }
+
   function canPolish(storyId) {
     if (!isVipActive.value) return false;
     if (polishRemaining.value <= 0) return false;
     const info = polishedStories.value.get(storyId);
-    if (info && new Date(info.expiresAt) > new Date()) return false; // already polished and active
+    if (info && new Date(info.expiresAt) > new Date()) return false;
     return true;
   }
 
@@ -102,7 +193,7 @@ export const useVipStore = defineStore('vip', () => {
     if (!canPolish(storyId)) return false;
     polishCount.value.used++;
     const now = new Date();
-    const exp = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24h
+    const exp = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     polishedStories.value.set(storyId, {
       polishedAt: now.toISOString(),
       expiresAt: exp.toISOString(),
@@ -117,11 +208,9 @@ export const useVipStore = defineStore('vip', () => {
   }
 
   function getPolishExpiresAt(storyId) {
-    const info = polishedStories.value.get(storyId);
-    return info?.expiresAt || null;
+    return polishedStories.value.get(storyId)?.expiresAt || null;
   }
 
-  // Visual customization
   function setCommentBg(bg) {
     savedCommentBg.value = bg;
     saveToStorage('vip_comment_bg', bg);
@@ -147,25 +236,38 @@ export const useVipStore = defineStore('vip', () => {
   }
 
   return {
-    // State
     isVip,
     expiresAt,
     loading,
     orders,
     pagination,
+    emotionCoins,
+    lastCheckInAt,
+    checkInStreak,
+    economy,
+    ledger,
+    inventory,
     polishCount,
     polishedStories,
     savedCommentBg,
     savedProfileBg,
     savedEmotionStyles,
-    // Computed
     isVipActive,
     remainingDays,
     polishRemaining,
-    // Actions
+    checkedInToday,
+    activeInventory,
+    getInventoryItem,
+    getInventoryQuantity,
+    hasActiveItem,
     fetchStatus,
     fetchHistory,
+    fetchEconomy,
     activateByCode,
+    claimDailyCheckIn,
+    rechargeCoins,
+    purchaseItem,
+    consumeItem,
     canPolish,
     polishStory,
     isStoryPolished,
@@ -177,7 +279,6 @@ export const useVipStore = defineStore('vip', () => {
   };
 });
 
-// --- Helpers ---
 function loadFromStorage(key, fallback) {
   try {
     const raw = localStorage.getItem(key);

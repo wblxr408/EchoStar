@@ -81,6 +81,10 @@ class FavoriteServiceClass {
     }
 
     const result = await favoriteCacheUtil.favoriteStory(userId, normalizedStoryId);
+    const { VipService } = await import('../vip/vip.service.js');
+    VipService.rewardFavoriteAction(userId, normalizedStoryId).catch((err) => {
+      console.error('收藏情绪币奖励发放失败:', err);
+    });
     return {
       isFavorited: true,
       favoriteCount: result.favoriteCount,
@@ -106,6 +110,10 @@ class FavoriteServiceClass {
     }
 
     const result = await favoriteCacheUtil.favoriteStory(userId, normalizedStoryId);
+    const { VipService } = await import('../vip/vip.service.js');
+    VipService.rewardFavoriteAction(userId, normalizedStoryId).catch((err) => {
+      console.error('收藏情绪币奖励发放失败:', err);
+    });
 
     return {
       isFavorited: result.isFavorited,

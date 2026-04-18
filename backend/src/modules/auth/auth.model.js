@@ -82,6 +82,26 @@ export const User = sequelize.define('User', {
       isIn: [[0, 1]]
     }
   },
+  emotionCoins: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    field: 'emotion_coins',
+    comment: '情绪币余额'
+  },
+  lastCheckInAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'last_check_in_at',
+    comment: '最近一次签到时间'
+  },
+  checkInStreak: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    field: 'check_in_streak',
+    comment: '连续签到天数'
+  },
   bio: {
     type: DataTypes.STRING(500),
     allowNull: true,
