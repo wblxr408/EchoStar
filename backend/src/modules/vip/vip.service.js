@@ -12,10 +12,12 @@ const COIN_RULES = {
   earn: {
     dailyLogin: { min: 5, max: 10 }
   },
-  vipPurchase: {
-    cost: 300,
-    days: 30
-  },
+  vipPackages: [
+    { key: 'vip_weekly', name: '周卡', cost: 150, days: 7 },
+    { key: 'vip_monthly', name: '月卡', cost: 400, days: 30 },
+    { key: 'vip_quarterly', name: '季卡', cost: 900, days: 90 },
+    { key: 'vip_yearly', name: '年卡', cost: 2000, days: 365 }
+  ],
   rechargePackages: [
     { key: 'topup_6', label: '6元', priceCny: 6, coins: 60 },
     { key: 'topup_30', label: '30元', priceCny: 30, coins: 350 },
@@ -134,7 +136,7 @@ export const VipService = {
       },
       rechargePackages: COIN_RULES.rechargePackages,
       storeItems: COIN_RULES.storeItems,
-      vipPurchase: COIN_RULES.vipPurchase,
+      vipPackages: COIN_RULES.vipPackages,
       vipBenefits: [
         '我的足迹动画免费使用',
         '擦亮故事免费不限次',
@@ -507,9 +509,19 @@ export const VipService = {
     };
   },
 
-  async purchaseVipWithCoins(userId) {
-    const cost = COIN_RULES.vipPurchase.cost;
-    const days = COIN_RULES.vipPurchase.days;
+  async purchaseVipWithCoins(userId, packageKey) {
+    if (!packageKey) {
+      throw new Error('请选择要购买的VIP套餐');
+    }
+
+    const selectedPackage = COIN_RULES.vipPackages.find((item) => item.key === packageKey);
+    if (!selectedPackage) {
+      throw new Error('VIP套餐不存在');
+    }
+
+    const cost = Number(selectedPackage.cost);
+    const days = Number(selectedPackage.days);
+    const name = selectedPackage.name;
 
     return sequelize.transaction(async (transaction) => {
       const user = await User.findByPk(userId, {
@@ -531,8 +543,8 @@ export const VipService = {
         amount: -cost,
         source: 'vip_purchase',
         title: `购买${days}天VIP`,
-        referenceId: `vip_purchase:${Date.now()}`,
-        metadata: { cost, days }
+        referenceId: `vip_purchase:${packageKey}:${Date.now()}`,
+        metadata: { packageKey, name, cost, days }
       }, transaction);
 
       // 升级VIP
@@ -566,6 +578,8 @@ export const VipService = {
       await clearUserCache(userId);
 
       return {
+        packageKey,
+        packageName: name,
         isVip: true,
         expiresAt,
         cost,

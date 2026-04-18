@@ -100,10 +100,15 @@ export const rechargeEmotionCoins = async (req, res, next) => {
 export const purchaseVipWithCoins = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const result = await VipService.purchaseVipWithCoins(userId);
+    const { packageKey } = req.body;
+    const result = await VipService.purchaseVipWithCoins(userId, packageKey);
     res.json({ code: 0, data: result, message: `VIP购买成功，获得${result.days}天会员` });
   } catch (error) {
-    if (error.message.startsWith('情绪币不足')) {
+    if (
+      error.message.startsWith('情绪币不足')
+      || error.message === '请选择要购买的VIP套餐'
+      || error.message === 'VIP套餐不存在'
+    ) {
       return res.status(400).json({ code: 40013, message: error.message });
     }
     next(error);

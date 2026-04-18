@@ -13,7 +13,7 @@ export const useVipStore = defineStore('vip', () => {
   const emotionCoins = ref(0);
   const lastCheckInAt = ref(null);
   const checkInStreak = ref(0);
-  const economy = ref({ earnRules: {}, rechargePackages: [], storeItems: [], vipBenefits: [] });
+  const economy = ref({ earnRules: {}, rechargePackages: [], storeItems: [], vipBenefits: [], vipPackages: [] });
   const ledger = ref([]);
   const inventory = ref([]);
 
@@ -22,6 +22,12 @@ export const useVipStore = defineStore('vip', () => {
   const STORY_POLISH_COST = 30;
   const FOOTPRINT_COST = 20;
   const VIP_COST = 300;
+  const VIP_PLANS = [
+    { key: 'vip_weekly', name: '周卡', cost: 150, days: 7 },
+    { key: 'vip_monthly', name: '月卡', cost: 400, days: 30 },
+    { key: 'vip_quarterly', name: '季卡', cost: 900, days: 90 },
+    { key: 'vip_yearly', name: '年卡', cost: 2000, days: 365 }
+  ];
 
   const savedCommentBg = ref(loadFromStorage('vip_comment_bg', null));
   const savedProfileBg = ref(loadFromStorage('vip_profile_bg', null));
@@ -182,9 +188,12 @@ export const useVipStore = defineStore('vip', () => {
     }
   }
 
-  async function purchaseVip() {
+  async function purchaseVip(packageKey) {
     try {
-      const res = await vipApi.purchaseVip();
+      if (!packageKey) {
+        return { success: false, message: '请选择要购买的 VIP 套餐' };
+      }
+      const res = await vipApi.purchaseVip(packageKey);
       await fetchEconomy();
       await fetchStatus();
       return { success: true, message: res.message || 'VIP购买成功', data: res.data || res };
@@ -355,6 +364,7 @@ export const useVipStore = defineStore('vip', () => {
     STORY_POLISH_COST,
     FOOTPRINT_COST,
     VIP_COST,
+    VIP_PLANS,
     setCommentBg,
     setProfileBg,
     setEmotionStyles,

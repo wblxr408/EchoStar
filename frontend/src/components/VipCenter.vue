@@ -11,108 +11,78 @@
           :class="{ dark: isDark }"
           @click.stop
         >
-          <!-- Close Button -->
           <button class="vip-center__close" type="button" @click="handleClose">
             <span class="close-icon">×</span>
             <span class="close-text">关闭</span>
           </button>
 
-          <!-- Scroll Content -->
           <div class="vip-center__scroll">
-            <!-- Header -->
             <div class="vip-center__header">
               <span class="vip-center__header-icon">👑</span>
-              <h2 class="vip-center__title">VIP 会员中心</h2>
+              <h2 class="vip-center__title">VIP 中心</h2>
               <span v-if="vipStore.isVipActive" class="vip-center__status-badge active">
-                生效中 · 剩余{{ vipStore.remainingDays }}天
+                生效中 · 剩余 {{ vipStore.remainingDays }} 天
               </span>
               <span v-else class="vip-center__status-badge inactive">
-                未开通
+                当前未开通
               </span>
             </div>
 
-            <!-- VIP Status Card -->
-            <div class="vip-card" :class="{ 'vip-card--active': vipStore.isVipActive, 'dark': isDark }">
+            <div class="vip-card" :class="{ 'vip-card--active': vipStore.isVipActive, dark: isDark }">
               <div class="vip-card__inner">
                 <div class="vip-card__left">
-                  <div class="vip-card__crown">{{ vipStore.isVipActive ? '👑' : '🔒' }}</div>
+                  <div class="vip-card__crown">{{ vipStore.isVipActive ? '✨' : '🔓' }}</div>
                   <div class="vip-card__info">
                     <p class="vip-card__name">
-                      {{ vipStore.isVipActive ? 'VIP 会员' : '普通用户' }}
+                      {{ vipStore.isVipActive ? 'VIP 会员已开通' : '开通 VIP，解锁全部高级功能' }}
                     </p>
-                    <p class="vip-card__desc" v-if="!vipStore.isVipActive">
-                      开通VIP，解锁全部高级功能，免费不限次
+                    <p class="vip-card__desc">
+                      {{ vipStore.isVipActive ? '续费会在当前有效期基础上顺延，权益不会中断。' : '所有套餐均使用情绪币支付，可直接在下方选择档位开通。' }}
                     </p>
                   </div>
                 </div>
                 <div class="vip-card__right" v-if="vipStore.isVipActive">
                   <div class="vip-card__expiry-info">
-                    <span>有效期至 {{ formatDate(vipStore.expiresAt) }}</span>
+                    到期时间 {{ formatDate(vipStore.expiresAt) }}
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- CTA -->
-            <div class="vip-cta-area">
-              <button
-                class="vip-cta-btn"
-                :class="{ 'vip-cta-btn--active': vipStore.isVipActive }"
-                :disabled="purchasingVip"
-                @click="handlePurchaseVip"
-              >
-                <span>{{ purchasingVip ? '购买中...' : (vipStore.isVipActive ? `续费 ${vipStore.VIP_COST} 币/30天` : `${vipStore.VIP_COST} 币开通 30天VIP`) }}</span>
-              </button>
-              <p class="vip-cta-hint">
-                {{ vipStore.isVipActive ? '续费延长VIP有效期，权益不间断' : `VIP期间全部高级功能免费不限次，当前余额 ${vipStore.emotionCoins} 币` }}
-              </p>
-            </div>
-
-            <!-- Activation Code Section -->
-            <div class="vip-section vip-activate" :class="{ dark: isDark }">
-              <h3 class="vip-section__title">激活码兑换</h3>
-              <div class="vip-activate__form">
-                <input
-                  v-model="activationCode"
-                  type="text"
-                  placeholder="请输入VIP激活码"
-                  class="vip-activate__input"
-                  :class="{ dark: isDark }"
-                  :disabled="activating"
-                  @keyup.enter="handleActivate"
-                />
-                <button
-                  class="vip-activate__btn"
-                  :class="{ 'vip-activate__btn--loading': activating }"
-                  :disabled="activating || !activationCode.trim()"
-                  @click="handleActivate"
-                >
-                  <span v-if="!activating">立即激活</span>
-                  <span v-else>激活中...</span>
-                </button>
+            <div class="vip-balance-strip" :class="{ dark: isDark }">
+              <div>
+                <p class="vip-balance-strip__label">剩余情绪币</p>
+                <strong class="vip-balance-strip__value">{{ vipStore.emotionCoins || 0 }}</strong>
               </div>
-              <p v-if="activateMessage" class="vip-activate__msg" :class="{ 'vip-activate__msg--error': !activateSuccess }">
-                {{ activateMessage }}
-              </p>
+              <p class="vip-balance-strip__hint">与“我的信息”页使用同一份账户余额</p>
             </div>
 
-            <!-- Benefits Grid -->
             <div class="vip-section">
-              <h3 class="vip-section__title">核心权益</h3>
-              <div class="vip-benefits-grid">
+              <div class="vip-section__title-row">
+                <h3 class="vip-section__title">选择套餐</h3>
+                <span class="vip-section__hint">续费后将自动顺延到当前会员到期时间之后。</span>
+              </div>
+              <div class="vip-package-grid">
                 <div
-                  v-for="benefit in benefits"
-                  :key="benefit.key"
-                  class="vip-benefit"
-                  :class="{ 'vip-benefit--locked': !vipStore.isVipActive, 'dark': isDark }"
-                  @click="handleBenefitClick(benefit)"
+                  v-for="pkg in vipPackages"
+                  :key="pkg.key"
+                  class="vip-package-card"
+                  :class="{ dark: isDark }"
                 >
-                  <div class="vip-benefit__icon-wrap">{{ benefit.icon }}</div>
-                  <div class="vip-benefit__info">
-                    <span class="vip-benefit__name">{{ benefit.name }}</span>
-                    <span class="vip-benefit__desc">{{ benefit.desc }}</span>
+                  <div class="vip-package-card__head">
+                    <strong class="vip-package-card__name">{{ pkg.days }} 天（{{ pkg.name }}）</strong>
+                    <span class="vip-package-card__price">{{ pkg.cost }} 币</span>
                   </div>
-                  <span v-if="!vipStore.isVipActive" class="vip-benefit__lock">🔒</span>
+                  <p class="vip-package-card__meta">
+                    开通后立即生效，按所选档位增加会员时长。
+                  </p>
+                  <button
+                    class="vip-package-card__button"
+                    :disabled="Boolean(purchasingVipKey)"
+                    @click="handlePurchaseVip(pkg.key)"
+                  >
+                    {{ purchasingVipKey === pkg.key ? '处理中...' : (vipStore.isVipActive ? `续费 ${pkg.days} 天` : `开通 ${pkg.days} 天`) }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -120,7 +90,7 @@
             <div class="vip-section">
               <div class="vip-section__title-row">
                 <h3 class="vip-section__title">VIP 功能详细说明</h3>
-                <span class="vip-section__hint">足迹 / 擦亮 / 装扮，VIP全部免费</span>
+                <span class="vip-section__hint">开通后即可使用或领取</span>
               </div>
               <div class="vip-perk-list">
                 <div v-for="perk in privilegeDetails" :key="perk.key" class="vip-perk-card" :class="{ dark: isDark }">
@@ -134,75 +104,63 @@
             </div>
 
             <div class="vip-section">
-              <div class="vip-section__title-row">
-                <h3 class="vip-section__title">专属图标系统</h3>
-                <span class="vip-section__hint">{{ themeSkinUnlocked ? '主题已点亮' : '解锁主题皮肤后生效' }}</span>
-              </div>
-              <div class="vip-icon-grid">
-                <button
-                  v-for="icon in specialIconCards"
-                  :key="icon.key"
-                  type="button"
-                  class="vip-icon-card"
-                  :class="{
-                    'vip-icon-card--locked': !themeSkinUnlocked,
-                    'vip-icon-card--unlocking': unlockingIconKey === icon.key,
-                    dark: isDark,
-                  }"
-                  @click="handleUnlockThemeIcons(icon.key)"
+              <h3 class="vip-section__title">功能入口</h3>
+              <div class="vip-benefits-grid">
+                <div
+                  v-for="benefit in benefits"
+                  :key="benefit.key"
+                  class="vip-benefit"
+                  :class="{ 'vip-benefit--locked': !vipStore.isVipActive, dark: isDark }"
+                  @click="handleBenefitClick(benefit)"
                 >
-                  <div class="vip-icon-card__visual" :class="`vip-icon-card__visual--${icon.key}`">
-                    <span class="vip-icon-card__emoji">{{ icon.emoji }}</span>
-                    <svg v-if="icon.key === 'time_capsule'" class="vip-icon-card__svg" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-                      <rect x="16" y="14" width="32" height="10" rx="5" stroke="currentColor" stroke-width="2.4"/>
-                      <path d="M22 24C22 33.5 27 37.5 32 42C37 37.5 42 33.5 42 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-                      <path d="M22 40C22 31 27 27.5 32 22C37 27.5 42 31 42 40" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-                      <rect x="16" y="40" width="32" height="10" rx="5" stroke="currentColor" stroke-width="2.4"/>
-                    </svg>
-                    <svg v-else class="vip-icon-card__svg" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-                      <path d="M41 16a10 10 0 1 0 9 15.5A12 12 0 1 1 41 16Z" fill="currentColor" opacity="0.72"/>
-                      <path d="M29 46c0-7 4-13 10-16-8 1-15 7-18 16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-                      <path d="M24 25c6 8 7 15 6 25" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
-                      <path d="M17 33c4 1 7 3 10 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-                      <path d="M31 35c5-1 9 0 13 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-                    </svg>
-                    <span class="vip-icon-card__pulse"></span>
+                  <div class="vip-benefit__icon-wrap">{{ benefit.icon }}</div>
+                  <div class="vip-benefit__info">
+                    <span class="vip-benefit__name">{{ benefit.name }}</span>
+                    <span class="vip-benefit__desc">{{ benefit.desc }}</span>
                   </div>
-                  <div class="vip-icon-card__body">
-                    <strong>{{ icon.title }}</strong>
-                    <p>{{ icon.desc }}</p>
-                    <span class="vip-icon-card__status">{{ themeSkinUnlocked ? '已解锁 · 点击播放展开动画' : '未解锁 · 点击领取主题皮肤' }}</span>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            <!-- Polish Stats -->
-            <div v-if="vipStore.isVipActive" class="vip-section">
-              <h3 class="vip-section__title">本月擦亮次数</h3>
-              <div class="vip-polish-bar" :class="{ dark: isDark }">
-                <div class="vip-polish-bar__fill" :style="{ width: polishPercent + '%' }"></div>
-                <div class="vip-polish-bar__labels">
-                  <span>已用 {{ vipStore.polishCount.used }} 次</span>
-                  <span>剩余 {{ vipStore.polishRemaining }} 次</span>
+                  <span v-if="!vipStore.isVipActive" class="vip-benefit__lock">未开通</span>
                 </div>
               </div>
             </div>
 
-            <!-- Order History -->
+            <div class="vip-section vip-activate" :class="{ dark: isDark }">
+              <h3 class="vip-section__title">激活码兑换</h3>
+              <div class="vip-activate__form">
+                <input
+                  v-model="activationCode"
+                  type="text"
+                  placeholder="输入激活码"
+                  class="vip-activate__input"
+                  :class="{ dark: isDark }"
+                  :disabled="activating"
+                  @keyup.enter="handleActivate"
+                />
+                <button
+                  class="vip-activate__btn"
+                  :class="{ 'vip-activate__btn--loading': activating }"
+                  :disabled="activating || !activationCode.trim()"
+                  @click="handleActivate"
+                >
+                  <span v-if="!activating">立即兑换</span>
+                  <span v-else>兑换中...</span>
+                </button>
+              </div>
+              <p v-if="activateMessage" class="vip-activate__msg" :class="{ 'vip-activate__msg--error': !activateSuccess }">
+                {{ activateMessage }}
+              </p>
+            </div>
+
             <div class="vip-section">
-              <h3 class="vip-section__title">VIP 权益记录</h3>
+              <h3 class="vip-section__title">VIP 订单记录</h3>
               <div v-if="historyLoading" class="vip-empty">加载中...</div>
-              <div v-else-if="vipStore.orders.length === 0" class="vip-empty">暂无记录</div>
+              <div v-else-if="vipStore.orders.length === 0" class="vip-empty">暂无会员订单记录</div>
               <div v-else class="vip-history-list" :class="{ dark: isDark }">
                 <div v-for="order in vipStore.orders" :key="order.id" class="vip-history-item">
-                  <div class="vip-history-item__dot" :class="{ active: order.isActive }"></div>
+                  <div class="vip-history-item__dot active"></div>
                   <div class="vip-history-item__content">
-                    <span class="vip-history-item__title">
-                      {{ order.isActive ? 'VIP生效中' : '已过期' }}
-                    </span>
+                    <span class="vip-history-item__title">VIP 开通</span>
                     <span class="vip-history-item__date">
-                      {{ formatDate(order.createdAt) }} — {{ formatDate(order.expiresAt) }}
+                      {{ formatDate(order.createdAt) }} 至 {{ formatDate(order.expiresAt) }}
                     </span>
                   </div>
                 </div>
@@ -216,9 +174,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
-import { useVipStore } from '../stores/vip'
+import { computed, ref, watch } from 'vue'
 import { showToast } from '../composables/useToast'
+import { useVipStore } from '../stores/vip'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -229,73 +187,66 @@ const emit = defineEmits(['close', 'open-polish', 'open-comment-settings', 'open
 
 const vipStore = useVipStore()
 const historyLoading = ref(false)
-const unlockingIconKey = ref('')
-const purchasingVip = ref(false)
-const purchasingItem = ref('')
+const purchasingVipKey = ref('')
 
-// 激活码相关
 const activationCode = ref('')
 const activating = ref(false)
 const activateMessage = ref('')
 const activateSuccess = ref(false)
 
 const benefits = [
-  { key: 'footprint', icon: '🗺️', name: '我的足迹', desc: 'VIP免费不限次', action: 'open-footprints' },
-  { key: 'polish', icon: '✨', name: '擦亮故事', desc: 'VIP免费不限次', action: 'open-polish' },
+  { key: 'footprint', icon: '🗺️', name: '我的足迹', desc: 'VIP 免费不限次', action: 'open-footprints' },
+  { key: 'polish', icon: '✨', name: '擦亮故事', desc: 'VIP 免费不限次', action: 'open-polish' },
   { key: 'comment', icon: '💬', name: '评论装扮', desc: '气泡装饰免费使用', action: 'open-comment-settings' },
 ]
 
 const privilegeDetails = [
   {
     key: 'footprints',
-    icon: '🐾',
-    title: '我的足迹动画',
-    desc: '普通用户 20 币/次，VIP 免费。至少拥有 2 个已发布故事即可回放轨迹。',
+    icon: '🗺️',
+    title: '我的足迹特权',
+    desc: '普通用户每次使用需要 20 币，VIP 可直接使用，不限次数。',
   },
   {
     key: 'polish',
     icon: '✨',
-    title: '擦亮故事',
-    desc: '普通用户 30 币/次，VIP 免费。故事重新进入推荐列表。',
+    title: '擦亮故事特权',
+    desc: '普通用户每次使用需要 30 币，VIP 可免费擦亮故事并提升曝光。',
   },
   {
     key: 'comment',
     icon: '💬',
-    title: '气泡装饰与评论装扮',
-    desc: 'VIP 免费使用气泡装饰与评论背景样式自定义。',
+    title: '评论装扮特权',
+    desc: 'VIP 可免费使用评论气泡装饰，展示更明显的身份与氛围。',
+  },
+  {
+    key: 'theme',
+    icon: '🎨',
+    title: '专属主题',
+    desc: '享受独特的主题与氛围',
+  },
+  {
+    key: 'font',
+    icon: '✍️',
+    title: '专属字体',
+    desc: '解锁更具个性的专属字体展示效果',
   },
 ]
 
-const specialIconCards = [
-  {
-    key: 'time_capsule',
-    emoji: '⏳',
-    title: '时光胶囊',
-    desc: '未解锁时以沙漏胶囊图标呈现，强调等待与悬念。',
-  },
-  {
-    key: 'night_treehole',
-    emoji: '🌙',
-    title: '深夜树洞',
-    desc: '未解锁时以月夜树洞图标呈现，强化夜间私语氛围。',
-  },
-]
+const vipPackages = computed(() => (
+  vipStore.economy?.vipPackages?.length
+    ? vipStore.economy.vipPackages
+    : vipStore.VIP_PLANS
+))
 
-const storeItems = computed(() => vipStore.economy?.storeItems || [])
-const footprintTicketCount = computed(() => vipStore.getInventoryQuantity('footprint_animation'))
-const themeSkinUnlocked = computed(() => vipStore.hasActiveItem('theme_skin'))
+watch(() => props.visible, async (visible) => {
+  if (!visible) return
 
-const polishPercent = computed(() => {
-  const { used, total } = vipStore.polishCount
-  return total > 0 ? Math.min(100, (used / total) * 100) : 0
-})
-
-watch(() => props.visible, async (val) => {
-  if (val) {
-    await vipStore.fetchStatus()
+  historyLoading.value = true
+  try {
     await vipStore.fetchEconomy()
-    historyLoading.value = true
     await vipStore.fetchHistory({ page: 1, limit: 20 })
+  } finally {
     historyLoading.value = false
   }
 })
@@ -306,47 +257,25 @@ function handleClose() {
 
 function handleBenefitClick(benefit) {
   if (!vipStore.isVipActive) {
-    showToast('开通 VIP 后即可使用该权益')
+    showToast('开通 VIP 后即可使用该功能')
     return
   }
   emit(benefit.action)
 }
 
-async function handlePurchaseVip() {
-  if (purchasingVip.value) return
-  purchasingVip.value = true
-  const result = await vipStore.purchaseVip()
-  showToast(result.message, result.success ? 'success' : 'error')
-  purchasingVip.value = false
-}
+async function handlePurchaseVip(packageKey) {
+  if (purchasingVipKey.value) return
 
-function isPermanentOwned(item) {
-  return item?.type === 'permanent' && vipStore.hasActiveItem(item.key)
-}
-
-function triggerUnlockAnimation(iconKey) {
-  unlockingIconKey.value = iconKey
-  setTimeout(() => {
-    if (unlockingIconKey.value === iconKey) {
-      unlockingIconKey.value = ''
+  purchasingVipKey.value = packageKey
+  try {
+    const result = await vipStore.purchaseVip(packageKey)
+    if (result.success) {
+      await vipStore.fetchHistory({ page: 1, limit: 20 })
     }
-  }, 680)
-}
-
-async function handleUnlockThemeIcons(iconKey) {
-  if (themeSkinUnlocked.value) {
-    triggerUnlockAnimation(iconKey)
-    return
+    showToast(result.message, result.success ? 'success' : 'error')
+  } finally {
+    purchasingVipKey.value = ''
   }
-
-  if (purchasingItem.value === 'theme_skin') return
-  purchasingItem.value = 'theme_skin'
-  const result = await vipStore.purchaseItem('theme_skin')
-  if (result.success) {
-    triggerUnlockAnimation(iconKey)
-  }
-  showToast(result.message, result.success ? 'success' : 'error')
-  purchasingItem.value = ''
 }
 
 async function handleActivate() {
@@ -360,22 +289,29 @@ async function handleActivate() {
   activating.value = true
   activateMessage.value = ''
 
-  const result = await vipStore.activateByCode(code)
-  activateMessage.value = result.message
-  activateSuccess.value = result.success
+  try {
+    const result = await vipStore.activateByCode(code)
+    activateMessage.value = result.message
+    activateSuccess.value = result.success
 
-  if (result.success) {
-    activationCode.value = ''
+    if (result.success) {
+      activationCode.value = ''
+      await vipStore.fetchEconomy()
+      await vipStore.fetchHistory({ page: 1, limit: 20 })
+    }
+  } finally {
+    activating.value = false
   }
-
-  activating.value = false
 }
 
 function formatDate(dateStr) {
   if (!dateStr) return '--'
+
   try {
     return new Intl.DateTimeFormat('zh-CN', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
     }).format(new Date(dateStr))
   } catch {
     return '--'
@@ -384,7 +320,6 @@ function formatDate(dateStr) {
 </script>
 
 <style scoped>
-/* ===== Shell ===== */
 .vip-center-shell {
   position: fixed;
   inset: 0;
@@ -400,7 +335,6 @@ function formatDate(dateStr) {
   -webkit-backdrop-filter: blur(16px);
 }
 
-/* ===== Modal Container ===== */
 .vip-center {
   position: relative;
   width: min(980px, calc(100vw - 48px));
@@ -449,7 +383,6 @@ function formatDate(dateStr) {
   border-color: rgba(141, 176, 235, 0.14);
 }
 
-/* ===== Close Button ===== */
 .vip-center__close {
   position: absolute;
   top: 20px;
@@ -474,7 +407,6 @@ function formatDate(dateStr) {
   transform: translateY(-1px);
   background: rgba(107, 77, 45, 0.85);
   border-color: rgba(184, 135, 46, 0.5);
-  color: #ffffff;
 }
 
 .vip-center.dark .vip-center__close {
@@ -490,7 +422,6 @@ function formatDate(dateStr) {
 
 .close-icon {
   line-height: 1;
-  transform: translateY(-1px);
   font-size: 22px;
 }
 
@@ -499,7 +430,6 @@ function formatDate(dateStr) {
   letter-spacing: 0.08em;
 }
 
-/* ===== Scroll Area ===== */
 .vip-center__scroll {
   position: relative;
   z-index: 1;
@@ -508,7 +438,6 @@ function formatDate(dateStr) {
   padding: 36px 40px 32px;
 }
 
-/* ===== Header ===== */
 .vip-center__header {
   display: flex;
   align-items: center;
@@ -517,13 +446,15 @@ function formatDate(dateStr) {
   flex-wrap: wrap;
 }
 
-.vip-center__header-icon { font-size: 28px; }
+.vip-center__header-icon {
+  font-size: 28px;
+}
 
 .vip-center__title {
+  margin: 0;
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.02em;
-  margin: 0;
 }
 
 .vip-center__status-badge {
@@ -547,13 +478,13 @@ function formatDate(dateStr) {
   border: 1px dashed rgba(184, 135, 46, 0.25);
 }
 
-/* ===== VIP Card ===== */
 .vip-card {
   padding: 24px 28px;
   border-radius: 24px;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   background:
-    linear-gradient(135deg,
+    linear-gradient(
+      135deg,
       rgba(255, 252, 235, 1) 0%,
       rgba(255, 240, 190, 1) 20%,
       rgba(255, 225, 150, 1) 40%,
@@ -569,16 +500,6 @@ function formatDate(dateStr) {
 }
 
 .vip-card--active {
-  background:
-    linear-gradient(135deg,
-      rgba(255, 240, 180, 1) 0%,
-      rgba(255, 225, 140, 1) 25%,
-      rgba(255, 215, 100, 1) 50%,
-      rgba(255, 220, 120, 1) 75%,
-      rgba(255, 235, 170, 1) 100%
-    );
-  background-size: 200% 200%;
-  animation: vipBgGoldFlow 6s ease-in-out infinite;
   border-color: rgba(255, 215, 0, 0.45);
   box-shadow:
     0 4px 20px -4px rgba(255, 200, 80, 0.45),
@@ -593,20 +514,14 @@ function formatDate(dateStr) {
 
 .vip-card.dark.vip-card--active {
   background:
-    linear-gradient(135deg,
+    linear-gradient(
+      135deg,
       rgba(255, 235, 160, 0.92) 0%,
       rgba(255, 220, 120, 0.95) 25%,
       rgba(255, 210, 90, 0.98) 50%,
       rgba(255, 215, 110, 0.95) 75%,
       rgba(255, 230, 150, 0.92) 100%
     );
-  background-size: 200% 200%;
-  animation: vipBgGoldFlow 6s ease-in-out infinite;
-  border-color: rgba(255, 215, 0, 0.45);
-  box-shadow:
-    0 4px 20px -4px rgba(255, 200, 80, 0.45),
-    0 0 30px -8px rgba(255, 215, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .vip-card__inner {
@@ -622,7 +537,9 @@ function formatDate(dateStr) {
   gap: 16px;
 }
 
-.vip-card__crown { font-size: 42px; }
+.vip-card__crown {
+  font-size: 42px;
+}
 
 .vip-card__name {
   margin: 0 0 4px;
@@ -633,38 +550,60 @@ function formatDate(dateStr) {
 .vip-card__desc {
   margin: 0;
   font-size: 13px;
-  opacity: 0.65;
+  opacity: 0.7;
   line-height: 1.5;
 }
 
 .vip-card__expiry-info {
   text-align: right;
   font-size: 13px;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 
-/* ===== Section ===== */
+.vip-balance-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  margin-bottom: 24px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(184, 135, 46, 0.14);
+}
+
+.vip-balance-strip.dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(141, 176, 235, 0.1);
+}
+
+.vip-balance-strip__label {
+  margin: 0 0 4px;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.vip-balance-strip__value {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.vip-balance-strip__hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.55;
+  text-align: right;
+}
+
 .vip-section {
   margin-bottom: 24px;
 }
 
-.vip-activate {
-  background: rgba(255, 255, 255, 0.38);
-  border-radius: 20px;
-  padding: 22px 24px;
-  border: 1px solid rgba(184, 135, 46, 0.14);
-}
-
-.vip-activate.dark {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(141, 176, 235, 0.1);
-}
-
 .vip-section__title {
+  margin: 0 0 14px;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  margin: 0 0 14px;
   opacity: 0.72;
 }
 
@@ -686,7 +625,291 @@ function formatDate(dateStr) {
   white-space: nowrap;
 }
 
-/* ===== Activation Code Form ===== */
+.vip-package-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vip-package-card {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(184, 135, 46, 0.14);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 10px 24px -20px rgba(122, 84, 17, 0.55);
+}
+
+.vip-package-card.dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(143, 180, 255, 0.09);
+}
+
+.vip-package-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.vip-package-card__name {
+  font-size: 16px;
+}
+
+.vip-package-card__price {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 215, 0, 0.14);
+  color: #8e6c1a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.vip-package-card.dark .vip-package-card__price {
+  color: #cfe0ff;
+  background: rgba(141, 176, 235, 0.16);
+}
+
+.vip-package-card__meta {
+  margin: 0 0 16px;
+  min-height: 38px;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.66;
+}
+
+.vip-package-card__button {
+  width: 100%;
+  height: 46px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  color: #3d2e0a;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  box-shadow: 0 10px 20px -12px rgba(255, 215, 0, 0.55);
+}
+
+.vip-package-card__button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px -12px rgba(255, 215, 0, 0.65);
+}
+
+.vip-package-card__button:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.vip-benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.vip-benefit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(184, 135, 46, 0.1);
+  cursor: pointer;
+  transition: all 0.22s ease;
+}
+
+.vip-benefit.dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(143, 180, 255, 0.09);
+}
+
+.vip-benefit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -8px rgba(184, 135, 46, 0.18);
+}
+
+.vip-benefit--locked {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.vip-benefit--locked:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.vip-benefit__icon-wrap {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: rgba(255, 215, 0, 0.1);
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+.vip-benefit__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.vip-benefit__name {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.vip-benefit__desc {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.55;
+}
+
+.vip-benefit__lock {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 12px;
+  opacity: 0.35;
+}
+
+.vip-perk-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.vip-perk-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(184, 135, 46, 0.1);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.vip-perk-card.dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(143, 180, 255, 0.09);
+}
+
+.vip-perk-card__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 215, 0, 0.1);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.vip-perk-card p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.62;
+}
+
+.vip-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.4;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.vip-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vip-history-list.dark .vip-empty {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.vip-history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.45);
+  transition: background 0.15s ease;
+}
+
+.vip-history-item:hover {
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.vip-history-list.dark .vip-history-item {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.vip-history-list.dark .vip-history-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.vip-history-item__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #b0b7c4;
+  flex-shrink: 0;
+}
+
+.vip-history-item__dot.active {
+  background: #ffd700;
+  box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+}
+
+.vip-history-item__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.vip-history-item__title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vip-history-item__date {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.5;
+}
+
+.vip-activate {
+  padding: 22px 24px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.38);
+  border: 1px solid rgba(184, 135, 46, 0.14);
+}
+
+.vip-activate.dark {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(141, 176, 235, 0.1);
+}
+
 .vip-activate__form {
   display: flex;
   gap: 10px;
@@ -760,10 +983,6 @@ function formatDate(dateStr) {
   box-shadow: 0 6px 16px -4px rgba(255, 215, 0, 0.4);
 }
 
-.vip-activate__btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
 .vip-activate__btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -785,389 +1004,10 @@ function formatDate(dateStr) {
   color: #c44;
 }
 
-/* ===== Benefits Grid ===== */
-.vip-benefits-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.vip-benefit {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(184, 135, 46, 0.1);
-  cursor: pointer;
-  transition: all 0.22s ease;
-  position: relative;
-}
-
-.vip-benefit.dark {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(143, 180, 255, 0.09);
-}
-
-.vip-benefit:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px -8px rgba(184, 135, 46, 0.18);
-}
-
-.vip-benefit--locked { opacity: 0.45; cursor: default; }
-.vip-benefit--locked:hover { transform: none; box-shadow: none; }
-
-.vip-benefit__icon-wrap {
-  font-size: 26px;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  background: rgba(255, 215, 0, 0.1);
-  flex-shrink: 0;
-}
-
-.vip-benefit__info {
-  flex: 1;
-  min-width: 0;
-}
-
-.vip-benefit__name {
-  display: block;
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.vip-benefit__desc {
-  display: block;
-  font-size: 11px;
-  opacity: 0.55;
-  line-height: 1.4;
-}
-
-.vip-benefit__lock {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  font-size: 13px;
-  opacity: 0.35;
-}
-
-/* ===== Perk List ===== */
-.vip-perk-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.vip-perk-card {
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(184, 135, 46, 0.1);
-  background: rgba(255, 255, 255, 0.55);
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.vip-perk-card.dark {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(143, 180, 255, 0.09);
-}
-
-.vip-perk-card__icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 215, 0, 0.1);
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.vip-perk-card p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  opacity: 0.62;
-}
-
-/* ===== Icon Grid ===== */
-.vip-icon-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.vip-icon-card {
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(184, 135, 46, 0.1);
-  background: rgba(255, 255, 255, 0.55);
-  text-align: left;
-  cursor: pointer;
-  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
-}
-
-.vip-icon-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 28px -22px rgba(122, 84, 17, 0.45);
-}
-
-.vip-icon-card.dark {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(143, 180, 255, 0.09);
-}
-
-.vip-icon-card--locked { opacity: 0.82; }
-
-.vip-icon-card__visual {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 120px;
-  border-radius: 18px;
-  margin-bottom: 12px;
-  overflow: hidden;
-  color: #7c5312;
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.55), transparent 55%),
-    linear-gradient(135deg, rgba(255, 243, 214, 0.9), rgba(239, 217, 170, 0.9));
-}
-
-.vip-icon-card.dark .vip-icon-card__visual {
-  color: #c6dbff;
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.14), transparent 55%),
-    linear-gradient(135deg, rgba(23, 35, 62, 0.96), rgba(31, 48, 84, 0.96));
-}
-
-.vip-icon-card__visual:hover .vip-icon-card__pulse,
-.vip-icon-card:hover .vip-icon-card__pulse {
-  animation: vipIconPulse 1.8s ease-in-out infinite;
-}
-
-.vip-icon-card__visual--time_capsule {
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.65), transparent 52%),
-    linear-gradient(135deg, rgba(255, 246, 224, 0.96), rgba(239, 220, 178, 0.96));
-}
-
-.vip-icon-card__visual--night_treehole {
-  background:
-    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.18), transparent 18%),
-    linear-gradient(160deg, rgba(30, 42, 84, 0.96), rgba(16, 24, 50, 0.98));
-}
-
-.vip-icon-card__emoji {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  font-size: 18px;
-  opacity: 0.9;
-}
-
-.vip-icon-card__svg {
-  width: 68px;
-  height: 68px;
-  position: relative;
-  z-index: 1;
-}
-
-.vip-icon-card__pulse {
-  position: absolute;
-  inset: 26px;
-  border-radius: 22px;
-  border: 1px solid currentColor;
-  opacity: 0.16;
-  pointer-events: none;
-}
-
-.vip-icon-card__body strong { display: block; font-size: 14px; }
-
-.vip-icon-card__body p {
-  margin: 6px 0;
-  font-size: 12px;
-  line-height: 1.6;
-  opacity: 0.62;
-}
-
-.vip-icon-card__status {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #8e6c1a;
-}
-
-.vip-icon-card.dark .vip-icon-card__status {
-  color: #9fc0ff;
-}
-
-.vip-icon-card--unlocking .vip-icon-card__svg {
-  animation: vipIconUnlock 0.68s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.vip-icon-card--unlocking .vip-icon-card__pulse {
-  animation: vipIconBurst 0.68s ease-out;
-}
-
-/* ===== Polish Bar ===== */
-.vip-polish-bar {
-  position: relative;
-  height: 32px;
-  background: rgba(184, 135, 46, 0.08);
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.vip-polish-bar.dark {
-  background: rgba(141, 176, 235, 0.07);
-}
-
-.vip-polish-bar__fill {
-  height: 100%;
-  background: linear-gradient(90deg, #ffd700, #f5a623);
-  border-radius: 16px;
-  transition: width 0.6s ease;
-}
-
-.vip-polish-bar__labels {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-/* ===== History List ===== */
-.vip-empty {
-  text-align: center;
-  padding: 24px;
-  font-size: 13px;
-  opacity: 0.4;
-  border-radius: 16px;
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.vip-history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.vip-history-list.dark .vip-empty {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.vip-history-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.45);
-  transition: background 0.15s ease;
-}
-
-.vip-history-item:hover {
-  background: rgba(255, 255, 255, 0.65);
-}
-
-.vip-history-list.dark .vip-history-item {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.vip-history-list.dark .vip-history-item:hover {
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.vip-history-item__dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #b0b7c4;
-  flex-shrink: 0;
-}
-
-.vip-history-item__dot.active {
-  background: #ffd700;
-  box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
-}
-
-.vip-history-item__content { flex: 1; min-width: 0; }
-
-.vip-history-item__title {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.vip-history-item__date {
-  display: block;
-  font-size: 11px;
-  opacity: 0.5;
-  margin-top: 2px;
-}
-
-/* ===== CTA Area ===== */
-.vip-cta-area {
-  text-align: center;
-  padding: 8px 0 24px;
-}
-
-.vip-cta-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 200px;
-  height: 50px;
-  padding: 0 36px;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(135deg, #ffd700, #f5a623);
-  color: #3d2e0a;
-  font-size: 16px;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  box-shadow: 0 14px 28px -8px rgba(255, 215, 0, 0.35);
-  transition: all 0.22s ease;
-}
-
-.vip-cta-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 36px -8px rgba(255, 215, 0, 0.45);
-}
-
-.vip-cta-btn--active {
-  background: linear-gradient(135deg, #b8860b, #8e6c1a);
-  color: #fef3c7;
-}
-
-.vip-cta-hint {
-  margin: 10px 0 0;
-  font-size: 12px;
-  opacity: 0.45;
-}
-
-/* ===== Responsive ===== */
 @media (max-width: 900px) {
+  .vip-package-grid,
   .vip-benefits-grid,
-  .vip-perk-list,
-  .vip-icon-grid {
+  .vip-perk-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1177,14 +1017,16 @@ function formatDate(dateStr) {
     padding: 32px 20px 24px;
   }
 
-  .vip-card__inner {
+  .vip-card__inner,
+  .vip-balance-strip,
+  .vip-section__title-row {
     flex-direction: column;
     align-items: flex-start;
   }
 
+  .vip-package-grid,
   .vip-benefits-grid,
-  .vip-perk-list,
-  .vip-icon-grid {
+  .vip-perk-list {
     grid-template-columns: 1fr;
   }
 
@@ -1192,9 +1034,13 @@ function formatDate(dateStr) {
     flex-direction: column;
     align-items: stretch;
   }
+
+  .vip-package-card__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
-/* ===== Transition ===== */
 .publish-modal-enter-active {
   transition: opacity 0.18s ease;
 }
@@ -1209,23 +1055,13 @@ function formatDate(dateStr) {
 }
 
 @keyframes vipBgGoldFlow {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
 
-@keyframes vipIconPulse {
-  0%, 100% { transform: scale(1); opacity: 0.14; }
-  50% { transform: scale(1.06); opacity: 0.28; }
-}
-
-@keyframes vipIconUnlock {
-  0% { transform: scale(0.92); opacity: 0.72; }
-  55% { transform: scale(1.12); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-@keyframes vipIconBurst {
-  0% { transform: scale(0.82); opacity: 0.36; }
-  100% { transform: scale(1.22); opacity: 0; }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 </style>
