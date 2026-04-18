@@ -47,4 +47,9 @@ router.post('/economy/purchase', vipController.purchaseEmotionCoinItem);
  */
 router.post('/economy/consume', vipController.consumeEmotionCoinItem);
 
+/**
+ * POST /api/v1/vip/economy/purchase-vip - 用情绪币购买VIP
+ */
+router.post('/economy/purchase-vip', vipController.purchaseVipWithCoins);
+
 export default router;

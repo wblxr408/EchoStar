@@ -10,6 +10,7 @@ import { getRandomDefaultAvatar } from '../../common/utils/oss.js';
 import { clearUserCache } from './auth.middleware.js';
 import { VipService } from '../vip/vip.service.js';
 
+
 /**
  * Auth Service - 认证业务逻辑
  */

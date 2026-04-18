@@ -10,12 +10,11 @@ const ACTIVATION_CODES = new Map([
 
 const COIN_RULES = {
   earn: {
-    dailyLogin: { min: 5, max: 10 },
-    publishStory: 20,
-    publishComment: 5,
-    like: 1,
-    favorite: 2,
-    interactionDailyCap: 50
+    dailyLogin: { min: 5, max: 10 }
+  },
+  vipPurchase: {
+    cost: 300,
+    days: 30
   },
   rechargePackages: [
     { key: 'topup_6', label: '6元', priceCny: 6, coins: 60 },
@@ -24,65 +23,40 @@ const COIN_RULES = {
   ],
   storeItems: [
     {
-      key: 'badge_gift_10',
-      name: '情绪徽章赠送',
-      description: '轻量社交互动，赠送基础徽章',
-      cost: 10,
-      type: 'consumable'
-    },
-    {
-      key: 'badge_gift_30',
-      name: '情绪徽章赠送',
-      description: '中阶徽章赠送，适合高质量互动',
-      cost: 30,
-      type: 'consumable'
-    },
-    {
-      key: 'badge_gift_50',
-      name: '情绪徽章赠送',
-      description: '高阶徽章赠送，表达更强情绪支持',
-      cost: 50,
-      type: 'consumable'
-    },
-    {
-      key: 'message_polish',
-      name: '留言擦亮',
-      description: '30币/次，用于内容曝光与回流',
-      cost: 30,
-      type: 'consumable'
-    },
-    {
-      key: 'bubble_decor_7d',
-      name: '气泡装饰',
-      description: '100币/7天，解锁评论与卡片气泡装饰',
-      cost: 100,
-      type: 'timed',
-      durationDays: 7
-    },
-    {
       key: 'footprint_animation',
-      name: '我的足迹动画',
+      name: '我的足迹',
       description: '20币/次，满足 2 个已发布故事后可播放；VIP 免费',
       cost: 20,
       type: 'consumable',
       vipFree: true
     },
     {
+      key: 'message_polish',
+      name: '擦亮故事',
+      description: '30币/次，故事重新进入推荐；VIP 免费',
+      cost: 30,
+      type: 'consumable',
+      vipFree: true
+    },
+    {
+      key: 'bubble_decor_7d',
+      name: '气泡装饰',
+      description: '100币/7天，解锁评论与卡片气泡装饰；VIP 免费',
+      cost: 100,
+      type: 'timed',
+      durationDays: 7,
+      vipFree: true
+    },
+    {
       key: 'theme_skin',
       name: '主题皮肤',
-      description: '500币永久，VIP 可免费领取一次',
+      description: '500币永久；VIP 可免费领取一次',
       cost: 500,
       type: 'permanent',
       vipFree: true
     }
   ]
 };
-
-function startOfCurrentDay() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return now;
-}
 
 function isSameLocalDay(left, right) {
   if (!left || !right) return false;
@@ -104,24 +78,6 @@ function normalizeInventoryItem(record) {
     metadata: record.metadata || {},
     isActive: !expiresAt || new Date(expiresAt).getTime() > now
   };
-}
-
-async function sumInteractionRewardsToday(userId, transaction) {
-  const rows = await EmotionCoinLedger.findAll({
-    where: {
-      userId,
-      source: {
-        [Op.in]: ['like_reward', 'favorite_reward']
-      },
-      createdAt: {
-        [Op.gte]: startOfCurrentDay()
-      }
-    },
-    attributes: ['amount'],
-    transaction
-  });
-
-  return rows.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0);
 }
 
 async function updateInventoryForPurchase(userId, item, transaction, metadata = {}) {
@@ -173,20 +129,16 @@ export const VipService = {
   getEconomyConfig() {
     return {
       earnRules: {
-        dailyLogin: `${COIN_RULES.earn.dailyLogin.min}-${COIN_RULES.earn.dailyLogin.max}币`,
-        publishStory: `${COIN_RULES.earn.publishStory}币`,
-        publishComment: `${COIN_RULES.earn.publishComment}币`,
-        interaction: `点赞${COIN_RULES.earn.like}币 / 收藏${COIN_RULES.earn.favorite}币，日上限${COIN_RULES.earn.interactionDailyCap}币`,
-        achievement: '连续登录、内容里程碑等成就奖励',
-        officialActivity: '节日福利、社区活动赠送'
+        dailyLogin: `每日签到${COIN_RULES.earn.dailyLogin.min}-${COIN_RULES.earn.dailyLogin.max}币`,
+        recharge: 'RMB充值获取情绪币'
       },
       rechargePackages: COIN_RULES.rechargePackages,
       storeItems: COIN_RULES.storeItems,
+      vipPurchase: COIN_RULES.vipPurchase,
       vipBenefits: [
         '我的足迹动画免费使用',
-        '留言擦亮 / 顶置权益',
-        '评论开关高级设置',
-        '全匿名发布无限制',
+        '擦亮故事免费不限次',
+        '气泡装饰免费使用',
         '主题皮肤可免费领取'
       ]
     };
@@ -403,8 +355,7 @@ export const VipService = {
     title,
     referenceId = null,
     metadata = {},
-    allowDuplicate = false,
-    respectInteractionCap = false
+    allowDuplicate = false
   }) {
     if (!amount || amount <= 0) {
       return { granted: 0, skipped: true, reason: 'invalid_amount' };
@@ -422,19 +373,9 @@ export const VipService = {
         }
       }
 
-      let finalAmount = amount;
-      if (respectInteractionCap) {
-        const earnedToday = await sumInteractionRewardsToday(userId, transaction);
-        const remaining = Math.max(0, COIN_RULES.earn.interactionDailyCap - earnedToday);
-        finalAmount = Math.min(finalAmount, remaining);
-        if (finalAmount <= 0) {
-          return { granted: 0, skipped: true, reason: 'daily_cap_reached' };
-        }
-      }
-
       const result = await this.appendLedgerAndBalance(userId, {
         direction: 'earn',
-        amount: finalAmount,
+        amount,
         source,
         title,
         referenceId,
@@ -444,7 +385,7 @@ export const VipService = {
       await clearUserCache(userId);
 
       return {
-        granted: finalAmount,
+        granted: amount,
         balanceAfter: result.balanceAfter,
         recordId: result.record.id
       };
@@ -564,6 +505,74 @@ export const VipService = {
       coins: pkg.coins,
       balanceAfter: result.balanceAfter
     };
+  },
+
+  async purchaseVipWithCoins(userId) {
+    const cost = COIN_RULES.vipPurchase.cost;
+    const days = COIN_RULES.vipPurchase.days;
+
+    return sequelize.transaction(async (transaction) => {
+      const user = await User.findByPk(userId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+
+      if (!user) {
+        throw new Error('用户不存在');
+      }
+
+      if ((user.emotionCoins || 0) < cost) {
+        throw new Error(`情绪币不足，购买VIP需要${cost}币`);
+      }
+
+      // 扣减情绪币
+      const result = await this.appendLedgerAndBalance(userId, {
+        direction: 'spend',
+        amount: -cost,
+        source: 'vip_purchase',
+        title: `购买${days}天VIP`,
+        referenceId: `vip_purchase:${Date.now()}`,
+        metadata: { cost, days }
+      }, transaction);
+
+      // 升级VIP
+      const existingVip = await VipOrder.findOne({
+        where: {
+          userId,
+          isActive: true,
+          expiresAt: { [Op.gt]: new Date() }
+        },
+        transaction
+      });
+
+      let expiresAt;
+      if (existingVip) {
+        expiresAt = new Date(existingVip.expiresAt);
+        expiresAt.setDate(expiresAt.getDate() + days);
+        await existingVip.update({ isActive: false }, { transaction });
+      } else {
+        expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + days);
+      }
+
+      await VipOrder.create({
+        userId,
+        adminId: null,
+        expiresAt,
+        isActive: true
+      }, { transaction });
+
+      await user.update({ vip: 1 }, { transaction });
+      await clearUserCache(userId);
+
+      return {
+        isVip: true,
+        expiresAt,
+        cost,
+        days,
+        balanceAfter: result.balanceAfter
+      };
+    });
   },
 
   async purchaseEmotionCoinItem(userId, itemKey) {
@@ -697,45 +706,4 @@ export const VipService = {
     return result;
   },
 
-  async rewardStoryPublish(userId, storyId) {
-    return this.grantEmotionCoins(userId, {
-      amount: COIN_RULES.earn.publishStory,
-      source: 'story_publish_reward',
-      title: '发布故事奖励',
-      referenceId: String(storyId),
-      metadata: { storyId: String(storyId) }
-    });
-  },
-
-  async rewardCommentPublish(userId, commentId, storyId) {
-    return this.grantEmotionCoins(userId, {
-      amount: COIN_RULES.earn.publishComment,
-      source: 'comment_publish_reward',
-      title: '发表评论奖励',
-      referenceId: String(commentId),
-      metadata: { commentId: String(commentId), storyId: String(storyId) }
-    });
-  },
-
-  async rewardLikeAction(userId, storyId) {
-    return this.grantEmotionCoins(userId, {
-      amount: COIN_RULES.earn.like,
-      source: 'like_reward',
-      title: '点赞互动奖励',
-      referenceId: `${userId}:${storyId}`,
-      metadata: { storyId: String(storyId) },
-      respectInteractionCap: true
-    });
-  },
-
-  async rewardFavoriteAction(userId, storyId) {
-    return this.grantEmotionCoins(userId, {
-      amount: COIN_RULES.earn.favorite,
-      source: 'favorite_reward',
-      title: '收藏互动奖励',
-      referenceId: `${userId}:${storyId}`,
-      metadata: { storyId: String(storyId) },
-      respectInteractionCap: true
-    });
-  }
 };

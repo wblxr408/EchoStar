@@ -82,11 +82,6 @@ class LikeServiceClass {
         });
       }
 
-      const { VipService } = await import('../vip/vip.service.js');
-      VipService.rewardLikeAction(userId, normalizedStoryId).catch((err) => {
-        console.error('点赞情绪币奖励发放失败:', err);
-      });
-
       return {
         isLiked: true,
         likeCount: result.likeCount,
@@ -120,11 +115,6 @@ class LikeServiceClass {
         console.error('Failed to create like notification:', err);
       });
     }
-
-    const { VipService } = await import('../vip/vip.service.js');
-    VipService.rewardLikeAction(userId, normalizedStoryId).catch((err) => {
-      console.error('点赞情绪币奖励发放失败:', err);
-    });
 
     return {
       isLiked: result.isLiked,
