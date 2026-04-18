@@ -11,15 +11,12 @@
           :class="{ dark: isDark }"
           @click.stop
         >
-          <!-- Close Button -->
           <button class="coin-center__close" type="button" @click="handleClose">
             <span class="close-icon">×</span>
             <span class="close-text">关闭</span>
           </button>
 
-          <!-- Scroll Content -->
           <div class="coin-center__scroll">
-            <!-- Header -->
             <div class="coin-center__header">
               <span class="coin-center__header-icon">🪙</span>
               <h2 class="coin-center__title">情绪币中心</h2>
@@ -29,14 +26,13 @@
               </div>
             </div>
 
-            <!-- Wallet Card -->
             <div class="coin-wallet-card" :class="{ dark: isDark }">
               <div class="coin-wallet-card__bg"></div>
               <div class="coin-wallet-card__content">
                 <div class="coin-wallet-card__left">
                   <div class="coin-wallet-card__icon">💰</div>
                   <div class="coin-wallet-card__info">
-                    <p class="coin-wallet-card__label">当前余额</p>
+                    <p class="coin-wallet-card__label">当前账户余额</p>
                     <p class="coin-wallet-card__amount">{{ vipStore.emotionCoins }} <small>币</small></p>
                   </div>
                 </div>
@@ -45,15 +41,10 @@
                     <span class="coin-wallet-card__stat-label">连续签到</span>
                     <strong>{{ vipStore.checkInStreak }} 天</strong>
                   </div>
-                  <div class="coin-wallet-card__stat">
-                    <span class="coin-wallet-card__stat-label">今日</span>
-                    <strong>{{ vipStore.checkedInToday ? '✓' : '—' }}</strong>
-                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Daily Check-in -->
             <div class="coin-section">
               <h3 class="coin-section__title">每日签到</h3>
               <button
@@ -66,29 +57,50 @@
                 <span v-else-if="checkingIn">签到中...</span>
                 <span v-else>📅 立即签到</span>
               </button>
-              <p class="coin-checkin-hint">连续签到奖励递增，每日可得 {{ vipStore.economy?.earnRules?.dailyLogin || '5-10' }} 币</p>
+              <p class="coin-checkin-hint">每日签到概率获得30-10000币，快来试试吧。</p>
             </div>
 
-            <!-- Earn Rules -->
             <div class="coin-section">
-              <h3 class="coin-section__title">获取途径</h3>
-              <div class="coin-rule-grid">
-                <div class="coin-rule-card" :class="{ dark: isDark }">
-                  <span class="coin-rule-card__icon">📅</span>
-                  <strong>每日签到</strong>
-                  <span>{{ vipStore.economy?.earnRules?.dailyLogin || '5-10币' }}</span>
+              <div class="coin-section__title-row">
+                <h3 class="coin-section__title">用途说明</h3>
+                <span class="coin-section__hint">情绪币可直接用于站内核心权益</span>
+              </div>
+              <div class="coin-usage-list">
+                <div class="coin-usage-card" :class="{ dark: isDark }">
+                  <span class="coin-usage-card__icon">👑</span>
+                  <div>
+                    <strong>购买 VIP 时长</strong>
+                    <p>可用于开通或续费周卡、月卡、季卡、年卡等会员时长。</p>
+                  </div>
                 </div>
-                <div class="coin-rule-card" :class="{ dark: isDark }">
-                  <span class="coin-rule-card__icon">💰</span>
-                  <strong>RMB充值</strong>
-                  <span>6/30/98元三档可选</span>
+                <div class="coin-usage-card" :class="{ dark: isDark }">
+                  <span class="coin-usage-card__icon">✨</span>
+                  <div>
+                    <strong>购买高级功能</strong>
+                    <p>可购买足迹、擦亮等高级功能，快速解锁更多互动体验。</p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Recharge Packages -->
             <div class="coin-section">
-              <h3 class="coin-section__title">自愿充值</h3>
+              <h3 class="coin-section__title">获取方式</h3>
+              <div class="coin-rule-grid">
+                <div class="coin-rule-card" :class="{ dark: isDark }">
+                  <span class="coin-rule-card__icon">📅</span>
+                  <strong>每日签到</strong>
+                  <span>概率获得 30-10000 币</span>
+                </div>
+                <div class="coin-rule-card" :class="{ dark: isDark }">
+                  <span class="coin-rule-card__icon">💳</span>
+                  <strong>RMB 充值</strong>
+                  <span>6 / 30 / 98 元档位可选</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="coin-section">
+              <h3 class="coin-section__title">充值套餐</h3>
               <div class="coin-package-grid">
                 <button
                   v-for="pkg in rechargePackages"
@@ -101,16 +113,17 @@
                 >
                   <span class="coin-package-card__price">{{ pkg.label }}</span>
                   <strong>{{ pkg.coins }} 币</strong>
-                  <span class="coin-package-card__hint">{{ rechargingPackage === pkg.key ? '处理中...' : '立即充值' }}</span>
+                  <span class="coin-package-card__hint">
+                    {{ rechargingPackage === pkg.key ? '处理中...' : '立即充值' }}
+                  </span>
                 </button>
               </div>
             </div>
 
-            <!-- Coin Ledger -->
             <div class="coin-section">
               <h3 class="coin-section__title">情绪币流水</h3>
               <div v-if="historyLoading" class="coin-empty" :class="{ dark: isDark }">加载中...</div>
-              <div v-else-if="vipStore.ledger.length === 0" class="coin-empty" :class="{ dark: isDark }">暂无记录</div>
+              <div v-else-if="vipStore.ledger.length === 0" class="coin-empty" :class="{ dark: isDark }">暂无流水记录</div>
               <div v-else class="coin-ledger">
                 <div v-for="entry in vipStore.ledger.slice(0, 8)" :key="entry.id" class="coin-ledger__item" :class="{ dark: isDark }">
                   <div>
@@ -131,9 +144,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
-import { useVipStore } from '../stores/vip'
+import { computed, ref, watch } from 'vue'
 import { showToast } from '../composables/useToast'
+import { useVipStore } from '../stores/vip'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -149,12 +162,14 @@ const rechargingPackage = ref('')
 
 const rechargePackages = computed(() => vipStore.economy?.rechargePackages || [])
 
-watch(() => props.visible, async (val) => {
-  if (val) {
+watch(() => props.visible, async (visible) => {
+  if (!visible) return
+
+  historyLoading.value = true
+  try {
     await vipStore.fetchStatus()
     await vipStore.fetchEconomy()
-    historyLoading.value = true
-    await vipStore.fetchHistory({ page: 1, limit: 20 })
+  } finally {
     historyLoading.value = false
   }
 })
@@ -165,33 +180,31 @@ function handleClose() {
 
 async function handleCheckIn() {
   if (vipStore.checkedInToday || checkingIn.value) return
+
   checkingIn.value = true
-  const result = await vipStore.claimDailyCheckIn()
-  showToast(result.message, result.success ? 'success' : 'error')
-  checkingIn.value = false
+  try {
+    const result = await vipStore.claimDailyCheckIn()
+    showToast(result.message, result.success ? 'success' : 'error')
+  } finally {
+    checkingIn.value = false
+  }
 }
 
 async function handleRecharge(packageKey) {
   if (!packageKey) return
-  rechargingPackage.value = packageKey
-  const result = await vipStore.rechargeCoins(packageKey)
-  showToast(result.message, result.success ? 'success' : 'error')
-  rechargingPackage.value = ''
-}
 
-function formatDate(dateStr) {
-  if (!dateStr) return '--'
+  rechargingPackage.value = packageKey
   try {
-    return new Intl.DateTimeFormat('zh-CN', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date(dateStr))
-  } catch {
-    return '--'
+    const result = await vipStore.rechargeCoins(packageKey)
+    showToast(result.message, result.success ? 'success' : 'error')
+  } finally {
+    rechargingPackage.value = ''
   }
 }
 
 function formatDateTime(dateStr) {
   if (!dateStr) return '--'
+
   try {
     return new Intl.DateTimeFormat('zh-CN', {
       month: '2-digit',
@@ -206,7 +219,6 @@ function formatDateTime(dateStr) {
 </script>
 
 <style scoped>
-/* ===== Shell ===== */
 .coin-center-shell {
   position: fixed;
   inset: 0;
@@ -222,7 +234,6 @@ function formatDateTime(dateStr) {
   -webkit-backdrop-filter: blur(16px);
 }
 
-/* ===== Modal Container ===== */
 .coin-center {
   position: relative;
   width: min(980px, calc(100vw - 48px));
@@ -271,7 +282,6 @@ function formatDateTime(dateStr) {
   border-color: rgba(141, 176, 235, 0.14);
 }
 
-/* ===== Close Button ===== */
 .coin-center__close {
   position: absolute;
   top: 20px;
@@ -312,7 +322,6 @@ function formatDateTime(dateStr) {
 
 .close-icon {
   line-height: 1;
-  transform: translateY(-1px);
   font-size: 22px;
 }
 
@@ -321,7 +330,6 @@ function formatDateTime(dateStr) {
   letter-spacing: 0.08em;
 }
 
-/* ===== Scroll Area ===== */
 .coin-center__scroll {
   position: relative;
   z-index: 1;
@@ -330,7 +338,6 @@ function formatDateTime(dateStr) {
   padding: 36px 40px 32px;
 }
 
-/* ===== Header ===== */
 .coin-center__header {
   display: flex;
   align-items: center;
@@ -339,13 +346,15 @@ function formatDateTime(dateStr) {
   flex-wrap: wrap;
 }
 
-.coin-center__header-icon { font-size: 28px; }
+.coin-center__header-icon {
+  font-size: 28px;
+}
 
 .coin-center__title {
+  margin: 0;
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.02em;
-  margin: 0;
 }
 
 .coin-center__balance-pill {
@@ -365,10 +374,14 @@ function formatDateTime(dateStr) {
   color: #ffd700;
 }
 
-.coin-center__balance-icon { font-size: 18px; }
-.coin-center__balance-value { font-size: 20px; }
+.coin-center__balance-icon {
+  font-size: 18px;
+}
 
-/* ===== Wallet Card ===== */
+.coin-center__balance-value {
+  font-size: 20px;
+}
+
 .coin-wallet-card {
   position: relative;
   padding: 28px;
@@ -383,7 +396,8 @@ function formatDateTime(dateStr) {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(135deg,
+    linear-gradient(
+      135deg,
       rgba(255, 248, 220, 1) 0%,
       rgba(255, 236, 170, 1) 25%,
       rgba(255, 225, 120, 1) 50%,
@@ -417,7 +431,9 @@ function formatDateTime(dateStr) {
   gap: 16px;
 }
 
-.coin-wallet-card__icon { font-size: 42px; }
+.coin-wallet-card__icon {
+  font-size: 42px;
+}
 
 .coin-wallet-card__label {
   margin: 0 0 4px;
@@ -434,10 +450,10 @@ function formatDateTime(dateStr) {
 }
 
 .coin-wallet-card__amount small {
+  margin-left: 4px;
   font-size: 14px;
   font-weight: 600;
   opacity: 0.5;
-  margin-left: 4px;
 }
 
 .coin-wallet-card__right {
@@ -451,29 +467,45 @@ function formatDateTime(dateStr) {
 
 .coin-wallet-card__stat-label {
   display: block;
+  margin-bottom: 4px;
   font-size: 11px;
   opacity: 0.5;
-  margin-bottom: 4px;
 }
 
 .coin-wallet-card__stat strong {
   font-size: 16px;
 }
 
-/* ===== Section ===== */
 .coin-section {
   margin-bottom: 24px;
 }
 
 .coin-section__title {
+  margin: 0 0 14px;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  margin: 0 0 14px;
   opacity: 0.72;
 }
 
-/* ===== Check-in ===== */
+.coin-section__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.coin-section__title-row .coin-section__title {
+  margin-bottom: 0;
+}
+
+.coin-section__hint {
+  font-size: 11px;
+  opacity: 0.5;
+  white-space: nowrap;
+}
+
 .coin-checkin-btn {
   width: 100%;
   min-height: 52px;
@@ -513,14 +545,53 @@ function formatDateTime(dateStr) {
 .coin-checkin-hint {
   margin: 8px 0 0;
   font-size: 12px;
-  opacity: 0.45;
+  opacity: 0.5;
   text-align: center;
 }
 
-/* ===== Rule Grid ===== */
+.coin-usage-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.coin-usage-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(184, 135, 46, 0.1);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.coin-usage-card.dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(143, 180, 255, 0.09);
+}
+
+.coin-usage-card__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 215, 0, 0.1);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.coin-usage-card p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.62;
+}
+
 .coin-rule-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -539,12 +610,13 @@ function formatDateTime(dateStr) {
   border-color: rgba(143, 180, 255, 0.09);
 }
 
-.coin-rule-card__icon { font-size: 22px; }
+.coin-rule-card__icon {
+  font-size: 22px;
+}
 
-/* ===== Package Grid ===== */
 .coin-package-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -576,9 +648,9 @@ function formatDateTime(dateStr) {
 
 .coin-package-card__price {
   display: block;
+  margin-bottom: 6px;
   font-size: 12px;
   opacity: 0.58;
-  margin-bottom: 6px;
 }
 
 .coin-package-card__hint {
@@ -592,7 +664,6 @@ function formatDateTime(dateStr) {
   color: #9fc0ff;
 }
 
-/* ===== Empty State ===== */
 .coin-empty {
   text-align: center;
   padding: 24px;
@@ -606,7 +677,6 @@ function formatDateTime(dateStr) {
   background: rgba(255, 255, 255, 0.03);
 }
 
-/* ===== Ledger ===== */
 .coin-ledger {
   display: flex;
   flex-direction: column;
@@ -639,14 +709,24 @@ function formatDateTime(dateStr) {
   font-weight: 800;
 }
 
-.coin-ledger__amount.plus { color: #2d7a2d; }
-.coin-ledger__amount.minus { color: #c44; }
+.coin-ledger__amount.plus {
+  color: #2d7a2d;
+}
 
-.coin-center.dark .coin-ledger__amount.plus { color: #4ade80; }
-.coin-center.dark .coin-ledger__amount.minus { color: #f87171; }
+.coin-ledger__amount.minus {
+  color: #c44;
+}
 
-/* ===== Responsive ===== */
+.coin-center.dark .coin-ledger__amount.plus {
+  color: #4ade80;
+}
+
+.coin-center.dark .coin-ledger__amount.minus {
+  color: #f87171;
+}
+
 @media (max-width: 900px) {
+  .coin-usage-list,
   .coin-rule-grid,
   .coin-package-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -658,18 +738,19 @@ function formatDateTime(dateStr) {
     padding: 32px 20px 24px;
   }
 
-  .coin-wallet-card__content {
+  .coin-wallet-card__content,
+  .coin-section__title-row {
     flex-direction: column;
     align-items: flex-start;
   }
 
+  .coin-usage-list,
   .coin-rule-grid,
   .coin-package-grid {
     grid-template-columns: 1fr;
   }
 }
 
-/* ===== Transition ===== */
 .publish-modal-enter-active {
   transition: opacity 0.18s ease;
 }
@@ -684,7 +765,13 @@ function formatDateTime(dateStr) {
 }
 
 @keyframes coinBgFlow {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
 }
 </style>

@@ -8,9 +8,22 @@ const ACTIVATION_CODES = new Map([
   ['_echostar', 30],
 ]);
 
+const DAILY_CHECK_IN_REWARDS = [
+  { amount: 30, probability: 0.7 },
+  { amount: 66, probability: 0.15 },
+  { amount: 188, probability: 0.08 },
+  { amount: 520, probability: 0.04 },
+  { amount: 1314, probability: 0.02 },
+  { amount: 5200, probability: 0.0095 },
+  { amount: 10000, probability: 0.0005 }
+];
+
 const COIN_RULES = {
   earn: {
-    dailyLogin: { min: 5, max: 10 }
+    dailyLogin: {
+      overview: '每日签到概率获得30-10000币，快来试试吧。',
+      rewards: DAILY_CHECK_IN_REWARDS
+    }
   },
   vipPackages: [
     { key: 'vip_weekly', name: '周卡', cost: 150, days: 7 },
@@ -67,6 +80,20 @@ function isSameLocalDay(left, right) {
   return a.getFullYear() === b.getFullYear()
     && a.getMonth() === b.getMonth()
     && a.getDate() === b.getDate();
+}
+
+function drawDailyCheckInReward() {
+  const roll = Math.random();
+  let cursor = 0;
+
+  for (const reward of DAILY_CHECK_IN_REWARDS) {
+    cursor += reward.probability;
+    if (roll < cursor) {
+      return reward.amount;
+    }
+  }
+
+  return DAILY_CHECK_IN_REWARDS[DAILY_CHECK_IN_REWARDS.length - 1].amount;
 }
 
 function normalizeInventoryItem(record) {
@@ -435,8 +462,7 @@ export const VipService = {
         throw new Error('今日已签到');
       }
 
-      const rewardRange = COIN_RULES.earn.dailyLogin;
-      const reward = Math.floor(Math.random() * (rewardRange.max - rewardRange.min + 1)) + rewardRange.min;
+      const reward = drawDailyCheckInReward();
 
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
