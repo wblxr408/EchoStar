@@ -237,16 +237,6 @@
                 <div class="user-content-tabs">
                   <button class="content-tab active">作品<span class="tab-count">{{ searchedUserStories.length }}</span></button>
                 </div>
-                <transition name="back-to-top">
-                  <button
-                    v-if="showProfileBackToTop"
-                    class="wall-back-to-top profile-back-to-top"
-                    :class="{ dark: effectiveMapTheme === 'dark' }"
-                    @click="scrollProfileToTop(userDetailVScrollContainerRef)"
-                  >
-                    <span>^</span>
-                  </button>
-                </transition>
               </div>
 
               <!-- 故事列表 -->
@@ -283,9 +273,23 @@
                   <div v-if="searchedUserStories.length > 0" class="panel-no-more"><span>没有更多了</span></div>
                 </template>
               </div>
+              <transition name="back-to-top">
+                <button
+                  v-if="showProfileBackToTop"
+                  class="wall-back-to-top profile-back-to-top"
+                  :class="{ dark: effectiveMapTheme === 'dark' }"
+                  @click="scrollProfileToTop(userDetailVScrollContainerRef)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 19V6" />
+                    <path d="M6.5 11.5 12 6l5.5 5.5" />
+                    <path d="M8 4h8" />
+                  </svg>
+                </button>
+              </transition>
             </div>
           </div>
-          <!-- 返回顶部按钮 (他人主页 - 已移入标签栏内) -->
+          <!-- 返回顶部按钮 (他人主页) -->
         </div>
       </div>
       </transition>
@@ -437,6 +441,7 @@
                   v-for="(story, idx) in wallTabs.featured.items"
                   :key="story.id + '-wall-featured-' + idx"
                   :story="story"
+                  :theme="effectiveMapTheme"
                   :class="['story-card-enter', { 'no-anim-delay': idx >= 18 }]"
                   :data-virtual-index="idx"
                   :style="{ animationDelay: idx < 18 ? idx * 0.12 + 's' : '0s' }"
@@ -462,6 +467,7 @@
                   v-for="(story, idx) in wallTabs.recommend.items"
                   :key="story.id + '-wall-recommend-' + idx"
                   :story="story"
+                  :theme="effectiveMapTheme"
                   :class="['story-card-enter', { 'no-anim-delay': idx >= 18 }]"
                   :data-virtual-index="idx"
                   :style="{ animationDelay: idx < 18 ? idx * 0.12 + 's' : '0s' }"
@@ -480,7 +486,11 @@
               :class="{ dark: effectiveMapTheme === 'dark' }"
               @click="scrollWallToTop"
             >
-              <span>^</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V6" />
+                <path d="M6.5 11.5 12 6l5.5 5.5" />
+                <path d="M8 4h8" />
+              </svg>
             </button>
           </transition>
         </div>
@@ -541,7 +551,11 @@
               :class="{ dark: effectiveMapTheme === 'dark' }"
               @click="scrollPlaneNearbyToTop"
             >
-              <span>^</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V6" />
+                <path d="M6.5 11.5 12 6l5.5 5.5" />
+                <path d="M8 4h8" />
+              </svg>
             </button>
           </transition>
         </div>
@@ -1373,17 +1387,6 @@
               <span class="slot-name">添加账号</span>
             </div>
           </div>
-          <!-- 返回顶部按钮 -->
-          <transition name="back-to-top">
-            <button
-              v-if="showWallBackToTop"
-              class="wall-back-to-top"
-              :class="{ dark: effectiveMapTheme === 'dark' }"
-              @click="scrollWallToTop"
-            >
-              <span>^</span>
-            </button>
-          </transition>
         </div>
       </div>
     </div>
@@ -2254,7 +2257,6 @@ function handleWallCardSelect(story) {
 // 滚动事件处理：检测接近底部 + 返回顶部按钮
 const sidebarContentRef = ref(null);
 const showWallBackToTop = ref(false);
-let wallLastScrollTop = 0;
 
 function handleWallScroll(e, tabName) {
   const el = e.target;
@@ -2264,18 +2266,11 @@ function handleWallScroll(e, tabName) {
   if (scrollHeight - scrollTop - clientHeight < threshold) {
     loadWallMore(tabName);
   }
-  // 上滑显示返回顶部，下滑隐藏
-  if (scrollTop < wallLastScrollTop && scrollTop > 10) {
-    showWallBackToTop.value = true;
-  } else if (scrollTop > wallLastScrollTop) {
-    showWallBackToTop.value = false;
-  }
-  wallLastScrollTop = scrollTop;
+  showWallBackToTop.value = scrollTop > 120;
 }
 
 function scrollWallToTop() {
   sidebarContentRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
-  wallLastScrollTop = 0;
   showWallBackToTop.value = false;
 }
 
@@ -2313,7 +2308,6 @@ function resetProfileScrollState() {
 
 // Feed 区域在 recommend tab 激活时连接
 watch(sidebarTab, (tab) => {
-  wallLastScrollTop = 0;
   showWallBackToTop.value = false;
   if (tab === 'recommend') {
     nextTick(() => feedVScrollConnect());
@@ -5680,13 +5674,11 @@ function openPlaneNearby() {
 
 function closePlaneNearby() {
   showPlaneNearby.value = false;
-  planeNearbyLastScrollTop = 0;
   showPlaneNearbyBackToTop.value = false;
 }
 
 const planeNearbyContentRef = ref(null);
 const showPlaneNearbyBackToTop = ref(false);
-let planeNearbyLastScrollTop = 0;
 
 function handlePlaneNearbyScroll(e) {
   const el = e.target;
@@ -5700,18 +5692,11 @@ function handlePlaneNearbyScroll(e) {
       loadPlaneNearby(true);
     }
   }
-  // 上滑显示返回顶部，下滑隐藏
-  if (el.scrollTop < planeNearbyLastScrollTop && el.scrollTop > 10) {
-    showPlaneNearbyBackToTop.value = true;
-  } else if (el.scrollTop > planeNearbyLastScrollTop) {
-    showPlaneNearbyBackToTop.value = false;
-  }
-  planeNearbyLastScrollTop = el.scrollTop;
+  showPlaneNearbyBackToTop.value = el.scrollTop > 120;
 }
 
 function scrollPlaneNearbyToTop() {
   planeNearbyContentRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
-  planeNearbyLastScrollTop = 0;
   showPlaneNearbyBackToTop.value = false;
 }
 
@@ -8740,25 +8725,24 @@ onUnmounted(() => {
   padding: 16px 24px 24px;
 }
 
-/* 返回顶部按钮 - 固定在容器右上角 */
+/* 返回顶部按钮 - 固定在容器右下角 */
 .wall-back-to-top {
   position: absolute;
-  top: 70px;
-  right: 20px;
+  right: 18px;
+  bottom: 18px;
+  top: auto;
   z-index: 10;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(13, 19, 34, 0.82);
   color: #fff;
-  font-size: 18px;
-  font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 18px 36px -18px rgba(0, 0, 0, 0.55);
   transition: background 0.2s, border-color 0.2s, transform 0.2s;
 }
 .wall-back-to-top:hover {
@@ -8766,12 +8750,9 @@ onUnmounted(() => {
   border-color: rgba(255, 255, 255, 0.36);
   transform: scale(1.08);
 }
-.wall-back-to-top span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  transform: translateY(-1px);
+.wall-back-to-top svg {
+  width: 20px;
+  height: 20px;
 }
 .wall-back-to-top.dark {
   border-color: rgba(141, 176, 235, 0.24);
@@ -8789,20 +8770,9 @@ onUnmounted(() => {
 }
 .wall-back-to-top.profile-back-to-top {
   position: absolute;
-  right: 18px;
-  bottom: 18px;
-  top: auto;
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  box-shadow: 0 18px 36px -18px rgba(0, 0, 0, 0.55);
 }
 .wall-back-to-top:not(.dark):hover {
   background: rgba(88, 56, 18, 0.95);
-}
-.wall-back-to-top.profile-back-to-top svg {
-  width: 20px;
-  height: 20px;
 }
 
 /* 返回顶部过渡动画 */
@@ -15481,6 +15451,14 @@ onUnmounted(() => {
   width: min(900px, calc(100vw - 48px));
   height: min(90vh, 960px);
   height: min(90vh, 960px);
+  --profile-story-card-bg: rgba(24, 34, 56, 0.92);
+  --profile-story-card-bg-hover: rgba(31, 45, 73, 0.98);
+  --profile-story-card-border: rgba(151, 186, 255, 0.3);
+  --profile-story-card-border-hover: rgba(191, 214, 255, 0.52);
+  --profile-story-card-shadow: 0 24px 40px -30px rgba(3, 8, 20, 0.85);
+  --profile-story-card-shadow-hover: 0 26px 42px -28px rgba(3, 8, 20, 0.92);
+  --profile-story-card-text: #ffffff;
+  --profile-story-card-muted: rgba(255, 255, 255, 0.84);
   border-radius: 36px;
   border: 1px solid rgba(196, 142, 48, 0.34);
   background: linear-gradient(
@@ -15509,6 +15487,14 @@ onUnmounted(() => {
 
 /* 浅色模式 */
 .map-search-user-detail:not(.dark) {
+  --profile-story-card-bg: rgba(255, 245, 229, 0.96);
+  --profile-story-card-bg-hover: rgba(255, 239, 215, 0.99);
+  --profile-story-card-border: rgba(94, 66, 22, 0.28);
+  --profile-story-card-border-hover: rgba(94, 66, 22, 0.42);
+  --profile-story-card-shadow: 0 24px 40px -30px rgba(94, 66, 22, 0.28);
+  --profile-story-card-shadow-hover: 0 26px 42px -28px rgba(94, 66, 22, 0.34);
+  --profile-story-card-text: #000000;
+  --profile-story-card-muted: rgba(0, 0, 0, 0.82);
   background: linear-gradient(
     160deg,
     rgba(250, 239, 217, 0.98) 0%,
@@ -15581,6 +15567,28 @@ onUnmounted(() => {
 }
 .map-search-user-detail:not(.dark) .user-content-list .panel-item {
   border-color: rgba(164, 122, 48, 0.38);
+}
+.map-search-user-detail .user-content-list .panel-item {
+  background: var(--profile-story-card-bg);
+  border: 1.5px solid var(--profile-story-card-border);
+  box-shadow: var(--profile-story-card-shadow);
+}
+.map-search-user-detail .user-content-list .panel-item:hover {
+  background: var(--profile-story-card-bg-hover);
+  border-color: var(--profile-story-card-border-hover);
+  box-shadow: var(--profile-story-card-shadow-hover);
+}
+.map-search-user-detail .user-content-list .panel-item.is-capsule-locked:hover {
+  background: var(--profile-story-card-bg);
+}
+.map-search-user-detail .user-content-list .item-author,
+.map-search-user-detail .user-content-list .item-content {
+  color: var(--profile-story-card-text);
+}
+.map-search-user-detail .user-content-list .item-time,
+.map-search-user-detail .user-content-list .item-footer,
+.map-search-user-detail .user-content-list .item-likes {
+  color: var(--profile-story-card-muted);
 }
 .map-search-user-detail:not(.dark) .user-content-list .item-author { color: #3c2910; }
 .map-search-user-detail:not(.dark) .user-content-list /* ── 时光胶囊锁定条 ── */

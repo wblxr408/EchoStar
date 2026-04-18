@@ -1,6 +1,9 @@
 <template>
-  <div class="story-wall-card" :class="[theme === 'dark' ? 'swc-dark' : 'swc-light']" @click="$emit('select', story)">
-    <!-- 图片区域 (上方 2/3) -->
+  <div
+    class="story-wall-card"
+    :class="[theme === 'dark' ? 'swc-dark' : 'swc-light', displayImage ? 'swc-has-image' : 'swc-no-image']"
+    @click="$emit('select', story)"
+  >
     <div class="swc-image-wrap">
       <img
         v-if="displayImage"
@@ -14,9 +17,7 @@
       </div>
     </div>
 
-    <!-- 信息遮罩 (下方 1/3) - 毛玻璃效果 -->
     <div class="swc-info-blur">
-      <!-- 模糊层：复制图片作为背景源 -->
       <img
         v-if="displayImage"
         :src="displayImage"
@@ -26,8 +27,8 @@
       />
       <div v-else class="swc-blur-placeholder-bg"></div>
     </div>
-    <div class="swc-info-overlay">
-      <!-- 作者行 -->
+
+    <div class="swc-info-overlay" :class="{ 'is-text-only-card': !displayImage }">
       <div class="swc-author-row">
         <div class="swc-avatar">
           <img v-if="story.avatar" :src="story.avatar" alt="头像" />
@@ -50,10 +51,8 @@
         </div>
       </div>
 
-      <!-- 内容预览 -->
-      <p v-if="story.content" class="swc-content">{{ contentPreview }}</p>
+      <p v-if="displayImage && story.content" class="swc-content">{{ contentPreview }}</p>
 
-      <!-- 互动数据 -->
       <div class="swc-stats">
         <span>❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
         <span>⭐️ {{ story.favoriteCount ?? 0 }}</span>
@@ -112,7 +111,6 @@ const contentPreview = computed(() => {
 
 const textContent = computed(() => {
   const text = props.story.content || '';
-  // 正方形容器内文本，限制显示更多字符
   const maxLen = 80;
   return text.length > maxLen ? text.slice(0, maxLen) + '...' : text;
 });
@@ -123,7 +121,7 @@ const textContent = computed(() => {
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 45px;
+  border-radius: 18px;
   overflow: hidden;
   cursor: pointer;
   transform: scale(0.96);
@@ -134,7 +132,6 @@ const textContent = computed(() => {
   transform: scale(1);
 }
 
-/* 图片区域 */
 .swc-image-wrap {
   position: absolute;
   inset: 0;
@@ -147,7 +144,6 @@ const textContent = computed(() => {
   object-fit: cover;
 }
 
-/* 无图片时的文本占位 */
 .swc-text-placeholder {
   width: 100%;
   height: 100%;
@@ -155,13 +151,13 @@ const textContent = computed(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: linear-gradient(135deg, #f6d365 0%, #fda085 50%, #f093fb 100%);
+  background: linear-gradient(145deg, #10243f 0%, #19385f 46%, #254a74 100%);
 }
 
 .swc-text-content {
-  font-size: 13px;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.9);
+  font-size: 17px;
+  line-height: 1.72;
+  color: rgba(255, 255, 255, 0.92);
   display: -webkit-box;
   -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
@@ -170,7 +166,19 @@ const textContent = computed(() => {
   word-break: break-all;
 }
 
-/* 信息遮罩 - 毛玻璃模糊背景层 */
+.story-wall-card.swc-no-image .swc-text-placeholder {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 18px 16px calc(38% + 18px) 16px;
+}
+
+.story-wall-card.swc-no-image .swc-text-content {
+  width: 100%;
+  max-height: 100%;
+  text-align: left;
+  -webkit-line-clamp: 7;
+}
+
 .swc-info-blur {
   position: absolute;
   bottom: 0;
@@ -180,13 +188,12 @@ const textContent = computed(() => {
   z-index: 1;
   overflow: hidden;
   pointer-events: none;
-  border-radius: 16px 16px 0 0;
+  border-radius: 12px 12px 0 0;
 }
 
 .swc-blur-bg {
   width: 100%;
   height: 100%;
-  /* 图片自身高度只有38%，需要放大并向下偏移以对齐底部 */
   height: calc(100% / 0.38);
   min-height: 263%;
   transform: translateY(calc(-100% + 38%));
@@ -197,11 +204,10 @@ const textContent = computed(() => {
 .swc-blur-placeholder-bg {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(246, 211, 101, 0.5) 0%, rgba(253, 160, 133, 0.45) 50%, rgba(240, 147, 251, 0.5) 100%);
+  background: linear-gradient(145deg, rgba(16, 36, 63, 0.72) 0%, rgba(25, 56, 95, 0.68) 46%, rgba(37, 74, 116, 0.72) 100%);
   filter: blur(8px);
 }
 
-/* 信息遮罩内容层 - 叠在模糊层上方 */
 .swc-info-overlay {
   position: absolute;
   bottom: 0;
@@ -213,10 +219,13 @@ const textContent = computed(() => {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  border-radius: 16px 16px 0 0;
+  border-radius: 12px 12px 0 0;
 }
 
-/* 作者行 */
+.swc-info-overlay.is-text-only-card {
+  padding: 10px 12px 12px;
+}
+
 .swc-author-row {
   display: flex;
   align-items: center;
@@ -224,8 +233,8 @@ const textContent = computed(() => {
 }
 
 .swc-avatar {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
@@ -233,7 +242,7 @@ const textContent = computed(() => {
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.2);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #fff;
 }
@@ -259,7 +268,7 @@ const textContent = computed(() => {
 }
 
 .swc-username {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #fff;
   overflow: hidden;
@@ -298,41 +307,60 @@ const textContent = computed(() => {
   border-radius: 3px;
   background: linear-gradient(135deg, #ffd700, #ffaa00);
   color: #5d4037;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.5px;
-  line-height: 14px;
+  line-height: 15px;
   margin-top: 1px;
 }
 
 .swc-meta {
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 内容预览 */
 .swc-content {
-  font-size: 11px;
+  font-size: 16px;
   color: rgba(255, 255, 255, 0.85);
   margin: 3px 0 2px;
-  line-height: 1.3;
+  line-height: 1.52;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 互动数据 */
 .swc-stats {
   display: flex;
   gap: 10px;
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* ===== 浅色模式 ===== */
+.story-wall-card.swc-has-image .swc-content {
+  font-size: 16px;
+}
+
+.story-wall-card.swc-no-image .swc-avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 15px;
+}
+
+.story-wall-card.swc-no-image .swc-username {
+  font-size: 15px;
+}
+
+.story-wall-card.swc-no-image .swc-meta {
+  font-size: 13px;
+}
+
+.story-wall-card.swc-no-image .swc-stats {
+  font-size: 13px;
+}
+
 .story-wall-card.swc-light .swc-image-wrap {
   background: #e8e4df;
 }
@@ -342,27 +370,31 @@ const textContent = computed(() => {
 }
 
 .story-wall-card.swc-light .swc-blur-placeholder-bg {
-  background: linear-gradient(135deg, rgba(225, 200, 130, 0.5) 0%, rgba(230, 185, 155, 0.45) 50%, rgba(220, 175, 200, 0.5) 100%);
+  background: linear-gradient(145deg, rgba(191, 176, 157, 0.72) 0%, rgba(183, 165, 141, 0.7) 52%, rgba(171, 151, 126, 0.74) 100%);
+}
+
+.story-wall-card.swc-light.swc-no-image .swc-text-placeholder {
+  background: linear-gradient(145deg, #d3c4b3 0%, #c9b69d 48%, #bca487 100%);
 }
 
 .story-wall-card.swc-light .swc-username {
   color: #1a1a2e;
-  text-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+  text-shadow: none;
 }
 
 .story-wall-card.swc-light .swc-meta {
   color: rgba(0, 0, 0, 0.5);
-  text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+  text-shadow: none;
 }
 
 .story-wall-card.swc-light .swc-content {
   color: rgba(0, 0, 0, 0.75);
-  text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+  text-shadow: none;
 }
 
 .story-wall-card.swc-light .swc-stats {
   color: rgba(0, 0, 0, 0.5);
-  text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+  text-shadow: none;
 }
 
 .story-wall-card.swc-light .swc-avatar {
