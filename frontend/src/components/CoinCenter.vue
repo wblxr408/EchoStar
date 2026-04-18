@@ -106,55 +106,6 @@
               </div>
             </div>
 
-            <!-- Store Items (Spend) -->
-            <div class="coin-section">
-              <h3 class="coin-section__title">消耗场景</h3>
-              <div class="coin-shop-grid">
-                <div
-                  v-for="item in storeItems"
-                  :key="item.key"
-                  class="coin-shop-card"
-                  :class="{ dark: isDark }"
-                >
-                  <div class="coin-shop-card__top">
-                    <div>
-                      <strong>{{ item.name }}</strong>
-                      <p>{{ item.description }}</p>
-                    </div>
-                    <span class="coin-shop-card__cost">
-                      {{ isVipFreeItem(item) ? 'VIP免费' : `${item.cost}币` }}
-                    </span>
-                  </div>
-                  <button
-                    class="coin-shop-card__btn"
-                    type="button"
-                    :disabled="purchasingItem === item.key || isPermanentOwned(item)"
-                    @click="handlePurchase(item.key)"
-                  >
-                    {{ purchaseButtonLabel(item) }}
-                  </button>
-                  <p v-if="itemInventoryHint(item)" class="coin-shop-card__meta">{{ itemInventoryHint(item) }}</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Inventory -->
-            <div class="coin-section">
-              <h3 class="coin-section__title">已拥有权益</h3>
-              <div v-if="inventoryPreview.length === 0" class="coin-empty" :class="{ dark: isDark }">暂无已领取或已购买权益</div>
-              <div v-else class="coin-inventory-list">
-                <div v-for="item in inventoryPreview" :key="item.itemKey" class="coin-inventory-item" :class="{ dark: isDark }">
-                  <div>
-                    <strong>{{ inventoryName(item.itemKey) }}</strong>
-                    <p>
-                      {{ item.expiresAt ? `有效至 ${formatDate(item.expiresAt)}` : '永久权益 / 可重复消耗道具' }}
-                    </p>
-                  </div>
-                  <span class="coin-inventory-item__qty">x{{ item.quantity }}</span>
-                </div>
-              </div>
-            </div>
-
             <!-- Coin Ledger -->
             <div class="coin-section">
               <h3 class="coin-section__title">情绪币流水</h3>
@@ -195,12 +146,8 @@ const vipStore = useVipStore()
 const historyLoading = ref(false)
 const checkingIn = ref(false)
 const rechargingPackage = ref('')
-const purchasingItem = ref('')
 
 const rechargePackages = computed(() => vipStore.economy?.rechargePackages || [])
-const storeItems = computed(() => vipStore.economy?.storeItems || [])
-const inventoryPreview = computed(() => vipStore.activeInventory || [])
-const footprintTicketCount = computed(() => vipStore.getInventoryQuantity('footprint_animation'))
 
 watch(() => props.visible, async (val) => {
   if (val) {
@@ -230,47 +177,6 @@ async function handleRecharge(packageKey) {
   const result = await vipStore.rechargeCoins(packageKey)
   showToast(result.message, result.success ? 'success' : 'error')
   rechargingPackage.value = ''
-}
-
-async function handlePurchase(itemKey) {
-  if (!itemKey) return
-  purchasingItem.value = itemKey
-  const result = await vipStore.purchaseItem(itemKey)
-  showToast(result.message, result.success ? 'success' : 'error')
-  purchasingItem.value = ''
-}
-
-function isVipFreeItem(item) {
-  return !!(vipStore.isVipActive && item?.vipFree)
-}
-
-function isPermanentOwned(item) {
-  return item?.type === 'permanent' && vipStore.hasActiveItem(item.key)
-}
-
-function purchaseButtonLabel(item) {
-  if (purchasingItem.value === item.key) return '处理中...'
-  if (item.key === 'theme_skin' && isPermanentOwned(item)) return '已拥有'
-  if (item.key === 'footprint_animation') {
-    return footprintTicketCount.value > 0
-      ? `补充次数（现有 ${footprintTicketCount.value}）`
-      : (isVipFreeItem(item) ? '免费领取' : '购买 1 次')
-  }
-  return isVipFreeItem(item) ? '立即领取' : '立即购买'
-}
-
-function itemInventoryHint(item) {
-  const qty = vipStore.getInventoryQuantity(item.key)
-  if (item.key === 'footprint_animation' && qty > 0) return `剩余足迹次数 x${qty}`
-  if (item.key === 'theme_skin' && isPermanentOwned(item)) return '主题皮肤已解锁，可点亮专属图标'
-  if (item.type === 'timed' && qty > 0) return `当前生效中 x${qty}`
-  if (item.type === 'consumable' && qty > 0) return `背包库存 x${qty}`
-  return ''
-}
-
-function inventoryName(itemKey) {
-  const item = storeItems.value.find(entry => entry.key === itemKey)
-  return item?.name || itemKey
 }
 
 function formatDate(dateStr) {
@@ -686,124 +592,6 @@ function formatDateTime(dateStr) {
   color: #9fc0ff;
 }
 
-/* ===== Shop Grid ===== */
-.coin-shop-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.coin-shop-card {
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(184, 135, 46, 0.1);
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.coin-shop-card.dark {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(143, 180, 255, 0.09);
-}
-
-.coin-shop-card__top {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.coin-shop-card__top p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  opacity: 0.6;
-  line-height: 1.5;
-}
-
-.coin-shop-card__cost {
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 700;
-  color: #8e6c1a;
-}
-
-.coin-center.dark .coin-shop-card__cost {
-  color: #9fc0ff;
-}
-
-.coin-shop-card__btn {
-  width: 100%;
-  min-height: 40px;
-  border: none;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #ffd700, #f5a623);
-  color: #3d2e0a;
-  font-weight: 700;
-  font-family: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px -4px rgba(255, 215, 0, 0.3);
-}
-
-.coin-shop-card__btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.coin-shop-card__btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.coin-shop-card__meta {
-  margin: 10px 0 0;
-  font-size: 11px;
-  opacity: 0.58;
-}
-
-/* ===== Inventory ===== */
-.coin-inventory-list,
-.coin-ledger {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.coin-inventory-item,
-.coin-ledger__item {
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(184, 135, 46, 0.1);
-  background: rgba(255, 255, 255, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.coin-inventory-item.dark,
-.coin-ledger__item.dark {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(143, 180, 255, 0.09);
-}
-
-.coin-inventory-item p,
-.coin-ledger__item p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  opacity: 0.58;
-}
-
-.coin-inventory-item__qty,
-.coin-ledger__amount {
-  font-weight: 800;
-}
-
-.coin-ledger__amount.plus { color: #2d7a2d; }
-.coin-ledger__amount.minus { color: #c44; }
-
-.coin-center.dark .coin-ledger__amount.plus { color: #4ade80; }
-.coin-center.dark .coin-ledger__amount.minus { color: #f87171; }
-
 /* ===== Empty State ===== */
 .coin-empty {
   text-align: center;
@@ -818,11 +606,49 @@ function formatDateTime(dateStr) {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* ===== Ledger ===== */
+.coin-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.coin-ledger__item {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(184, 135, 46, 0.1);
+  background: rgba(255, 255, 255, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.coin-ledger__item.dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(143, 180, 255, 0.09);
+}
+
+.coin-ledger__item p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  opacity: 0.58;
+}
+
+.coin-ledger__amount {
+  font-weight: 800;
+}
+
+.coin-ledger__amount.plus { color: #2d7a2d; }
+.coin-ledger__amount.minus { color: #c44; }
+
+.coin-center.dark .coin-ledger__amount.plus { color: #4ade80; }
+.coin-center.dark .coin-ledger__amount.minus { color: #f87171; }
+
 /* ===== Responsive ===== */
 @media (max-width: 900px) {
   .coin-rule-grid,
-  .coin-package-grid,
-  .coin-shop-grid {
+  .coin-package-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -838,8 +664,7 @@ function formatDateTime(dateStr) {
   }
 
   .coin-rule-grid,
-  .coin-package-grid,
-  .coin-shop-grid {
+  .coin-package-grid {
     grid-template-columns: 1fr;
   }
 }

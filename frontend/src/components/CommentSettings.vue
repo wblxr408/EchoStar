@@ -13,15 +13,16 @@
         </button>
       </div>
 
-      <!-- VIP Gate -->
-      <div v-if="!vipStore.isVipActive" class="cs-vip-gate">
-        <span class="cs-vip-gate__icon">🔒</span>
-        <p class="cs-vip-gate__title">评论高级设置仅限 VIP</p>
-        <p class="cs-vip-gate__desc">开通 VIP 后可自定义评论时间窗口、关键词过滤、评论背景等</p>
-        <button class="cs-vip-gate__btn" @click="$emit('request-vip')">
-          <span>👑</span>
-          <span>了解 VIP</span>
+      <!-- Purchase Gate (non-VIP, no active bubble decor) -->
+      <div v-if="!canUseBubbleDecor" class="cs-vip-gate">
+        <span class="cs-vip-gate__icon">💬</span>
+        <p class="cs-vip-gate__title">评论高级设置</p>
+        <p class="cs-vip-gate__desc">VIP 用户免费使用；非 VIP 可花费 {{ BUBBLE_DECOR_COST }} 币解锁 7 天</p>
+        <button class="cs-vip-gate__btn" :disabled="purchasing" @click="handlePurchaseBubbleDecor">
+          <span v-if="purchasing">购买中...</span>
+          <span v-else>🪙 {{ BUBBLE_DECOR_COST }} 币解锁 7 天</span>
         </button>
+        <p v-if="purchaseError" class="cs-vip-gate__error">{{ purchaseError }}</p>
       </div>
 
       <!-- Settings Content -->
@@ -187,6 +188,26 @@ const props = defineProps({
 const emit = defineEmits(['close', 'request-vip', 'saved'])
 
 const vipStore = useVipStore()
+
+const BUBBLE_DECOR_COST = 100
+const purchasing = ref(false)
+const purchaseError = ref('')
+
+const canUseBubbleDecor = computed(() => {
+  if (vipStore.isVipActive) return true
+  return vipStore.hasActiveItem('bubble_decor_7d')
+})
+
+async function handlePurchaseBubbleDecor() {
+  if (purchasing.value) return
+  purchasing.value = true
+  purchaseError.value = ''
+  const result = await vipStore.useBubbleDecor()
+  if (!result.success) {
+    purchaseError.value = result.message
+  }
+  purchasing.value = false
+}
 
 // Time window
 const timeOptions = [
@@ -374,6 +395,13 @@ function saveSettings() {
   transition: all 0.22s ease;
 }
 .cs-vip-gate__btn:hover { transform: translateY(-2px); }
+
+.cs-vip-gate__error {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #c44;
+  opacity: 0.8;
+}
 
 /* --- Sections --- */
 .cs-section {

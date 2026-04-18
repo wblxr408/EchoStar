@@ -219,6 +219,59 @@ export const useVipStore = defineStore('vip', () => {
     return { success: true, isVip: false, cost: FOOTPRINT_COST };
   }
 
+  const BUBBLE_DECOR_COST = 100;
+  const THEME_SKIN_COST = 500;
+
+  async function useBubbleDecor() {
+    if (isVipActive.value) {
+      return { success: true, isVip: true, cost: 0 };
+    }
+
+    if (hasActiveItem('bubble_decor_7d')) {
+      return { success: true, isVip: false, cost: 0 };
+    }
+
+    if (emotionCoins.value < BUBBLE_DECOR_COST) {
+      return {
+        success: false,
+        type: 'insufficient_coins',
+        message: `情绪币不足，解锁装扮功能需要 ${BUBBLE_DECOR_COST} 币`
+      };
+    }
+
+    const purchaseResult = await purchaseItem('bubble_decor_7d');
+    if (!purchaseResult.success) {
+      return { success: false, type: 'purchase_failed', message: purchaseResult.message };
+    }
+
+    return { success: true, isVip: false, cost: BUBBLE_DECOR_COST };
+  }
+
+  async function useThemeSkin() {
+    if (isVipActive.value) {
+      return { success: true, isVip: true, cost: 0 };
+    }
+
+    if (hasActiveItem('theme_skin')) {
+      return { success: true, isVip: false, cost: 0 };
+    }
+
+    if (emotionCoins.value < THEME_SKIN_COST) {
+      return {
+        success: false,
+        type: 'insufficient_coins',
+        message: `情绪币不足，解锁主题皮肤需要 ${THEME_SKIN_COST} 币`
+      };
+    }
+
+    const purchaseResult = await purchaseItem('theme_skin');
+    if (!purchaseResult.success) {
+      return { success: false, type: 'purchase_failed', message: purchaseResult.message };
+    }
+
+    return { success: true, isVip: false, cost: THEME_SKIN_COST };
+  }
+
   function canPolish(storyId) {
     const info = polishedStories.value.get(storyId);
     if (info && new Date(info.expiresAt) > new Date()) return false;
@@ -377,6 +430,8 @@ export const useVipStore = defineStore('vip', () => {
     consumeItem,
     purchaseVip,
     useFootprint,
+    useBubbleDecor,
+    useThemeSkin,
     canPolish,
     restorePolishedStories,
     polishStory,
@@ -385,6 +440,8 @@ export const useVipStore = defineStore('vip', () => {
     getStoryPolishCost,
     STORY_POLISH_COST,
     FOOTPRINT_COST,
+    BUBBLE_DECOR_COST,
+    THEME_SKIN_COST,
     VIP_COST,
     setCommentBg,
     setProfileBg,

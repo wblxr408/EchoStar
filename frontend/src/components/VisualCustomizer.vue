@@ -53,22 +53,28 @@
           <div class="vc-section__header">
             <h3 class="vc-section__title">
               <span>✨</span><span>VIP 专属标签</span>
-              <span class="vc-vip-tag">VIP</span>
+              <span v-if="hasVisualAccess" class="vc-vip-tag">VIP</span>
             </h3>
-            <span v-if="!vipStore.isVipActive" class="vc-lock-hint">🔒 开通VIP解锁</span>
+            <span v-if="!hasVisualAccess" class="vc-lock-hint">🔒 解锁后可用</span>
           </div>
-          <div class="vc-emotion-grid" :class="{ 'vc-emotion-grid--locked': !vipStore.isVipActive }">
+          <div v-if="!hasVisualAccess" class="vc-purchase-gate">
+            <p class="vc-purchase-gate__desc">VIP 专属标签，非 VIP 可花费 {{ VISUAL_COST }} 币解锁 7 天</p>
+            <button class="vc-purchase-gate__btn" :disabled="purchasingVisual" @click="handlePurchaseVisual">
+              <span v-if="purchasingVisual">购买中...</span>
+              <span v-else>🪙 {{ VISUAL_COST }} 币解锁 7 天</span>
+            </button>
+            <p v-if="visualPurchaseError" class="vc-purchase-gate__error">{{ visualPurchaseError }}</p>
+          </div>
+          <div v-else class="vc-emotion-grid">
             <button
               v-for="e in vipEmotions"
               :key="e.value"
               class="vc-emotion-item vc-emotion-item--vip"
               :class="{ 'vc-emotion-item--selected': isEmotionSelected(e.value) }"
-              :disabled="!vipStore.isVipActive"
-              @click="vipStore.isVipActive && toggleEmotion(e.value)"
+              @click="toggleEmotion(e.value)"
             >
               <span class="vc-emotion-icon">{{ e.icon }}</span>
               <span class="vc-emotion-label">{{ e.label }}</span>
-              <span v-if="!vipStore.isVipActive" class="vc-emotion-lock">🔒</span>
             </button>
           </div>
         </section>
@@ -86,13 +92,15 @@
 
       <!-- === Profile Background Tab === -->
       <div v-if="activeTab === 'profile'" class="vc-tab-content">
-        <div v-if="!vipStore.isVipActive" class="vc-vip-gate">
-          <span class="vc-vip-gate__icon">🔒</span>
-          <p class="vc-vip-gate__title">个人主页背景仅限 VIP</p>
-          <p class="vc-vip-gate__desc">开通 VIP 后可设置专属个人主页背景</p>
-          <button class="vc-vip-gate__btn" @click="$emit('request-vip')">
-            <span>👑</span><span>了解 VIP</span>
+        <div v-if="!hasVisualAccess" class="vc-vip-gate">
+          <span class="vc-vip-gate__icon">🖼</span>
+          <p class="vc-vip-gate__title">个人主页背景</p>
+          <p class="vc-vip-gate__desc">VIP 用户免费使用；非 VIP 可花费 {{ VISUAL_COST }} 币解锁 7 天</p>
+          <button class="vc-vip-gate__btn" :disabled="purchasingVisual" @click="handlePurchaseVisual">
+            <span v-if="purchasingVisual">购买中...</span>
+            <span v-else>🪙 {{ VISUAL_COST }} 币解锁 7 天</span>
           </button>
+          <p v-if="visualPurchaseError" class="vc-vip-gate__error">{{ visualPurchaseError }}</p>
         </div>
 
         <template v-else>
@@ -194,6 +202,26 @@ const props = defineProps({
 const emit = defineEmits(['close', 'request-vip', 'saved'])
 
 const vipStore = useVipStore()
+
+const VISUAL_COST = 100
+const purchasingVisual = ref(false)
+const visualPurchaseError = ref('')
+
+const hasVisualAccess = computed(() => {
+  if (vipStore.isVipActive) return true
+  return vipStore.hasActiveItem('bubble_decor_7d')
+})
+
+async function handlePurchaseVisual() {
+  if (purchasingVisual.value) return
+  purchasingVisual.value = true
+  visualPurchaseError.value = ''
+  const result = await vipStore.useBubbleDecor()
+  if (!result.success) {
+    visualPurchaseError.value = result.message
+  }
+  purchasingVisual.value = false
+}
 
 // Tabs
 const activeTab = ref('emotion')
@@ -425,6 +453,50 @@ function saveCustomization() {
 }
 
 .vc-lock-hint { font-size: 11px; opacity: 0.5; }
+
+/* Purchase gate */
+.vc-purchase-gate {
+  text-align: center;
+  padding: 12px 0;
+}
+
+.vc-purchase-gate__desc {
+  font-size: 12px;
+  opacity: 0.6;
+  margin: 0 0 10px;
+}
+
+.vc-purchase-gate__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  color: #3d2e0a;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vc-purchase-gate__btn:hover:not(:disabled) { transform: translateY(-1px); }
+.vc-purchase-gate__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.vc-purchase-gate__error {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #c44;
+  opacity: 0.8;
+}
+
+.vc-vip-gate__error {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #c44;
+  opacity: 0.8;
+}
 
 /* Emotion grid */
 .vc-emotion-grid {
