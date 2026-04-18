@@ -4815,6 +4815,12 @@ function restorePublishPanelFromPick() {
   isPickingPublishLocation.value = false;
 }
 
+function handleDocumentKeydown(e) {
+  if (e.key === "Escape" && isPickingPublishLocation.value) {
+    restorePublishPanelFromPick();
+  }
+}
+
 function handlePublishClick() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
     showToast("请先登录后再发布故事", "warning");
@@ -8228,6 +8234,7 @@ onMounted(() => {
   }, 60000);
 
   document.addEventListener("click", handleDocumentClick);
+  document.addEventListener("keydown", handleDocumentKeydown);
   window.addEventListener("resize", scheduleWelcomeTextFit);
   scheduleWelcomeTextFit();
   if (document.fonts?.ready) {
@@ -8262,6 +8269,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener("click", handleDocumentClick);
+  document.removeEventListener("keydown", handleDocumentKeydown);
   window.removeEventListener("resize", scheduleWelcomeTextFit);
   clearNearbySearchTimer();
   clearNearbyCenterLabelTimer();
@@ -10385,6 +10393,7 @@ onUnmounted(() => {
 
 .publish-modal-shell.pick-mode .publish-modal {
   width: min(420px, calc(100vw - 28px));
+  height: auto;
   max-height: none;
   pointer-events: none;
   overflow: visible;
