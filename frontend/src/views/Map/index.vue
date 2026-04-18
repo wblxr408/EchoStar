@@ -233,8 +233,20 @@
               </div>
 
               <!-- 标签栏 -->
-              <div class="user-content-tabs">
-                <button class="content-tab active">作品<span class="tab-count">{{ searchedUserStories.length }}</span></button>
+              <div class="user-content-tabs-wrapper">
+                <div class="user-content-tabs">
+                  <button class="content-tab active">作品<span class="tab-count">{{ searchedUserStories.length }}</span></button>
+                </div>
+                <transition name="back-to-top">
+                  <button
+                    v-if="showProfileBackToTop"
+                    class="wall-back-to-top profile-back-to-top"
+                    :class="{ dark: effectiveMapTheme === 'dark' }"
+                    @click="scrollProfileToTop(userDetailVScrollContainerRef)"
+                  >
+                    <span>^</span>
+                  </button>
+                </transition>
               </div>
 
               <!-- 故事列表 -->
@@ -272,17 +284,7 @@
               </div>
             </div>
           </div>
-          <!-- 返回顶部按钮 -->
-          <transition name="back-to-top">
-            <button
-              v-if="showProfileBackToTop"
-              class="wall-back-to-top"
-              :class="{ dark: effectiveMapTheme === 'dark' }"
-              @click="scrollProfileToTop(userDetailVScrollContainerRef)"
-            >
-              <span>^</span>
-            </button>
-          </transition>
+          <!-- 返回顶部按钮 (他人主页 - 已移入标签栏内) -->
         </div>
       </div>
       </transition>
@@ -1058,28 +1060,40 @@
             </div>
 
             <!-- 标签栏 -->
-            <div class="user-content-tabs">
-              <button
-                class="content-tab"
-                :class="{ active: userContentTab === 'posts' }"
-                @click="switchUserContentTab('posts')"
-              >
-                作品<span v-if="postsTotalCount >= 0" class="tab-count">{{ postsTotalCount }}</span>
-              </button>
-              <button
-                class="content-tab"
-                :class="{ active: userContentTab === 'likes' }"
-                @click="switchUserContentTab('likes')"
-              >
-                点赞<span v-if="likesTotalCount >= 0" class="tab-count">{{ likesTotalCount }}</span>
-              </button>
-              <button
-                class="content-tab"
-                :class="{ active: userContentTab === 'favorites' }"
-                @click="switchUserContentTab('favorites')"
-              >
-                收藏<span v-if="favoritesTotalCount >= 0" class="tab-count">{{ favoritesTotalCount }}</span>
-              </button>
+            <div class="user-content-tabs-wrapper">
+              <div class="user-content-tabs">
+                <button
+                  class="content-tab"
+                  :class="{ active: userContentTab === 'posts' }"
+                  @click="switchUserContentTab('posts')"
+                >
+                  作品<span v-if="postsTotalCount >= 0" class="tab-count">{{ postsTotalCount }}</span>
+                </button>
+                <button
+                  class="content-tab"
+                  :class="{ active: userContentTab === 'likes' }"
+                  @click="switchUserContentTab('likes')"
+                >
+                  点赞<span v-if="likesTotalCount >= 0" class="tab-count">{{ likesTotalCount }}</span>
+                </button>
+                <button
+                  class="content-tab"
+                  :class="{ active: userContentTab === 'favorites' }"
+                  @click="switchUserContentTab('favorites')"
+                >
+                  收藏<span v-if="favoritesTotalCount >= 0" class="tab-count">{{ favoritesTotalCount }}</span>
+                </button>
+              </div>
+              <transition name="back-to-top">
+                <button
+                  v-if="showProfileBackToTop"
+                  class="wall-back-to-top profile-back-to-top"
+                  :class="{ dark: effectiveMapTheme === 'dark' }"
+                  @click="scrollProfileToTop(vScrollContainerRef)"
+                >
+                  <span>^</span>
+                </button>
+              </transition>
             </div>
 
             <!-- 标签内容区（虚拟滚动） -->
@@ -1211,17 +1225,7 @@
               </template>
             </div>
           </div>
-          <!-- 返回顶部按钮 -->
-          <transition name="back-to-top">
-            <button
-              v-if="showProfileBackToTop"
-              class="wall-back-to-top"
-              :class="{ dark: effectiveMapTheme === 'dark' }"
-              @click="scrollProfileToTop(vScrollContainerRef)"
-            >
-              <span>^</span>
-            </button>
-          </transition>
+          <!-- 返回顶部按钮 (我的主页 - 已移入标签栏内) -->
         </div>
       </div>
       </transition>
@@ -8641,6 +8645,14 @@ onUnmounted(() => {
   border-color: rgba(196, 142, 48, 0.28);
   background: rgba(63, 40, 11, 0.82);
   color: #fffaf1;
+}
+/* 标签栏包裹层 - 为返回顶部按钮提供定位上下文 */
+.user-content-tabs-wrapper {
+  position: relative;
+}
+.wall-back-to-top.profile-back-to-top {
+  top: 6px;
+  right: 20px;
 }
 .wall-back-to-top:not(.dark):hover {
   background: rgba(88, 56, 18, 0.95);
