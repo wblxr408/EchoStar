@@ -6392,6 +6392,9 @@ async function loadPostsData(isLoadMore = false) {
     }
 
     void hydrateStoryLocations(stories);
+
+    // 从后端数据恢复擦亮状态
+    vipStore.restorePolishedStories(rawStories);
   } catch (error) {
     console.error("加载发布数据失败:", error);
   } finally {

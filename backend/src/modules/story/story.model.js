@@ -86,6 +86,12 @@ export const Story = sequelize.define('Story', {
     defaultValue: false,
     field: 'is_recommended',
     comment: '是否为管理员推荐'
+  },
+  polishedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'polished_at',
+    comment: '擦亮时间，24小时有效'
   }
 }, {
   tableName: 'stories',

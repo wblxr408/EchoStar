@@ -184,7 +184,7 @@
                 <div class="vip-polish-bar__fill" :style="{ width: polishPercent + '%' }"></div>
                 <div class="vip-polish-bar__labels">
                   <span>已用 {{ vipStore.polishCount.used }} 次</span>
-                  <span>剩余 {{ vipStore.polishRemaining }} 次</span>
+                  <span>剩余 不限 次</span>
                 </div>
               </div>
             </div>
@@ -286,8 +286,9 @@ const footprintTicketCount = computed(() => vipStore.getInventoryQuantity('footp
 const themeSkinUnlocked = computed(() => vipStore.hasActiveItem('theme_skin'))
 
 const polishPercent = computed(() => {
-  const { used, total } = vipStore.polishCount
-  return total > 0 ? Math.min(100, (used / total) * 100) : 0
+  const used = vipStore.polishCount.used || 0
+  // VIP擦亮不限次，进度条只做视觉展示
+  return Math.min(100, used * 10)
 })
 
 watch(() => props.visible, async (val) => {
