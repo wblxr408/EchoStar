@@ -25,13 +25,11 @@ const AuthServiceImpl = {
     try {
       const redis = redisClient.getClient();
 
-      // 开发环境：跳过邮件发送，验证码直接打印到控制台
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`\n🔑 [开发模式] 验证码: ${code} (邮箱: ${fixedEmail}, 5分钟有效)\n`);
-      } else {
+      // 有邮件配置时发送邮件，否则仅打印到控制台
+      if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
         const transporter = nodemailer.createTransport({
           host: process.env.EMAIL_HOST,
-          port: process.env.EMAIL_PORT,
+          port: parseInt(process.env.EMAIL_PORT) || 465,
           secure: process.env.EMAIL_SECURE === 'true',
           auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
         });
@@ -44,7 +42,9 @@ const AuthServiceImpl = {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log('✅ 邮件发送成功');
+        console.log(`✅ 邮件发送成功 (邮箱: ${fixedEmail})`);
+      } else {
+        console.log(`\n🔑 [未配置邮件] 验证码: ${code} (邮箱: ${fixedEmail}, 5分钟有效)\n`);
       }
 
       // ===================== 终极调试：用最原始的方式 =====================
