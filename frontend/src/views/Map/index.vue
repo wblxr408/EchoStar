@@ -1418,8 +1418,6 @@
       </div>
     </div>
 
-    <div class="project-title"></div>
-
     <PaperPlaneStory
       v-if="selectedStory"
       :story="selectedStory"
@@ -13767,71 +13765,6 @@ onUnmounted(() => {
   }
   to {
     transform: rotate(360deg);
-  }
-}
-
-.project-title {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 280px;
-  padding: 12px 20px;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 107, 107, 0.2) 0%,
-    rgba(255, 165, 0, 0.2) 14.28%,
-    rgba(255, 215, 0, 0.2) 28.57%,
-    rgba(168, 230, 207, 0.2) 42.85%,
-    rgba(102, 126, 234, 0.2) 57.14%,
-    rgba(255, 107, 157, 0.2) 71.43%,
-    rgba(255, 107, 107, 0.2) 85.71%,
-    rgba(255, 107, 107, 0.2) 100%
-  );
-  background-size: 600% 100%;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  font-family: "Georgia", "Times New Roman", serif;
-  font-size: 28px;
-  font-weight: 700;
-  background-clip: padding-box;
-  letter-spacing: 2px;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: colorFlow 20s linear infinite;
-}
-
-.project-title::before {
-  content: "EchoStar";
-  background: linear-gradient(
-    90deg,
-    rgba(0, 148, 148, 1) 0%,
-    rgba(0, 90, 255, 1) 14.28%,
-    rgba(0, 40, 255, 1) 28.57%,
-    rgba(87, 25, 48, 1) 42.85%,
-    rgba(153, 129, 21, 1) 57.14%,
-    rgba(0, 148, 98, 1) 71.43%,
-    rgba(0, 148, 148, 1) 85.71%,
-    rgba(0, 148, 148, 1) 100%
-  );
-  background-size: 600% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: colorFlow 20s linear infinite reverse;
-  text-shadow: none;
-}
-
-@keyframes colorFlow {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 85.71% 50%;
   }
 }
 
