@@ -313,6 +313,7 @@
         @theme-change="handleThemeChange"
         @paper-plane-click="handlePaperPlaneClick"
         @paper-plane-move="handlePaperPlaneMove"
+        @paper-plane-rightclick="handlePaperPlaneRightClick"
       />
     </div>
 
@@ -871,6 +872,7 @@
                 :picked-map-location="pickedPublishLocation"
                 :is-picking-location="isPickingPublishLocation"
                 :map-theme="effectiveMapTheme"
+                :prefill-query="publishPrefillQuery"
                 @submit="handlePublishSubmit"
                 @request-map-pick="startPublishMapPick"
                 @cancel-map-pick="cancelPublishMapPick"
@@ -1653,6 +1655,7 @@ const isPickingPublishLocation = ref(false);
 const pickedPublishLocation = ref(null);
 const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
+const publishPrefillQuery = ref('');
 const showLoginModal = ref(false);
 const showNotificationPanel = ref(false);
 const notificationTab = ref("messages");
@@ -4899,6 +4902,7 @@ function closePublishPanel() {
   isPickingPublishLocation.value = false;
   suggestedPublishLocations.value = [];
   publishPickPrompt.value = null;
+  publishPrefillQuery.value = '';
   pickedPublishLocation.value = null;
   showPublishSidebar.value = false;
 }
@@ -4948,6 +4952,7 @@ function handlePublishClick() {
   }
   suggestedPublishLocations.value = [];
   publishPickPrompt.value = null;
+  publishPrefillQuery.value = '';
   pickedPublishLocation.value = null;
   isPickingPublishLocation.value = false;
   isDockExpanded.value = false;
@@ -5818,6 +5823,33 @@ function scrollPlaneNearbyToTop() {
 
 function handlePaperPlaneClick(point) {
   openPlaneNearby();
+}
+
+function handlePaperPlaneRightClick(point) {
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    showToast("请先登录后再发布故事", "warning");
+    showLoginModal.value = true;
+    return;
+  }
+  // 关闭其他面板
+  if (showSidebar.value) closeStoryPanel();
+  if (showUserSidebar.value) closeUserPanel();
+  if (showPlaneNearby.value) showPlaneNearby.value = false;
+  if (showVipCenter.value) showVipCenter = false;
+  // 逆地理编码纸飞机位置
+  const coords = { latitude: point.latitude, longitude: point.longitude };
+  reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
+    if (!location) return;
+    const displayName = pickLocationDisplayName(location, location.name || '当前位置');
+    suggestedPublishLocations.value = [];
+    pickedPublishLocation.value = location;
+    isPickingPublishLocation.value = false;
+    // 先打开发布面板，等面板可见后再设置预填充（PublishForm watch 需要 visible=true）
+    showPublishSidebar.value = true;
+    nextTick(() => {
+      publishPrefillQuery.value = displayName;
+    });
+  });
 }
 
 function handlePaperPlaneMove(point) {

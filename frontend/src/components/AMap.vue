@@ -69,6 +69,7 @@ const emit = defineEmits([
   "cluster-click",
   "paper-plane-click",
   "paper-plane-move",
+  "paper-plane-rightclick",
 ]);
 
 const mapContainer = ref(null);
@@ -714,6 +715,14 @@ function initPaperPlane(coords) {
     paperPlaneMarker.on('click', () => {
       const pos = paperPlaneMarker.getPosition();
       emit('paper-plane-click', {
+        latitude: pos.getLat(),
+        longitude: pos.getLng(),
+      });
+    });
+    paperPlaneMarker.on('rightclick', (e) => {
+      e.originEvent?.preventDefault?.();
+      const pos = paperPlaneMarker.getPosition();
+      emit('paper-plane-rightclick', {
         latitude: pos.getLat(),
         longitude: pos.getLng(),
       });

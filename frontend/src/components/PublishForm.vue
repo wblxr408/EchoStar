@@ -268,6 +268,10 @@ const props = defineProps({
   mapTheme: {
     type: String,
     default: 'light'
+  },
+  prefillQuery: {
+    type: String,
+    default: ''
   }
 });
 
@@ -439,6 +443,20 @@ watch(
     activeSearchToken += 1;
   },
   { deep: true, immediate: true }
+);
+
+// 预填充地点查询文字（不自动选中，用户必须手动确认）
+watch(
+  () => props.prefillQuery,
+  (query) => {
+    if (!query || !props.visible) return;
+    searchResults.value = [];
+    searchError.value = '';
+    hasSearched.value = false;
+    form.value.selectedLocation = null;
+    setLocationQuerySilently(query);
+    activeSearchToken += 1;
+  }
 );
 
 watch(
