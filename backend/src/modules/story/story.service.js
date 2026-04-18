@@ -155,12 +155,6 @@ class StoryServiceClass {
       throw new Error('发布失败，请稍后重试');
     }
 
-    // 立即返回真实的 ID
-    const { VipService } = await import('../vip/vip.service.js');
-    VipService.rewardStoryPublish(userId, storyId).catch((err) => {
-      console.error('发帖情绪币奖励发放失败:', err);
-    });
-
     return {
       id: normalizeStoryId(storyId),
       content,

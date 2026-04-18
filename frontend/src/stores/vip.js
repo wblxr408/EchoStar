@@ -20,6 +20,8 @@ export const useVipStore = defineStore('vip', () => {
   const polishCount = ref({ used: 0 });
   const polishedStories = ref(new Map());
   const STORY_POLISH_COST = 30;
+  const FOOTPRINT_COST = 20;
+  const VIP_COST = 300;
 
   const savedCommentBg = ref(loadFromStorage('vip_comment_bg', null));
   const savedProfileBg = ref(loadFromStorage('vip_profile_bg', null));
@@ -174,10 +176,47 @@ export const useVipStore = defineStore('vip', () => {
     try {
       const res = await vipApi.consumeItem(itemKey);
       await fetchEconomy();
-      return { success: true, message: res.message || '浣跨敤鎴愬姛', data: res.data || res };
+      return { success: true, message: res.message || '使用成功', data: res.data || res };
     } catch (err) {
-      return { success: false, message: err?.response?.data?.message || err?.message || '浣跨敤澶辫触' };
+      return { success: false, message: err?.response?.data?.message || err?.message || '使用失败' };
     }
+  }
+
+  async function purchaseVip() {
+    try {
+      const res = await vipApi.purchaseVip();
+      await fetchEconomy();
+      await fetchStatus();
+      return { success: true, message: res.message || 'VIP购买成功', data: res.data || res };
+    } catch (err) {
+      return { success: false, message: err?.response?.data?.message || err?.message || '购买VIP失败' };
+    }
+  }
+
+  async function useFootprint() {
+    if (isVipActive.value) {
+      return { success: true, isVip: true, cost: 0 };
+    }
+
+    if (emotionCoins.value < FOOTPRINT_COST) {
+      return {
+        success: false,
+        type: 'insufficient_coins',
+        message: `情绪币不足，使用足迹功能需要 ${FOOTPRINT_COST} 币`
+      };
+    }
+
+    const purchaseResult = await purchaseItem('footprint_animation');
+    if (!purchaseResult.success) {
+      return { success: false, type: 'purchase_failed', message: purchaseResult.message };
+    }
+
+    const consumeResult = await consumeItem('footprint_animation');
+    if (!consumeResult.success) {
+      return { success: false, type: 'consume_failed', message: consumeResult.message };
+    }
+
+    return { success: true, isVip: false, cost: FOOTPRINT_COST };
   }
 
   function canPolish(storyId) {
@@ -306,11 +345,16 @@ export const useVipStore = defineStore('vip', () => {
     rechargeCoins,
     purchaseItem,
     consumeItem,
+    purchaseVip,
+    useFootprint,
     canPolish,
     polishStory,
     isStoryPolished,
     getPolishExpiresAt,
     getStoryPolishCost,
+    STORY_POLISH_COST,
+    FOOTPRINT_COST,
+    VIP_COST,
     setCommentBg,
     setProfileBg,
     setEmotionStyles,

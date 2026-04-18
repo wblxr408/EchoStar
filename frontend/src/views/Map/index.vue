@@ -370,6 +370,13 @@
       @open-footprints="showVipCenter = false; handleFootprints()"
     />
 
+    <!-- Coin Center -->
+    <CoinCenter
+      :visible="showCoinCenter"
+      :is-dark="effectiveMapTheme === 'dark'"
+      @close="showCoinCenter = false"
+    />
+
     <!-- Comment Settings -->
     <CommentSettings
       :visible="showCommentSettings"
@@ -1060,7 +1067,7 @@
                   </div>
                   <div class="user-star-id">STAR-ID: {{ userStore.user?.id ?? "" }}</div>
                 </div>
-                <button class="wallet-inline-btn" @click="showVipCenter = true">
+                <button class="wallet-inline-btn" @click="showCoinCenter = true">
                   <span class="wallet-inline-btn__icon">🪙</span>
                   <span>{{ vipStore.emotionCoins || 0 }}</span>
                 </button>
@@ -1416,8 +1423,6 @@
       </div>
     </div>
 
-    <div class="project-title"></div>
-
     <PaperPlaneStory
       v-if="selectedStory"
       :story="selectedStory"
@@ -1605,6 +1610,7 @@ import ClusterPopover from "../../components/ClusterPopover.vue";
 import ImageLightbox from "../../components/ImageLightbox.vue";
 import MyFootprints from "../../components/MyFootprints.vue";
 import VipCenter from "../../components/VipCenter.vue";
+import CoinCenter from "../../components/CoinCenter.vue";
 import CommentSettings from "../../components/CommentSettings.vue";
 import VisualCustomizer from "../../components/VisualCustomizer.vue";
 import PolishStory from "../../components/PolishStory.vue";
@@ -1990,6 +1996,7 @@ const savedAccounts = ref([]);
 const isSwitchingAccount = ref(false); // 标记是否在切换账号流程中
 const showFootprints = ref(false);
 const showVipCenter = ref(false);
+const showCoinCenter = ref(false);
 const showCommentSettings = ref(false);
 const showVisualCustomizer = ref(false);
 const vipStore = useVipStore();
@@ -2139,6 +2146,7 @@ async function loadAllWallTabs() {
     extractCoordinates(mapStore.userLocation);
   const lat = center?.latitude;
   const lng = center?.longitude;
+  console.log('[loadAllWallTabs] lat:', lat, 'lng:', lng, 'center:', center);
 
   // 重置所有标签页状态
   for (const key of Object.keys(wallTabs.value)) {
@@ -2146,12 +2154,14 @@ async function loadAllWallTabs() {
   }
 
   // 同时请求两个标签页
+  console.log('[loadAllWallTabs] 开始并行加载 featured + recommend');
   await Promise.allSettled([
     loadWallFeatured(),
     loadWallRecommend(lat, lng),
   ]);
 
   storyCardAnimationKey.value++;
+  console.log('[loadAllWallTabs] 加载完成');
 }
 
 async function loadWallFeatured() {
@@ -2185,6 +2195,7 @@ async function loadWallRecommend(lat, lng) {
   const tab = wallTabs.value.recommend;
   tab.loading = true;
   tab.error = null;
+  console.log('[wall-recommend] 开始加载, lat:', lat, 'lng:', lng);
   try {
     const res = await mapApi.getRecommendationFeed({
       lat,
@@ -2192,10 +2203,15 @@ async function loadWallRecommend(lat, lng) {
       limit: WALL_INITIAL_LIMIT,
       summary: true,
     });
+    console.log('[wall-recommend] 原始响应:', JSON.stringify(res).substring(0, 500));
     const data = res?.data ?? res;
-    const stories = (data?.stories ?? [])
+    console.log('[wall-recommend] 解析data:', JSON.stringify(data).substring(0, 500));
+    const rawList = data?.stories ?? [];
+    console.log('[wall-recommend] stories数量:', rawList.length);
+    const stories = rawList
       .map((s) => normalizeStoryForMap(s))
       .filter(Boolean);
+    console.log('[wall-recommend] normalize后数量:', stories.length);
     tab.items = stories;
     tab.page = 1;
     tab.totalPages = data?.pagination?.totalPages ?? 1;
@@ -6169,31 +6185,11 @@ async function handleFootprints() {
 
     await vipStore.fetchEconomy();
 
-    if (!vipStore.isVipActive) {
-      let footprintQty = vipStore.getInventoryQuantity('footprint_animation');
-
-      if (footprintQty <= 0) {
-        const purchaseResult = await vipStore.purchaseItem('footprint_animation');
-        if (!purchaseResult.success) {
-          showToast(purchaseResult.message, 'error');
-          isDockExpanded.value = false;
-          return;
-        }
-        footprintQty = vipStore.getInventoryQuantity('footprint_animation');
-      }
-
-      if (footprintQty <= 0) {
-        showToast("足迹次数购买失败，请稍后重试", "error");
-        isDockExpanded.value = false;
-        return;
-      }
-
-      const consumeResult = await vipStore.consumeItem('footprint_animation');
-      if (!consumeResult.success) {
-        showToast(consumeResult.message, 'error');
-        isDockExpanded.value = false;
-        return;
-      }
+    const result = await vipStore.useFootprint();
+    if (!result.success) {
+      showToast(result.message, 'error');
+      isDockExpanded.value = false;
+      return;
     }
 
     showFootprints.value = true;
@@ -6216,7 +6212,7 @@ function handleStoryPolished({ storyId }) {
 
 function handlePolishError({ type, message }) {
   if (type === 'insufficient_coins') {
-    showVipCenter.value = true;
+    showCoinCenter.value = true;
   }
   showToast(message, type === 'insufficient_coins' ? 'warning' : 'error');
 }
@@ -7123,8 +7119,10 @@ function handleStoriesClick() {
   }
   showSidebar.value = !showSidebar.value;
   isDockExpanded.value = false;
+  console.log('[sidebar] 打开侧边栏, wallAllInitialDone:', wallAllInitialDone.value, 'showSidebar:', showSidebar.value);
   // 打开侧边栏时同时加载三个标签页
   if (showSidebar.value && !wallAllInitialDone.value) {
+    console.log('[sidebar] 触发 loadAllWallTabs');
     loadAllWallTabs();
   }
 }
@@ -13775,71 +13773,6 @@ onUnmounted(() => {
   }
   to {
     transform: rotate(360deg);
-  }
-}
-
-.project-title {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 280px;
-  padding: 12px 20px;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 107, 107, 0.2) 0%,
-    rgba(255, 165, 0, 0.2) 14.28%,
-    rgba(255, 215, 0, 0.2) 28.57%,
-    rgba(168, 230, 207, 0.2) 42.85%,
-    rgba(102, 126, 234, 0.2) 57.14%,
-    rgba(255, 107, 157, 0.2) 71.43%,
-    rgba(255, 107, 107, 0.2) 85.71%,
-    rgba(255, 107, 107, 0.2) 100%
-  );
-  background-size: 600% 100%;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  font-family: "Georgia", "Times New Roman", serif;
-  font-size: 28px;
-  font-weight: 700;
-  background-clip: padding-box;
-  letter-spacing: 2px;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: colorFlow 20s linear infinite;
-}
-
-.project-title::before {
-  content: "EchoStar";
-  background: linear-gradient(
-    90deg,
-    rgba(0, 148, 148, 1) 0%,
-    rgba(0, 90, 255, 1) 14.28%,
-    rgba(0, 40, 255, 1) 28.57%,
-    rgba(87, 25, 48, 1) 42.85%,
-    rgba(153, 129, 21, 1) 57.14%,
-    rgba(0, 148, 98, 1) 71.43%,
-    rgba(0, 148, 148, 1) 85.71%,
-    rgba(0, 148, 148, 1) 100%
-  );
-  background-size: 600% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: colorFlow 20s linear infinite reverse;
-  text-shadow: none;
-}
-
-@keyframes colorFlow {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 85.71% 50%;
   }
 }
 

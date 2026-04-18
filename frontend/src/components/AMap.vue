@@ -1,9 +1,20 @@
 <template>
-  <div
-    class="amap-container"
-    :class="{ 'dark-mode': isDarkMode }"
-    ref="mapContainer"
-  ></div>
+  <div class="amap-shell">
+    <div
+      class="amap-container"
+      :class="{ 'dark-mode': isDarkMode }"
+      ref="mapContainer"
+    ></div>
+    <div
+      v-if="mainlandApprovalNumber"
+      class="amap-approval-badge"
+      :class="{ dark: isDarkMode }"
+      aria-label="中国大陆审图号"
+    >
+      <span class="amap-approval-badge__label">中国大陆审图号</span>
+      <span class="amap-approval-badge__value">{{ mainlandApprovalNumber }}</span>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -93,6 +104,120 @@ let moveAnimationReady = true; // 改为默认 true，因为插件将通过 URL 
 const isDarkMode = ref(props.theme === "dark");
 const isSidebarHidden = ref(false);
 const isPublishSidebarOpen = ref(false);
+const configuredApprovalNumber = normalizeApprovalNumber(
+  import.meta.env.VITE_AMAP_APPROVAL_NUMBER,
+);
+const mainlandApprovalNumber = ref("");
+
+let approvalObserver = null;
+let approvalSyncTimer = null;
+
+function normalizeApprovalNumber(rawText) {
+  const text = String(rawText || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const gsMatch = text.match(/GS[（(]?\d{4}[）)]?\d+号?/i);
+  if (gsMatch?.[0]) {
+    return gsMatch[0].replace(/\(/g, "（").replace(/\)/g, "）");
+  }
+
+  const reviewMatch = text.match(/审图号[:：]?\s*([^，。；;]+)/);
+  return reviewMatch?.[1]?.trim() || "";
+}
+
+function extractMainlandApprovalNumber() {
+  if (!mapContainer.value) {
+    return "";
+  }
+
+  const selectors = [
+    ".amap-copyright",
+    ".amap-logo",
+    '[class*="copyright"]',
+    '[class*="Copyright"]',
+    '[class*="logo"]',
+    '[class*="Logo"]',
+  ];
+  const seenTexts = new Set();
+
+  for (const selector of selectors) {
+    const nodes = mapContainer.value.querySelectorAll(selector);
+    for (const node of nodes) {
+      const text = node.textContent?.replace(/\s+/g, " ").trim();
+      if (!text || seenTexts.has(text)) {
+        continue;
+      }
+
+      seenTexts.add(text);
+      const normalized = normalizeApprovalNumber(text);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return normalizeApprovalNumber(mapContainer.value.textContent || "");
+}
+
+function syncMainlandApprovalNumber() {
+  mainlandApprovalNumber.value =
+    configuredApprovalNumber || extractMainlandApprovalNumber();
+}
+
+function scheduleApprovalSync(delay = 80) {
+  if (approvalSyncTimer) {
+    window.clearTimeout(approvalSyncTimer);
+  }
+
+  approvalSyncTimer = window.setTimeout(() => {
+    approvalSyncTimer = null;
+    syncMainlandApprovalNumber();
+  }, delay);
+}
+
+function stopApprovalObserver() {
+  if (approvalObserver) {
+    approvalObserver.disconnect();
+    approvalObserver = null;
+  }
+
+  if (approvalSyncTimer) {
+    window.clearTimeout(approvalSyncTimer);
+    approvalSyncTimer = null;
+  }
+}
+
+function startApprovalObserver() {
+  if (configuredApprovalNumber) {
+    mainlandApprovalNumber.value = configuredApprovalNumber;
+    return;
+  }
+
+  if (!mapContainer.value || typeof MutationObserver === "undefined") {
+    return;
+  }
+
+  stopApprovalObserver();
+
+  approvalObserver = new MutationObserver(() => {
+    scheduleApprovalSync();
+  });
+
+  approvalObserver.observe(mapContainer.value, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+
+  syncMainlandApprovalNumber();
+  window.setTimeout(() => syncMainlandApprovalNumber(), 300);
+  window.setTimeout(() => syncMainlandApprovalNumber(), 1200);
+}
 
 function setMapZoomingState(isZooming) {
   if (!mapContainer.value) {
@@ -358,6 +483,10 @@ function initMap() {
     // 地图移动后像素位置变化，重新检测高缩放聚合
     updateClusterMarkers();
     updateMarkers();
+  });
+
+  map.on("complete", () => {
+    scheduleApprovalSync();
   });
 
   map.on("zoomstart", () => {
@@ -2126,6 +2255,7 @@ onMounted(() => {
       console.log('[AMapLoader] moveAnimation available:', typeof AMap.moveAnimation);
       
       initMap();
+      startApprovalObserver();
       updateClusterMarkers();
       updateMarkers();
       updateUserLocationMarker();
@@ -2155,6 +2285,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  stopApprovalObserver();
   clearPaperPlaneTooltip();
   if (paperPlaneMarker && map) {
     map.remove(paperPlaneMarker);
@@ -2193,6 +2324,7 @@ function toggleTheme() {
       ? "amap://styles/dark"
       : "amap://styles/whitesmoke";
     map.setMapStyle(newStyle);
+    scheduleApprovalSync();
     emit("theme-change", isDarkMode.value ? "dark" : "light");
     updateMarkers();
   }
@@ -2304,6 +2436,7 @@ watch(
         ? "amap://styles/dark"
         : "amap://styles/whitesmoke";
       map.setMapStyle(newStyle);
+      scheduleApprovalSync();
       updateMarkers();
     }
   },
@@ -2326,12 +2459,70 @@ watch(
 </script>
 
 <style scoped>
-.amap-container {
+.amap-shell {
+  position: relative;
   width: 100%;
   height: 100%;
-  position: relative;
+}
+
+.amap-container {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   background: #d0d0d0;
+}
+
+.amap-approval-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 44px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(380px, calc(100% - 24px));
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 37, 58, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: #2f3c52;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(12, 22, 38, 0.14);
+  pointer-events: none;
+}
+
+.amap-approval-badge.dark {
+  border-color: rgba(214, 224, 255, 0.14);
+  background: rgba(17, 25, 39, 0.82);
+  color: #e6eefb;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.amap-approval-badge__label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.72;
+}
+
+.amap-approval-badge__value {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .amap-approval-badge {
+    left: 10px;
+    right: 10px;
+    bottom: 52px;
+    max-width: none;
+  }
 }
 
 .amap-container :deep(.amap-maps) {

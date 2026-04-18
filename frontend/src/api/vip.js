@@ -48,4 +48,8 @@ export const vipApi = {
   consumeItem(itemKey) {
     return api.post('/v1/vip/economy/consume', { itemKey });
   },
+
+  purchaseVip() {
+    return api.post('/v1/vip/economy/purchase-vip');
+  },
 };

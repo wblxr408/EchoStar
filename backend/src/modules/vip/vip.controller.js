@@ -95,6 +95,22 @@ export const rechargeEmotionCoins = async (req, res, next) => {
 };
 
 /**
+ * 用情绪币购买VIP
+ */
+export const purchaseVipWithCoins = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const result = await VipService.purchaseVipWithCoins(userId);
+    res.json({ code: 0, data: result, message: `VIP购买成功，获得${result.days}天会员` });
+  } catch (error) {
+    if (error.message.startsWith('情绪币不足')) {
+      return res.status(400).json({ code: 40013, message: error.message });
+    }
+    next(error);
+  }
+};
+
+/**
  * 消耗情绪币购买权益
  */
 export const purchaseEmotionCoinItem = async (req, res, next) => {

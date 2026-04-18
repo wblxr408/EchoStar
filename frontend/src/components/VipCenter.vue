@@ -22,7 +22,7 @@
             <!-- Header -->
             <div class="vip-center__header">
               <span class="vip-center__header-icon">👑</span>
-              <h2 class="vip-center__title">VIP 与情绪币中心</h2>
+              <h2 class="vip-center__title">VIP 会员中心</h2>
               <span v-if="vipStore.isVipActive" class="vip-center__status-badge active">
                 生效中 · 剩余{{ vipStore.remainingDays }}天
               </span>
@@ -41,7 +41,7 @@
                       {{ vipStore.isVipActive ? 'VIP 会员' : '普通用户' }}
                     </p>
                     <p class="vip-card__desc" v-if="!vipStore.isVipActive">
-                      开通解锁擦亮故事、评论装扮、个性标签等专属权益
+                      开通VIP，解锁全部高级功能，免费不限次
                     </p>
                   </div>
                 </div>
@@ -53,83 +53,23 @@
               </div>
             </div>
 
-            <div class="vip-section vip-economy-panel" :class="{ dark: isDark }">
-              <div class="vip-economy-panel__head">
-                <div>
-                  <h3 class="vip-section__title">情绪币钱包</h3>
-                  <p class="vip-economy-panel__sub">签到、创作、互动均可获得，消费完全自愿</p>
-                </div>
-                <div class="vip-coin-pill">
-                  <span class="vip-coin-pill__icon">🪙</span>
-                  <span class="vip-coin-pill__value">{{ vipStore.emotionCoins }}</span>
-                </div>
-              </div>
-
-              <div class="vip-economy-stats">
-                <div class="vip-economy-stat">
-                  <span class="vip-economy-stat__label">连续签到</span>
-                  <strong>{{ vipStore.checkInStreak }} 天</strong>
-                </div>
-                <div class="vip-economy-stat">
-                  <span class="vip-economy-stat__label">今日签到</span>
-                  <strong>{{ vipStore.checkedInToday ? '已完成' : '未签到' }}</strong>
-                </div>
-                <button
-                  class="vip-checkin-btn"
-                  :disabled="vipStore.checkedInToday || checkingIn"
-                  @click="handleCheckIn"
-                >
-                  {{ vipStore.checkedInToday ? '今日已签到' : (checkingIn ? '签到中...' : '每日签到') }}
-                </button>
-              </div>
-            </div>
-
-            <div class="vip-section">
-              <h3 class="vip-section__title">获取途径</h3>
-              <div class="vip-rule-grid">
-                <div class="vip-rule-card">
-                  <span class="vip-rule-card__icon">📅</span>
-                  <strong>每日登录</strong>
-                  <span>{{ vipStore.economy?.earnRules?.dailyLogin || '5-10币' }}</span>
-                </div>
-                <div class="vip-rule-card">
-                  <span class="vip-rule-card__icon">✍️</span>
-                  <strong>内容创作</strong>
-                  <span>发布故事20币、评论5币</span>
-                </div>
-                <div class="vip-rule-card">
-                  <span class="vip-rule-card__icon">🤝</span>
-                  <strong>互动行为</strong>
-                  <span>{{ vipStore.economy?.earnRules?.interaction || '点赞1币、收藏2币' }}</span>
-                </div>
-                <div class="vip-rule-card">
-                  <span class="vip-rule-card__icon">🏆</span>
-                  <strong>活动与成就</strong>
-                  <span>连续登录、社区活动、内容里程碑</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="vip-section">
-              <h3 class="vip-section__title">自愿充值</h3>
-              <div class="vip-package-grid">
-                <button
-                  v-for="pkg in rechargePackages"
-                  :key="pkg.key"
-                  class="vip-package-card"
-                  type="button"
-                  :disabled="rechargingPackage === pkg.key"
-                  @click="handleRecharge(pkg.key)"
-                >
-                  <span class="vip-package-card__price">{{ pkg.label }}</span>
-                  <strong>{{ pkg.coins }} 币</strong>
-                  <span class="vip-package-card__hint">{{ rechargingPackage === pkg.key ? '处理中...' : '立即充值' }}</span>
-                </button>
-              </div>
+            <!-- CTA -->
+            <div class="vip-cta-area">
+              <button
+                class="vip-cta-btn"
+                :class="{ 'vip-cta-btn--active': vipStore.isVipActive }"
+                :disabled="purchasingVip"
+                @click="handlePurchaseVip"
+              >
+                <span>{{ purchasingVip ? '购买中...' : (vipStore.isVipActive ? `续费 ${vipStore.VIP_COST} 币/30天` : `${vipStore.VIP_COST} 币开通 30天VIP`) }}</span>
+              </button>
+              <p class="vip-cta-hint">
+                {{ vipStore.isVipActive ? '续费延长VIP有效期，权益不间断' : `VIP期间全部高级功能免费不限次，当前余额 ${vipStore.emotionCoins} 币` }}
+              </p>
             </div>
 
             <!-- Activation Code Section -->
-            <div class="vip-section vip-activate">
+            <div class="vip-section vip-activate" :class="{ dark: isDark }">
               <h3 class="vip-section__title">激活码兑换</h3>
               <div class="vip-activate__form">
                 <input
@@ -180,10 +120,10 @@
             <div class="vip-section">
               <div class="vip-section__title-row">
                 <h3 class="vip-section__title">VIP 功能详细说明</h3>
-                <span class="vip-section__hint">足迹 / 擦亮 / 评论设置 / 匿名能力一体化</span>
+                <span class="vip-section__hint">足迹 / 擦亮 / 装扮，VIP全部免费</span>
               </div>
               <div class="vip-perk-list">
-                <div v-for="perk in privilegeDetails" :key="perk.key" class="vip-perk-card">
+                <div v-for="perk in privilegeDetails" :key="perk.key" class="vip-perk-card" :class="{ dark: isDark }">
                   <span class="vip-perk-card__icon">{{ perk.icon }}</span>
                   <div>
                     <strong>{{ perk.title }}</strong>
@@ -237,53 +177,6 @@
               </div>
             </div>
 
-            <div class="vip-section">
-              <h3 class="vip-section__title">消耗场景</h3>
-              <div class="vip-shop-grid">
-                <div
-                  v-for="item in storeItems"
-                  :key="item.key"
-                  class="vip-shop-card"
-                  :class="{ dark: isDark }"
-                >
-                  <div class="vip-shop-card__top">
-                    <div>
-                      <strong>{{ item.name }}</strong>
-                      <p>{{ item.description }}</p>
-                    </div>
-                    <span class="vip-shop-card__cost">
-                      {{ isVipFreeItem(item) ? 'VIP免费' : `${item.cost}币` }}
-                    </span>
-                  </div>
-                  <button
-                    class="vip-shop-card__btn"
-                    type="button"
-                    :disabled="purchasingItem === item.key || isPermanentOwned(item)"
-                    @click="handlePurchase(item.key)"
-                  >
-                    {{ purchaseButtonLabel(item) }}
-                  </button>
-                  <p v-if="itemInventoryHint(item)" class="vip-shop-card__meta">{{ itemInventoryHint(item) }}</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="vip-section">
-              <h3 class="vip-section__title">已拥有权益</h3>
-              <div v-if="inventoryPreview.length === 0" class="vip-empty">暂无已领取或已购买权益</div>
-              <div v-else class="vip-inventory-list">
-                <div v-for="item in inventoryPreview" :key="item.itemKey" class="vip-inventory-item">
-                  <div>
-                    <strong>{{ inventoryName(item.itemKey) }}</strong>
-                    <p>
-                      {{ item.expiresAt ? `有效至 ${formatDate(item.expiresAt)}` : '永久权益 / 可重复消耗道具' }}
-                    </p>
-                  </div>
-                  <span class="vip-inventory-item__qty">x{{ item.quantity }}</span>
-                </div>
-              </div>
-            </div>
-
             <!-- Polish Stats -->
             <div v-if="vipStore.isVipActive" class="vip-section">
               <h3 class="vip-section__title">本月擦亮次数</h3>
@@ -298,7 +191,7 @@
 
             <!-- Order History -->
             <div class="vip-section">
-              <h3 class="vip-section__title">权益记录与情绪币流水</h3>
+              <h3 class="vip-section__title">VIP 权益记录</h3>
               <div v-if="historyLoading" class="vip-empty">加载中...</div>
               <div v-else-if="vipStore.orders.length === 0" class="vip-empty">暂无记录</div>
               <div v-else class="vip-history-list" :class="{ dark: isDark }">
@@ -314,32 +207,6 @@
                   </div>
                 </div>
               </div>
-
-              <div class="vip-coin-ledger" v-if="vipStore.ledger.length > 0">
-                <div v-for="entry in vipStore.ledger.slice(0, 8)" :key="entry.id" class="vip-coin-ledger__item">
-                  <div>
-                    <strong>{{ entry.title }}</strong>
-                    <p>{{ formatDateTime(entry.createdAt) }}</p>
-                  </div>
-                  <span :class="['vip-coin-ledger__amount', entry.amount >= 0 ? 'plus' : 'minus']">
-                    {{ entry.amount >= 0 ? '+' : '' }}{{ entry.amount }}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <!-- CTA -->
-            <div class="vip-cta-area">
-              <button
-                class="vip-cta-btn"
-                :class="{ 'vip-cta-btn--active': vipStore.isVipActive }"
-                @click="handleCtaClick"
-              >
-                <span>{{ vipStore.isVipActive ? '续费会员' : '立即开通 VIP' }}</span>
-              </button>
-              <p class="vip-cta-hint">
-                {{ vipStore.isVipActive ? '延长VIP有效期，权益不间断' : '解锁全部VIP专属功能，畅享极致体验' }}
-              </p>
             </div>
           </div>
         </div>
@@ -362,10 +229,9 @@ const emit = defineEmits(['close', 'open-polish', 'open-comment-settings', 'open
 
 const vipStore = useVipStore()
 const historyLoading = ref(false)
-const checkingIn = ref(false)
-const rechargingPackage = ref('')
-const purchasingItem = ref('')
 const unlockingIconKey = ref('')
+const purchasingVip = ref(false)
+const purchasingItem = ref('')
 
 // 激活码相关
 const activationCode = ref('')
@@ -374,36 +240,29 @@ const activateMessage = ref('')
 const activateSuccess = ref(false)
 
 const benefits = [
-  { key: 'polish', icon: '✨', name: '擦亮故事', desc: '每月3次，重新进入推荐', action: 'open-polish' },
-  { key: 'comment', icon: '💬', name: '评论高级设置', desc: '评论开关、资格与背景装扮', action: 'open-comment-settings' },
-  { key: 'emotion', icon: '🎭', name: '全匿名发布', desc: '全匿名发布无限制', action: 'open-visual' },
-  { key: 'profile', icon: '🗺️', name: '我的足迹', desc: '至少 2 个故事后可播放，VIP 免费', action: 'open-footprints' },
+  { key: 'footprint', icon: '🗺️', name: '我的足迹', desc: 'VIP免费不限次', action: 'open-footprints' },
+  { key: 'polish', icon: '✨', name: '擦亮故事', desc: 'VIP免费不限次', action: 'open-polish' },
+  { key: 'comment', icon: '💬', name: '评论装扮', desc: '气泡装饰免费使用', action: 'open-comment-settings' },
 ]
 
 const privilegeDetails = [
   {
     key: 'footprints',
     icon: '🐾',
-    title: '"我的足迹"动画特权',
-    desc: '至少拥有 2 个已发布故事即可回放轨迹。普通用户 20 币/次，VIP 免费。',
+    title: '我的足迹动画',
+    desc: '普通用户 20 币/次，VIP 免费。至少拥有 2 个已发布故事即可回放轨迹。',
   },
   {
-    key: 'message',
+    key: 'polish',
     icon: '✨',
-    title: '情绪留言擦亮 / 顶置',
-    desc: '留言擦亮 30 币/次，用于提升曝光；适合重要内容再次进入视野。',
+    title: '擦亮故事',
+    desc: '普通用户 30 币/次，VIP 免费。故事重新进入推荐列表。',
   },
   {
     key: 'comment',
     icon: '💬',
-    title: '评论开关高级设置',
-    desc: '支持时间窗口、评论资格、关键词过滤和背景样式自定义。',
-  },
-  {
-    key: 'anonymous',
-    icon: '🎭',
-    title: '全匿名发布无限制',
-    desc: 'VIP 可解锁更自由的匿名表达，并延展到深夜树洞类氛围场景。',
+    title: '气泡装饰与评论装扮',
+    desc: 'VIP 免费使用气泡装饰与评论背景样式自定义。',
   },
 ]
 
@@ -422,9 +281,7 @@ const specialIconCards = [
   },
 ]
 
-const rechargePackages = computed(() => vipStore.economy?.rechargePackages || [])
 const storeItems = computed(() => vipStore.economy?.storeItems || [])
-const inventoryPreview = computed(() => vipStore.activeInventory || [])
 const footprintTicketCount = computed(() => vipStore.getInventoryQuantity('footprint_animation'))
 const themeSkinUnlocked = computed(() => vipStore.hasActiveItem('theme_skin'))
 
@@ -455,64 +312,16 @@ function handleBenefitClick(benefit) {
   emit(benefit.action)
 }
 
-function handleCtaClick() {
-  showToast('请联系管理员开通或续费 VIP')
-}
-
-async function handleCheckIn() {
-  if (vipStore.checkedInToday || checkingIn.value) return
-  checkingIn.value = true
-  const result = await vipStore.claimDailyCheckIn()
+async function handlePurchaseVip() {
+  if (purchasingVip.value) return
+  purchasingVip.value = true
+  const result = await vipStore.purchaseVip()
   showToast(result.message, result.success ? 'success' : 'error')
-  checkingIn.value = false
-}
-
-async function handleRecharge(packageKey) {
-  if (!packageKey) return
-  rechargingPackage.value = packageKey
-  const result = await vipStore.rechargeCoins(packageKey)
-  showToast(result.message, result.success ? 'success' : 'error')
-  rechargingPackage.value = ''
-}
-
-async function handlePurchase(itemKey) {
-  if (!itemKey) return
-  purchasingItem.value = itemKey
-  const result = await vipStore.purchaseItem(itemKey)
-  if (result.success && itemKey === 'theme_skin') {
-    triggerUnlockAnimation('time_capsule')
-    setTimeout(() => triggerUnlockAnimation('night_treehole'), 120)
-  }
-  showToast(result.message, result.success ? 'success' : 'error')
-  purchasingItem.value = ''
-}
-
-function isVipFreeItem(item) {
-  return !!(vipStore.isVipActive && item?.vipFree)
+  purchasingVip.value = false
 }
 
 function isPermanentOwned(item) {
   return item?.type === 'permanent' && vipStore.hasActiveItem(item.key)
-}
-
-function purchaseButtonLabel(item) {
-  if (purchasingItem.value === item.key) return '处理中...'
-  if (item.key === 'theme_skin' && isPermanentOwned(item)) return '已拥有'
-  if (item.key === 'footprint_animation') {
-    return footprintTicketCount.value > 0
-      ? `补充次数（现有 ${footprintTicketCount.value}）`
-      : (isVipFreeItem(item) ? '免费领取' : '购买 1 次')
-  }
-  return isVipFreeItem(item) ? '立即领取' : '立即购买'
-}
-
-function itemInventoryHint(item) {
-  const qty = vipStore.getInventoryQuantity(item.key)
-  if (item.key === 'footprint_animation' && qty > 0) return `剩余足迹次数 x${qty}`
-  if (item.key === 'theme_skin' && isPermanentOwned(item)) return '主题皮肤已解锁，可点亮专属图标'
-  if (item.type === 'timed' && qty > 0) return `当前生效中 x${qty}`
-  if (item.type === 'consumable' && qty > 0) return `背包库存 x${qty}`
-  return ''
 }
 
 function triggerUnlockAnimation(iconKey) {
@@ -538,11 +347,6 @@ async function handleUnlockThemeIcons(iconKey) {
   }
   showToast(result.message, result.success ? 'success' : 'error')
   purchasingItem.value = ''
-}
-
-function inventoryName(itemKey) {
-  const item = storeItems.value.find(entry => entry.key === itemKey)
-  return item?.name || itemKey
 }
 
 async function handleActivate() {
@@ -577,24 +381,10 @@ function formatDate(dateStr) {
     return '--'
   }
 }
-
-function formatDateTime(dateStr) {
-  if (!dateStr) return '--'
-  try {
-    return new Intl.DateTimeFormat('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date(dateStr))
-  } catch {
-    return '--'
-  }
-}
 </script>
 
 <style scoped>
-/* ===== Shell (same as publish-modal-shell) ===== */
+/* ===== Shell ===== */
 .vip-center-shell {
   position: fixed;
   inset: 0;
@@ -610,7 +400,7 @@ function formatDateTime(dateStr) {
   -webkit-backdrop-filter: blur(16px);
 }
 
-/* ===== Modal Container (same size as publish-modal) ===== */
+/* ===== Modal Container ===== */
 .vip-center {
   position: relative;
   width: min(980px, calc(100vw - 48px));
@@ -659,7 +449,7 @@ function formatDateTime(dateStr) {
   border-color: rgba(141, 176, 235, 0.14);
 }
 
-/* ===== Close Button (same as publish-modal-close) ===== */
+/* ===== Close Button ===== */
 .vip-center__close {
   position: absolute;
   top: 20px;
@@ -834,8 +624,6 @@ function formatDateTime(dateStr) {
 
 .vip-card__crown { font-size: 42px; }
 
-.vip-card__info {}
-
 .vip-card__name {
   margin: 0 0 4px;
   font-size: 18px;
@@ -867,215 +655,35 @@ function formatDateTime(dateStr) {
   border: 1px solid rgba(184, 135, 46, 0.14);
 }
 
-.vip-economy-panel {
-  background: rgba(255, 255, 255, 0.46);
-  border: 1px solid rgba(184, 135, 46, 0.14);
-  border-radius: 20px;
-  padding: 22px 24px;
-}
-
-.vip-economy-panel.dark {
+.vip-activate.dark {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(141, 176, 235, 0.1);
 }
 
-.vip-economy-panel__head {
+.vip-section__title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0 0 14px;
+  opacity: 0.72;
+}
+
+.vip-section__title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
 }
 
-.vip-economy-panel__sub {
-  margin: 6px 0 0;
-  font-size: 12px;
-  opacity: 0.58;
+.vip-section__title-row .vip-section__title {
+  margin-bottom: 0;
 }
 
-.vip-coin-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.18), rgba(245, 166, 35, 0.22));
-  color: #7a5200;
-  font-weight: 800;
-}
-
-.vip-coin-pill__icon { font-size: 18px; }
-.vip-coin-pill__value { font-size: 18px; }
-
-.vip-economy-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  align-items: stretch;
-}
-
-.vip-economy-stat,
-.vip-rule-card,
-.vip-shop-card,
-.vip-package-card,
-.vip-inventory-item,
-.vip-coin-ledger__item {
-  border-radius: 16px;
-  border: 1px solid rgba(184, 135, 46, 0.1);
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.vip-economy-stat {
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.vip-economy-stat__label {
+.vip-section__hint {
   font-size: 11px;
-  opacity: 0.58;
-}
-
-.vip-checkin-btn,
-.vip-shop-card__btn {
-  min-height: 48px;
-  border: none;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #ffd700, #f5a623);
-  color: #3d2e0a;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-  box-shadow: 0 8px 18px -10px rgba(255, 215, 0, 0.55);
-}
-
-.vip-checkin-btn:hover,
-.vip-shop-card__btn:hover {
-  transform: translateY(-1px);
-}
-
-.vip-checkin-btn:disabled,
-.vip-shop-card__btn:disabled,
-.vip-package-card:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.vip-rule-grid,
-.vip-package-grid,
-.vip-shop-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.vip-rule-card {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.vip-rule-card__icon {
-  font-size: 22px;
-}
-
-.vip-package-card {
-  padding: 18px 16px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.vip-package-card__price {
-  display: block;
-  font-size: 12px;
-  opacity: 0.58;
-  margin-bottom: 6px;
-}
-
-.vip-package-card__hint {
-  display: block;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #8e6c1a;
-}
-
-.vip-shop-card {
-  padding: 16px;
-}
-
-.vip-shop-card.dark {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(143, 180, 255, 0.09);
-}
-
-.vip-shop-card__top {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.vip-shop-card__top p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  opacity: 0.6;
-  line-height: 1.5;
-}
-
-.vip-shop-card__cost {
+  opacity: 0.5;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 700;
-  color: #8e6c1a;
-}
-
-.vip-shop-card__meta {
-  margin: 10px 0 0;
-  font-size: 11px;
-  opacity: 0.58;
-}
-
-.vip-inventory-list,
-.vip-coin-ledger {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.vip-inventory-item,
-.vip-coin-ledger__item {
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.vip-inventory-item p,
-.vip-coin-ledger__item p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  opacity: 0.58;
-}
-
-.vip-inventory-item__qty,
-.vip-coin-ledger__amount {
-  font-weight: 800;
-}
-
-.vip-coin-ledger__amount.plus {
-  color: #2d7a2d;
-}
-
-.vip-coin-ledger__amount.minus {
-  color: #c44;
-}
-
-.vip-center.dark .vip-activate {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(141, 176, 235, 0.1);
 }
 
 /* ===== Activation Code Form ===== */
@@ -1177,50 +785,98 @@ function formatDateTime(dateStr) {
   color: #c44;
 }
 
-.vip-section__title {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  margin: 0 0 14px;
-  opacity: 0.72;
+/* ===== Benefits Grid ===== */
+.vip-benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 
-.vip-section__title-row {
+.vip-benefit {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  padding: 16px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(184, 135, 46, 0.1);
+  cursor: pointer;
+  transition: all 0.22s ease;
+  position: relative;
 }
 
-.vip-section__title-row .vip-section__title {
-  margin-bottom: 0;
+.vip-benefit.dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(143, 180, 255, 0.09);
 }
 
-.vip-section__hint {
+.vip-benefit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -8px rgba(184, 135, 46, 0.18);
+}
+
+.vip-benefit--locked { opacity: 0.45; cursor: default; }
+.vip-benefit--locked:hover { transform: none; box-shadow: none; }
+
+.vip-benefit__icon-wrap {
+  font-size: 26px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: rgba(255, 215, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.vip-benefit__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.vip-benefit__name {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.vip-benefit__desc {
+  display: block;
   font-size: 11px;
-  opacity: 0.5;
-  white-space: nowrap;
+  opacity: 0.55;
+  line-height: 1.4;
 }
 
+.vip-benefit__lock {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 13px;
+  opacity: 0.35;
+}
+
+/* ===== Perk List ===== */
 .vip-perk-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.vip-perk-card,
-.vip-icon-card {
+.vip-perk-card {
+  padding: 16px;
   border-radius: 18px;
   border: 1px solid rgba(184, 135, 46, 0.1);
   background: rgba(255, 255, 255, 0.55);
-}
-
-.vip-perk-card {
-  padding: 16px;
   display: flex;
   gap: 12px;
   align-items: flex-start;
+}
+
+.vip-perk-card.dark {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(143, 180, 255, 0.09);
 }
 
 .vip-perk-card__icon {
@@ -1242,6 +898,7 @@ function formatDateTime(dateStr) {
   opacity: 0.62;
 }
 
+/* ===== Icon Grid ===== */
 .vip-icon-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1250,6 +907,9 @@ function formatDateTime(dateStr) {
 
 .vip-icon-card {
   padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(184, 135, 46, 0.1);
+  background: rgba(255, 255, 255, 0.55);
   text-align: left;
   cursor: pointer;
   transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
@@ -1265,9 +925,7 @@ function formatDateTime(dateStr) {
   border-color: rgba(143, 180, 255, 0.09);
 }
 
-.vip-icon-card--locked {
-  opacity: 0.82;
-}
+.vip-icon-card--locked { opacity: 0.82; }
 
 .vip-icon-card__visual {
   position: relative;
@@ -1332,10 +990,7 @@ function formatDateTime(dateStr) {
   pointer-events: none;
 }
 
-.vip-icon-card__body strong {
-  display: block;
-  font-size: 14px;
-}
+.vip-icon-card__body strong { display: block; font-size: 14px; }
 
 .vip-icon-card__body p {
   margin: 6px 0;
@@ -1363,83 +1018,6 @@ function formatDateTime(dateStr) {
 
 .vip-icon-card--unlocking .vip-icon-card__pulse {
   animation: vipIconBurst 0.68s ease-out;
-}
-
-/* ===== Benefits Grid ===== */
-.vip-benefits-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-.vip-benefit {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(184, 135, 46, 0.1);
-  cursor: pointer;
-  transition: all 0.22s ease;
-  position: relative;
-}
-
-.vip-benefit.dark {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(143, 180, 255, 0.09);
-}
-
-.vip-benefit:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px -8px rgba(184, 135, 46, 0.18);
-}
-
-.vip-benefit--locked { opacity: 0.45; cursor: default; }
-
-.vip-benefit--locked:hover { transform: none; box-shadow: none; }
-
-.vip-benefit__icon-wrap {
-  font-size: 26px;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  background: rgba(255, 215, 0, 0.1);
-  flex-shrink: 0;
-}
-
-.vip-dark .vip-benefit__icon-wrap {
-  background: rgba(255, 215, 0, 0.06);
-}
-
-.vip-benefit__info {
-  flex: 1;
-  min-width: 0;
-}
-
-.vip-benefit__name {
-  display: block;
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.vip-benefit__desc {
-  display: block;
-  font-size: 11px;
-  opacity: 0.55;
-  line-height: 1.4;
-}
-
-.vip-benefit__lock {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  font-size: 13px;
-  opacity: 0.35;
 }
 
 /* ===== Polish Bar ===== */
@@ -1546,7 +1124,7 @@ function formatDateTime(dateStr) {
 /* ===== CTA Area ===== */
 .vip-cta-area {
   text-align: center;
-  padding-top: 8px;
+  padding: 8px 0 24px;
 }
 
 .vip-cta-btn {
@@ -1585,14 +1163,11 @@ function formatDateTime(dateStr) {
   opacity: 0.45;
 }
 
+/* ===== Responsive ===== */
 @media (max-width: 900px) {
   .vip-benefits-grid,
   .vip-perk-list,
-  .vip-icon-grid,
-  .vip-rule-grid,
-  .vip-package-grid,
-  .vip-shop-grid,
-  .vip-economy-stats {
+  .vip-icon-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1602,19 +1177,14 @@ function formatDateTime(dateStr) {
     padding: 32px 20px 24px;
   }
 
-  .vip-card__inner,
-  .vip-economy-panel__head {
+  .vip-card__inner {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .vip-benefits-grid,
   .vip-perk-list,
-  .vip-icon-grid,
-  .vip-rule-grid,
-  .vip-package-grid,
-  .vip-shop-grid,
-  .vip-economy-stats {
+  .vip-icon-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1624,7 +1194,7 @@ function formatDateTime(dateStr) {
   }
 }
 
-/* ===== Transition (reuse publish-modal transition) ===== */
+/* ===== Transition ===== */
 .publish-modal-enter-active {
   transition: opacity 0.18s ease;
 }
@@ -1633,46 +1203,29 @@ function formatDateTime(dateStr) {
   transition: opacity 0.14s ease;
 }
 
-
 .publish-modal-enter-from,
 .publish-modal-leave-to {
   opacity: 0;
 }
 
+@keyframes vipBgGoldFlow {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
 @keyframes vipIconPulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.14;
-  }
-  50% {
-    transform: scale(1.06);
-    opacity: 0.28;
-  }
+  0%, 100% { transform: scale(1); opacity: 0.14; }
+  50% { transform: scale(1.06); opacity: 0.28; }
 }
 
 @keyframes vipIconUnlock {
-  0% {
-    transform: scale(0.92);
-    opacity: 0.72;
-  }
-  55% {
-    transform: scale(1.12);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+  0% { transform: scale(0.92); opacity: 0.72; }
+  55% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 @keyframes vipIconBurst {
-  0% {
-    transform: scale(0.82);
-    opacity: 0.36;
-  }
-  100% {
-    transform: scale(1.22);
-    opacity: 0;
-  }
+  0% { transform: scale(0.82); opacity: 0.36; }
+  100% { transform: scale(1.22); opacity: 0; }
 }
 </style>

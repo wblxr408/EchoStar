@@ -71,12 +71,6 @@ class CommentServiceClass {
       throw new Error('评论发布失败，请稍后重试');
     }
 
-    // 立即返回
-    const { VipService } = await import('../vip/vip.service.js');
-    VipService.rewardCommentPublish(userId, commentId, storyId).catch((err) => {
-      console.error('评论情绪币奖励发放失败:', err);
-    });
-
     return {
       id: commentId,
       content,
