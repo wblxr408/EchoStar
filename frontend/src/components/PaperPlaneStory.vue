@@ -297,7 +297,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile', 'open-comment-bg', 'request-vip']);
+const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile', 'open-comment-bg', 'request-vip', 'openVipCenter']);
 
 const storyFontStyle = computed(() => {
   const ff = props.story?.fontFamily || '';
@@ -461,6 +461,8 @@ function previewImage(index) {
 }
 
 function handleClose() {
+  showCommentFontPicker.value = false;
+  showCommentInput.value = false;
   emit('close');
 }
 

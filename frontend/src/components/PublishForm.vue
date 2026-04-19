@@ -207,7 +207,7 @@
     </section>
 
     <footer class="form-footer">
-      <button type="button" class="secondary-btn" @click="emit('cancel')">暂时收起</button>
+      <button type="button" class="secondary-btn" @click="showFontPicker = false; emit('cancel')">暂时收起</button>
       <button type="button" class="submit-btn" :disabled="!isValid" @click="handleSubmit">
         发布故事
       </button>
@@ -269,6 +269,8 @@ const vipStore = useVipStore();
 injectFontEffectAnimations();
 
 const showFontPicker = ref(false);
+
+watch(() => props.visible, (v) => { if (!v) showFontPicker.value = false; });
 
 function readDefaultFontFromCookie() {
   const match = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);

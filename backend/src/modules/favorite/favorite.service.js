@@ -209,7 +209,7 @@ class FavoriteServiceClass {
       include: [{
         model: Story,
         as: 'story',
-        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName'],
+        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName', 'fontFamily', 'fontEffect'],
         include: [{
           model: User,
           as: 'author',
@@ -253,6 +253,8 @@ class FavoriteServiceClass {
             createdAt: favorite.story?.createdAt,
             location: parseStoryLocationValue(favorite.story?.location),
             locationName: favorite.story?.locationName,
+            fontFamily: favorite.story?.fontFamily || null,
+            fontEffect: favorite.story?.fontEffect || null,
             likeCount: likeCounts[normalizedStoryId] || 0,
             favoriteCount: favoriteCounts[normalizedStoryId] || 0,
             author: favorite.story?.author
