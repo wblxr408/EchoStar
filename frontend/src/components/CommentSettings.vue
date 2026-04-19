@@ -5,7 +5,6 @@
         v-if="visible"
         class="comment-settings-shell"
         :class="{ 'comment-settings-shell--high': highZIndex }"
-        @click.self="handleClose"
       >
         <div class="comment-settings" :class="{ 'comment-settings--dark': isDark }" @click.stop>
       <!-- Header -->
@@ -326,6 +325,7 @@ async function saveSettings() {
   display: flex;
   justify-content: flex-end;
   padding: 16px;
+  pointer-events: none;
 }
 
 .comment-settings-shell--high {
@@ -334,6 +334,7 @@ async function saveSettings() {
 
 .comment-settings {
   width: min(420px, calc(100vw - 32px));
+  pointer-events: auto;
   max-height: calc(100vh - 32px);
   overflow-y: auto;
   padding: 24px;

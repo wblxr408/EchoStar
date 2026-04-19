@@ -4798,12 +4798,14 @@ watch(showUserSidebar, (newValue) => {
 
 function closeStoryPanel() {
   showSidebar.value = false;
+  showCommentSettings.value = false;
 }
 
 function closeUserPanel() {
   // 关闭时保存 bio 和编辑资料弹窗中的更改
   savePendingChanges();
   showUserSidebar.value = false;
+  showBioFontPicker.value = false;
   vScrollDisconnect();
   myProfileSearchQuery.value = '';
   myProfileSearchVScrollDisconnect();
@@ -4836,12 +4838,14 @@ function cancelEditBio() {
   bioFontFamily.value = '';
   bioFontEffect.value = '';
   bioChanged.value = false;
+  showBioFontPicker.value = false;
 }
 
 let _bioSaving = false;
 
 function handleBioBlur() {
   if (bioFontBtnMousedown.value) return;
+  if (showBioFontPicker.value) return;
   saveBioInline();
 }
 
@@ -4850,6 +4854,7 @@ function saveBioInline() {
   if (!editingBioInline.value) return;
   _bioSaving = true;
   editingBioInline.value = false;
+  showBioFontPicker.value = false;
   const newBio = bioDraft.value.trim();
   const fontFamily = bioFontFamily.value || readBioFontFromCookie();
   const fontEffect = bioFontEffect.value || readBioFontEffectFromCookie();
@@ -5144,6 +5149,7 @@ async function savePendingChanges() {
 }
 
 function closePublishPanel() {
+  showFontPicker.value = false;
   isPickingPublishLocation.value = false;
   isAdjustingPlanePosition.value = false;
   isAdjustingWaitingForPlane.value = false;
@@ -5268,6 +5274,7 @@ function handlePublishClick() {
 }
 
 function closeDockPublishPanel() {
+  showFontPicker.value = false;
   isPickingDockPublishLocation.value = false;
   isDockPublishWaitingForPlane.value = false;
   shouldAutoConfirmDockPublishPick.value = false;

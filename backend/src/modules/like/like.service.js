@@ -182,7 +182,7 @@ class LikeServiceClass {
       include: [{
         model: Story,
         as: 'story',
-        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName'],
+        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName', 'fontFamily', 'fontEffect'],
         include: [{
           model: User,
           as: 'author',
@@ -220,6 +220,8 @@ class LikeServiceClass {
           createdAt: like.story?.createdAt,
           location: parseStoryLocationValue(like.story?.location),
           locationName: like.story?.locationName,
+          fontFamily: like.story?.fontFamily || null,
+          fontEffect: like.story?.fontEffect || null,
           likeCount: likeCounts[like.storyId] || 0,
           favoriteCount: favoriteCounts[like.storyId] || 0,
           author: like.story?.author
