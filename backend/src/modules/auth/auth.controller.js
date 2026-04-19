@@ -136,8 +136,8 @@ export const getUserById = async (req, res, next) => {
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { username, avatarUrl, bio } = req.body;
-    const result = await AuthService.updateProfile(userId, { username, avatarUrl, bio });
+    const { username, avatarUrl, bio, bioFontFamily, bioFontEffect } = req.body;
+    const result = await AuthService.updateProfile(userId, { username, avatarUrl, bio, bioFontFamily, bioFontEffect });
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);
@@ -210,6 +210,21 @@ export const getAvatarUploadToken = async (req, res, next) => {
   try {
     const token = generateAvatarUploadToken();
     res.json({ code: 0, data: token });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 根据用户名模糊搜索用户
+ */
+export const searchUsersByUsername = async (req, res, next) => {
+  try {
+    const { keyword, page = 1, limit = 20 } = req.query;
+
+    // 直接调用service，所有验证在service层完成
+    const result = await AuthService.searchUsersByUsername(keyword, { page, limit });
+    res.json({ code: 0, data: result });
   } catch (error) {
     next(error);
   }

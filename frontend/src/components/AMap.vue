@@ -1,13 +1,25 @@
-﻿<template>
-  <div
-    class="amap-container"
-    :class="{ 'dark-mode': isDarkMode }"
-    ref="mapContainer"
-  ></div>
+<template>
+  <div class="amap-shell">
+    <div
+      class="amap-container"
+      :class="{ 'dark-mode': isDarkMode }"
+      ref="mapContainer"
+    ></div>
+    <div
+      v-if="mainlandApprovalNumber"
+      class="amap-approval-badge"
+      :class="{ dark: isDarkMode }"
+      aria-label="中国大陆审图号"
+    >
+      <span class="amap-approval-badge__label">中国大陆审图号</span>
+      <span class="amap-approval-badge__value">{{ mainlandApprovalNumber }}</span>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from "vue";
+import AMapLoader from "@amap/amap-jsapi-loader";
 import { fromEmotionTag, getEmotionEmoji } from "../utils/emotion";
 
 const props = defineProps({
@@ -43,6 +55,10 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  paperPlanePosition: {
+    type: Object,
+    default: null,
+  },
 });
 
 const emit = defineEmits([
@@ -51,6 +67,10 @@ const emit = defineEmits([
   "theme-change",
   "map-click",
   "cluster-click",
+  "paper-plane-click",
+  "paper-plane-hover",
+  "paper-plane-leave",
+  "paper-plane-move",
 ]);
 
 const mapContainer = ref(null);
@@ -78,9 +98,137 @@ let markers = [];
 let clusterMarkers = [];
 let userLocationMarker = null;
 let tempPickedMarker = null;
+let paperPlaneMarker = null;
+let paperPlaneTooltipEl = null;
+let paperPlaneTooltipTimer = null;
+let paperPlaneInitialized = false;
+let paperPlaneAnimationToken = 0;
+let moveAnimationReady = true; // 改为默认 true，因为插件将通过 URL 同步加载
 const isDarkMode = ref(props.theme === "dark");
 const isSidebarHidden = ref(false);
 const isPublishSidebarOpen = ref(false);
+const configuredApprovalNumber = normalizeApprovalNumber(
+  import.meta.env.VITE_AMAP_APPROVAL_NUMBER,
+);
+const mainlandApprovalNumber = ref("");
+
+let approvalObserver = null;
+let approvalSyncTimer = null;
+
+function normalizeApprovalNumber(rawText) {
+  const text = String(rawText || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const gsMatch = text.match(/GS[（(]?\d{4}[）)]?\d+号?/i);
+  if (gsMatch?.[0]) {
+    return gsMatch[0].replace(/\(/g, "（").replace(/\)/g, "）");
+  }
+
+  const reviewMatch = text.match(/审图号[:：]?\s*([^，。；;]+)/);
+  return reviewMatch?.[1]?.trim() || "";
+}
+
+function extractMainlandApprovalNumber() {
+  if (!mapContainer.value) {
+    return "";
+  }
+
+  const selectors = [
+    ".amap-copyright",
+    ".amap-logo",
+    '[class*="copyright"]',
+    '[class*="Copyright"]',
+    '[class*="logo"]',
+    '[class*="Logo"]',
+  ];
+  const seenTexts = new Set();
+
+  for (const selector of selectors) {
+    const nodes = mapContainer.value.querySelectorAll(selector);
+    for (const node of nodes) {
+      const text = node.textContent?.replace(/\s+/g, " ").trim();
+      if (!text || seenTexts.has(text)) {
+        continue;
+      }
+
+      seenTexts.add(text);
+      const normalized = normalizeApprovalNumber(text);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return normalizeApprovalNumber(mapContainer.value.textContent || "");
+}
+
+function syncMainlandApprovalNumber() {
+  mainlandApprovalNumber.value =
+    configuredApprovalNumber || extractMainlandApprovalNumber();
+}
+
+function scheduleApprovalSync(delay = 80) {
+  if (approvalSyncTimer) {
+    window.clearTimeout(approvalSyncTimer);
+  }
+
+  approvalSyncTimer = window.setTimeout(() => {
+    approvalSyncTimer = null;
+    syncMainlandApprovalNumber();
+  }, delay);
+}
+
+function stopApprovalObserver() {
+  if (approvalObserver) {
+    approvalObserver.disconnect();
+    approvalObserver = null;
+  }
+
+  if (approvalSyncTimer) {
+    window.clearTimeout(approvalSyncTimer);
+    approvalSyncTimer = null;
+  }
+}
+
+function startApprovalObserver() {
+  if (configuredApprovalNumber) {
+    mainlandApprovalNumber.value = configuredApprovalNumber;
+    return;
+  }
+
+  if (!mapContainer.value || typeof MutationObserver === "undefined") {
+    return;
+  }
+
+  stopApprovalObserver();
+
+  approvalObserver = new MutationObserver(() => {
+    scheduleApprovalSync();
+  });
+
+  approvalObserver.observe(mapContainer.value, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+
+  syncMainlandApprovalNumber();
+  window.setTimeout(() => syncMainlandApprovalNumber(), 300);
+  window.setTimeout(() => syncMainlandApprovalNumber(), 1200);
+}
+
+function setMapZoomingState(isZooming) {
+  if (!mapContainer.value) {
+    return;
+  }
+
+  mapContainer.value.classList.toggle("is-zooming", isZooming);
+}
 
 function toFiniteNumber(value) {
   const parsed = Number(value);
@@ -242,23 +390,15 @@ function dedupeStories(stories = []) {
 }
 
 function addMapControls() {
-  if (!map || !window.AMap?.plugin) {
-    return;
+  if (!map || !window.AMap) return;
+
+  if (window.AMap.Scale) {
+    map.addControl(new window.AMap.Scale());
   }
 
-  window.AMap.plugin(["AMap.Scale", "AMap.ToolBar"], () => {
-    if (!map) {
-      return;
-    }
-
-    if (window.AMap.Scale) {
-      map.addControl(new window.AMap.Scale());
-    }
-
-    if (window.AMap.ToolBar) {
-      map.addControl(new window.AMap.ToolBar());
-    }
-  });
+  if (window.AMap.ToolBar) {
+    map.addControl(new window.AMap.ToolBar());
+  }
 }
 
 function updateMapCursor() {
@@ -298,6 +438,16 @@ function initMap() {
     scrollWheel: true,
   });
 
+  // 同步加载所需插件
+  window.AMap.plugin(
+    ["AMap.Scale", "AMap.ToolBar"],
+    () => {
+      if (!map) return;
+      addMapControls();
+      console.log('[AMap] Basic controls loaded.');
+    }
+  );
+
   map.on("move", () => {
     if (!map) {
       return;
@@ -332,6 +482,18 @@ function initMap() {
       longitude: center.getLng(),
       zoom: map.getZoom(),
     });
+
+    // 地图移动后像素位置变化，重新检测高缩放聚合
+    updateClusterMarkers();
+    updateMarkers();
+  });
+
+  map.on("complete", () => {
+    scheduleApprovalSync();
+  });
+
+  map.on("zoomstart", () => {
+    setMapZoomingState(true);
   });
 
   map.on("zoomend", () => {
@@ -339,12 +501,18 @@ function initMap() {
       return;
     }
 
+    setMapZoomingState(false);
+
     const center = map.getCenter();
     emit("map-move", {
       latitude: center.getLat(),
       longitude: center.getLng(),
       zoom: map.getZoom(),
     });
+
+    // 缩放结束后重新渲染标记（高缩放聚合检测依赖当前 zoom）
+    updateClusterMarkers();
+    updateMarkers();
   });
 
   map.on("click", (event) => {
@@ -371,7 +539,6 @@ function initMap() {
     });
   });
 
-  addMapControls();
   updateMapCursor();
 }
 
@@ -393,6 +560,33 @@ function clearClusterMarkers() {
 
   clusterMarkers.forEach((marker) => map.remove(marker));
   clusterMarkers = [];
+}
+
+/**
+ * 安全替换标记：先将新标记添加到地图，再移除旧标记，避免闪烁。
+ * @param {Array} oldMarkers - 旧标记数组引用
+ * @param {Array} newMarkers - 新标记数组
+ * @param {Function} setRef - 用于更新外部数组引用的回调 (newArr) => {}
+ */
+function swapMarkers(oldMarkers, newMarkers, setRef) {
+  // 先把新标记加到地图上
+  if (newMarkers.length > 0 && map) {
+    map.add(newMarkers);
+  }
+  // 再移除旧标记（此时地图上已有新标记，不会闪烁）
+  if (oldMarkers.length > 0 && map) {
+    oldMarkers.forEach((marker) => map.remove(marker));
+  }
+  // 更新外部引用
+  setRef(newMarkers);
+}
+
+function swapClusterMarkers(newClusterMarkers) {
+  swapMarkers(clusterMarkers, newClusterMarkers, (arr) => { clusterMarkers = arr; });
+}
+
+function swapNormalMarkers(newNormalMarkers) {
+  swapMarkers(markers, newNormalMarkers, (arr) => { markers = arr; });
 }
 
 function clearUserLocationMarker() {
@@ -474,6 +668,356 @@ function updateUserLocationMarker(location = props.userLocation) {
   userLocationMarker.setPosition([coords.longitude, coords.latitude]);
 }
 
+// ========== 纸飞机地标 ==========
+function createPaperPlaneMarker(coords) {
+  if (!coords || !window.AMap) return null;
+
+  const planeSvg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="54" height="63" viewBox="0 0 36 42" fill="none">
+      <!-- 左翼（暗面） -->
+      <path d="M18 2 L4 36 L18 26 Z" fill="#FF6B6B" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
+      <!-- 右翼（亮面） -->
+      <path d="M18 2 L32 36 L18 26 Z" fill="#FF9E9E" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
+      <!-- 中心折脊（深色，立体感） -->
+      <path d="M15 26 L18 2 L21 26 Z" fill="#E05050" opacity="0.6"/>
+      <!-- 尾翼左 -->
+      <path d="M4 36 L18 26 L18 30 L10 38 Z" fill="#D94444" stroke="#fff" stroke-width="0.6" stroke-linejoin="round"/>
+      <!-- 尾翼右 -->
+      <path d="M32 36 L18 26 L18 30 L26 38 Z" fill="#FFB0B0" stroke="#fff" stroke-width="0.6" stroke-linejoin="round"/>
+      <!-- 折痕线 -->
+      <line x1="18" y1="2" x2="18" y2="26" stroke="#fff" stroke-width="0.6" stroke-opacity="0.5"/>
+      <line x1="18" y1="8" x2="10" y2="33" stroke="#fff" stroke-width="0.4" stroke-opacity="0.25"/>
+      <line x1="18" y1="8" x2="26" y2="33" stroke="#fff" stroke-width="0.4" stroke-opacity="0.25"/>
+    </svg>
+  `.trim();
+
+  // 视觉中心约在 viewBox (18, 20)，1.5x 后为 (27, 30)，offset 使该点对准经纬度坐标
+  const cx = 27, cy = 30;
+
+  return new window.AMap.Marker({
+    position: [coords.longitude, coords.latitude],
+    icon: new window.AMap.Icon({
+      size: new window.AMap.Size(54, 63),
+      image: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(planeSvg)}`,
+      imageSize: new window.AMap.Size(54, 63),
+    }),
+    offset: new window.AMap.Pixel(-cx, -cy),
+    zIndex: 1300,
+    cursor: 'pointer',
+  });
+}
+
+function initPaperPlane(coords) {
+  if (paperPlaneInitialized || !map || !window.AMap) return;
+  // 稍微偏南一点，避免和用户定位标完全重叠
+  const offsetCoords = { latitude: coords.latitude - 0.0008, longitude: coords.longitude };
+    paperPlaneMarker = createPaperPlaneMarker(offsetCoords);
+  if (paperPlaneMarker) {
+    map.add(paperPlaneMarker);
+    paperPlaneMarker.on('click', (e) => {
+      const pos = paperPlaneMarker.getPosition();
+      // 计算纸飞机在容器中的像素位置
+      const pixel = map.lngLatToContainer(pos);
+      const containerRect = mapContainer.value.getBoundingClientRect();
+      emit('paper-plane-click', {
+        latitude: pos.getLat(),
+        longitude: pos.getLng(),
+        screenX: containerRect.left + pixel.getX(),
+        screenY: containerRect.top + pixel.getY(),
+      });
+    });
+
+    // 鼠标悬停/离开纸飞机时触发菜单
+    const getPlaneScreenPos = () => {
+      const pos = paperPlaneMarker.getPosition();
+      const pixel = map.lngLatToContainer(pos);
+      const containerRect = mapContainer.value.getBoundingClientRect();
+      return {
+        latitude: pos.getLat(),
+        longitude: pos.getLng(),
+        screenX: containerRect.left + pixel.getX(),
+        screenY: containerRect.top + pixel.getY(),
+      };
+    };
+    const planeDom = paperPlaneMarker.dom || paperPlaneMarker.De || paperPlaneMarker.contentDom || paperPlaneMarker.getContentDom?.();
+    if (planeDom) {
+      planeDom.addEventListener('mouseenter', () => {
+        clearPaperPlaneTooltip();
+        emit('paper-plane-hover', getPlaneScreenPos());
+      }, { passive: true });
+      planeDom.addEventListener('mouseleave', () => {
+        emit('paper-plane-leave');
+      }, { passive: true });
+    }
+
+    paperPlaneInitialized = true;
+    // 更新 planePosition 以反映实际位置
+    emit('paper-plane-move', { latitude: offsetCoords.latitude, longitude: offsetCoords.longitude });
+    showPaperPlaneTooltip();
+  }
+}
+
+function movePaperPlane(lat, lng, showTip = true) {
+  if (!map || !window.AMap || !paperPlaneMarker) {
+    if (!paperPlaneInitialized) {
+      initPaperPlane({ latitude: lat, longitude: lng });
+    }
+    return;
+  }
+  const target = new window.AMap.LngLat(lng, lat);
+
+  manualAnimatePaperPlane(target, showTip);
+}
+
+// 纸飞机从屏幕边缘飞入（用于搜索跳转等场景）
+function flyPaperPlaneFromEdge(targetLat, targetLng, showTip = true) {
+  if (!map || !window.AMap || !paperPlaneMarker) {
+    if (!paperPlaneInitialized) {
+      initPaperPlane({ latitude: targetLat, longitude: targetLng });
+    }
+    return;
+  }
+
+  const target = new window.AMap.LngLat(targetLng, targetLat);
+  const start = paperPlaneMarker.getPosition();
+  if (!start) return;
+
+  // 将起点和终点转为屏幕像素坐标
+  const startPixel = map.lngLatToContainer(start);
+  const targetPixel = map.lngLatToContainer(target);
+
+  // 起点在屏幕外时，找线段与屏幕边框的交点作为飞入起点
+  const containerSize = map.getSize();
+  const W = containerSize.getWidth();
+  const H = containerSize.getHeight();
+  const padding = 60; // 屏幕外留一点距离
+
+  let startPxX = startPixel.getX();
+  let startPxY = startPixel.getY();
+  const endPxX = targetPixel.getX();
+  const endPxY = targetPixel.getY();
+
+  // 判断起点是否在屏幕内
+  const isInScreen = startPxX >= -padding && startPxX <= W + padding &&
+                     startPxY >= -padding && startPxY <= H + padding;
+
+  if (!isInScreen) {
+    // 起点→终点方向向量
+    const dx = endPxX - startPxX;
+    const dy = endPxY - startPxY;
+
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+      // 几乎重叠，直接飞
+      manualAnimatePaperPlane(target, showTip);
+      return;
+    }
+
+    // 找到从屏幕外到屏幕边框的交点
+    // 用参数方程 P = start + t * (end - start)，求 t 使得 P 在屏幕边框上
+    // 取 t ∈ [0, 1] 范围内的交点（靠近起点的那个）
+    let tMin = 1;
+    const edges = [
+      { val: startPxX, delta: dx, bound: -padding },      // 左边 x = -padding
+      { val: startPxX, delta: dx, bound: W + padding },   // 右边 x = W+padding
+      { val: startPxY, delta: dy, bound: -padding },       // 上边 y = -padding
+      { val: startPxY, delta: dy, bound: H + padding },   // 下边 y = H+padding
+    ];
+
+    for (const edge of edges) {
+      if (Math.abs(edge.delta) < 0.001) continue;
+      const t = (edge.bound - edge.val) / edge.delta;
+      if (t > 0.01 && t < tMin) {
+        // 验证另一个分量在屏幕范围内
+        const crossX = startPxX + t * dx;
+        const crossY = startPxY + t * dy;
+        if (crossX >= -padding && crossX <= W + padding && crossY >= -padding && crossY <= H + padding) {
+          tMin = t;
+        }
+      }
+    }
+
+    // 计算交点像素坐标，转为经纬度作为飞入起点
+    const entryPxX = startPxX + tMin * dx;
+    const entryPxY = startPxY + tMin * dy;
+    const entryLngLat = map.containerToLngLat(new window.AMap.Pixel(entryPxX, entryPxY));
+
+    if (entryLngLat) {
+      // 先瞬移到边缘起点
+      paperPlaneMarker.setPosition(entryLngLat);
+    }
+  }
+
+  manualAnimatePaperPlane(target, showTip);
+}
+
+function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
+  const start = paperPlaneMarker.getPosition();
+  const moveDuration = 800;
+  const rotateDuration = 300;
+  const animationToken = ++paperPlaneAnimationToken;
+
+  // 计算移动方位角（0=正北/上方，顺时针为正）
+  const bearing = Math.atan2(target.getLng() - start.getLng(), target.getLat() - start.getLat()) * (180 / Math.PI);
+  // 平滑旋转到目标朝向
+  setMarkerRotation(bearing, rotateDuration);
+
+  const animStart = Date.now();
+
+  function step() {
+    if (animationToken !== paperPlaneAnimationToken) {
+      return;
+    }
+
+    const elapsed = Date.now() - animStart;
+
+    // 平移进度
+    const moveProgress = Math.min(elapsed / moveDuration, 1);
+    const easeProgress = 1 - Math.pow(1 - moveProgress, 3);
+
+    const currentLat = start.getLat() + (target.getLat() - start.getLat()) * easeProgress;
+    const currentLng = start.getLng() + (target.getLng() - start.getLng()) * easeProgress;
+
+    const currentPos = new window.AMap.LngLat(currentLng, currentLat);
+    paperPlaneMarker.setPosition(currentPos);
+
+    // 手动更新 tooltip 位置（基于视觉中心偏移）
+    if (showTip && paperPlaneTooltipEl && paperPlaneTooltipEl.style && paperPlaneTooltipEl.style.opacity !== '0' && map) {
+      const pixel = map.lngLatToContainer(currentPos);
+      paperPlaneTooltipEl.style.left = (pixel.getX() - 55) + 'px';
+      paperPlaneTooltipEl.style.top = (pixel.getY() - 40) + 'px';
+    }
+
+    if (moveProgress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      if (animationToken !== paperPlaneAnimationToken) {
+        return;
+      }
+
+      // 到达目标，保持当前朝向不回转
+      if (showTip) {
+        showPaperPlaneTooltip();
+      }
+      emit('paper-plane-move', { latitude: target.getLat(), longitude: target.getLng() });
+      if (onComplete) onComplete();
+    }
+  }
+
+  // 旋转和平移同时开始
+  requestAnimationFrame(step);
+}
+
+function getPaperPlaneDom() {
+  if (!paperPlaneMarker) return null;
+  const container = paperPlaneMarker.dom || paperPlaneMarker.De || paperPlaneMarker.contentDom || paperPlaneMarker.getContentDom?.();
+  if (!container) return null;
+  // AMap 的外层容器有定位用的 transform，不能旋转
+  // 需要找到内部的实际内容元素 (.amap-marker-content 或 img)
+  const inner = container.querySelector('.amap-marker-content') || container.querySelector('img');
+  return inner || container;
+}
+
+function setMarkerRotation(deg, animDuration = 200, onComplete = null) {
+  const dom = getPaperPlaneDom();
+  console.log('[PaperPlane] setMarkerRotation:', deg, 'dom:', !!dom);
+
+  if (!dom) {
+    // fallback: 通过 className 在 map container 中查找
+    const container = map?.getContainer?.();
+    if (container) {
+      const markerEl = container.querySelector('.amap-marker-content img, .amap-icon img');
+      if (markerEl) {
+        applyRotation(markerEl, deg, animDuration, onComplete);
+        return;
+      }
+    }
+    console.warn('[PaperPlane] Cannot find marker DOM for rotation');
+    if (onComplete) setTimeout(onComplete, animDuration || 0);
+    return;
+  }
+
+  applyRotation(dom, deg, animDuration, onComplete);
+}
+
+function applyRotation(el, deg, animDuration, onComplete) {
+  if (animDuration > 0) {
+    el.style.transition = `transform ${animDuration}ms ease-out`;
+  } else {
+    el.style.transition = 'none';
+  }
+  el.style.transformOrigin = '50% 47.6%'; // 视觉中心 (18/36, 20/42)
+
+  requestAnimationFrame(() => {
+    el.style.transform = `rotate(${deg}deg)`;
+  });
+
+  if (onComplete && animDuration > 0) {
+    setTimeout(() => {
+      el.style.transition = 'none';
+      if (onComplete) onComplete();
+    }, animDuration);
+  }
+}
+
+function onPlaneMoving(e) {
+  if (!paperPlaneTooltipEl || !paperPlaneTooltipEl.style || paperPlaneTooltipEl.style.opacity === '0') {
+    paperPlaneMarker?.off('moving', onPlaneMoving);
+    return;
+  }
+  const pos = paperPlaneMarker?.getPosition();
+  if (pos && map) {
+    const pixel = map.lngLatToContainer(pos);
+    paperPlaneTooltipEl.style.left = (pixel.getX() - 55) + 'px';
+    paperPlaneTooltipEl.style.top = (pixel.getY() - 56) + 'px';
+  }
+}
+
+function showPaperPlaneTooltip() {
+  if (paperPlaneTooltipTimer) {
+    clearTimeout(paperPlaneTooltipTimer);
+    paperPlaneTooltipTimer = null;
+  }
+  if (!paperPlaneTooltipEl) {
+    paperPlaneTooltipEl = document.createElement('div');
+    paperPlaneTooltipEl.className = 'paper-plane-tooltip';
+    paperPlaneTooltipEl.innerHTML = '<span>点击纸飞机</span><span>查看选项</span>';
+    paperPlaneTooltipEl.style.pointerEvents = 'none';
+    paperPlaneTooltipEl.style.zIndex = '1100';
+    document.body.appendChild(paperPlaneTooltipEl);
+  }
+
+  const pos = paperPlaneMarker.getPosition();
+  if (pos && map) {
+    const pixel = map.lngLatToContainer(pos);
+    paperPlaneTooltipEl.style.left = (pixel.getX() - 55) + 'px';
+    paperPlaneTooltipEl.style.top = (pixel.getY() - 56) + 'px';
+  }
+
+  paperPlaneTooltipEl.classList.toggle('dark', isDarkMode.value);
+  paperPlaneTooltipEl.style.opacity = '1';
+  paperPlaneTooltipEl.style.transition = 'none';
+
+  paperPlaneTooltipTimer = setTimeout(() => {
+    if (paperPlaneTooltipEl) {
+      paperPlaneTooltipEl.style.transition = 'opacity 1s ease-out';
+      paperPlaneTooltipEl.style.opacity = '0';
+    }
+  }, 1000);
+}
+
+function clearPaperPlaneTooltip() {
+  if (paperPlaneTooltipTimer) {
+    clearTimeout(paperPlaneTooltipTimer);
+    paperPlaneTooltipTimer = null;
+  }
+  if (paperPlaneTooltipEl) {
+    if (paperPlaneTooltipEl.parentNode) {
+      paperPlaneTooltipEl.parentNode.removeChild(paperPlaneTooltipEl);
+    }
+    paperPlaneTooltipEl = null;
+  }
+}
+
 function createTempPickedMarker(location) {
   const coords = resolveCoordinates(location);
 
@@ -540,6 +1084,13 @@ function updateTempPickedMarker(location = props.tempPickedLocation) {
   tempPickedMarker.setPosition([coords.longitude, coords.latitude]);
 }
 
+// hex 转 rgb 工具函数（用于动态 box-shadow）
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) return "0,0,0";
+  return `${parseInt(result[1], 16)},${parseInt(result[2], 16)},${parseInt(result[3], 16)}`;
+}
+
 function createMarker(story) {
   if (!map || !window.AMap) {
     return null;
@@ -553,23 +1104,50 @@ function createMarker(story) {
   }
 
   const content = document.createElement("div");
-  content.className = "custom-marker";
 
   const colors = isDarkMode.value ? emotionColorsDark : emotionColors;
   const emotion = fromEmotionTag(story.emotionTag) || story.emotion;
   const color = colors[emotion] || "#667eea";
-  const isLocked = story.isTimeCapsule && !story.isUnlocked;
+  const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
+  const isDark = isDarkMode.value;
 
+  content.className = "custom-marker";
+
+  // 双层设计：外圈发光底座 + 内核情绪色块 + 呼吸动画
+  const glowOpacity = isDark ? "0.4" : "0.2";
+  // hover 阴影：日间深色扩散 / 夜间冰蓝辉光
+  const hoverShadowColor = isDark
+    ? `rgba(143, 180, 255, 0.35)`
+    : `rgba(0, 0, 0, 0.25)`;
+  const darkClass = isDark ? " marker-dark" : "";
+
+  const emotionEmoji = getEmotionEmoji(story.emotionTag || story.emotion);
+  const resolvedMarkerInner = `<div class="marker-glow"></div>
+       <div class="marker-pulse"></div>
+       <div class="marker-emotion">${isLocked ? "🔒" : emotionEmoji}</div>`;
   content.innerHTML = `
-    <div class="marker-wrapper" style="background: ${color}; ${isLocked ? "opacity: 0.6;" : ""}">
-      <div class="marker-emotion">${isLocked ? "LOCK" : getEmotionEmoji(story.emotionTag || story.emotion)}</div>
+    <div class="marker-wrapper${darkClass}"
+         style="--marker-color: ${color};
+                --marker-glow-rgb: ${hexToRgb(color)};
+                --glow-opacity: ${glowOpacity};
+                --hover-shadow: ${hoverShadowColor};
+                background: ${color};">
+      ${resolvedMarkerInner}
     </div>
   `;
+
+  // 大量标记点性能优化：content-visibility auto
+  if (markers.length > 50) {
+    content.style.contentVisibility = "auto";
+  }
 
   const marker = new window.AMap.Marker({
     position: [coords.longitude, coords.latitude],
     content,
-    offset: new window.AMap.Pixel(-25, -25),
+    offset: new window.AMap.Pixel(
+      -STORY_MARKER_SIZE / 2,
+      -STORY_MARKER_SIZE / 2,
+    ),
     title: (story.content || story.preview || "").substring(0, 50) + "...",
     zIndex: story.isTimeCapsule ? 10 : 100,
   });
@@ -1167,7 +1745,7 @@ function createClusterMarker(cluster) {
     position: [coords.longitude, coords.latitude],
     content,
     offset: new window.AMap.Pixel(-radius, -radius),
-    zIndex: 50,
+    zIndex: cluster.showPopover ? 110 : 50,
   });
 
   marker.on("click", () => {
@@ -1176,6 +1754,7 @@ function createClusterMarker(cluster) {
       latitude: coords.latitude,
       longitude: coords.longitude,
       count,
+      showPopover: !!cluster.showPopover,
     });
   });
 
@@ -1189,7 +1768,7 @@ function updateClusterMarkers() {
     return;
   }
 
-  clearClusterMarkers();
+  const newClusterMarkers = [];
   absorbedStoryIds = new Set();
 
   {
@@ -1198,6 +1777,8 @@ function updateClusterMarkers() {
       Number.isFinite(currentZoom) &&
       currentZoom >= CLUSTER_RENDER_ZOOM_THRESHOLD
     ) {
+      // 高缩放时不渲染服务端聚合，但必须清除旧聚合标记避免残留闪烁
+      swapClusterMarkers([]);
       return;
     }
 
@@ -1211,13 +1792,12 @@ function updateClusterMarkers() {
     mergedClusters.forEach((cluster) => {
       const marker = createClusterMarker(cluster);
       if (marker) {
-        clusterMarkers.push(marker);
+        newClusterMarkers.push(marker);
       }
     });
 
-    if (clusterMarkers.length > 0) {
-      map.add(clusterMarkers);
-    }
+    // 先建后删：先加新标记，再通过swap移除旧标记
+    swapClusterMarkers(newClusterMarkers);
     return;
   }
 
@@ -1275,13 +1855,12 @@ function updateClusterMarkers() {
   merged.forEach((cluster) => {
     const marker = createClusterMarker(cluster);
     if (marker) {
-      clusterMarkers.push(marker);
+      newClusterMarkers.push(marker);
     }
   });
 
-  if (clusterMarkers.length > 0) {
-    map.add(clusterMarkers);
-  }
+  // 先建后删
+  swapClusterMarkers(newClusterMarkers);
 }
 
 function absorbNearbyStories(clusters, stories) {
@@ -1376,7 +1955,11 @@ function updateMarkers() {
     return;
   }
 
-  clearMarkers();
+  // 使用新数组收集标记，最后通过 swap 先建后删
+  const newMarkers = [];
+
+  // 高缩放聚合星列表（独立于 clusterMarkers，用于高缩放时极近点的二次聚合）
+  const highZoomClusterMarkers = [];
 
   {
     const currentZoom = Number(props.zoom);
@@ -1388,16 +1971,106 @@ function updateMarkers() {
         ? buildLowZoomRenderableData(clusterEntries, storyEntries).points
         : dedupeStories(storyEntries);
 
+    // 高缩放（zoom >= CLUSTER_RENDER_ZOOM_THRESHOLD）时，
+    // 对极近故事点做像素重叠检测，重叠组重新聚合成星
+    if (
+      Number.isFinite(currentZoom) &&
+      currentZoom >= CLUSTER_RENDER_ZOOM_THRESHOLD &&
+      renderableStories.length > 1 &&
+      map
+    ) {
+      const pixelItems = renderableStories
+        .map(createStoryPixelState)
+        .filter(Boolean);
+
+      if (pixelItems.length > 1) {
+        // Union-Find 分组
+        const parent = pixelItems.map((_, i) => i);
+        const find = (i) => {
+          if (parent[i] !== i) parent[i] = find(parent[i]);
+          return parent[i];
+        };
+        const union = (a, b) => {
+          const ra = find(a), rb = find(b);
+          if (ra !== rb) parent[rb] = ra;
+        };
+
+        for (let i = 0; i < pixelItems.length; i++) {
+          for (let j = i + 1; j < pixelItems.length; j++) {
+            if (
+              getStoryMarkerOverlapRatio(pixelItems[i], pixelItems[j]) >=
+              FORCED_STORY_CLUSTER_OVERLAP_RATIO
+            ) {
+              union(i, j);
+            }
+          }
+        }
+
+        // 分组：孤立点渲染为 dot，重叠组渲染为高缩放聚合星
+        const grouped = new Map();
+        pixelItems.forEach((item, idx) => {
+          const root = find(idx);
+          if (!grouped.has(root)) grouped.set(root, []);
+          grouped.get(root).push(item);
+        });
+
+        const isolatedStories = [];
+
+        for (const group of grouped.values()) {
+          if (group.length === 1) {
+            // 孤立点：正常渲染为 dot
+            isolatedStories.push(group[0].story);
+          } else {
+            // 重叠组：创建高缩放聚合星（带 showPopover 标记）
+            const pointIds = dedupePointIds(group.map((item) => item.story.id));
+            let lat = 0, lng = 0;
+            group.forEach((item) => {
+              lat += item.latitude;
+              lng += item.longitude;
+            });
+            const highZoomCluster = {
+              type: "cluster",
+              latitude: lat / group.length,
+              longitude: lng / group.length,
+              count: pointIds.length || group.length,
+              pointIds,
+              showPopover: true, // 标记：点击时展示列表，不放大地图
+            };
+            const clusterMarker = createClusterMarker(highZoomCluster);
+            if (clusterMarker) {
+              highZoomClusterMarkers.push(clusterMarker);
+            }
+          }
+        }
+
+        // 渲染孤立 dot
+        isolatedStories.forEach((story) => {
+          const marker = createMarker(story);
+          if (marker) {
+            newMarkers.push(marker);
+          }
+        });
+
+        // 渲染高缩放聚合星
+        if (highZoomClusterMarkers.length > 0) {
+          newMarkers.push(...highZoomClusterMarkers);
+        }
+
+        // 先建后删
+        swapNormalMarkers(newMarkers);
+        return;
+      }
+    }
+
     renderableStories.forEach((story) => {
       const marker = createMarker(story);
       if (marker) {
-        markers.push(marker);
+        newMarkers.push(marker);
       }
     });
 
-    if (markers.length > 0) {
-      map.add(markers);
-    }
+    // 先建后删
+    swapNormalMarkers(newMarkers);
     return;
   }
 
@@ -1442,13 +2115,12 @@ function updateMarkers() {
     }
     const marker = createMarker(story);
     if (marker) {
-      markers.push(marker);
+      newMarkers.push(marker);
     }
   });
 
-  if (markers.length > 0) {
-    map.add(markers);
-  }
+  // 先建后删
+  swapNormalMarkers(newMarkers);
 }
 
 function addNewStoryMarker(story) {
@@ -1473,6 +2145,7 @@ function addNewStoryMarker(story) {
 
 defineExpose({
   addNewStoryMarker,
+  flyPaperPlaneFromEdge,
   getMap: () => map,
   getBounds: () => {
     console.log("[AMap] getBounds called, map:", !!map);
@@ -1514,61 +2187,66 @@ defineExpose({
   },
 });
 
-function loadAMapScript() {
-  return new Promise((resolve, reject) => {
-    if (window.AMap) {
-      resolve();
-      return;
-    }
+// 移除传统的script加载方式，只使用官方AMapLoader
 
-    const existingScript = document.querySelector(
-      'script[data-amap-script="true"]',
-    );
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", reject, { once: true });
-      return;
-    }
-
-    const key = import.meta.env.VITE_AMAP_KEY || "test_key";
-    const securityJsCode = import.meta.env.VITE_AMAP_SECURITY_JS_CODE;
-
-    if (securityJsCode) {
-      window._AMapSecurityConfig = {
-        ...(window._AMapSecurityConfig || {}),
-        securityJsCode,
-      };
-    }
-
-    const script = document.createElement("script");
-    script.dataset.amapScript = "true";
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}&plugin=AMap.Scale,AMap.ToolBar`;
-    script.onload = () => resolve();
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-}
-
-onMounted(async () => {
-  try {
-    await loadAMapScript();
-    initMap();
-    updateClusterMarkers();
-    updateMarkers();
-    updateUserLocationMarker();
-    updateTempPickedMarker();
-
-    window.addEventListener("sidebar-toggle", handleSidebarToggle);
-    window.addEventListener(
-      "publish-sidebar-toggle",
-      handlePublishSidebarToggle,
-    );
-  } catch (error) {
-    console.error("[AMap] Failed to initialize map resources:", error);
+onMounted(() => {
+  // 设置安全代码配置
+  const securityJsCode = import.meta.env.VITE_AMAP_SECURITY_JS_CODE;
+  if (securityJsCode) {
+    window._AMapSecurityConfig = {
+      ...(window._AMapSecurityConfig || {}),
+      securityJsCode,
+    };
   }
+  // 只使用官方AMapLoader，避免混用多种加载方式
+  AMapLoader.load({
+    key: import.meta.env.VITE_AMAP_KEY,
+    version: "2.0",
+    plugins: ["AMap.Scale", "AMap.ToolBar", "AMap.moveAnimation"],
+  })
+    .then(async (AMap) => {
+      window.AMap = AMap;
+      console.log('[AMapLoader] AMap loaded successfully, checking plugins...');
+      console.log('[AMapLoader] Available plugins:', Object.keys(AMap));
+      console.log('[AMapLoader] moveAnimation available:', typeof AMap.moveAnimation);
+      
+      initMap();
+      startApprovalObserver();
+      updateClusterMarkers();
+      updateMarkers();
+      updateUserLocationMarker();
+      updateTempPickedMarker();
+
+      // Init paper plane at user location
+      const userCoords = resolveCoordinates(props.userLocation);
+      if (userCoords) {
+        initPaperPlane(userCoords);
+      }
+
+      window.addEventListener("sidebar-toggle", handleSidebarToggle);
+      window.addEventListener(
+        "publish-sidebar-toggle",
+        handlePublishSidebarToggle,
+      );
+    })
+    .catch((e) => {
+      console.error("[AMapLoader] Failed to load AMap:", e);
+      console.error("[AMapLoader] Error details:", {
+        message: e.message,
+        stack: e.stack,
+        envKey: import.meta.env.VITE_AMAP_KEY ? 'exists' : 'missing',
+        keyLength: import.meta.env.VITE_AMAP_KEY?.length
+      });
+    });
 });
 
 onUnmounted(() => {
+  stopApprovalObserver();
+  clearPaperPlaneTooltip();
+  if (paperPlaneMarker && map) {
+    map.remove(paperPlaneMarker);
+    paperPlaneMarker = null;
+  }
   clearUserLocationMarker();
   clearTempPickedMarker();
   clearClusterMarkers();
@@ -1602,6 +2280,7 @@ function toggleTheme() {
       ? "amap://styles/dark"
       : "amap://styles/whitesmoke";
     map.setMapStyle(newStyle);
+    scheduleApprovalSync();
     emit("theme-change", isDarkMode.value ? "dark" : "light");
     updateMarkers();
   }
@@ -1629,9 +2308,40 @@ watch(
   () => props.userLocation,
   (newLocation) => {
     updateUserLocationMarker(newLocation);
+    // Init paper plane on first user location
+    if (!paperPlaneInitialized) {
+      const coords = resolveCoordinates(newLocation);
+      if (coords) initPaperPlane(coords);
+    }
   },
   { deep: true },
 );
+
+watch(
+  () => props.paperPlanePosition,
+  (newPos) => {
+    if (!newPos) return;
+    const coords = resolveCoordinates(newPos);
+    if (!coords) return;
+    // 如果纸飞机已存在且位置接近，跳过移动
+    if (paperPlaneMarker && paperPlaneInitialized) {
+      const current = paperPlaneMarker.getPosition();
+      if (current) {
+        const dLat = Math.abs(current.getLat() - coords.latitude);
+        const dLng = Math.abs(current.getLng() - coords.longitude);
+        if (dLat < 0.00005 && dLng < 0.00005) return;
+      }
+    }
+    movePaperPlane(coords.latitude, coords.longitude);
+  },
+  { deep: true },
+);
+
+watch(isDarkMode, (dark) => {
+  if (paperPlaneTooltipEl) {
+    paperPlaneTooltipEl.classList.toggle('dark', dark);
+  }
+});
 
 watch(
   () => props.center,
@@ -1666,6 +2376,9 @@ watch(
 
     if (map && Number.isFinite(zoom)) {
       map.setZoom(zoom);
+      // 缩放变化时重新渲染标记（高缩放聚合检测依赖当前 zoom）
+      updateClusterMarkers();
+      updateMarkers();
     }
   },
 );
@@ -1679,6 +2392,7 @@ watch(
         ? "amap://styles/dark"
         : "amap://styles/whitesmoke";
       map.setMapStyle(newStyle);
+      scheduleApprovalSync();
       updateMarkers();
     }
   },
@@ -1701,12 +2415,70 @@ watch(
 </script>
 
 <style scoped>
-.amap-container {
+.amap-shell {
+  position: relative;
   width: 100%;
   height: 100%;
-  position: relative;
+}
+
+.amap-container {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   background: #d0d0d0;
+}
+
+.amap-approval-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 44px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(380px, calc(100% - 24px));
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 37, 58, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: #2f3c52;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(12, 22, 38, 0.14);
+  pointer-events: none;
+}
+
+.amap-approval-badge.dark {
+  border-color: rgba(214, 224, 255, 0.14);
+  background: rgba(17, 25, 39, 0.82);
+  color: #e6eefb;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.amap-approval-badge__label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.72;
+}
+
+.amap-approval-badge__value {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .amap-approval-badge {
+    left: 10px;
+    right: 10px;
+    bottom: 52px;
+    max-width: none;
+  }
 }
 
 .amap-container :deep(.amap-maps) {
@@ -1718,17 +2490,62 @@ watch(
   background: #d0d0d0;
 }
 
-:deep(.custom-marker) {
-  cursor: pointer;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+/* 禁止选中地图上的所有标记图标 */
+:deep(.amap-marker),
+:deep(.amap-marker-content),
+:deep(.amap-icon),
+:deep(.amap-maps-marker) {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
+/* 禁止选中地图上的所有标记图标 */
+:deep(.amap-marker),
+:deep(.amap-marker-content),
+:deep(.amap-icon),
+:deep(.amap-maps-marker) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+:deep(.custom-marker) {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition-property: transform, filter, box-shadow;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+/* 日间 hover：深色阴影扩散 */
 :deep(.custom-marker:hover) {
-  transform: scale(1.3);
+  transform: scale(1.08);
+}
+:deep(.custom-marker:hover .marker-glow) {
+  box-shadow:
+    0 0 16px 5px rgba(var(--marker-glow-rgb), calc(var(--glow-opacity) * 2)),
+    0 4px 12px var(--hover-shadow);
+}
+
+/* 夜间 hover：冰蓝辉光叠加 */
+:deep(.amap-container.dark-mode .custom-marker:hover .marker-glow) {
+  box-shadow:
+    0 0 20px 6px rgba(143, 180, 255, 0.35),
+    0 0 32px 8px rgba(143, 180, 255, 0.15),
+    0 4px 12px var(--hover-shadow);
 }
 
 :deep(.custom-marker:active) {
-  transform: scale(1.1);
+  transform: scale(0.95);
+}
+
+:deep(.custom-marker:focus-visible .marker-wrapper) {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
 }
 
 :deep(.user-location-marker) {
@@ -1809,22 +2626,142 @@ watch(
 
 :deep(.marker-wrapper) {
   position: relative;
-  width: 50px;
-  height: 50px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   border: 3px solid white;
-  overflow: hidden;
+  overflow: visible;
+  transform-origin: center;
 }
 
-:deep(.amap-container.dark-mode .marker-wrapper) {
+/* 外圈发光底座 — 使用 CSS 变量动态颜色 */
+:deep(.marker-glow) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(100% + 12px);
+  height: calc(100% + 12px);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  box-shadow: 0 0 10px 3px rgba(var(--marker-glow-rgb), var(--glow-opacity));
+  transition-property: box-shadow, opacity, transform;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+  transform: translate(-50%, -50%);
+  will-change: opacity, box-shadow, transform;
+}
+
+/* 呼吸动画层：日间金色脉动 / 夜间冰蓝闪烁 */
+:deep(.marker-pulse) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  transform: translate(-50%, -50%);
+  animation: marker-breathe 3s ease-in-out infinite;
+  will-change: opacity, box-shadow, transform;
+}
+
+/* 日间呼吸动画：opacity + scale 模拟金色微光 */
+@keyframes marker-breathe {
+  0% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0.98);
+    box-shadow: 0 0 4px rgba(215, 154, 67, 0.15);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.02);
+    box-shadow: 0 0 12px rgba(215, 154, 67, 0.35);
+  }
+  100% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0.98);
+    box-shadow: 0 0 4px rgba(215, 154, 67, 0.15);
+  }
+}
+
+/* 夜间呼吸动画：叠加冰蓝辉光 text-shadow 效果（用 box-shadow 模拟）*/
+:deep(.amap-container.dark-mode .marker-pulse) {
+  animation-name: marker-breathe-dark;
+}
+@keyframes marker-breathe-dark {
+  0% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(0.98);
+    box-shadow: 0 0 6px rgba(143, 180, 255, 0.12);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.02);
+    box-shadow:
+      0 0 16px rgba(143, 180, 255, 0.35),
+      0 0 28px rgba(143, 180, 255, 0.12);
+  }
+  100% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(0.98);
+    box-shadow: 0 0 6px rgba(143, 180, 255, 0.12);
+  }
+}
+
+/* prefers-reduced-motion：关闭所有动画 */
+@media (prefers-reduced-motion: reduce) {
+  :deep(.marker-pulse) {
+    animation: none !important;
+    opacity: 0.7;
+    transform: translate(-50%, -50%);
+  }
+  /* 禁止选中地图上的所有标记图标 */
+:deep(.amap-marker),
+:deep(.amap-marker-content),
+:deep(.amap-icon),
+:deep(.amap-maps-marker) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+:deep(.custom-marker) {
+    transition-duration: 0s !important;
+  }
+  :deep(.marker-glow) {
+    transition-duration: 0s !important;
+  }
+}
+
+/* 暗色模式：冰蓝辉光 — 外圈发光增强 + 边框冰蓝色 */
+:deep(.amap-container.dark-mode .marker-wrapper.marker-dark) {
   box-shadow:
-    0 0 12px currentColor,
-    0 0 24px rgba(255, 255, 255, 0.3),
+    0 0 12px rgba(143, 180, 255, 0.3),
     0 4px 12px rgba(0, 0, 0, 0.5);
+  border-color: rgba(143, 180, 255, 0.4);
+}
+
+:deep(.amap-container.is-zooming .custom-marker) {
+  transition-duration: 0s !important;
+}
+
+:deep(.amap-container.is-zooming .marker-glow) {
+  opacity: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+:deep(.amap-container.is-zooming .marker-pulse) {
+  opacity: 0;
+  animation: none !important;
+  box-shadow: none;
+  transform: none;
 }
 
 :deep(.marker-emotion) {
@@ -1832,6 +2769,182 @@ watch(
   font-size: 20px;
   z-index: 1;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ── 时光胶囊漂流瓶效果 ── */
+:deep(.custom-marker.is-time-capsule-locked) {
+  cursor: not-allowed;
+}
+:deep(.custom-marker.is-time-capsule-locked:hover) {
+  transform: scale(1.1);
+}
+
+/* 深蓝光晕发光层 */
+:deep(.capsule-glow) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(100% + 16px);
+  height: calc(100% + 16px);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 14px 4px rgba(var(--marker-glow-rgb), var(--glow-opacity)),
+              0 0 28px 8px rgba(var(--marker-glow-rgb), calc(var(--glow-opacity) * 0.5));
+  transition: box-shadow 0.2s ease;
+}
+:deep(.custom-marker.is-time-capsule-locked:hover .capsule-glow) {
+  box-shadow: 0 0 20px 8px rgba(var(--marker-glow-rgb), calc(var(--glow-opacity) * 1.8)),
+              0 0 40px 14px rgba(var(--marker-glow-rgb), calc(var(--glow-opacity) * 0.7));
+}
+
+/* 深蓝呼吸脉动 */
+:deep(.capsule-pulse) {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  transform: translate(-50%, -50%);
+  animation: capsule-breathe 3.5s ease-in-out infinite;
+}
+@keyframes capsule-breathe {
+  0% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(0.96);
+    box-shadow: 0 0 6px rgba(var(--marker-glow-rgb), 0.15);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.04);
+    box-shadow: 0 0 18px rgba(var(--marker-glow-rgb), 0.45),
+                0 0 30px rgba(var(--marker-glow-rgb), 0.15);
+  }
+  100% {
+    opacity: 0.4;
+    transform: translate(-50%, -50%) scale(0.96);
+    box-shadow: 0 0 6px rgba(var(--marker-glow-rgb), 0.15);
+  }
+}
+
+/* 暗色模式呼吸动画 */
+:deep(.amap-container.dark-mode .capsule-pulse) {
+  animation-name: capsule-breathe-dark;
+}
+@keyframes capsule-breathe-dark {
+  0% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(0.96);
+    box-shadow: 0 0 8px rgba(var(--marker-glow-rgb), 0.2);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+    box-shadow: 0 0 22px rgba(var(--marker-glow-rgb), 0.5),
+                0 0 38px rgba(var(--marker-glow-rgb), 0.2);
+  }
+  100% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(0.96);
+    box-shadow: 0 0 8px rgba(var(--marker-glow-rgb), 0.2);
+  }
+}
+
+:deep(.capsule-bottle) {
+  position: absolute;
+  inset: 5px 0px -5px 0px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+  overflow: visible;
+}
+
+:deep(.bottle-svg) {
+  width: 42px;
+  height: 48px;
+  overflow: visible;
+}
+
+/* 纸条微摆动画 */
+:deep(.paper-note) {
+  animation: paper-sway 4s ease-in-out infinite;
+  transform-origin: 13px 11px;
+}
+@keyframes paper-sway {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(30deg); }
+  75% { transform: rotate(5deg); }
+}
+
+/* 水面波浪动画 */
+:deep(.wave1) {
+  animation: bottle-wave-1 3s ease-in-out infinite;
+  transform-origin: center center;
+}
+:deep(.wave2) {
+  animation: bottle-wave-2 2.6s ease-in-out infinite;
+  animation-delay: -0.8s;
+  transform-origin: center center;
+}
+:deep(.bottle-water) {
+  animation: bottle-water-sway 4s ease-in-out infinite;
+}
+
+@keyframes bottle-wave-1 {
+  0%, 100% { transform: translateX(0) scaleY(1); }
+  50% { transform: translateX(1px) scaleY(1.1); }
+}
+@keyframes bottle-wave-2 {
+  0%, 100% { transform: translateX(0) scaleY(1); }
+  50% { transform: translateX(-1px) scaleY(0.9); }
+}
+@keyframes bottle-water-sway {
+  0%, 100% { transform: translateX(0); }
+  33% { transform: translateX(0.6px); }
+  66% { transform: translateX(-0.4px); }
+}
+
+/* 气泡上浮动画 */
+:deep(.b1) { animation: bubble-rise 3.5s ease-in infinite; }
+:deep(.b2) { animation: bubble-rise 4.2s ease-in infinite; animation-delay: -1.2s; }
+:deep(.b3) { animation: bubble-rise 3s ease-in infinite; animation-delay: -2s; }
+
+@keyframes bubble-rise {
+  0% { transform: translateY(0); opacity: 0.25; }
+  60% { opacity: 0.35; }
+  100% { transform: translateY(-10px); opacity: 0; }
+}
+
+/* 暗色模式漂流瓶 */
+:deep(.amap-container.dark-mode .capsule-bottle) {
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4)) drop-shadow(0 0 8px rgba(26,58,110,0.25));
+}
+
+/* 缩放时隐藏动画 */
+:deep(.amap-container.is-zooming .capsule-glow),
+:deep(.amap-container.is-zooming .capsule-pulse) {
+  opacity: 0 !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+
+/* prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  :deep(.capsule-pulse),
+  :deep(.wave1),
+  :deep(.wave2),
+  :deep(.bottle-water),
+  :deep(.paper-note),
+  :deep(.bubble) {
+    animation: none !important;
+  }
 }
 
 @keyframes user-location-pulse {

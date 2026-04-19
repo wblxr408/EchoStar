@@ -37,20 +37,20 @@
     </Transition>
 
     <Transition name="confirm-fade">
-      <div
-        v-if="promptDialog"
-        class="confirm-backdrop"
-        :class="{ dark: isDark }"
-        @click.self="handlePromptSubmit(null)"
-      >
-        <div class="prompt-card" :class="{ dark: isDark }">
+        <div
+          v-if="promptDialog"
+          class="confirm-backdrop"
+          :class="{ dark: promptIsDark }"
+          @click.self="handlePromptSubmit(null)"
+        >
+          <div class="prompt-card" :class="{ dark: promptIsDark }">
           <p class="prompt-label">{{ promptDialog.message }}</p>
           <input
             ref="promptInputRef"
             v-model="promptValue"
             class="prompt-input"
             :placeholder="promptDialog.placeholder || ''"
-            :class="{ dark: isDark }"
+            :class="{ dark: promptIsDark }"
             @keyup.enter="promptValue.trim() && handlePromptSubmit(promptValue)"
           />
           <div class="confirm-actions">
@@ -75,7 +75,7 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted, onUnmounted } from "vue";
+import { computed, ref, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
 import { useToast } from "../composables/useToast.js";
 
@@ -89,6 +89,9 @@ const {
 const promptValue = ref("");
 const promptInputRef = ref(null);
 const route = useRoute();
+const promptIsDark = computed(
+  () => promptDialog.value?.theme === "light" ? false : isDark.value,
+);
 
 watch(promptDialog, (val) => {
   if (val) {
@@ -136,7 +139,7 @@ function detectTheme() {
     isDark.value = false;
     return;
   }
-  if (saved === "dark") {
+  if (saved === "dark" || saved === "vip") {
     isDark.value = true;
     return;
   }
@@ -470,21 +473,16 @@ const iconMap = {
 }
 
 .prompt-card {
-  border-radius: 18px;
-  padding: 32px 36px 24px;
+  border-radius: 14px;
+  padding: 24px;
   min-width: 360px;
   max-width: 440px;
-  box-shadow: 0 16px 48px rgba(7, 12, 26, 0.32);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.2);
 }
 
 .prompt-card:not(.dark) {
-  background: linear-gradient(
-    160deg,
-    rgba(250, 239, 217, 0.96) 0%,
-    rgba(240, 223, 191, 0.98) 56%,
-    rgba(229, 206, 166, 0.98) 100%
-  );
-  border: 1px solid rgba(184, 135, 46, 0.3);
+  background: #ffffff;
+  border: 1px solid #d9dee7;
 }
 .prompt-card.dark {
   background: linear-gradient(
@@ -500,9 +498,10 @@ const iconMap = {
   font-size: 15px;
   line-height: 1.6;
   margin-bottom: 16px;
+  font-weight: 600;
 }
 .prompt-card:not(.dark) .prompt-label {
-  color: #3c2910;
+  color: #111827;
 }
 .prompt-card.dark .prompt-label {
   color: #e8e8ec;
@@ -510,8 +509,8 @@ const iconMap = {
 
 .prompt-input {
   width: 100%;
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
   font-size: 14px;
   outline: none;
   transition: all 0.2s ease;
@@ -520,16 +519,16 @@ const iconMap = {
 }
 
 .prompt-input:not(.dark) {
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(184, 135, 46, 0.25);
-  color: #3c2910;
+  background: #ffffff;
+  border: 1px solid #cfd6e3;
+  color: #111827;
 }
 .prompt-input:not(.dark):focus {
-  border-color: #b36e2d;
-  box-shadow: 0 0 0 3px rgba(179, 110, 45, 0.15);
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.18);
 }
 .prompt-input:not(.dark)::placeholder {
-  color: #a89a80;
+  color: #94a3b8;
 }
 
 .prompt-input.dark {
@@ -543,5 +542,33 @@ const iconMap = {
 }
 .prompt-input.dark::placeholder {
   color: #6b7a9e;
+}
+
+.prompt-card:not(.dark) .confirm-btn.cancel {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.prompt-card:not(.dark) .confirm-btn.cancel:hover {
+  background: #e5e7eb;
+}
+
+.prompt-card:not(.dark) .confirm-btn.ok {
+  background: #111827;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.prompt-card:not(.dark) .confirm-btn.ok:hover {
+  background: #1f2937;
+  transform: translateY(-1px);
+}
+
+.prompt-card:not(.dark) .confirm-btn.ok:disabled {
+  background: #9ca3af;
+  color: #ffffff;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 </style>

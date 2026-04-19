@@ -60,7 +60,7 @@ export async function syncStoryViewCount() {
 
   // 批量更新：单条 SQL + CASE WHEN（消除 N+1）
   try {
-    const caseParts = deltas.map((d, i) => `WHEN id = :id${i} THEN "viewCount" + :delta${i}`);
+    const caseParts = deltas.map((d, i) => `WHEN id = :id${i} THEN view_count + :delta${i}`);
     const idList = deltas.map((_, i) => `:id${i}`);
     const replacements = {};
     deltas.forEach((d, i) => {
@@ -69,7 +69,7 @@ export async function syncStoryViewCount() {
     });
 
     await sequelize.query(
-      `UPDATE stories SET "viewCount" = CASE ${caseParts.join(' ')} END WHERE id IN (${idList.join(',')})`,
+      `UPDATE stories SET view_count = CASE ${caseParts.join(' ')} END WHERE id IN (${idList.join(',')})`,
       { replacements, type: sequelize.QueryTypes.UPDATE }
     );
 

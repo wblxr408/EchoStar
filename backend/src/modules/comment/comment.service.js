@@ -14,7 +14,7 @@ class CommentServiceClass {
    * 发送 MQ 消息异步写入数据库
    */
   async createComment(userId, data) {
-    const { storyId, content } = data;
+    const { storyId, content, fontFamily, fontEffect } = data;
 
     // 使用缓存查询验证故事是否存在
     const { StoryService } = await import('../story/story.service.js');
@@ -24,23 +24,60 @@ class CommentServiceClass {
       throw new Error('故事不存在');
     }
 
+    // =====================
+    // 基于用户ID + 故事ID + 时间窗口获取分布式锁
+    // =====================
+    const windowSize = 3; // 3秒窗口
+    const timestampWindow = Math.floor(Date.now() / 1000 / windowSize);
+    const lockKey = `comment:create:lock:${userId}:${storyId}:${timestampWindow}`;
+
+    const { redisClient } = await import('../../common/utils/redis.js');
+    const redis = redisClient.getClient();
+    const acquired = await redis.set(
+      lockKey,
+      '1',
+      'NX',
+      'EX',
+      windowSize
+    );
+
+    if (!acquired) {
+      throw new Error('评论过于频繁，请3秒后再试');
+    }
+
     // 生成雪花ID
     const commentId = snowflake.nextId();
 
     // 发送 MQ 消息，让消费者异步处理
-    rocketmqClient.sendOrderly(
-      MessageModule.COMMENT,
-      CommentOperation.CREATE,
-      { commentId, userId, storyId, content },
-      storyId  // 使用 storyId 保证同一故事的评论顺序
-    ).catch(err => {
-      console.error(`❌ 发送 CREATE 消息失败:`, err);
-    });
+    const messageData = {
+      commentId,
+      userId,
+      storyId,
+      content,
+      fontFamily: fontFamily || null,
+      fontEffect: fontEffect || null,
+      lockKey
+    };
 
-    // 立即返回
+    try {
+      await rocketmqClient.sendOrderly(
+        MessageModule.COMMENT,
+        CommentOperation.CREATE,
+        messageData,
+        storyId
+      );
+    } catch (mqError) {
+      // 发送失败，手动释放锁（保底）
+      console.error(`❌ 发送 CREATE 消息失败 [commentId: ${commentId}]:`, mqError);
+      await redis.del(lockKey);
+      throw new Error('评论发布失败，请稍后重试');
+    }
+
     return {
       id: commentId,
       content,
+      fontFamily: fontFamily || null,
+      fontEffect: fontEffect || null,
       createdAt: new Date().toISOString()
     };
   }
@@ -60,7 +97,7 @@ class CommentServiceClass {
       include: [{
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip', 'commentBg']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -72,10 +109,14 @@ class CommentServiceClass {
         id: comment.id,
         content: comment.content,
         createdAt: comment.createdAt,
+        fontFamily: comment.fontFamily || null,
+        fontEffect: comment.fontEffect || null,
         user: {
           id: comment.userId,
           username: comment.user?.username || '匿名用户',
-          avatar: comment.user?.avatarUrl || null
+          avatar: comment.user?.avatarUrl || null,
+          vip: comment.user?.vip || 0,
+          commentBg: comment.user?.commentBg || null
         }
       })),
       pagination: {
@@ -159,7 +200,7 @@ class CommentServiceClass {
       include: [{
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip', 'commentBg']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -172,10 +213,14 @@ class CommentServiceClass {
         content: comment.content,
         createdAt: comment.createdAt,
         storyId: comment.storyId,
+        fontFamily: comment.fontFamily || null,
+        fontEffect: comment.fontEffect || null,
         user: {
           id: comment.userId,
           username: comment.user?.username || '匿名用户',
-          avatar: comment.user?.avatarUrl || null
+          avatar: comment.user?.avatarUrl || null,
+          vip: comment.user?.vip || 0,
+          commentBg: comment.user?.commentBg || null
         }
       })),
       pagination: {

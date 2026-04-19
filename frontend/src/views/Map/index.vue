@@ -1,5 +1,5 @@
-﻿<template>
-  <div class="map-page" @click="handlePageClick">
+<template>
+  <div class="map-page" :class="{ 'search-blur': anyPanelOpen }" @click="handlePageClick">
     <transition name="welcome-fade">
       <div v-if="showWelcomeOverlay" class="welcome-overlay" @click.stop>
         <div class="welcome-overlay__sky" aria-hidden="true">
@@ -16,7 +16,284 @@
           </p>
         </div>
       </div>
-    </transition>
+      </transition>
+
+    <!-- 搜索框 -->
+    <div v-show="!isAdjustingPlanePosition" class="map-search-bar" :class="{ dark: effectiveMapTheme === 'dark' }" @click.stop>
+      <div class="map-search-input-wrap">
+        <svg class="map-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input
+          v-model="searchKeyword"
+          class="map-search-input"
+          type="text"
+          placeholder="搜索故事/用户/地点"
+          @keydown.enter="handleSearchSubmit"
+          @focus="searchFocused = true"
+        />
+        <button v-if="searchKeyword" class="map-search-clear" @click="clearSearch()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 搜索结果面板 -->
+    <transition name="search-panel-fade">
+      <div
+        v-if="showSearchPanel"
+        class="map-search-results"
+        :class="{ dark: effectiveMapTheme === 'dark' }"
+        @click.stop
+      >
+        <!-- 标签页切换 -->
+        <div class="search-tabs">
+          <button class="search-tab" :class="{ active: searchTab === 'story' }" @click="switchSearchTab('story')">故事</button>
+          <button class="search-tab" :class="{ active: searchTab === 'user' }" @click="switchSearchTab('user')">用户</button>
+          <button class="search-tab" :class="{ active: searchTab === 'place' }" @click="switchSearchTab('place')">地点</button>
+        </div>
+
+        <!-- 故事标签页 -->
+        <div ref="searchVScrollContainerRef" v-if="searchTab === 'story'" class="map-search-results-list">
+          <div v-if="searchLoading" class="map-search-empty">搜索中...</div>
+          <div v-else-if="searchKeyword.trim() && !searchStorySearched" class="map-search-empty">搜索中...</div>
+          <div v-else-if="searchKeyword.trim() && searchResults.length === 0" class="map-search-empty">未找到相关故事</div>
+          <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入关键词搜索故事</div>
+          <template v-else>
+            <div class="vscroll-spacer" :style="{ height: searchVScrollTotalHeight + 'px' }"></div>
+            <div
+              v-for="item in searchVScrollVisibleItems"
+              :key="item.data.id + '-search-' + searchAnimationKey"
+              ref="searchVScrollItemRefs"
+              :data-search-story-index="item.index"
+              class="map-search-card panel-item vscroll-item story-card-enter"
+              :class="{ 'is-vip-card': item.data.author?.vip }"
+              :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+              @click="openStoryFromCollection(item.data)"
+            >
+              <div class="item-header">
+                <img :src="item.data.avatar" class="item-avatar" alt="头像" />
+                <div class="item-meta">
+                  <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': item.data.author?.vip }">{{ item.data.author?.username || item.data.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="item.data.author?.vip">VIP</span></span>
+                  <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ item.data.locationName || '' }}</span>
+                </div>
+              </div>
+              <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+              <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+              <div class="item-footer">
+                <span class="item-likes">👁 {{ item.data.viewCount ?? 0 }}</span>
+              </div>
+            </div>
+            <div v-if="searchLoadingMore" class="map-search-empty">加载更多...</div>
+            <div v-if="!searchHasMore && searchResults.length > 0" class="map-search-empty">没有更多了</div>
+          </template>
+        </div>
+
+        <!-- 地点标签页 -->
+        <div v-if="searchTab === 'place'" class="map-search-results-list">
+          <div v-if="searchPlaceLoading" class="map-search-empty">搜索地点中...</div>
+          <div v-else-if="searchKeyword.trim() && !searchPlaceSearched" class="map-search-empty">搜索地点中...</div>
+          <div v-else-if="searchPlaceError" class="map-search-empty">{{ searchPlaceError }}</div>
+          <div v-else-if="searchKeyword.trim() && searchPlaceResults.length === 0" class="map-search-empty">未找到相关地点</div>
+          <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入地点名称搜索</div>
+          <template v-else>
+            <div
+              v-for="(poi, idx) in searchPlaceResults"
+              :key="poi.id || idx"
+              class="search-place-item panel-item"
+              @click.stop="handlePlaceSelect(poi)"
+            >
+              <div class="search-place-icon">📍</div>
+              <div class="search-place-info">
+                <div class="search-place-name">{{ poi.name }}</div>
+                <div class="search-place-addr">{{ poi.address || poi.cityname || '' }}</div>
+              </div>
+              <div v-if="poi.distance" class="search-place-dist">{{ formatDistance(poi.distance) }}</div>
+            </div>
+          </template>
+        </div>
+
+        <!-- 用户标签页 -->
+        <div ref="userSearchVScrollContainerRef" v-else-if="searchTab === 'user'" class="map-search-results-list">
+          <div v-if="searchUserLoading" class="map-search-empty">搜索中...</div>
+          <div v-else-if="searchKeyword.trim() && !searchUserSearched" class="map-search-empty">搜索中...</div>
+          <div v-else-if="!searchKeyword.trim()" class="map-search-empty">输入用户名或ID搜索用户</div>
+          <div v-else-if="searchUserResults.length === 0" class="map-search-empty">未找到相关用户</div>
+          <template v-else>
+            <div class="vscroll-spacer" :style="{ height: userSearchVScrollTotalHeight + 'px' }"></div>
+            <div
+              v-for="item in userSearchVScrollVisibleItems"
+              :key="item.data.id + '-usersearch-' + searchAnimationKey"
+              ref="userSearchVScrollItemRefs"
+              :data-search-user-index="item.index"
+              class="search-user-card vscroll-item story-card-enter"
+              :class="{ 'is-vip-card': item.data.vip }"
+              :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+              @click="openUserDetail(item.data)"
+            >
+              <div class="search-user-card__avatar">
+                <img :src="item.data.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
+              </div>
+              <div class="search-user-card__info">
+                <div class="search-user-card__name-row">
+                  <span class="vip-name-row"><span class="search-user-card__name vip-username" :class="{ 'has-vip': item.data.vip }">{{ item.data.username || '未设置' }}</span><span class="vip-text-badge-sm" v-if="item.data.vip">VIP</span></span>
+                </div>
+                <div class="search-user-card__id">STAR-ID: {{ item.data.id }}</div>
+              </div>
+              <svg class="search-user-card__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+            <div v-if="searchUserLoadingMore" class="map-search-empty">加载更多...</div>
+            <div v-if="!searchUserHasMore && searchUserResults.length > 0" class="map-search-empty">没有更多了</div>
+          </template>
+        </div>
+      </div>
+      </transition>
+
+    <!-- 用户详情弹窗 -->
+    <Teleport to="body">
+      <transition name="publish-modal">
+        <div v-if="searchUserDetailOpen && searchedUser" class="search-user-modal-shell" :class="{ 'has-profile-search': userDetailSearchActive }" @click.self="closeUserDetail">
+        <!-- 左侧搜索结果面板 -->
+        <transition name="profile-search-panel">
+          <div v-if="userDetailSearchActive" class="profile-search-panel" :class="{ dark: effectiveMapTheme === 'dark' }">
+            <div class="profile-search-header">
+              <h3>{{ searchedUser.username || '该用户' }}的含有"{{ userDetailSearchQuery }}"关键词的作品 <span class="profile-search-count" v-if="userDetailSearchResults.length">({{ userDetailSearchResults.length }})</span></h3>
+            </div>
+            <div ref="userDetailSearchVScrollContainerRef" class="profile-search-list">
+              <div v-if="userDetailSearchResults.length === 0" class="panel-empty">
+                <span class="empty-icon">🔍</span><span>没有找到匹配的故事</span>
+              </div>
+              <template v-else>
+                <div class="vscroll-spacer" :style="{ height: userDetailSearchVScrollTotalHeight + 'px' }"></div>
+                <div
+                  v-for="item in userDetailSearchVScrollVisibleItems"
+                  :key="item.data.id + '-search-' + searchAnimationKey"
+                  ref="userDetailSearchVScrollItemRefs"
+                  :data-virtual-index="item.index"
+                  class="panel-item vscroll-item story-card-enter"
+                  :class="{ 'is-vip-card': searchedUser.vip }"
+                  :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                  @click="openStoryFromCollection(item.data)"
+                >
+                  <div class="item-header">
+                    <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
+                    <div class="item-meta">
+                      <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="searchedUser.vip">VIP</span></span>
+                      <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
+                    </div>
+                  </div>
+                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                  <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                  <div class="item-footer">
+                    <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                    <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </transition>
+        <div class="map-search-user-detail" :class="{ dark: effectiveMapTheme === 'dark' }">
+          <div class="user-sidebar-header">
+            <h3>个人信息</h3>
+            <button class="close-btn" @click.stop="closeUserDetail">
+              <span>×</span>
+            </button>
+          </div>
+          <div class="user-sidebar-content">
+            <div class="search-user-profile">
+              <!-- 头像 + 用户名/ID -->
+              <div class="user-profile-new">
+                <div class="user-avatar-wrapper">
+                  <div class="user-avatar-large">
+                    <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" alt="用户头像" />
+                  </div>
+                </div>
+                <div class="user-identity-area">
+                  <div class="user-identity-top">
+                    <div class="user-name-row">
+                      <span class="vip-text-badge" v-if="searchedUser.vip">VIP</span>
+                      <span class="user-display-name" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '未设置' }}</span>
+                    </div>
+                    <div class="user-star-id">STAR-ID: {{ searchedUser.id ?? '' }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 签名 -->
+              <div class="user-bio-area search-user-bio" :class="{ 'vip-bio': searchedUser.vip }">
+                <div class="bio-content">
+                  <span class="bio-text" :style="getBioFontStyle(searchedUser.bioFontFamily, searchedUser.bioFontEffect)">{{ searchedUser.bio || '这个人很懒，什么都没有写~' }}</span>
+                </div>
+              </div>
+
+              <!-- 搜索框 -->
+              <div class="profile-search-input-wrapper">
+                <input ref="userDetailSearchInputRef" v-model="userDetailSearchQuery" placeholder="搜索TA的作品" class="profile-search-input" @focus="userDetailSearchActive = true" @blur="handleUserDetailSearchBlur" />
+                <button v-if="userDetailSearchQuery" class="search-clear-btn" @click.stop="userDetailSearchQuery = ''; userDetailSearchInputRef?.focus()">×</button>
+              </div>
+
+              <!-- 标签栏 -->
+              <div class="user-content-tabs-wrapper">
+                <div class="user-content-tabs">
+                  <button class="content-tab active">作品<span class="tab-count">{{ searchedUserStories.length }}</span></button>
+                </div>
+              </div>
+
+              <!-- 故事列表 -->
+              <div ref="userDetailVScrollContainerRef" class="user-content-list" @scroll="handleProfileScroll">
+                <div v-if="searchedUserStories.length === 0" class="panel-empty">
+                  <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
+                </div>
+                <template v-else>
+                  <div class="vscroll-spacer" :style="{ height: userDetailVScrollTotalHeight + 'px' }"></div>
+                  <div
+                    v-for="item in userDetailVScrollVisibleItems"
+                    :key="item.data.id + '-detail-' + searchAnimationKey"
+                    ref="userDetailVScrollItemRefs"
+                    :data-virtual-index="item.index"
+                    class="panel-item vscroll-item story-card-enter"
+                    :class="{ 'is-vip-card': searchedUser.vip }"
+                    :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.07 + 's' }"
+                    @click="openStoryFromCollection(item.data)"
+                  >
+                    <div class="item-header">
+                      <img :src="searchedUser.avatar || 'https://picsum.photos/80/80?random=1'" class="item-avatar" alt="头像" />
+                      <div class="item-meta">
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': searchedUser.vip }">{{ searchedUser.username || '匿名用户' }}</span><span class="vip-text-badge-sm" v-if="searchedUser.vip">VIP</span></span>
+                        <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
+                      </div>
+                    </div>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                    <div class="item-footer">
+                      <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
+                    </div>
+                  </div>
+                  <div v-if="searchedUserStories.length > 0" class="panel-no-more"><span>没有更多了</span></div>
+                </template>
+              </div>
+              <transition name="back-to-top">
+                <button
+                  v-if="showProfileBackToTop"
+                  class="wall-back-to-top profile-back-to-top"
+                  :class="{ dark: effectiveMapTheme === 'dark' }"
+                  @click="scrollProfileToTop(userDetailVScrollContainerRef)"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 19V6" />
+                    <path d="M6.5 11.5 12 6l5.5 5.5" />
+                    <path d="M8 4h8" />
+                  </svg>
+                </button>
+              </transition>
+            </div>
+          </div>
+          <!-- 返回顶部按钮 (他人主页) -->
+        </div>
+      </div>
+      </transition>
+    </Teleport>
+
     <div class="map-container">
       <AMap
         ref="amapRef"
@@ -26,15 +303,111 @@
         :center="mapStore.center"
         :zoom="mapStore.zoom"
         :theme="effectiveMapTheme"
-        :point-pick-mode="isPickingPublishLocation"
-        :temp-picked-location="pickedPublishLocation"
+        :point-pick-mode="isMapPointPickMode"
+        :temp-picked-location="activeTempPickedLocation"
+        :paper-plane-position="planePosition"
         @marker-click="handleMarkerClick"
         @map-click="handlePublishMapClick"
         @map-move="handleMapMove"
         @cluster-click="handleClusterClick"
         @theme-change="handleThemeChange"
+        @paper-plane-click="handlePaperPlaneClick"
+        @paper-plane-hover="handlePaperPlaneHover"
+        @paper-plane-leave="handlePaperPlaneLeave"
+        @paper-plane-move="handlePaperPlaneMove"
       />
     </div>
+
+    <button
+      v-show="!isAdjustingPlanePosition"
+      class="locate-btn"
+      :class="{ dark: effectiveMapTheme === 'dark' }"
+      title="回到我的位置"
+      aria-label="回到我的位置"
+      @click.stop="handleLocate"
+    >
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <line x1="12" y1="2" x2="12" y2="6"/>
+        <line x1="12" y1="18" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="6" y2="12"/>
+        <line x1="18" y1="12" x2="22" y2="12"/>
+      </svg>
+    </button>
+
+    <ClusterPopover
+      v-if="showClusterPopover"
+      :visible="showClusterPopover"
+      :stories="clusterPopoverStories"
+      :map-theme="effectiveMapTheme"
+      @close="showClusterPopover = false"
+      @select-story="openStoryFromCollection"
+      @preview-image="handlePreviewImage"
+    />
+
+    <ImageLightbox
+      :visible="showLightbox"
+
+      :images="lightboxImages"
+      :initial-index="lightboxInitialIndex"
+      @close="showLightbox = false"
+    />
+
+    <MyFootprints
+      :visible="showFootprints"
+      :is-dark="effectiveMapTheme === 'dark'"
+      :map-ref="amapRef"
+      :story-detail-open="!!selectedStory && showFootprints"
+      @close="showFootprints = false"
+      @story-click="handleStoryClick"
+    />
+
+    <!-- VIP Center -->
+    <VipCenter
+      :visible="showVipCenter"
+      :is-dark="effectiveMapTheme === 'dark'"
+      :high-z-index="vipCenterFromStory"
+      @close="showVipCenter = false; showCommentSettings = false; commentSettingsFromStory = false; vipCenterFromStory = false; fontPickerFromStory = false; showFontPicker = false"
+      @open-polish="showToast('在我的故事中点击擦亮按钮即可使用')"
+      @open-comment-settings="showFontPicker = false; fontPickerFromStory = false; commentSettingsFromStory = vipCenterFromStory; showCommentSettings = !showCommentSettings"
+      @open-visual="showVipCenter = false; showVisualCustomizer = true"
+      @open-footprints="showVipCenter = false; showUserSidebar = false; handleFootprints()"
+      @open-fonts="showCommentSettings = false; commentSettingsFromStory = false; fontPickerFromStory = vipCenterFromStory; showFontPicker = !showFontPicker"
+    />
+
+    <!-- Font Picker -->
+    <FontPicker
+      :visible="showFontPicker"
+      :is-dark="effectiveMapTheme === 'dark'"
+      :high-z-index="fontPickerFromStory"
+      @close="showFontPicker = false; fontPickerFromStory = false"
+    />
+
+    <!-- Coin Center -->
+    <CoinCenter
+      :visible="showCoinCenter"
+      :is-dark="effectiveMapTheme === 'dark'"
+      @close="showCoinCenter = false"
+    />
+
+    <!-- Comment Settings -->
+    <CommentSettings
+      :visible="showCommentSettings"
+      :is-dark="effectiveMapTheme === 'dark'"
+      :high-z-index="commentSettingsFromStory"
+      @close="handleCommentSettingsClose"
+      @request-vip="vipCenterFromStory = commentSettingsFromStory; showCommentSettings = false; commentSettingsFromStory = false; showVipCenter = true"
+      @saved="handleCommentSettingsSaved"
+    />
+
+    <!-- Visual Customizer -->
+    <VisualCustomizer
+      :visible="showVisualCustomizer"
+      :is-dark="effectiveMapTheme === 'dark'"
+      @close="showVisualCustomizer = false"
+      @request-vip="showVisualCustomizer = false; showVipCenter = true"
+      @saved="handleVisualCustomizerSaved"
+    />
 
     <transition name="publish-modal">
       <div
@@ -54,28 +427,15 @@
             <div class="sidebar-tabs">
               <button
                 class="tab-btn"
-                :class="{ active: sidebarTab === 'nearby' }"
-                @click="sidebarTab = 'nearby'"
-              >
-                附近故事
-              </button>
-              <button
-                class="tab-btn"
                 :class="{ active: sidebarTab === 'featured' }"
-                @click="
-                  sidebarTab = 'featured';
-                  loadFeaturedStories();
-                "
+                @click="sidebarTab = 'featured'"
               >
                 精选推荐
               </button>
               <button
                 class="tab-btn"
                 :class="{ active: sidebarTab === 'recommend' }"
-                @click="
-                  sidebarTab = 'recommend';
-                  loadRecommendationFeed();
-                "
+                @click="sidebarTab = 'recommend'"
               >
                 为你推荐
               </button>
@@ -85,210 +445,155 @@
             </button>
           </div>
 
-          <div class="sidebar-content">
-            <div v-if="sidebarTab === 'nearby'">
-              <section class="nearby-search-panel">
-                <div class="nearby-search-panel__heading">
-                  <div>
-                    <p class="nearby-search-panel__kicker">Place Search</p>
-                    <h3>搜索附近地点</h3>
-                    <p class="nearby-search-panel__summary">
-                      {{ nearbyCenterSummary }}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    class="nearby-search-panel__ghost-btn"
-                    @click="handleLocate"
-                  >
-                    我的定位
-                  </button>
-                </div>
-
-                <div class="nearby-search-panel__controls">
-                  <input
-                    v-model="nearbySearchQuery"
-                    type="text"
-                    class="nearby-search-panel__input"
-                    placeholder="搜索商圈、地标、街道或店铺"
-                    @keyup.enter="performNearbyPoiSearch"
-                  />
-                  <button
-                    type="button"
-                    class="nearby-search-panel__submit"
-                    :disabled="
-                      nearbySearching || nearbySearchQuery.trim().length < 2
-                    "
-                    @click="performNearbyPoiSearch"
-                  >
-                    {{ nearbySearching ? "搜索中..." : "搜索地点" }}
-                  </button>
-                </div>
-
-                <div class="nearby-search-panel__actions">
-                  <button
-                    v-if="
-                      nearbySearchQuery ||
-                      nearbySearchResults.length > 0 ||
-                      nearbySearchError
-                    "
-                    type="button"
-                    class="nearby-search-panel__text-btn"
-                    @click="clearNearbyPoiSearch"
-                  >
-                    清空搜索
-                  </button>
-                  <span class="nearby-search-panel__tip"
-                    >会优先参考附近结果，但明确地标也能跳出本地</span
-                  >
-                </div>
-
-                <p
-                  v-if="nearbySearchError"
-                  class="nearby-search-panel__feedback nearby-search-panel__feedback--error"
-                >
-                  {{ nearbySearchError }}
-                </p>
-                <p
-                  v-else-if="nearbySearching"
-                  class="nearby-search-panel__feedback"
-                >
-                  正在查找相关地点...
-                </p>
-                <p
-                  v-else-if="
-                    nearbyHasSearched && nearbySearchResults.length === 0
-                  "
-                  class="nearby-search-panel__feedback"
-                >
-                  没找到匹配地点，可以换个关键词，或者直接拖动地图继续找。
-                </p>
-
-                <div
-                  v-if="nearbySearchResults.length > 0"
-                  class="nearby-search-panel__results"
-                >
-                  <button
-                    v-for="poi in nearbySearchResults"
-                    :key="poi.id"
-                    type="button"
-                    class="nearby-search-panel__result"
-                    @click="focusNearbyStoriesOnPoi(poi)"
-                  >
-                    <div class="nearby-search-panel__result-copy">
-                      <strong>{{ poi.name }}</strong>
-                      <span>{{ poi.address }}</span>
-                    </div>
-                    <div class="nearby-search-panel__result-meta">
-                      <span>{{ formatPoiDistrictLabel(poi) }}</span>
-                    </div>
-                  </button>
-                </div>
-              </section>
-
-              <div v-if="loading" class="loading">加载中...</div>
-              <div v-else-if="stories.length === 0" class="empty">
-                <p>附近还没有故事</p>
-                <p class="hint">点击发布按钮,留下你的第一个故事吧</p>
+          <div ref="sidebarContentRef" class="sidebar-content" @scroll="handleWallScroll($event, sidebarTab)">
+            <!-- 精选推荐 - Grid 卡片 -->
+            <div v-show="sidebarTab === 'featured'" class="wall-tab-scroll">
+              <div v-if="wallTabs.featured.loading" class="loading">加载中...</div>
+              <div v-else-if="wallTabs.featured.error" class="empty">
+                <p>{{ wallTabs.featured.error }}</p>
               </div>
-              <div v-else class="story-list">
-                <StoryCard
-                  v-for="story in stories"
-                  :key="story.id"
-                  :story="story"
-                  @preview-image="handlePreviewImage"
-                  @select-story="openStoryFromCollection"
-                />
-              </div>
-            </div>
-
-            <div v-if="sidebarTab === 'recommend'">
-              <div v-if="feedLoading" class="loading">加载中...</div>
-              <div v-else-if="feedStories.length === 0" class="empty">
-                <p>暂无推荐内容</p>
-                <p class="hint">
-                  发布故事或点赞更多内容，会为你推荐更懂你的故事
-                </p>
-              </div>
-              <div v-else class="story-list">
-                <StoryCard
-                  v-for="story in feedStories"
-                  :key="story.id"
-                  :story="story"
-                  @preview-image="handlePreviewImage"
-                  @select-story="openStoryFromCollection"
-                />
-                <div v-if="feedHasMore" class="load-more-wrap">
-                  <button
-                    class="load-more-btn"
-                    :disabled="feedLoadingMore"
-                    @click="loadMoreFeed"
-                  >
-                    {{ feedLoadingMore ? "加载中..." : "加载更多" }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="sidebarTab === 'featured'">
-              <div v-if="featuredStories.length === 0" class="empty">
+              <div v-else-if="wallTabs.featured.items.length === 0" class="empty">
                 <p>暂无精选内容</p>
                 <p class="hint">管理员会定期挑选优质内容展示在这里</p>
               </div>
-              <div v-else class="story-list">
-                <div
-                  v-for="story in featuredStories"
-                  :key="story.id"
-                  class="featured-story-card"
-                  @click="openFeaturedStory(story)"
-                >
-                  <div v-if="story.images?.length" class="featured-image">
-                    <img :src="story.images[0]" alt="故事图片" />
-                    <div class="featured-badges">
-                      <span v-if="story.isPinned" class="badge pinned">📌</span>
-                    </div>
-                  </div>
-                  <div class="featured-content">
-                    <div class="featured-author">
-                      <div class="featured-author-avatar">
-                        <img
-                          v-if="getStoryAuthorAvatar(story)"
-                          :src="getStoryAuthorAvatar(story)"
-                          :alt="getStoryAuthorName(story)"
-                        />
-                        <span v-else>{{ getStoryAuthorInitial(story) }}</span>
-                      </div>
-                      <span class="featured-author-name">{{
-                        getStoryAuthorName(story)
-                      }}</span>
-                    </div>
-                    <p class="featured-text">{{ story.content }}</p>
-                    <div class="featured-meta">
-                      <span class="emotion">{{
-                        getEmotionEmoji(story.emotionTag || story.emotion)
-                      }}</span>
-                      <span class="stats"
-                        >❤️ {{ story.likeCount || story.likes || 0 }}</span
-                      >
-                    </div>
-                  </div>
-                </div>
+              <div v-else class="story-wall-grid">
+                <StoryWallCard
+                  v-for="(story, idx) in wallTabs.featured.items"
+                  :key="story.id + '-wall-featured-' + idx"
+                  :story="story"
+                  :theme="effectiveMapTheme"
+                  :class="['story-card-enter', { 'no-anim-delay': idx >= 18 }]"
+                  :data-virtual-index="idx"
+                  :style="{ animationDelay: idx < 18 ? idx * 0.12 + 's' : '0s' }"
+                  @select="handleWallCardSelect"
+                />
               </div>
+              <div v-if="wallTabs.featured.loadingMore" class="wall-loading-more">加载中...</div>
+              <div v-else-if="!wallTabs.featured.hasMore && wallTabs.featured.items.length > 0" class="wall-loading-more">没有更多了</div>
+            </div>
+
+            <!-- 为你推荐 - Grid 卡片 -->
+            <div v-show="sidebarTab === 'recommend'" class="wall-tab-scroll">
+              <div v-if="wallTabs.recommend.loading" class="loading">加载中...</div>
+              <div v-else-if="wallTabs.recommend.error" class="empty">
+                <p>{{ wallTabs.recommend.error }}</p>
+              </div>
+              <div v-else-if="wallTabs.recommend.items.length === 0" class="empty">
+                <p>暂无推荐内容</p>
+                <p class="hint">发布故事或点赞更多内容，会为你推荐更懂你的故事</p>
+              </div>
+              <div v-else class="story-wall-grid">
+                <StoryWallCard
+                  v-for="(story, idx) in wallTabs.recommend.items"
+                  :key="story.id + '-wall-recommend-' + idx"
+                  :story="story"
+                  :theme="effectiveMapTheme"
+                  :class="['story-card-enter', { 'no-anim-delay': idx >= 18 }]"
+                  :data-virtual-index="idx"
+                  :style="{ animationDelay: idx < 18 ? idx * 0.12 + 's' : '0s' }"
+                  @select="handleWallCardSelect"
+                />
+              </div>
+              <div v-if="wallTabs.recommend.loadingMore" class="wall-loading-more">加载中...</div>
+              <div v-else-if="!wallTabs.recommend.hasMore && wallTabs.recommend.items.length > 0" class="wall-loading-more">没有更多了</div>
             </div>
           </div>
+          <!-- 返回顶部按钮 -->
+          <transition name="back-to-top">
+            <button
+              v-if="showWallBackToTop"
+              class="wall-back-to-top"
+              :class="{ dark: effectiveMapTheme === 'dark' }"
+              @click="scrollWallToTop"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V6" />
+                <path d="M6.5 11.5 12 6l5.5 5.5" />
+                <path d="M8 4h8" />
+              </svg>
+            </button>
+          </transition>
+        </div>
+      </div>
+      </transition>
+
+    <!-- 纸飞机附近故事面板 -->
+    <transition name="publish-modal">
+      <div
+        v-if="showPlaneNearby"
+        class="story-modal-shell"
+        @click.self="closePlaneNearby"
+      >
+        <div
+          class="plane-nearby-sidebar"
+          :class="{ dark: effectiveMapTheme === 'dark' }"
+          @click.stop
+        >
+          <div class="plane-nearby-header">
+            <div class="plane-nearby-header__left">
+              <h3>附近故事</h3>
+            </div>
+            <button class="close-btn" @click.stop="closePlaneNearby">
+              <span>×</span>
+            </button>
+          </div>
+          <div ref="planeNearbyContentRef" class="plane-nearby-content" @scroll="handlePlaneNearbyScroll($event)">
+            <div v-if="planeNearbyLoading && !planeNearbyInitialDone" class="loading">加载中...</div>
+            <div v-else-if="planeNearbyError" class="empty">
+              <p>{{ planeNearbyError }}</p>
+            </div>
+            <div v-else-if="planeNearbyItems.length === 0 && planeNearbyInitialDone" class="empty">
+              <p>附近暂无故事</p>
+              <p class="hint">换个位置试试？</p>
+            </div>
+            <template v-else>
+              <div class="story-wall-grid">
+                <StoryWallCard
+                  v-for="(story, idx) in planeNearbyItems"
+                  :key="story.id + '-plane-nearby-' + idx"
+                  :story="story"
+                  :theme="effectiveMapTheme"
+                  :class="['story-card-enter', { 'no-anim-delay': idx >= 18 }]"
+                  :data-virtual-index="idx"
+                  :style="{ animationDelay: idx < 18 ? idx * 0.12 + 's' : '0s' }"
+                  @select="openStoryFromCollection(story)"
+                />
+              </div>
+              <div v-if="planeNearbyLoadingMore" class="wall-loading-more">加载中...</div>
+              <div v-else-if="!planeNearbyHasMore && planeNearbyItems.length > 0" class="wall-loading-more">没有更多了</div>
+            </template>
+          </div>
+          <!-- 返回顶部按钮 -->
+          <transition name="back-to-top">
+            <button
+              v-if="showPlaneNearbyBackToTop"
+              class="wall-back-to-top"
+              :class="{ dark: effectiveMapTheme === 'dark' }"
+              @click="scrollPlaneNearbyToTop"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V6" />
+                <path d="M6.5 11.5 12 6l5.5 5.5" />
+                <path d="M8 4h8" />
+              </svg>
+            </button>
+          </transition>
         </div>
       </div>
     </transition>
 
     <div
+      v-show="!isAdjustingPlanePosition"
       :class="[
         'dock-container',
         effectiveMapTheme === 'dark' ? 'dock-dark' : 'dock-light',
+        { 'dock-vip-theme': isVipTheme, 'poker-mode': usePokerTheme },
         {
           'show-publish-sidebar': showPublishSidebar,
+          'show-dock-publish-sidebar': showDockPublishSidebar,
           'show-user-sidebar': showUserSidebar,
           expanded: isDockExpanded,
-          locked: isPickingPublishLocation,
+          locked: isPickingPublishLocation || isPickingDockPublishLocation,
         },
       ]"
       @click.stop
@@ -306,10 +611,16 @@
         }}</span>
       </button>
 
-      <div class="dock-menu" :class="{ expanded: isDockExpanded }">
+      <div
+        ref="dockMenuRef"
+        class="dock-menu"
+        :class="{ expanded: isDockExpanded }"
+      >
         <div
+          ref="dockCardStackRef"
           class="dock-card-stack"
           :class="{
+            'selected-state': Boolean(selectedDockCard),
             'selection-motion': Boolean(
               selectedDockCard ||
               drawingDockCard ||
@@ -318,6 +629,7 @@
             ),
           }"
           :style="getDockStackStyle(visibleDockActions.length)"
+          @mousemove="handleDockStackPointerMove"
           @mouseleave="scheduleClearDockHover"
         >
           <div
@@ -345,16 +657,40 @@
           >
             <span
               v-if="shouldRenderDockAnchor(action.key)"
-              class="dock-card-anchor"
+              class="dock-card-placeholder"
+              :class="{
+                'dock-card-hitbox-disabled':
+                  action.key === themeSelectorCardKey &&
+                  themeDockSubmenuVisible,
+              }"
               :style="
-                getDockCardStyle(index, visibleDockActions.length, action)
+                getDockPlaceholderStyle(index, visibleDockActions.length, action)
               "
               aria-hidden="true"
               @mouseenter="setDockHover(action.key)"
               @mouseleave="scheduleClearDockHover"
+              @click.stop="handleDockCardClick(action)"
             ></span>
 
-            <button
+            <span
+              v-if="shouldRenderDockAnchor(action.key)"
+              class="dock-card-anchor"
+              :class="{
+                'dock-card-hitbox-disabled':
+                  action.key === themeSelectorCardKey &&
+                  themeDockSubmenuVisible,
+              }"
+              :style="
+                getDockAnchorStyle(index, visibleDockActions.length, action)
+              "
+              aria-hidden="true"
+              @mouseenter="setDockHover(action.key)"
+              @mouseleave="scheduleClearDockHover"
+              @click.stop="handleDockCardClick(action)"
+            ></span>
+
+            <component
+              :is="action.key === themeSelectorCardKey ? 'div' : 'button'"
               class="dock-card"
               :class="{
                 drawing: drawingDockCard === action.key,
@@ -363,46 +699,144 @@
                 returning: returningDockCard === action.key,
                 disabled: action.disabled,
                 rippling: ripplingDockCard === action.key,
+                selector: action.key === themeSelectorCardKey,
               }"
               :style="
                 getDockCardStyle(index, visibleDockActions.length, action)
               "
-              :disabled="action.disabled || isPickingPublishLocation"
+              :disabled="
+                action.key === themeSelectorCardKey
+                  ? undefined
+                  : action.disabled || isPickingPublishLocation
+              "
               :title="action.title"
-              type="button"
+              :type="action.key === themeSelectorCardKey ? undefined : 'button'"
               @mouseenter="setDockHover(action.key)"
               @mouseleave="scheduleClearDockHover"
               @click.stop="handleDockCardClick(action)"
             >
               <div class="dock-card-body">
+                <!-- ── 经典主题 ── -->
+                <template v-if="!usePokerTheme">
                 <span class="dock-card-suit suit-top">{{ action.suit }}</span>
-                <span class="dock-card-order">{{
-                  String(index + 1).padStart(2, "0")
-                }}</span>
+                <span class="dock-card-order">{{ String(index + 1).padStart(2, "0") }}</span>
                 <span class="dock-card-corner corner-top-right"></span>
                 <span class="dock-card-corner corner-bottom-left"></span>
-
-                <div class="dock-card-face">
+                <div
+                  class="dock-card-face"
+                  :class="{ 'dock-card-face--theme-selector': action.key === themeSelectorCardKey && themeDockSubmenuVisible }"
+                >
                   <span class="dock-card-pattern"></span>
-                  <span class="dock-card-icon">{{ action.icon }}</span>
-                  <span class="dock-card-title">{{ action.title }}</span>
-                  <span class="dock-card-subtitle">{{ action.subtitle }}</span>
+                  <template v-if="action.key === themeSelectorCardKey && themeDockSubmenuVisible">
+                    <div class="dock-theme-inline">
+                      <p class="dock-theme-inline__eyebrow">Theme Select</p>
+                      <strong class="dock-theme-inline__title">切换主题</strong>
+                      <div class="dock-theme-inline__list">
+                        <button
+                          v-for="option in dockThemeOptions"
+                          :key="option.key"
+                          type="button"
+                          class="dock-theme-inline-option"
+                          :class="{ active: isThemeOptionActive(option), disabled: option.disabled }"
+                          :style="{ '--theme-option-accent': option.accent, '--theme-option-accent-soft': option.accentSoft }"
+                          :disabled="option.disabled"
+                          :title="option.tooltip"
+                          @click.stop.prevent="handleThemeOptionClick(option)"
+                        >
+                          <div class="dock-theme-inline-option__row">
+                            <span class="dock-theme-inline-option__icon">{{ option.icon }}</span>
+                            <span class="dock-theme-inline-option__label">{{ option.label }}</span>
+                          </div>
+                          <small class="dock-theme-inline-option__meta">{{ option.helper }}</small>
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <span class="dock-card-icon">{{ action.icon }}</span>
+                    <span class="dock-card-title">{{ action.title }}</span>
+                    <span class="dock-card-subtitle">{{ action.subtitle }}</span>
+                  </template>
                 </div>
+                <span class="dock-card-suit suit-bottom">{{ action.suit }}</span>
+                </template>
 
-                <span class="dock-card-suit suit-bottom">{{
-                  action.suit
-                }}</span>
+                <!-- ── 扑克主题 ── -->
+                <template v-else>
+                  <span class="poker-corner poker-corner--tr">
+                    <span class="poker-corner__value">{{ action.cornerValue }}</span>
+                    <span class="poker-corner__suit" :class="{ 'suit-red': action.suit === '♥' || action.suit === '♦' }">{{ action.suit }}</span>
+                  </span>
+                  <span class="poker-corner poker-corner--bl">
+                    <span class="poker-corner__value">{{ action.cornerValue }}</span>
+                    <span class="poker-corner__suit" :class="{ 'suit-red': action.suit === '♥' || action.suit === '♦' }">{{ action.suit }}</span>
+                  </span>
+                  <div
+                    class="dock-card-face"
+                    :class="{ 'dock-card-face--theme-selector': action.key === themeSelectorCardKey && themeDockSubmenuVisible }"
+                  >
+                    <span v-if="action.cornerValue === 'K'" class="poker-figure" aria-hidden="true">♛</span>
+                    <span v-else-if="action.cornerValue === 'Q'" class="poker-figure" aria-hidden="true">♕</span>
+                    <span v-else-if="action.cornerValue === 'J'" class="poker-figure" aria-hidden="true">♞</span>
+                    <template v-if="action.key === themeSelectorCardKey && themeDockSubmenuVisible">
+                      <div class="dock-theme-inline">
+                        <p class="dock-theme-inline__eyebrow">Theme Select</p>
+                        <strong class="dock-theme-inline__title">切换主题</strong>
+                        <div class="dock-theme-inline__list">
+                          <button
+                            v-for="option in dockThemeOptions"
+                            :key="option.key"
+                            type="button"
+                            class="dock-theme-inline-option"
+                            :class="{ active: isThemeOptionActive(option), disabled: option.disabled }"
+                            :style="{ '--theme-option-accent': option.accent, '--theme-option-accent-soft': option.accentSoft }"
+                            :disabled="option.disabled"
+                            :title="option.tooltip"
+                            @click.stop.prevent="handleThemeOptionClick(option)"
+                          >
+                            <div class="dock-theme-inline-option__row">
+                              <span class="dock-theme-inline-option__icon">{{ option.icon }}</span>
+                              <span class="dock-theme-inline-option__label">{{ option.label }}</span>
+                            </div>
+                            <small class="dock-theme-inline-option__meta">{{ option.helper }}</small>
+                          </button>
+                        </div>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span class="poker-center-icon">{{ action.icon }}</span>
+                      <span class="poker-center-title">{{ action.title }}</span>
+                    </template>
+                  </div>
+                </template>
               </div>
               <span class="dock-card-ripple"></span>
-            </button>
+            </component>
           </template>
         </div>
       </div>
     </div>
 
-    <transition name="publish-modal">
-      <div
-        v-if="showPublishSidebar"
+    <ClusterPopover
+      v-if="showClusterPopover"
+      :visible="showClusterPopover"
+      :stories="clusterPopoverStories"
+      :map-theme="effectiveMapTheme"
+      @close="showClusterPopover = false"
+      @select-story="openStoryFromCollection"
+      @preview-image="handlePreviewImage"
+    />
+
+    <ImageLightbox
+      :visible="showLightbox"
+
+      :images="lightboxImages"
+      :initial-index="lightboxInitialIndex"
+      @close="showLightbox = false"
+    />
+
+    <div
+        v-show="showPublishSidebar"
         class="publish-modal-shell"
         :class="{ 'pick-mode': isPickingPublishLocation }"
         @click.self="closePublishPanel"
@@ -438,16 +872,15 @@
             <div class="publish-modal-scroll">
               <PublishForm
                 :visible="showPublishSidebar"
+                :plane-position="planePosition"
                 :map-center="mapStore.center"
                 :user-location="mapStore.userLocation"
-                :suggested-locations="suggestedPublishLocations"
-                :picked-map-location="pickedPublishLocation"
-                :is-picking-location="isPickingPublishLocation"
                 :map-theme="effectiveMapTheme"
+                :prefill-query="publishPrefillQuery"
                 @submit="handlePublishSubmit"
-                @request-map-pick="startPublishMapPick"
-                @cancel-map-pick="cancelPublishMapPick"
                 @cancel="closePublishPanel"
+                @adjust-plane-position="handleAdjustPlanePosition"
+                @request-vip="showVipCenter = true"
               />
             </div>
           </template>
@@ -478,10 +911,170 @@
           </div>
         </div>
       </div>
+
+    <!-- 功能卡组发布故事面板（旧版独立） -->
+      <div
+        v-show="showDockPublishSidebar"
+        class="publish-modal-shell"
+        :class="{ 'pick-mode': isPickingDockPublishLocation }"
+        @click.self="closeDockPublishPanel"
+      >
+        <div
+          class="publish-modal"
+          :class="{
+            dark: effectiveMapTheme === 'dark',
+            collapsed: isPickingDockPublishLocation,
+          }"
+          @click.stop
+        >
+          <button
+            v-if="isPickingDockPublishLocation"
+            type="button"
+            class="publish-pick-dock"
+            @click="restoreDockPublishPanelFromPick"
+          >
+            <span class="pick-dock-handle"></span>
+            <strong>地图选点中</strong>
+            <span>点击这里恢复发布卡，并默认取消选点</span>
+          </button>
+
+          <template v-else>
+            <button
+              class="publish-modal-close"
+              type="button"
+              @click="closeDockPublishPanel"
+            >
+              <span class="close-icon">×</span>
+              <span class="close-text">关闭</span>
+            </button>
+            <div class="publish-modal-scroll">
+              <PublishFormDock
+                :visible="showDockPublishSidebar"
+                :map-center="mapStore.center"
+                :user-location="mapStore.userLocation"
+                :suggested-locations="dockPublishSuggestedLocations"
+                :picked-map-location="dockPublishPickedLocation"
+                :is-picking-location="isPickingDockPublishLocation"
+                :map-theme="effectiveMapTheme"
+                @submit="handleDockPublishSubmit"
+                @cancel="closeDockPublishPanel"
+                @request-vip="showVipCenter = true"
+                @request-map-pick="startDockPublishMapPick"
+                @cancel-map-pick="cancelDockPublishMapPick"
+              />
+            </div>
+          </template>
+        </div>
+
+        <div
+          v-if="isDockPublishPickPrompt"
+          class="publish-pick-confirm"
+          :style="getDockPublishPickPromptStyle(isDockPublishPickPrompt)"
+          @click.stop
+        >
+          <p>是否在这附近搜索？</p>
+          <div class="publish-pick-confirm-actions">
+            <button
+              type="button"
+              class="confirm-btn"
+              @click="confirmDockPublishNearbySearch"
+            >
+              是
+            </button>
+            <button
+              type="button"
+              class="cancel-btn"
+              @click="rejectDockPublishNearbySearch"
+            >
+              否
+            </button>
+          </div>
+        </div>
+      </div>
+
+    <!-- 调整纸飞机位置模式 - 底部提示栏 -->
+    <transition name="adjust-overlay-fade">
+      <div v-if="isAdjustingPlanePosition" class="adjust-plane-overlay">
+        <button
+          type="button"
+          class="publish-pick-dock adjust-plane-dock"
+          @click="restorePublishPanelFromAdjustPlane"
+        >
+          <span class="pick-dock-handle"></span>
+          <strong>点击地图上的某个位置来更新纸飞机位置</strong>
+          <span>或者点击这里回到发布页面</span>
+        </button>
+      </div>
     </transition>
 
+    <!-- 调整纸飞机位置 - 确认弹窗（独立于发布面板，不受 showPublishSidebar 控制） -->
+    <div
+      v-if="publishPickPrompt && isAdjustingPlanePosition"
+      class="publish-pick-confirm"
+      :style="getPublishPickPromptStyle(publishPickPrompt)"
+      @click.stop
+    >
+      <p>是否在这附近搜索？</p>
+      <div class="publish-pick-confirm-actions">
+        <button
+          type="button"
+          class="confirm-btn"
+          @click="confirmPublishNearbySearch"
+        >
+          是
+        </button>
+        <button
+          type="button"
+          class="cancel-btn"
+          @click="rejectPublishNearbySearch"
+        >
+          否
+        </button>
+      </div>
+    </div>
+
     <transition name="publish-modal">
-      <div v-if="showUserSidebar" class="user-modal-shell">
+      <div v-if="showUserSidebar" class="user-modal-shell" :class="{ 'has-profile-search': myProfileSearchActive }">
+        <!-- 左侧搜索结果面板 -->
+        <transition name="profile-search-panel">
+          <div v-if="myProfileSearchActive" class="profile-search-panel" :class="{ dark: effectiveMapTheme === 'dark' }">
+            <div class="profile-search-header">
+              <h3>含有"{{ myProfileSearchQuery }}"关键词的{{ userContentTab === 'likes' ? '点赞故事' : userContentTab === 'favorites' ? '收藏故事' : '作品' }} <span class="profile-search-count" v-if="myProfileSearchResults.length">({{ myProfileSearchResults.length }})</span></h3>
+            </div>
+            <div ref="myProfileSearchVScrollContainerRef" class="profile-search-list">
+              <div v-if="myProfileSearchResults.length === 0" class="panel-empty">
+                <span class="empty-icon">🔍</span><span>没有找到匹配的故事</span>
+              </div>
+              <template v-else>
+                <div class="vscroll-spacer" :style="{ height: myProfileSearchVScrollTotalHeight + 'px' }"></div>
+                <div
+                  v-for="item in myProfileSearchVScrollVisibleItems"
+                  :key="item.data.id + '-mysearch-' + storyCardAnimationKey"
+                  ref="myProfileSearchVScrollItemRefs"
+                  :data-virtual-index="item.index"
+                  class="panel-item vscroll-item story-card-enter"
+                  :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
+                  :style="{ position: 'absolute', top: item.top + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                  @click="handleStoryClick(item.data)"
+                >
+                  <div class="item-header">
+                    <img :src="item.data.avatar" class="item-avatar" alt="头像" />
+                    <div class="item-meta">
+                      <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
+                      <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
+                    </div>
+                  </div>
+                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                  <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                  <div class="item-footer">
+                    <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                    <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </transition>
         <div
           class="user-sidebar"
           :class="{
@@ -545,7 +1138,8 @@
           </div>
 
           <div v-else class="user-sidebar-content">
-            <div class="user-profile">
+            <!-- 头像 + 用户名/ID栏 -->
+            <div class="user-profile-new">
               <div class="user-avatar-wrapper">
                 <div class="user-avatar-large" @click="triggerAvatarUpload">
                   <img
@@ -576,419 +1170,413 @@
                   {{ avatarError }}
                 </div>
               </div>
-              <div class="user-info-details">
-                <div class="info-item editable">
-                  <span class="info-label">用户名</span>
-                  <div v-if="!isEditingUsername" class="info-value-with-edit">
-                    <span class="info-value">{{
-                      userStore.user?.username ||
-                      userStore.user?.name ||
-                      "未设置"
+
+              <div class="user-identity-area">
+                <div class="user-identity-top">
+                  <div class="user-name-row">
+                    <span
+                      v-if="userStore.user?.vip"
+                      class="vip-text-badge"
+                      style="cursor: pointer;"
+                      title="VIP 中心"
+                      @click="showVipCenter = true"
+                    >VIP</span>
+                    <span
+                      v-else
+                      class="vip-text-badge vip-text-badge--inactive"
+                      style="cursor: pointer;"
+                      title="开通 VIP"
+                      @click="showVipCenter = true"
+                    >👑 开通</span>
+                    <span class="user-display-name" :class="{ 'has-vip': userStore.user?.vip }">{{
+                      userStore.user?.username || userStore.user?.name || "未设置"
                     }}</span>
                     <button
-                      class="edit-btn"
-                      @click="startEditUsername"
-                      title="修改用户名"
+                      class="icon-edit-btn"
+                      title="编辑资料"
+                      @click="handleOpenEditProfile"
                     >
-                      <span>✏️</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
                   </div>
-                  <div v-else class="username-edit-form">
-                    <input
-                      v-model="editingUsername"
-                      type="text"
-                      placeholder="输入新用户名"
-                      maxlength="20"
-                      @keyup.enter="saveUsername"
-                      @keyup.esc="cancelEditUsername"
-                    />
-                    <div class="username-actions">
-                      <button
-                        class="save-btn"
-                        :disabled="!canSaveUsername"
-                        @click="saveUsername"
-                      >
-                        <span v-if="checkingUsername">⌛</span>
-                        <span v-else>✓</span>
-                      </button>
-                      <button class="cancel-btn" @click="cancelEditUsername">
-                        <span>✕</span>
-                      </button>
-                    </div>
-                    <div v-if="usernameError" class="username-error">
-                      {{ usernameError }}
-                    </div>
-                  </div>
+                  <div class="user-star-id">STAR-ID: {{ userStore.user?.id ?? "" }}</div>
                 </div>
-                <div class="info-item">
-                  <span class="info-label">用户ID</span>
-                  <span class="info-value">{{ userStore.user?.id ?? "" }}</span>
+                <button class="wallet-inline-btn" @click="showCoinCenter = true">
+                  <span class="wallet-inline-btn__icon">🪙</span>
+                  <span class="wallet-inline-btn__label">我的情绪币</span>
+                  <span>{{ vipStore.emotionCoins || 0 }}</span>
+                </button>
+                <div class="user-identity-actions">
+                  <button class="switch-account-btn" @click="handleSwitchAccount">
+                    切换账号
+                  </button>
+                  <button class="logout-inline-btn" @click="handleLogout">
+                    退出
+                  </button>
                 </div>
-                <div class="info-item">
-                  <span class="info-label">邮箱</span>
-                  <span class="info-value">{{
-                    userStore.user?.email ?? ""
-                  }}</span>
-                </div>
-                <div class="info-item editable">
-                  <span class="info-label">密码</span>
-                  <div v-if="!isEditingPassword" class="info-value-with-edit">
-                    <span class="info-value">点击右侧按钮修改密码</span>
-                    <button
-                      class="edit-btn"
-                      @click="startEditPassword"
-                      title="修改密码"
-                    >
-                      <span>✏️</span>
+              </div>
+            </div>
+
+            <!-- Bio 签名区域 -->
+            <div class="user-bio-area" :class="{ 'vip-bio': userStore.user?.vip }" @click="startEditBio">
+              <div class="bio-content">
+                <span v-if="editingBioInline" class="bio-input-wrap">
+                  <textarea
+                    ref="bioInputRef"
+                    v-model="bioDraft"
+                    maxlength="200"
+                    rows="3"
+                    @click.stop
+                    @keyup.esc="cancelEditBio"
+                    @keydown.enter.exact.prevent="saveBioInline"
+                    @blur="handleBioBlur"
+                    :style="getBioFontStyle(bioFontFamily || readBioFontFromCookie(), bioFontEffect || readBioFontEffectFromCookie())"
+                  ></textarea>
+                  <span class="bio-char-count">{{ bioDraft.length }}/200</span>
+                  <div class="inline-font-row" @click.stop>
+                    <button type="button" class="btn-comment-bg"
+                      :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
+                      @mousedown.prevent="bioFontBtnMousedown = true"
+                      @click.stop="bioFontBtnMousedown = false; vipStore.isVipActive ? (showBioFontPicker = !showBioFontPicker) : (showVipCenter = true)">
+                      {{ vipStore.isVipActive ? '🔤 个性字体' : '🔒 个性字体' }}
                     </button>
                   </div>
-                  <div v-else class="password-edit-form">
-                    <div class="password-input-wrapper">
-                      <input
-                        v-model="passwordForm.currentPassword"
-                        :type="showCurrentPassword ? 'text' : 'password'"
-                        placeholder="当前密码"
-                        :class="{ 'input-error': currentPasswordError }"
-                      />
-                      <button
-                        class="eye-btn-small"
-                        @click="showCurrentPassword = !showCurrentPassword"
-                      >
-                        <span>{{ showCurrentPassword ? "🙈" : "👁️" }}</span>
-                      </button>
+                </span>
+                <span v-else class="bio-text" :style="getBioFontStyle(userStore.user?.bioFontFamily, userStore.user?.bioFontEffect)">{{ userStore.user?.bio || '这个人很懒，什么都没有写~' }}</span>
+              </div>
+              <div class="bio-edit-icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </div>
+            </div>
+
+            <FontPicker
+              :visible="showBioFontPicker"
+              :is-dark="isDarkMap"
+              target-type="bio"
+              :selected-font="bioFontFamily"
+              :selected-effect="bioFontEffect"
+              @select="bioFontFamily = $event"
+              @select-effect="bioFontEffect = $event"
+              @close="showBioFontPicker = false"
+            />
+
+            <!-- 搜索框 -->
+            <div class="profile-search-input-wrapper">
+              <input ref="myProfileSearchInputRef" v-model="myProfileSearchQuery" placeholder="搜索下方选中标签内的故事" class="profile-search-input" @focus="myProfileSearchActive = true" @blur="handleMyProfileSearchBlur" />
+              <button v-if="myProfileSearchQuery" class="search-clear-btn" @click.stop="myProfileSearchQuery = ''; myProfileSearchInputRef?.focus()">×</button>
+            </div>
+
+            <!-- 标签栏 -->
+            <div class="user-content-tabs-wrapper">
+              <div class="user-content-tabs">
+                <button
+                  class="content-tab"
+                  :class="{ active: userContentTab === 'posts' }"
+                  @click="switchUserContentTab('posts')"
+                >
+                  作品<span v-if="postsTotalCount >= 0" class="tab-count">{{ postsTotalCount }}</span>
+                </button>
+                <button
+                  class="content-tab"
+                  :class="{ active: userContentTab === 'likes' }"
+                  @click="switchUserContentTab('likes')"
+                >
+                  点赞<span v-if="likesTotalCount >= 0" class="tab-count">{{ likesTotalCount }}</span>
+                </button>
+                <button
+                  class="content-tab"
+                  :class="{ active: userContentTab === 'favorites' }"
+                  @click="switchUserContentTab('favorites')"
+                >
+                  收藏<span v-if="favoritesTotalCount >= 0" class="tab-count">{{ favoritesTotalCount }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 标签内容区（虚拟滚动） -->
+            <div ref="vScrollContainerRef" class="user-content-list profile-story-list" @scroll="handleProfileScroll">
+              <!-- 作品 -->
+              <template v-if="userContentTab === 'posts'">
+                <div v-if="postsLoading && postsList.length === 0" class="panel-loading">
+                  <span class="loading-spinner">⌛</span><span>加载中...</span>
+                </div>
+                <div v-else-if="postsList.length === 0" class="panel-empty">
+                  <span class="empty-icon">📝</span><span>还没有发布任何故事</span>
+                </div>
+                <template v-else>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + profileStoryListTopInset + 'px' }"></div>
+                  <div
+                    v-for="item in vScrollVisibleItems"
+                    :key="item.data.id + '-' + storyCardAnimationKey"
+                    ref="vScrollItemRefs"
+                    :data-virtual-index="item.index"
+                    class="panel-item vscroll-item story-card-enter"
+                    :class="{ 'is-vip-card': getStoryAuthorVip(item.data), 'is-capsule-locked': isCapsuleLocked(item.data) }"
+                    :style="{ position: 'absolute', top: item.top + profileStoryListTopInset + 'px', left: '0', right: '0', animationDelay: item.index * 0.07 + 's' }"
+                    @click="handleStoryClick(item.data)"
+                  >
+                    <div class="item-header">
+                      <img :src="item.data.avatar" class="item-avatar" alt="头像" />
+                      <div class="item-meta">
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
+                        <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
+                      </div>
+                      <button class="item-action-btn delete-btn" title="删除故事" @click.stop="handleDeleteStory(item.data)"><span>🗑️</span></button>
+                      <PolishStory :story-id="item.data.id" @polished="handleStoryPolished" @error="handlePolishError" />
                     </div>
-                    <div v-if="currentPasswordError" class="field-error">
-                      {{ currentPasswordError }}
-                    </div>
-                    <div class="password-input-wrapper">
-                      <input
-                        v-model="passwordForm.newPassword"
-                        :type="showNewPassword ? 'text' : 'password'"
-                        placeholder="新密码（至少6位）"
-                        minlength="6"
-                        :class="{ 'input-error': newPasswordError }"
-                      />
-                      <button
-                        class="eye-btn-small"
-                        @click="showNewPassword = !showNewPassword"
-                      >
-                        <span>{{ showNewPassword ? "🙈" : "👁️" }}</span>
-                      </button>
-                    </div>
-                    <div v-if="newPasswordError" class="field-error">
-                      {{ newPasswordError }}
-                    </div>
-                    <div class="password-input-wrapper">
-                      <input
-                        v-model="passwordForm.confirmPassword"
-                        :type="showConfirmPassword ? 'text' : 'password'"
-                        placeholder="确认新密码"
-                        minlength="6"
-                        :class="{ 'input-error': confirmPasswordError }"
-                        @keyup.enter="savePassword"
-                        @keyup.esc="cancelEditPassword"
-                      />
-                      <button
-                        class="eye-btn-small"
-                        @click="showConfirmPassword = !showConfirmPassword"
-                      >
-                        <span>{{ showConfirmPassword ? "🙈" : "👁️" }}</span>
-                      </button>
-                    </div>
-                    <div v-if="confirmPasswordError" class="field-error">
-                      {{ confirmPasswordError }}
-                    </div>
-                    <div class="password-actions">
-                      <button
-                        class="save-btn"
-                        :disabled="!canSavePassword || savingPassword"
-                        @click="savePassword"
-                      >
-                        <span v-if="savingPassword">⌛</span>
-                        <span v-else>✓</span>
-                      </button>
-                      <button class="cancel-btn" @click="cancelEditPassword">
-                        <span>✕</span>
-                      </button>
-                    </div>
-                    <div v-if="passwordError" class="password-error">
-                      {{ passwordError }}
+                    <template v-if="isCapsuleLocked(item.data)">
+                      <div class="capsule-lock-strip">
+                        <svg class="capsule-lock-icon" viewBox="0 0 24 28" fill="none" width="18" height="21">
+                          <rect x="3" y="13" width="18" height="13" rx="3" fill="currentColor" opacity="0.12" stroke="currentColor" stroke-width="1.5"/>
+                          <path d="M8 13V9a4 4 0 1 1 8 0v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+                          <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
+                        </svg>
+                        <span class="capsule-lock-label">时光胶囊未解锁</span>
+                        <span class="capsule-lock-timer" v-if="getCapsuleCountdown(item.data)">{{ getCapsuleCountdown(item.data) }}</span>
+                      </div>
+                    </template>
+                    <template v-else>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                    </template>
+                    <div class="item-footer">
+                      <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
                     </div>
                   </div>
+                  <div v-if="postsLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
+                  <div v-if="!postsHasMore && postsList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
+                </template>
+              </template>
+
+              <!-- 点赞 -->
+              <template v-if="userContentTab === 'likes'">
+                <div v-if="likesLoading && likesList.length === 0" class="panel-loading">
+                  <span class="loading-spinner">⌛</span><span>加载中...</span>
                 </div>
-              </div>
-            </div>
-            <div class="user-actions">
-              <button
-                class="user-action-btn my-likes-btn"
-                :class="{ active: showLikesPanel }"
-                @click.stop="handleMyLikes"
-              >
-                <span class="btn-icon">❤️</span>
-                <span class="btn-text">我的点赞</span>
-              </button>
-              <button
-                class="user-action-btn my-favorites-btn"
-                :class="{ active: showFavoritesPanel }"
-                @click.stop="handleMyFavorites"
-              >
-                <span class="btn-icon">⭐</span>
-                <span class="btn-text">我的收藏</span>
-              </button>
-              <button
-                class="user-action-btn my-posts-btn"
-                :class="{ active: showPostsPanel }"
-                @click.stop="handleMyPosts"
-              >
-                <span class="btn-icon">📝</span>
-                <span class="btn-text">我的发布</span>
-              </button>
-              <button
-                class="user-action-btn logout-action-btn"
-                @click="handleLogout"
-              >
-                <span class="btn-icon">🚪</span>
-                <span class="btn-text">退出登录</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </transition>
+                <div v-else-if="likesList.length === 0" class="panel-empty">
+                  <span class="empty-icon">💝</span><span>还没有点赞任何故事</span>
+                </div>
+                <template v-else>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + profileStoryListTopInset + 'px' }"></div>
+                  <div
+                    v-for="item in vScrollVisibleItems"
+                    :key="item.data.id + '-' + storyCardAnimationKey"
+                    ref="vScrollItemRefs"
+                    :data-virtual-index="item.index"
+                    class="panel-item vscroll-item story-card-enter"
+                    :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
+                    :style="{ position: 'absolute', top: item.top + profileStoryListTopInset + 'px', left: '0', right: '0', animationDelay: item.index * 0.07 + 's' }"
+                    @click="handleStoryClick(item.data)"
+                  >
+                    <div class="item-header">
+                      <img :src="item.data.avatar" class="item-avatar" alt="头像" />
+                      <div class="item-meta">
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
+                        <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
+                      </div>
+                      <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(item.data)"><span>❌</span></button>
+                    </div>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                    <div class="item-footer">
+                      <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
+                    </div>
+                  </div>
+                  <div v-if="likesLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
+                  <div v-if="!likesHasMore && likesList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
+                </template>
+              </template>
 
-    <div
-      class="user-sub-sidebar likes-panel"
-      :class="{
-        'show-panel': showLikesPanel,
-        dark: effectiveMapTheme === 'dark',
-      }"
-      @click.stop
-    >
-      <div class="sub-sidebar-header">
-        <h4>我的点赞</h4>
-        <button class="close-btn" @click.stop="showLikesPanel = false">
-          <span>×</span>
-        </button>
-      </div>
-      <div class="sub-sidebar-content" @scroll="handleLikesScroll">
-        <div
-          v-if="likesLoading && likesList.length === 0"
-          class="panel-loading"
-        >
-          <span class="loading-spinner">⌛</span>
-          <span>加载中...</span>
-        </div>
-        <div v-else-if="likesList.length === 0" class="panel-empty">
-          <span class="empty-icon">💝</span>
-          <span>还没有点赞任何故事</span>
-        </div>
-        <div v-else class="panel-list">
-          <div
-            v-for="story in likesList"
-            :key="story.id"
-            class="panel-item"
-            @click="handleStoryClick(story)"
-          >
-            <div class="item-header">
-              <img :src="story.avatar" class="item-avatar" alt="头像" />
-              <div class="item-meta">
-                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{
-                  formatRelativeTime(story.createdAt)
-                }}</span>
-              </div>
+              <!-- 收藏 -->
+              <template v-if="userContentTab === 'favorites'">
+                <div v-if="favoritesLoading && favoritesList.length === 0" class="panel-loading">
+                  <span class="loading-spinner">⌛</span><span>加载中...</span>
+                </div>
+                <div v-else-if="favoritesList.length === 0" class="panel-empty">
+                  <span class="empty-icon">⭐</span><span>还没有收藏任何故事</span>
+                </div>
+                <template v-else>
+                  <div class="vscroll-spacer" :style="{ height: vScrollTotalHeight + profileStoryListTopInset + 'px' }"></div>
+                  <div
+                    v-for="item in vScrollVisibleItems"
+                    :key="item.data.id + '-' + storyCardAnimationKey"
+                    ref="vScrollItemRefs"
+                    :data-virtual-index="item.index"
+                    class="panel-item vscroll-item story-card-enter"
+                    :class="{ 'is-vip-card': getStoryAuthorVip(item.data) }"
+                    :style="{ position: 'absolute', top: item.top + profileStoryListTopInset + 'px', left: '0', right: '0', animationDelay: item.index * 0.12 + 's' }"
+                    @click="handleStoryClick(item.data)"
+                  >
+                    <div class="item-header">
+                      <img :src="item.data.avatar" class="item-avatar" alt="头像" />
+                      <div class="item-meta">
+                        <span class="vip-name-row"><span class="item-author vip-username" :class="{ 'has-vip': getStoryAuthorVip(item.data) }">{{ getStoryAuthorName(item.data) }}</span><span class="vip-text-badge-sm" v-if="getStoryAuthorVip(item.data)">VIP</span></span>
+                        <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
+                      </div>
+                      <button
+                        class="item-action-btn unfavorite-btn"
+                        :class="{ 'is-restorable': item.data.isFavorited === false }"
+                        :title="item.data.isFavorited !== false ? '取消收藏' : '重新收藏'"
+                        @click.stop="handleToggleFavoriteFromList(item.data)"
+                      ><span>{{ item.data.isFavorited !== false ? "❌" : "✨" }}</span></button>
+                    </div>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
+                    <div class="item-footer">
+                      <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
+                      <span class="item-likes">⭐️ {{ item.data.favoriteCount ?? 0 }}</span>
+                    </div>
+                  </div>
+                  <div v-if="favoritesLoadingMore" class="panel-loading-more"><span class="loading-spinner">⌛</span><span>加载更多...</span></div>
+                  <div v-if="!favoritesHasMore && favoritesList.length > 0" class="panel-no-more"><span>没有更多了</span></div>
+                </template>
+              </template>
+            </div>
+            <transition name="back-to-top">
               <button
-                class="item-action-btn unlike-btn"
-                title="取消点赞"
-                @click.stop="handleUnlike(story)"
+                v-if="showProfileBackToTop"
+                class="wall-back-to-top profile-back-to-top"
+                :class="{ dark: effectiveMapTheme === 'dark' }"
+                @click="scrollProfileToTop(vScrollContainerRef)"
               >
-                <span>💔</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 19V6" />
+                  <path d="M6.5 11.5 12 6l5.5 5.5" />
+                  <path d="M8 4h8" />
+                </svg>
+              </button>
+            </transition>
+          </div>
+          <!-- 返回顶部按钮 (我的主页 - 已移入标签栏内) -->
+        </div>
+      </div>
+      </transition>
+
+    <!-- 编辑资料弹窗（修改用户名、邮箱、密码） -->
+    <div v-if="showEditProfileModal" class="modal-overlay" :class="{ dark: effectiveMapTheme === 'dark' }" @click.self="handleCloseEditProfile">
+      <div class="edit-profile-modal" :class="{ dark: effectiveMapTheme === 'dark' }">
+        <div class="edit-profile-header">
+          <h3>编辑资料</h3>
+          <button class="close-btn" @click="handleCloseEditProfile"><span>×</span></button>
+        </div>
+        <div class="edit-profile-body">
+          <div class="edit-field">
+            <label>用户名</label>
+            <input v-model="editProfileForm.username" type="text" placeholder="输入新用户名" maxlength="20" />
+            <span v-if="editProfileErrors.username" class="field-error-inline">{{ editProfileErrors.username }}</span>
+          </div>
+          <div class="edit-field">
+            <label>邮箱</label>
+            <input :value="editProfileForm.email" type="email" disabled />
+            <span class="field-hint">邮箱暂不支持修改</span>
+          </div>
+
+          <!-- 分隔线：修改密码区域 -->
+          <div class="edit-password-section">
+            <div class="edit-password-title">修改密码</div>
+          </div>
+
+          <div class="edit-field">
+            <label>旧密码</label>
+            <div class="edit-input-wrap">
+              <input
+                v-model="editProfileForm.currentPassword"
+                :type="editProfileShowOldPwd ? 'text' : 'password'"
+                placeholder="请输入旧密码"
+                @input="onOldPasswordInput"
+              />
+              <button class="eye-toggle" type="button" @click="editProfileShowOldPwd = !editProfileShowOldPwd">
+                <svg v-if="!editProfileShowOldPwd" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
               </button>
             </div>
-            <p class="item-content">{{ story.content }}</p>
-            <div v-if="story.images?.length" class="item-images">
-              <img :src="story.images[0]" alt="配图" />
-            </div>
-            <div class="item-footer">
-              <span class="item-location"
-                >📍 {{ getStoryLocationText(story) }}</span
-              >
-              <span class="item-likes"
-                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
-              >
-              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+            <div v-if="pwdVerify.oldPasswordError" class="validation-tip tip-error">
+              <span class="tip-text">{{ pwdVerify.oldPasswordError }}</span>
             </div>
           </div>
-          <div v-if="likesLoadingMore" class="panel-loading-more">
-            <span class="loading-spinner">⌛</span>
-            <span>加载更多...</span>
+          <div class="edit-field">
+            <label>新密码</label>
+            <div class="edit-input-wrap">
+              <input
+                v-model="editProfileForm.newPassword"
+                :type="editProfileShowNewPwd ? 'text' : 'password'"
+                placeholder="请输入新密码"
+                @input="onNewPasswordInput"
+              />
+              <button class="eye-toggle" type="button" @click="editProfileShowNewPwd = !editProfileShowNewPwd">
+                <svg v-if="!editProfileShowNewPwd" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
+            <div v-if="pwdVerify.newPasswordMsg" :class="['validation-tip', pwdVerify.newPasswordValid ? 'tip-success' : 'tip-error']">
+              <span class="tip-text">{{ pwdVerify.newPasswordMsg }}</span>
+            </div>
           </div>
-          <div
-            v-if="!likesHasMore && likesList.length > 0"
-            class="panel-no-more"
-          >
-            <span>没有更多了</span>
+          <div class="edit-field">
+            <label>确认新密码</label>
+            <div class="edit-input-wrap">
+              <input
+                v-model="editProfileForm.confirmPassword"
+                :type="editProfileShowConfirmPwd ? 'text' : 'password'"
+                placeholder="请再次输入新密码"
+                @input="onConfirmPasswordInput"
+              />
+              <button class="eye-toggle" type="button" @click="editProfileShowConfirmPwd = !editProfileShowConfirmPwd">
+                <svg v-if="!editProfileShowConfirmPwd" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
+            <div v-if="pwdVerify.confirmPasswordMsg" :class="['validation-tip', pwdVerify.confirmPasswordValid ? 'tip-success' : 'tip-error']">
+              <span class="tip-text">{{ pwdVerify.confirmPasswordMsg }}</span>
+            </div>
           </div>
+          <div class="edit-field">
+            <button
+              class="btn-confirm-password"
+              :disabled="!pwdVerify.canSubmit || editProfileSavingPassword"
+              @click="handleConfirmChangePassword"
+            >
+              {{ editProfileSavingPassword ? '修改中...' : '确认修改密码' }}
+            </button>
+          </div>
+        </div>
+        <div class="edit-profile-footer">
+          <button class="btn-cancel" @click="handleCloseEditProfile">取消</button>
+          <button class="btn-save" :disabled="editProfileSaving" @click="handleSaveEditProfile">
+            {{ editProfileSaving ? '保存中...' : '保存' }}
+          </button>
         </div>
       </div>
     </div>
 
-    <div
-      class="user-sub-sidebar posts-panel"
-      :class="{
-        'show-panel': showPostsPanel,
-        dark: effectiveMapTheme === 'dark',
-      }"
-      @click.stop
-    >
-      <div class="sub-sidebar-header">
-        <h4>我的发布</h4>
-        <button class="close-btn" @click.stop="showPostsPanel = false">
-          <span>×</span>
-        </button>
-      </div>
-      <div class="sub-sidebar-content" @scroll="handlePostsScroll">
-        <div
-          v-if="postsLoading && postsList.length === 0"
-          class="panel-loading"
-        >
-          <span class="loading-spinner">⌛</span>
-          <span>加载中...</span>
+    <!-- 切换账号弹窗 -->
+    <div v-if="showSwitchAccountModal" class="modal-overlay" :class="{ dark: effectiveMapTheme === 'dark' }" @click.self="showSwitchAccountModal = false">
+      <div class="switch-account-modal" :class="{ dark: effectiveMapTheme === 'dark' }">
+        <div class="switch-account-header">
+          <h3>切换账号</h3>
+          <button class="close-btn" @click="showSwitchAccountModal = false"><span>×</span></button>
         </div>
-        <div v-else-if="postsList.length === 0" class="panel-empty">
-          <span class="empty-icon">📝</span>
-          <span>还没有发布任何故事</span>
-        </div>
-        <div v-else class="panel-list">
-          <div
-            v-for="story in postsList"
-            :key="story.id"
-            class="panel-item"
-            @click="handleStoryClick(story)"
-          >
-            <div class="item-header">
-              <img :src="story.avatar" class="item-avatar" alt="头像" />
-              <div class="item-meta">
-                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{
-                  formatRelativeTime(story.createdAt)
-                }}</span>
-              </div>
-              <button
-                class="item-action-btn delete-btn"
-                title="删除故事"
-                @click.stop="handleDeleteStory(story)"
-              >
-                <span>🗑️</span>
-              </button>
+        <div class="switch-account-body">
+          <div class="account-slots">
+            <div class="account-slot current">
+              <img :src="userStore.user?.avatar || 'https://picsum.photos/80/80?random=1'" class="slot-avatar" />
+              <span class="vip-name-row"><span class="slot-name vip-username" :class="{ 'has-vip': userStore.user?.vip }">{{ userStore.user?.username || '当前账号' }}</span><span class="vip-text-badge-sm" v-if="userStore.user?.vip">VIP</span></span>
+              <span class="slot-current-badge">当前</span>
             </div>
-            <p class="item-content">{{ story.content }}</p>
-            <div v-if="story.images?.length" class="item-images">
-              <img :src="story.images[0]" alt="配图" />
+            <div v-for="acc in savedAccounts" :key="acc.id" class="account-slot" @click="handleSwitchToAccount(acc)">
+              <img :src="acc.avatar || 'https://picsum.photos/80/80?random=2'" class="slot-avatar" />
+              <span class="vip-name-row"><span class="slot-name vip-username" :class="{ 'has-vip': acc.vip }">{{ acc.username || '其他账号' }}</span><span class="vip-text-badge-sm" v-if="acc.vip">VIP</span></span>
             </div>
-            <div class="item-footer">
-              <span class="item-location"
-                >📍 {{ getStoryLocationText(story) }}</span
-              >
-              <span class="item-likes"
-                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
-              >
-              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
+            <div v-if="savedAccounts.length < 2" class="account-slot add-slot" @click="handleAddAccount">
+              <div class="add-avatar">+</div>
+              <span class="slot-name">添加账号</span>
             </div>
-          </div>
-          <div v-if="postsLoadingMore" class="panel-loading-more">
-            <span class="loading-spinner">⌛</span>
-            <span>加载更多...</span>
-          </div>
-          <div
-            v-if="!postsHasMore && postsList.length > 0"
-            class="panel-no-more"
-          >
-            <span>没有更多了</span>
           </div>
         </div>
       </div>
     </div>
-
-    <div
-      class="user-sub-sidebar favorites-panel"
-      :class="{
-        'show-panel': showFavoritesPanel,
-        dark: effectiveMapTheme === 'dark',
-      }"
-      @click.stop
-    >
-      <div class="sub-sidebar-header">
-        <h4>我的收藏</h4>
-        <button class="close-btn" @click.stop="showFavoritesPanel = false">
-          <span>×</span>
-        </button>
-      </div>
-      <div class="sub-sidebar-content" @scroll="handleFavoritesScroll">
-        <div
-          v-if="favoritesLoading && favoritesList.length === 0"
-          class="panel-loading"
-        >
-          <span class="loading-spinner">⌛</span>
-          <span>加载中...</span>
-        </div>
-        <div v-else-if="favoritesList.length === 0" class="panel-empty">
-          <span class="empty-icon">⭐</span>
-          <span>还没有收藏任何故事</span>
-        </div>
-        <div v-else class="panel-list">
-          <div
-            v-for="story in favoritesList"
-            :key="story.id"
-            class="panel-item"
-            @click="handleStoryClick(story)"
-          >
-            <div class="item-header">
-              <img :src="story.avatar" class="item-avatar" alt="头像" />
-              <div class="item-meta">
-                <span class="item-author">{{ getStoryAuthorName(story) }}</span>
-                <span class="item-time">{{
-                  formatRelativeTime(story.createdAt)
-                }}</span>
-              </div>
-              <button
-                class="item-action-btn unfavorite-btn"
-                :class="{ 'is-restorable': story.isFavorited === false }"
-                :title="story.isFavorited !== false ? '取消收藏' : '重新收藏'"
-                @click.stop="handleToggleFavoriteFromList(story)"
-              >
-                <span>{{ story.isFavorited !== false ? "★" : "☆" }}</span>
-              </button>
-            </div>
-            <p class="item-content">{{ story.content }}</p>
-            <div v-if="story.images?.length" class="item-images">
-              <img :src="story.images[0]" alt="配图" />
-            </div>
-            <div class="item-footer">
-              <span class="item-location"
-                >📍 {{ getStoryLocationText(story) }}</span
-              >
-              <span class="item-likes"
-                >❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span
-              >
-              <span class="item-likes">⭐️ {{ story.favoriteCount ?? 0 }}</span>
-            </div>
-          </div>
-          <div v-if="favoritesLoadingMore" class="panel-loading-more">
-            <span class="loading-spinner">⌛</span>
-            <span>加载更多...</span>
-          </div>
-          <div
-            v-if="!favoritesHasMore && favoritesList.length > 0"
-            class="panel-no-more"
-          >
-            <span>没有更多了</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="project-title"></div>
 
     <PaperPlaneStory
       v-if="selectedStory"
@@ -997,6 +1585,7 @@
       :favorite-pending="storyFavoritePending"
       :start-position="storyStartPosition"
       :direct-open="storyDirectOpen"
+      :is-dark="effectiveMapTheme === 'dark'"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
       @like="toggleStoryLike"
@@ -1004,6 +1593,10 @@
       @comment="handleStoryComment"
       @submit-comment="handleSubmitCommentFromStory"
       @report="handleStoryReport"
+      @request-vip="showVipCenter = true"
+      @view-user-profile="openUserDetail"
+      @open-comment-bg="handleOpenCommentBg"
+      @open-vip-center="vipCenterFromStory = true; showVipCenter = true"
     />
 
     <div class="msg-trigger-wrapper">
@@ -1148,49 +1741,94 @@
           </div>
         </div>
       </div>
-    </transition>
+      </transition>
 
-    <LoginModal v-if="showLoginModal" @close="showLoginModal = false" />
+    <LoginModal v-if="showLoginModal" @close="handleLoginModalClose" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from "vue";
 import { useMapStore } from "../../stores/map";
-import { useUserStore } from "../../stores/user";
+import { useUserStore, saveDockThemeForUser } from "../../stores/user";
 import PaperPlaneStory from "../../components/PaperPlaneStory.vue";
 import { mapApi } from "../../api/map";
 import { likeApi } from "../../api/like";
 import { commentApi } from "../../api/comment";
 import { storyApi } from "../../api/story";
 import { favoriteApi } from "../../api/favorite";
+import { getFontStyle, injectFontEffectAnimations } from "../../composables/useFontEffect";
 import { authApi } from "../../api/auth";
 import { reportApi } from "../../api/report";
 import { notificationApi } from "../../api/notification";
 import { showToast, showConfirm } from "../../composables/useToast.js";
 import AMap from "../../components/AMap.vue";
 import StoryCard from "../../components/StoryCard.vue";
+import StoryWallCard from "../../components/StoryWallCard.vue";
+import ClusterPopover from "../../components/ClusterPopover.vue";
+import ImageLightbox from "../../components/ImageLightbox.vue";
+import MyFootprints from "../../components/MyFootprints.vue";
+import VipCenter from "../../components/VipCenter.vue";
+import FontPicker from "../../components/FontPicker.vue";
+import CoinCenter from "../../components/CoinCenter.vue";
+
+injectFontEffectAnimations();
+
+function getItemContentStyle(storyData) {
+  if (!storyData) return {};
+  const ff = storyData.fontFamily || '';
+  const fe = storyData.fontEffect || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
+}
+import CommentSettings from "../../components/CommentSettings.vue";
+import VisualCustomizer from "../../components/VisualCustomizer.vue";
+import PolishStory from "../../components/PolishStory.vue";
 import PublishForm from "../../components/PublishForm.vue";
+import PublishFormDock from "../../components/PublishFormDock.vue";
 import LoginModal from "../Home/components/LoginModal.vue";
+import { useVipStore } from "../../stores/vip";
 import { formatRelativeTime } from "../../utils/time";
 import { getEmotionEmoji } from "../../utils/emotion";
 import { getAnnouncementTypeIcon } from "../../utils/announcement";
 import { searchPoisWithContext } from "../../utils/poiSearch";
 import { REPORT_TYPES } from "../../utils/report";
 import { uploadAvatar as uploadToOSS, validateImage } from "../../utils/upload";
+import { useVirtualScroll } from "../../composables/useVirtualScroll.js";
 
 const mapStore = useMapStore();
 const userStore = useUserStore();
+const vipStore = useVipStore();
 
 const clusters = ref([]);
 
+const showClusterPopover = ref(false);
+const clusterPopoverStories = ref([]);
+const showLightbox = ref(false);
+const lightboxImages = ref([]);
+const lightboxInitialIndex = ref(0);
+
 const showSidebar = ref(false);
 const showPublishSidebar = ref(false);
+const showDockPublishSidebar = ref(false);
 const showUserSidebar = ref(false);
 const isPickingPublishLocation = ref(false);
+const isPickingDockPublishLocation = ref(false);
 const pickedPublishLocation = ref(null);
 const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
+const publishPrefillQuery = ref('');
+const adjustPlaneSavedPrefill = ref('');
+const adjustPlaneSavedPosition = ref(null);
+const isAdjustingPlanePosition = ref(false);
+const isAdjustingWaitingForPlane = ref(false);
+const isPublishWaitingForPlane = ref(false);
+const isDockPublishWaitingForPlane = ref(false);
+const shouldAutoConfirmPublishPick = ref(false);
+const shouldAutoConfirmAdjustPlanePick = ref(false);
+const shouldAutoConfirmDockPublishPick = ref(false);
+const dockPublishClickScreenPos = ref(null);
+const adjustPlaneClickScreenPos = ref(null);
 const showLoginModal = ref(false);
 const showNotificationPanel = ref(false);
 const notificationTab = ref("messages");
@@ -1204,6 +1842,23 @@ const nearbySearchResults = ref([]);
 const nearbySearching = ref(false);
 const nearbySearchError = ref("");
 const nearbyHasSearched = ref(false);
+const isMapPointPickMode = computed(
+  () =>
+    isPickingPublishLocation.value
+    || isPickingDockPublishLocation.value
+    || isAdjustingPlanePosition.value,
+);
+const activeTempPickedLocation = computed(() => {
+  if (isPickingDockPublishLocation.value) {
+    return dockPublishPickedLocation.value;
+  }
+
+  if (isPickingPublishLocation.value || isAdjustingPlanePosition.value) {
+    return pickedPublishLocation.value;
+  }
+
+  return null;
+});
 const nearbyCenterLabel = ref("");
 const nearbyPinnedCenterLabel = ref(null);
 const currentUserLocationLabel = ref("");
@@ -1223,6 +1878,8 @@ const storyStartPosition = ref({
   y: window.innerHeight / 2,
 });
 const storyDirectOpen = ref(true); // `false` 时从地图起点飞入
+const THEME_SELECTOR_CARD_KEY = "theme";
+const themeSelectorCardKey = THEME_SELECTOR_CARD_KEY;
 const mapTheme = ref(localStorage.getItem("mapTheme") || "auto");
 const amapRef = ref(null);
 const minuteTicker = ref(0);
@@ -1232,12 +1889,27 @@ function getTimeBasedTheme() {
   const hour = new Date().getHours();
   return hour >= 6 && hour < 18 ? "light" : "dark";
 }
+function normalizeThemeChoice(theme) {
+  return ["auto", "light", "dark", "vip"].includes(theme) ? theme : "auto";
+}
+
+const selectedThemeChoice = computed(() => {
+  const normalized = normalizeThemeChoice(mapTheme.value);
+
+  if (normalized === "auto") {
+    return getTimeBasedTheme();
+  }
+
+  return normalized;
+});
+
 const effectiveMapTheme = computed(() => {
   void minuteTicker.value;
-  if (mapTheme.value === "light" || mapTheme.value === "dark") {
-    return mapTheme.value;
+  if (selectedThemeChoice.value === "vip") {
+    return "dark";
   }
-  return getTimeBasedTheme();
+
+  return selectedThemeChoice.value;
 });
 const nearbyCenterSummary = computed(() => {
   if (!nearbyCenterLabel.value) {
@@ -1246,16 +1918,68 @@ const nearbyCenterSummary = computed(() => {
 
   return `当前显示的是 ${nearbyCenterLabel.value} 附近的故事。`;
 });
+const anyPanelOpen = computed(() => {
+  return showSidebar.value || showPlaneNearby.value || showUserSidebar.value || showPublishSidebar.value || showDockPublishSidebar.value
+    || showSwitchAccountModal.value || showLoginModal.value || showNotificationPanel.value
+    || showEditProfileModal.value || isDockExpanded.value || isAdjustingPlanePosition.value;
+});
 const hoveredDockCard = ref("");
 const selectedDockCard = ref("");
 const drawingDockCard = ref("");
 const liftingDockCard = ref("");
 const returningDockCard = ref("");
+const dockMenuRef = ref(null);
+const dockCardStackRef = ref(null);
 const ripplingDockCard = ref("");
 const dockActionPending = ref(false);
+const VIP_THEME_KEYS = new Set(["poker"]); // VIP 专属主题集合，后续新增主题直接往这里加
+const DEFAULT_THEME_KEY = "tarot"; // 非 VIP 用户的兜底主题
+const activeDockTheme = ref(localStorage.getItem("dockTheme") || DEFAULT_THEME_KEY);
+const usePokerTheme = ref(activeDockTheme.value === "poker");
+function getActiveThemeKey() {
+  return activeDockTheme.value;
+}
 const isDarkMap = computed(() => effectiveMapTheme.value === "dark");
+const isVipTheme = computed(() => selectedThemeChoice.value === "vip");
+const canUseVipTheme = computed(
+  () =>
+    Boolean(userStore.user?.vip) &&
+    Boolean(userStore.isLoggedIn) &&
+    !userStore.isGuest,
+);
+const accountSessionKey = computed(() => {
+  const isLogged = Boolean(userStore.isLoggedIn);
+  const isGuestUser = Boolean(userStore.isGuest);
+  const userId = userStore.user?.id ? String(userStore.user.id) : "";
+  const token = userStore.token || "";
+  return `${isLogged ? 1 : 0}|${isGuestUser ? 1 : 0}|${userId}|${token}`;
+});
+let vipAccountSyncToken = 0;
+
+async function syncVipStateForAccountChange() {
+  const syncToken = ++vipAccountSyncToken;
+  await vipStore.refreshAccountState();
+  if (syncToken !== vipAccountSyncToken) {
+    return;
+  }
+
+  if (!vipStore.isVipActive && VIP_THEME_KEYS.has(getActiveThemeKey())) {
+    activeDockTheme.value = DEFAULT_THEME_KEY;
+    usePokerTheme.value = false;
+    saveDockThemeForUser(userStore.user?.id, DEFAULT_THEME_KEY);
+  }
+}
+
+watch(
+  accountSessionKey,
+  () => {
+    void syncVipStateForAccountChange();
+  },
+  { immediate: true },
+);
 let dockHoverClearTimer = null;
 let dockSelectionTimer = null;
+let dockPointerX = null;
 let nearbyPlaceSearchInstance = null;
 let nearbyPlaceSearchPromise = null;
 let nearbySearchTimer = null;
@@ -1270,8 +1994,8 @@ let geocoderPromise = null;
 const reverseGeocodeCache = new Map();
 const reverseGeocodePending = new Map();
 
-const DOCK_CARD_PREP_MS = 120;
-const DOCK_CARD_DRAW_MS = 250;
+const DOCK_CARD_PREP_MS = 80;
+const DOCK_CARD_DRAW_MS = 100;
 const DOCK_CARD_RETURN_MS = 300;
 const STORY_MODAL_OPEN_DELAY_MS = 420;
 const POI_SEARCH_RADIUS_METERS = 50000;
@@ -1422,6 +2146,121 @@ watch(
 const showLikesPanel = ref(false);
 const showPostsPanel = ref(false);
 const showFavoritesPanel = ref(false);
+
+// --- 新增：用户信息面板状态 ---
+const userContentTab = ref('posts');
+const postsTotalCount = ref(-1);
+const likesTotalCount = ref(-1);
+const favoritesTotalCount = ref(-1);
+const storyCardAnimationKey = ref(0); // 用于触发入场动画的版本号
+
+// Bio 编辑
+const editingBioInline = ref(false);
+const bioDraft = ref('');
+const bioInputRef = ref(null);
+const bioChanged = ref(false);
+const showBioFontPicker = ref(false);
+const bioFontFamily = ref('');
+const bioFontEffect = ref('');
+const bioFontBtnMousedown = ref(false);
+
+function readBioFontFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+function readBioFontEffectFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font_effect=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+function getBioFontStyle(bioFF, bioFE) {
+  const ff = bioFF || '';
+  const fe = bioFE || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
+}
+
+// 编辑资料弹窗
+const showEditProfileModal = ref(false);
+const editProfileForm = ref({ username: '', email: '', currentPassword: '', newPassword: '', confirmPassword: '' });
+const editProfileErrors = ref({ username: '', password: '' });
+const editProfileSaving = ref(false);
+const editProfileShowOldPwd = ref(false);
+const editProfileShowNewPwd = ref(false);
+const editProfileShowConfirmPwd = ref(false);
+const editProfileSavingPassword = ref(false);
+
+// 密码修改实时验证状态
+const pwdVerify = ref({
+  newPasswordMsg: '',
+  newPasswordValid: false,
+  confirmPasswordMsg: '',
+  confirmPasswordValid: false,
+  oldPasswordError: '',
+  canSubmit: false,
+});
+
+function computePasswordValidation() {
+  const form = editProfileForm.value;
+  const v = pwdVerify.value;
+
+  // 新密码验证
+  if (!form.newPassword) {
+    v.newPasswordMsg = '';
+    v.newPasswordValid = false;
+  } else if (form.newPassword.length < 6) {
+    v.newPasswordMsg = '密码不得少于6位';
+    v.newPasswordValid = false;
+  } else if (form.newPassword === form.currentPassword) {
+    v.newPasswordMsg = '与旧密码相同';
+    v.newPasswordValid = false;
+  } else {
+    v.newPasswordMsg = '新密码格式正确';
+    v.newPasswordValid = true;
+  }
+
+  // 确认新密码验证
+  if (!form.confirmPassword) {
+    v.confirmPasswordMsg = '';
+    v.confirmPasswordValid = false;
+  } else if (form.confirmPassword !== form.newPassword) {
+    v.confirmPasswordMsg = '与输入的新密码不同';
+    v.confirmPasswordValid = false;
+  } else {
+    v.confirmPasswordMsg = '输入正确';
+    v.confirmPasswordValid = true;
+  }
+
+  // 综合判断：所有条件通过才允许提交
+  v.canSubmit = v.newPasswordValid && v.confirmPasswordValid && !!form.currentPassword;
+}
+
+function onOldPasswordInput() {
+  // 用户修改旧密码时，清除旧密码错误提示
+  pwdVerify.value.oldPasswordError = '';
+  computePasswordValidation();
+}
+
+function onNewPasswordInput() {
+  computePasswordValidation();
+}
+
+function onConfirmPasswordInput() {
+  computePasswordValidation();
+}
+
+// 切换账号弹窗
+const showSwitchAccountModal = ref(false);
+const savedAccounts = ref([]);
+const isSwitchingAccount = ref(false); // 标记是否在切换账号流程中
+const showFootprints = ref(false);
+const showVipCenter = ref(false);
+const showFontPicker = ref(false);
+const showCoinCenter = ref(false);
+const showCommentSettings = ref(false);
+const commentSettingsFromStory = ref(false);
+const vipCenterFromStory = ref(false);
+const fontPickerFromStory = ref(false);
+const showVisualCustomizer = ref(false);
 const likesList = ref([]);
 const postsList = ref([]);
 const favoritesList = ref([]);
@@ -1437,13 +2276,349 @@ const favoritesPage = ref(1);
 const likesHasMore = ref(true);
 const postsHasMore = ref(true);
 const favoritesHasMore = ref(true);
-const likesPageSize = 10;
-const postsPageSize = 10;
-const favoritesPageSize = 10;
+const likesPageSize = 20;
+const postsPageSize = 20;
+const favoritesPageSize = 20;
 
-const sidebarTab = ref("nearby");
+// 虚拟滚动：根据当前标签页动态切换数据源
+const currentVirtualList = computed(() => {
+  if (userContentTab.value === 'posts') return postsList.value;
+  if (userContentTab.value === 'likes') return likesList.value;
+  if (userContentTab.value === 'favorites') return favoritesList.value;
+  return [];
+});
+
+const profileStoryListTopInset = 12;
+
+const {
+  containerRef: vScrollContainerRef,
+  totalHeight: vScrollTotalHeight,
+  visibleItems: vScrollVisibleItems,
+  connect: vScrollConnect,
+  disconnect: vScrollDisconnect,
+  scheduleMeasure: vScrollScheduleMeasure,
+  flushMeasurements: vScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: currentVirtualList,
+  estimatedHeight: 160,
+  gap: 12, // 卡片间距（替代原 flex gap）
+  bufferCount: 8,
+  nearBottomThreshold: 1200,
+  onNearBottom: () => {
+    // 滚动到底部附近时加载更多
+    if (userContentTab.value === 'posts') loadPostsData(true);
+    else if (userContentTab.value === 'likes') loadLikesData(true);
+    else if (userContentTab.value === 'favorites') loadFavoritesData(true);
+  },
+});
+
+// 虚拟滚动项的 DOM 引用（用于测量实际高度）
+const vScrollItemRefs = ref([]);
+
+// 监听虚拟滚动项的 DOM 变化，实时测量高度
+watch(vScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.virtualIndex, 10);
+      if (!isNaN(idx)) {
+        vScrollScheduleMeasure(idx, el);
+      }
+    }
+  }
+}, { flush: 'post', deep: true });
+
+// 每次可见项更新后刷新测量
+watch(vScrollVisibleItems, () => {
+  nextTick(() => { vScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+// ========== 搜索虚拟滚动（声明后移至 searchResults/searchUserResults 之后）==========
+
+// ========== Feed 推荐流虚拟滚动 ==========
+const feedVScrollItemRefs = ref([]);
+const {
+  containerRef: feedVScrollContainerRef,
+  totalHeight: feedVScrollTotalHeight,
+  visibleItems: feedVScrollVisibleItems,
+  connect: feedVScrollConnect,
+  disconnect: feedVScrollDisconnect,
+  scheduleMeasure: feedVScrollScheduleMeasure,
+  flushMeasurements: feedVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: computed(() => feedStories.value),
+  estimatedHeight: 220,
+  gap: 14, // story-list 的 gap
+  bufferCount: 3,
+  onNearBottom: () => loadMoreFeed(),
+});
+
+watch(feedVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.feedIndex, 10);
+      if (!isNaN(idx)) feedVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(feedVScrollVisibleItems, () => {
+  nextTick(() => { feedVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+const sidebarTab = ref("featured");
 const featuredStories = ref([]);
 const announcements = ref([]);
+
+// ========== 故事墙 Grid 卡片数据（每个标签页独立管理） ==========
+const WALL_INITIAL_LIMIT = 18; // 初始加载量（6行×3列）
+const WALL_PAGE_SIZE = 12; // 每次加载更多
+const WALL_MAX_CACHE = 500; // 单标签最大缓存条数
+
+function createWallTabState() {
+  return {
+    items: [], // 缓存的 story 列表
+    page: 0,
+    totalPages: 1,
+    loading: false,
+    loadingMore: false,
+    initialLoadDone: false,
+    hasMore: true,
+    error: null,
+  };
+}
+
+const wallTabs = ref({
+  featured: createWallTabState(),
+  recommend: createWallTabState(),
+});
+const wallAllInitialDone = computed(
+  () =>
+    wallTabs.value.featured.initialLoadDone &&
+    wallTabs.value.recommend.initialLoadDone,
+);
+
+// 故事墙两个标签页同时加载
+async function loadAllWallTabs() {
+  const center =
+    extractCoordinates(mapStore.center) ||
+    extractCoordinates(mapStore.userLocation);
+  const lat = center?.latitude;
+  const lng = center?.longitude;
+  console.log('[loadAllWallTabs] lat:', lat, 'lng:', lng, 'center:', center);
+
+  // 重置所有标签页状态
+  for (const key of Object.keys(wallTabs.value)) {
+    wallTabs.value[key] = createWallTabState();
+  }
+
+  // 同时请求两个标签页
+  console.log('[loadAllWallTabs] 开始并行加载 featured + recommend');
+  await Promise.allSettled([
+    loadWallFeatured(),
+    loadWallRecommend(lat, lng),
+  ]);
+
+  storyCardAnimationKey.value++;
+  console.log('[loadAllWallTabs] 加载完成');
+}
+
+async function loadWallFeatured() {
+  const tab = wallTabs.value.featured;
+  tab.loading = true;
+  tab.error = null;
+  try {
+    const res = await storyApi.getFeaturedStories({
+      limit: WALL_INITIAL_LIMIT,
+      summary: true,
+    });
+    const data = res?.data ?? res;
+    const stories = (data?.stories ?? [])
+      .map((s) => normalizeStoryForMap(s))
+      .filter(Boolean);
+    tab.items = stories;
+    tab.page = 1;
+    tab.totalPages = data?.pagination?.totalPages ?? 1;
+    tab.hasMore = tab.page < tab.totalPages;
+    tab.initialLoadDone = true;
+  } catch (e) {
+    console.error('[wall-featured] load failed:', e);
+    tab.error = '加载失败';
+    tab.initialLoadDone = true;
+  } finally {
+    tab.loading = false;
+  }
+}
+
+async function loadWallRecommend(lat, lng) {
+  const tab = wallTabs.value.recommend;
+  tab.loading = true;
+  tab.error = null;
+  console.log('[wall-recommend] 开始加载, lat:', lat, 'lng:', lng);
+  try {
+    const res = await mapApi.getRecommendationFeed({
+      lat,
+      lng,
+      limit: WALL_INITIAL_LIMIT,
+      summary: true,
+    });
+    console.log('[wall-recommend] 原始响应:', JSON.stringify(res).substring(0, 500));
+    const data = res?.data ?? res;
+    console.log('[wall-recommend] 解析data:', JSON.stringify(data).substring(0, 500));
+    const rawList = data?.stories ?? [];
+    console.log('[wall-recommend] stories数量:', rawList.length);
+    const stories = rawList
+      .map((s) => normalizeStoryForMap(s))
+      .filter(Boolean);
+    console.log('[wall-recommend] normalize后数量:', stories.length);
+    tab.items = stories;
+    tab.page = 1;
+    tab.totalPages = data?.pagination?.totalPages ?? 1;
+    tab.hasMore = tab.page < tab.totalPages;
+    tab.initialLoadDone = true;
+  } catch (e) {
+    console.error('[wall-recommend] load failed:', e);
+    tab.error = '加载失败';
+    tab.initialLoadDone = true;
+  } finally {
+    tab.loading = false;
+  }
+}
+
+// 加载更多（下滑触发）
+async function loadWallMore(tabName) {
+  const tab = wallTabs.value[tabName];
+  if (tab.loadingMore || !tab.hasMore || tab.loading) return;
+  tab.loadingMore = true;
+  try {
+    const center =
+      extractCoordinates(mapStore.center) ||
+      extractCoordinates(mapStore.userLocation);
+    const lat = center?.latitude;
+    const lng = center?.longitude;
+    const nextPage = tab.page + 1;
+
+    let stories = [];
+    if (tabName === 'featured') {
+      const res = await storyApi.getFeaturedStories({
+        page: nextPage,
+        limit: WALL_PAGE_SIZE,
+        summary: true,
+      });
+      const data = res?.data ?? res;
+      stories = (data?.stories ?? [])
+        .map((s) => normalizeStoryForMap(s))
+        .filter(Boolean);
+      tab.totalPages = data?.pagination?.totalPages ?? tab.totalPages;
+    } else if (tabName === 'recommend') {
+      const res = await mapApi.getRecommendationFeed({
+        lat,
+        lng,
+        page: nextPage,
+        limit: WALL_PAGE_SIZE,
+        summary: true,
+      });
+      const data = res?.data ?? res;
+      stories = (data?.stories ?? [])
+        .map((s) => normalizeStoryForMap(s))
+        .filter(Boolean);
+      tab.totalPages = data?.pagination?.totalPages ?? tab.totalPages;
+    }
+
+    if (stories.length > 0) {
+      tab.items = [...tab.items, ...stories];
+      tab.page = nextPage;
+      tab.hasMore = nextPage < tab.totalPages;
+    } else {
+      tab.hasMore = false;
+    }
+
+    // 缓存溢出淘汰：移除最旧的条目
+    if (tab.items.length > WALL_MAX_CACHE) {
+      const excess = tab.items.length - WALL_MAX_CACHE;
+      tab.items = tab.items.slice(excess);
+    }
+  } catch (e) {
+    console.error(`[wall-${tabName}] loadMore failed:`, e);
+  } finally {
+    tab.loadingMore = false;
+  }
+}
+
+// 点击 Grid 卡片 → 打开故事详情弹窗
+// watcher (hydrateSelectedStoryDetail) 会自动获取完整数据
+function handleWallCardSelect(story) {
+  if (!story?.id) return;
+  openStoryModal(story, 0, {
+    directOpen: true,
+    startPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+  });
+}
+
+// 滚动事件处理：检测接近底部 + 返回顶部按钮
+const sidebarContentRef = ref(null);
+const showWallBackToTop = ref(false);
+
+function handleWallScroll(e, tabName) {
+  const el = e.target;
+  if (!el) return;
+  const threshold = 200;
+  const { scrollTop, scrollHeight, clientHeight } = el;
+  if (scrollHeight - scrollTop - clientHeight < threshold) {
+    loadWallMore(tabName);
+  }
+  showWallBackToTop.value = scrollTop > 120;
+}
+
+function scrollWallToTop() {
+  sidebarContentRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
+  showWallBackToTop.value = false;
+}
+
+// 个人主页面板滚动：返回顶部按钮（我的主页 + 他人主页共用）
+const showProfileBackToTop = ref(false);
+let profileLastScrollTop = 0;
+
+function handleProfileScroll(e) {
+  const el = e.target;
+  if (!el) return;
+
+  // 限制滚动范围：不允许超出内容 + 60px 底部留白
+  const maxScrollTop = el.scrollHeight - el.clientHeight;
+  if (el.scrollTop > maxScrollTop) {
+    el.scrollTop = maxScrollTop;
+  }
+
+  const scrollTop = el.scrollTop;
+  showProfileBackToTop.value = scrollTop > 120;
+  profileLastScrollTop = scrollTop;
+}
+
+function scrollProfileToTop(targetRef) {
+  targetRef?.scrollTo({ top: 0, behavior: 'smooth' });
+  profileLastScrollTop = 0;
+  showProfileBackToTop.value = false;
+}
+
+function resetProfileScrollState() {
+  profileLastScrollTop = 0;
+  showProfileBackToTop.value = false;
+}
+
+// 搜索面板打开/关闭时连接/断开搜索虚拟滚动（移至搜索 VS 实例声明后）
+
+// Feed 区域在 recommend tab 激活时连接
+watch(sidebarTab, (tab) => {
+  showWallBackToTop.value = false;
+  if (tab === 'recommend') {
+    nextTick(() => feedVScrollConnect());
+  } else {
+    feedVScrollDisconnect();
+  }
+});
 
 const storyCommentComposerOpen = ref(false);
 const storyCommentDraft = ref("");
@@ -1456,6 +2631,345 @@ const storyLikePending = ref(false);
 const storyIsFavorited = ref(false);
 const storyFavoriteCount = ref(0);
 const storyFavoritePending = ref(false);
+
+// --- 搜索框状态 ---
+const searchKeyword = ref('');
+const searchFocused = ref(false);
+const searchTab = ref('story');
+const searchResults = ref([]);
+const searchLoading = ref(false);
+const searchLoadingMore = ref(false);
+const searchAnimationKey = ref(0); // 搜索结果入场动画触发
+const searchHasMore = ref(false);
+const searchPage = ref(1);
+const searchPageSize = 10;
+const searchStorySearched = ref(false);
+const searchUserLoading = ref(false);
+const searchUserSearched = ref(false);
+const searchUserResults = ref([]);
+const searchUserPage = ref(1);
+const searchUserHasMore = ref(false);
+const searchUserLoadingMore = ref(false);
+const searchUserPageSize = 20;
+const searchedUser = ref(null);
+const searchedUserStories = ref([]);
+const searchUserDetailOpen = ref(false);
+
+// 他人主页虚拟滚动
+const {
+  containerRef: userDetailVScrollContainerRef,
+  totalHeight: userDetailVScrollTotalHeight,
+  visibleItems: userDetailVScrollVisibleItems,
+  connect: userDetailVScrollConnect,
+  disconnect: userDetailVScrollDisconnect,
+  scheduleMeasure: userDetailVScrollScheduleMeasure,
+  flushMeasurements: userDetailVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: searchedUserStories,
+  estimatedHeight: 160,
+  gap: 12,
+  bufferCount: 4,
+});
+
+const userDetailVScrollItemRefs = ref([]);
+
+watch(userDetailVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.virtualIndex, 10);
+      if (!isNaN(idx)) {
+        userDetailVScrollScheduleMeasure(idx, el);
+      }
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(userDetailVScrollVisibleItems, () => {
+  nextTick(() => { userDetailVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+// ========== 个人主页搜索（左侧弹窗）==========
+
+// --- 他人主页搜索 ---
+const userDetailSearchQuery = ref('');
+const userDetailSearchActive = ref(false);
+const userDetailSearchInputRef = ref(null);
+let userDetailSearchActiveTimer = null;
+const userDetailSearchResults = computed(() => {
+  const query = userDetailSearchQuery.value.trim().toLowerCase();
+  if (!query) return [];
+  return searchedUserStories.value.filter(s => s.content && s.content.toLowerCase().includes(query));
+});
+
+const {
+  containerRef: userDetailSearchVScrollContainerRef,
+  totalHeight: userDetailSearchVScrollTotalHeight,
+  visibleItems: userDetailSearchVScrollVisibleItems,
+  connect: userDetailSearchVScrollConnect,
+  disconnect: userDetailSearchVScrollDisconnect,
+  scheduleMeasure: userDetailSearchVScrollScheduleMeasure,
+  flushMeasurements: userDetailSearchVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: userDetailSearchResults,
+  estimatedHeight: 160,
+  gap: 12,
+  bufferCount: 4,
+});
+
+const userDetailSearchVScrollItemRefs = ref([]);
+
+watch(userDetailSearchVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.virtualIndex, 10);
+      if (!isNaN(idx)) userDetailSearchVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(userDetailSearchVScrollVisibleItems, () => {
+  nextTick(() => { userDetailSearchVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+watch(userDetailSearchQuery, (val) => {
+  if (val.trim()) {
+    if (userDetailSearchActiveTimer) { clearTimeout(userDetailSearchActiveTimer); userDetailSearchActiveTimer = null; }
+    nextTick(() => userDetailSearchVScrollConnect());
+  } else {
+    userDetailSearchVScrollDisconnect();
+  }
+});
+
+function handleUserDetailSearchBlur() {
+  nextTick(() => {
+    if (!userDetailSearchQuery.value.trim()) {
+      userDetailSearchActiveTimer = setTimeout(() => {
+        userDetailSearchActive.value = false;
+        userDetailSearchActiveTimer = null;
+      }, 300);
+    }
+  });
+}
+
+// --- 我的主页搜索 ---
+const myProfileSearchQuery = ref('');
+const myProfileSearchActive = ref(false);
+const myProfileSearchInputRef = ref(null);
+let myProfileSearchActiveTimer = null;
+const myProfileSearchResults = computed(() => {
+  const query = myProfileSearchQuery.value.trim().toLowerCase();
+  if (!query) return [];
+  return currentVirtualList.value.filter(s => s.content && s.content.toLowerCase().includes(query));
+});
+
+const {
+  containerRef: myProfileSearchVScrollContainerRef,
+  totalHeight: myProfileSearchVScrollTotalHeight,
+  visibleItems: myProfileSearchVScrollVisibleItems,
+  connect: myProfileSearchVScrollConnect,
+  disconnect: myProfileSearchVScrollDisconnect,
+  scheduleMeasure: myProfileSearchVScrollScheduleMeasure,
+  flushMeasurements: myProfileSearchVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: myProfileSearchResults,
+  estimatedHeight: 160,
+  gap: 12,
+  bufferCount: 4,
+});
+
+const myProfileSearchVScrollItemRefs = ref([]);
+
+watch(myProfileSearchVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.virtualIndex, 10);
+      if (!isNaN(idx)) myProfileSearchVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(myProfileSearchVScrollVisibleItems, () => {
+  nextTick(() => { myProfileSearchVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+watch(myProfileSearchQuery, (val) => {
+  if (val.trim()) {
+    if (myProfileSearchActiveTimer) { clearTimeout(myProfileSearchActiveTimer); myProfileSearchActiveTimer = null; }
+    nextTick(() => myProfileSearchVScrollConnect());
+  } else {
+    myProfileSearchVScrollDisconnect();
+  }
+});
+
+function handleMyProfileSearchBlur() {
+  nextTick(() => {
+    if (!myProfileSearchQuery.value.trim()) {
+      myProfileSearchActiveTimer = setTimeout(() => {
+        myProfileSearchActive.value = false;
+        myProfileSearchActiveTimer = null;
+      }, 300);
+    }
+  });
+}
+
+// --- 地点搜索状态 ---
+const searchPlaceResults = ref([]);
+const searchPlaceLoading = ref(false);
+const searchPlaceError = ref('');
+const searchPlaceSearched = ref(false);
+
+// ========== 纸飞机附近故事面板 ==========
+const showPlaneNearby = ref(false);
+const planeNearbyLoading = ref(false);
+const planeNearbyLoadingMore = ref(false);
+const planeNearbyItems = ref([]);
+const planeNearbyPage = ref(0);
+const planeNearbyTotalPages = ref(1);
+const planeNearbyHasMore = computed(
+  () => planeNearbyPage.value < planeNearbyTotalPages.value,
+);
+const planeNearbyError = ref(null);
+const planeNearbyInitialDone = ref(false);
+const planePosition = ref(null); // { latitude, longitude }
+
+// ========== 搜索故事虚拟滚动 ==========
+const searchVScrollItemRefs = ref([]);
+const {
+  containerRef: searchVScrollContainerRef,
+  totalHeight: searchVScrollTotalHeight,
+  visibleItems: searchVScrollVisibleItems,
+  connect: searchVScrollConnect,
+  disconnect: searchVScrollDisconnect,
+  scheduleMeasure: searchVScrollScheduleMeasure,
+  flushMeasurements: searchVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: computed(() => searchResults.value),
+  estimatedHeight: 130,
+  gap: 8,
+  bufferCount: 4,
+  onNearBottom: () => loadSearchResults(true),
+});
+
+watch(searchVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.searchStoryIndex, 10);
+      if (!isNaN(idx)) searchVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(searchVScrollVisibleItems, () => {
+  nextTick(() => { searchVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+// ========== 搜索用户虚拟滚动 ==========
+const userSearchVScrollItemRefs = ref([]);
+const {
+  containerRef: userSearchVScrollContainerRef,
+  totalHeight: userSearchVScrollTotalHeight,
+  visibleItems: userSearchVScrollVisibleItems,
+  connect: userSearchVScrollConnect,
+  disconnect: userSearchVScrollDisconnect,
+  scheduleMeasure: userSearchVScrollScheduleMeasure,
+  flushMeasurements: userSearchVScrollFlushMeasurements,
+} = useVirtualScroll({
+  itemList: computed(() => searchUserResults.value),
+  estimatedHeight: 68,
+  gap: 0,
+  bufferCount: 6,
+  onNearBottom: () => performUserSearch(searchKeyword.value.trim(), true),
+});
+
+watch(userSearchVScrollItemRefs, (refs) => {
+  if (!refs || refs.length === 0) return;
+  for (let el of refs) {
+    if (el && el.$el) el = el.$el;
+    if (el && el.dataset) {
+      const idx = parseInt(el.dataset.searchUserIndex, 10);
+      if (!isNaN(idx)) userSearchVScrollScheduleMeasure(idx, el);
+    }
+  }
+}, { flush: 'post', deep: true });
+
+watch(userSearchVScrollVisibleItems, () => {
+  nextTick(() => { userSearchVScrollFlushMeasurements(); });
+}, { flush: 'post' });
+
+// 搜索面板打开/关闭时连接/断开搜索虚拟滚动
+watch(searchFocused, (focused) => {
+  if (focused) {
+    nextTick(() => {
+      searchVScrollConnect();
+      userSearchVScrollConnect();
+    });
+  } else {
+    searchVScrollDisconnect();
+    userSearchVScrollDisconnect();
+  }
+});
+
+const showSearchPanel = computed(() => {
+  return searchFocused.value;
+});
+
+function clearSearch() {
+  searchKeyword.value = '';
+  searchResults.value = [];
+  searchHasMore.value = false;
+  searchStorySearched.value = false;
+  searchUserSearched.value = false;
+  searchUserResults.value = [];
+  searchUserPage.value = 1;
+  searchUserHasMore.value = false;
+  searchUserLoadingMore.value = false;
+  searchedUser.value = null;
+  searchedUserStories.value = [];
+  searchUserDetailOpen.value = false;
+  searchPlaceResults.value = [];
+  searchPlaceLoading.value = false;
+  searchPlaceError.value = '';
+  searchPlaceSearched.value = false;
+}
+
+function switchSearchTab(tab) {
+  if (searchTab.value === tab) return;
+  searchTab.value = tab;
+  const keyword = searchKeyword.value.trim();
+  if (!keyword) return;
+  if (tab === 'place') {
+    performGlobalPlaceSearch(keyword);
+  } else if (tab === 'story') {
+    loadSearchResults(false);
+  } else {
+    performUserSearch(keyword, false);
+  }
+}
+
+let searchDebounceTimer = null;
+watch(searchKeyword, (keyword) => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    const trimmed = keyword.trim();
+    if (!trimmed) return;
+    if (searchTab.value === 'place') {
+      performGlobalPlaceSearch(trimmed);
+    } else if (searchTab.value === 'story') {
+      loadSearchResults(false);
+    } else {
+      performUserSearch(trimmed, false);
+    }
+  }, 350);
+});
+
 const storyReportPanelOpen = ref(false);
 const selectedStoryReportReason = ref("");
 const storyReportDescription = ref("");
@@ -1590,10 +3104,15 @@ function normalizeStoryComment(comment) {
 
   return {
     id: comment.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    userId: commentUser?.id ?? comment.userId ?? null,
     author,
     avatar: firstNonEmptyString(commentUser?.avatar, comment.avatar),
+    vip: Boolean(commentUser?.vip ?? false),
     content: firstNonEmptyString(comment.content),
     createdAt: comment.createdAt || new Date().toISOString(),
+    commentBg: commentUser?.commentBg ?? comment.commentBg ?? null,
+    fontFamily: comment.fontFamily || '',
+    fontEffect: comment.fontEffect || '',
   };
 }
 
@@ -1663,6 +3182,7 @@ function syncStoryAcrossCollections(storyId, mutate) {
     favoritesList,
     likesList,
     postsList,
+    searchResults,
   ];
 
   collections.forEach((collection) => {
@@ -1695,6 +3215,7 @@ function syncCurrentUserProfileAcrossStories(nextUser) {
     favoritesList,
     likesList,
     postsList,
+    searchResults,
   ];
 
   const applyUserProfile = (story) => {
@@ -2008,6 +3529,15 @@ function openStoryFromCollection(story) {
     return;
   }
 
+  // 时光胶囊未解锁时，提示用户
+  const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
+  if (isLocked) {
+    showToast("时光胶囊未解锁，请等待解锁时间到来", "warning");
+    return;
+  }
+
+  searchUserDetailOpen.value = false;
+
   const coords =
     extractCoordinates(story.location) || extractCoordinates(story);
   const shouldAnimateAfterMove = Boolean(coords);
@@ -2051,7 +3581,12 @@ async function toggleStoryLike() {
   storyLikePending.value = true;
   storyIsLiked.value = nextLiked;
   storyLikeCount.value = nextCount;
-  handleStoryLike({ storyId, liked: nextLiked, likeCount: nextCount });
+  handleStoryLike({
+    storyId,
+    liked: nextLiked,
+    likeCount: nextCount,
+    previousLiked,
+  });
 
   try {
     const response = await likeApi.toggle(storyId);
@@ -2068,6 +3603,7 @@ async function toggleStoryLike() {
       storyId,
       liked: resolvedLiked,
       likeCount: resolvedLikeCount,
+      previousLiked: nextLiked,
     });
   } catch (error) {
     console.error("点赞失败:", error);
@@ -2077,6 +3613,7 @@ async function toggleStoryLike() {
       storyId,
       liked: previousLiked,
       likeCount: previousCount,
+      previousLiked: nextLiked,
     });
     showToast(error.message || "点赞失败，请重试", "error");
   } finally {
@@ -2101,6 +3638,7 @@ async function toggleStoryFavorite() {
     storyId,
     favorited: !previousFavorited,
     favoriteCount: previousFavoriteCount + (!previousFavorited ? 1 : -1),
+    previousFavorited,
   });
 
   try {
@@ -2115,6 +3653,7 @@ async function toggleStoryFavorite() {
       storyId,
       favorited: resolvedFavorited,
       favoriteCount: previousFavoriteCount + (resolvedFavorited ? 1 : -1),
+      previousFavorited: !previousFavorited,
     });
 
     try {
@@ -2136,6 +3675,7 @@ async function toggleStoryFavorite() {
       storyId,
       favorited: previousFavorited,
       favoriteCount: previousFavoriteCount,
+      previousFavorited: !previousFavorited,
     });
     showToast(error.message || "收藏操作失败，请重试", "error");
   } finally {
@@ -2162,14 +3702,27 @@ async function submitStoryComment() {
 
   storyCommentSubmitting.value = true;
   try {
-    const response = await commentApi.create(storyId, content);
+    let fontFamily = '';
+    let fontEffect = '';
+    const fontMatch = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);
+    if (fontMatch) fontFamily = decodeURIComponent(fontMatch[1]);
+    const effectMatch = document.cookie.match(/(?:^|;\s*)vip_default_font_effect=([^;]*)/);
+    if (effectMatch) fontEffect = decodeURIComponent(effectMatch[1]);
+    const fontOptions = {};
+    if (fontFamily) fontOptions.fontFamily = fontFamily;
+    if (fontEffect) fontOptions.fontEffect = fontEffect;
+    const response = await commentApi.create(storyId, content, fontOptions);
     const data = response?.data ?? response;
     const newComment = normalizeStoryComment({
       ...(data?.data ?? data),
       content,
+      fontFamily,
+      fontEffect,
       user: {
         username: userStore.user?.username,
         avatar: userStore.user?.avatar,
+        vip: userStore.user?.vip || 0,
+        commentBg: vipStore.savedCommentBg ?? null,
       },
     });
 
@@ -2177,6 +3730,9 @@ async function submitStoryComment() {
     handleStoryComment({ storyId, comment: newComment });
     storyCommentDraft.value = "";
     storyCommentComposerOpen.value = false;
+    if (selectedStory.value && normalizeStoryIdKey(selectedStory.value.id) === normalizeStoryIdKey(storyId)) {
+      selectedStory.value = { ...selectedStory.value, comments: storyComments.value };
+    }
   } catch (error) {
     console.error("评论失败:", error);
     showToast(error.message || "评论失败，请重试", "error");
@@ -2185,7 +3741,7 @@ async function submitStoryComment() {
   }
 }
 
-async function handleSubmitCommentFromStory({ storyId, content }) {
+async function handleSubmitCommentFromStory({ storyId, content, fontFamily, fontEffect }) {
   if (!storyId || !content) {
     return;
   }
@@ -2201,19 +3757,29 @@ async function handleSubmitCommentFromStory({ storyId, content }) {
 
   storyCommentSubmitting.value = true;
   try {
-    const response = await commentApi.create(storyId, content);
+    const fontOptions = {};
+    if (fontFamily) fontOptions.fontFamily = fontFamily;
+    if (fontEffect) fontOptions.fontEffect = fontEffect;
+    const response = await commentApi.create(storyId, content, fontOptions);
     const data = response?.data ?? response;
     const newComment = normalizeStoryComment({
       ...(data?.data ?? data),
       content,
+      fontFamily,
+      fontEffect,
       user: {
         username: userStore.user?.username,
         avatar: userStore.user?.avatar,
+        vip: userStore.user?.vip || 0,
+        commentBg: vipStore.savedCommentBg ?? null,
       },
     });
 
     storyComments.value = [newComment, ...storyComments.value];
     handleStoryComment({ storyId, comment: newComment });
+    if (selectedStory.value && normalizeStoryIdKey(selectedStory.value.id) === normalizeStoryIdKey(storyId)) {
+      selectedStory.value = { ...selectedStory.value, comments: storyComments.value };
+    }
   } catch (error) {
     console.error("评论失败:", error);
     showToast(error.message || "评论失败，请重试", "error");
@@ -2260,24 +3826,26 @@ const dockActions = computed(() => [
     tag: "Create Story",
     title: "发布故事",
     subtitle: "你有什么想说的？",
-    description: "打开发布面板，把此刻的情绪和位置写进地图里。",
+    description: "打开发布面板，把此刻的情绪和故事写进地图里。",
     icon: "✦",
-    suit: "♦",
+    suit: "♠",
+    cornerValue: "A",
     accent: "#ff7a59",
     accentSoft: "rgba(255, 122, 89, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#432013",
-    visible: !showPublishSidebar.value,
+    visible: !showPublishSidebar.value && !showDockPublishSidebar.value,
     disabled: false,
     handler: handlePublishClick,
   },
   {
     key: "stories",
     tag: "Story Wall",
-    title: "附近故事",
-    subtitle: "打开故事墙",
-    description: "展开右侧故事墙，继续浏览附近故事、精选内容和公告。",
+    title: "故事墙",
+    subtitle: "打开故事墙，浏览精选故事",
+    description: "打开故事墙，浏览精选故事和为你推荐。",
     icon: "✉",
-    suit: "♣",
+    suit: "♥",
+    cornerValue: "K",
     accent: "#5f7cff",
     accentSoft: "rgba(95, 124, 255, 0.25)",
     ink: isDarkMap.value ? "#eef3ff" : "#172042",
@@ -2294,7 +3862,8 @@ const dockActions = computed(() => [
       ? "正在为你寻找新的落点，请稍等片刻。"
       : "随机去往一处新的位置，看看陌生角落里正在发生什么。",
     icon: "✧",
-    suit: "♠",
+    suit: "♦",
+    cornerValue: "Q",
     accent: "#f2a93b",
     accentSoft: "rgba(242, 169, 59, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#3e2811",
@@ -2303,37 +3872,36 @@ const dockActions = computed(() => [
     handler: handleRandomWalk,
   },
   {
-    key: "locate",
-    tag: "Position Sync",
-    title: "回到我的位置",
-    subtitle: "重新对准当前位置",
-    description: "使用当前位置重新定位地图，把视角迅速拉回你所在的地方。",
-    icon: "◎",
+    key: "footprints",
+    tag: "My Footprints",
+    title: "我的足迹",
+    subtitle: "回放你的故事轨迹",
+    description: "将你发布过的故事按时间顺序连成轨迹，在地图上重温每一段旅程。",
+    icon: "🐾",
     suit: "♣",
-    accent: "#2cb67d",
-    accentSoft: "rgba(44, 182, 125, 0.24)",
-    ink: isDarkMap.value ? "#eef3ff" : "#123127",
+    cornerValue: "J",
+    accent: "#e8b86d",
+    accentSoft: "rgba(232, 184, 109, 0.24)",
+    ink: isDarkMap.value ? "#eef3ff" : "#3e2811",
     visible: true,
     disabled: false,
-    handler: handleLocate,
+    handler: handleFootprints,
   },
   {
     key: "theme",
-    tag: "Theme Shift",
-    title: effectiveMapTheme.value === "dark" ? "切到浅色地图" : "切到深色地图",
+    tag: "Theme Atelier",
+    title: "切换主题氛围",
     subtitle: "切换当前场景氛围",
-    description:
-      effectiveMapTheme.value === "dark"
-        ? "把地图切回更明亮的视觉主题。"
-        : "切到更沉浸的深色地图主题。",
-    icon: effectiveMapTheme.value === "dark" ? "☀" : "☾",
-    suit: "♣",
+    description: "在明亮、暗色与会员主题之间切换当前地图氛围。",
+    icon: "☯",
+    suit: "♥",
+    cornerValue: "10",
     accent: "#8e6cff",
     accentSoft: "rgba(142, 108, 255, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#241a3f",
     visible: true,
     disabled: false,
-    handler: toggleTheme,
+    handler: () => {},
   },
   {
     key: "user",
@@ -2342,7 +3910,8 @@ const dockActions = computed(() => [
     subtitle: "查看个人信息",
     description: "打开个人信息面板，查看头像、点赞、发布记录和账号设置。",
     icon: "◈",
-    suit: "♥",
+    suit: "♠",
+    cornerValue: "9",
     accent: "#35b4d8",
     accentSoft: "rgba(53, 180, 216, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#112b34",
@@ -2359,7 +3928,8 @@ const dockActions = computed(() => [
       ? "结束当前游客体验并返回首页。"
       : "安全退出当前账号并返回首页。",
     icon: "↩",
-    suit: "♠",
+    suit: "♣",
+    cornerValue: "8",
     accent: "#e0677f",
     accentSoft: "rgba(224, 103, 127, 0.26)",
     ink: isDarkMap.value ? "#eef3ff" : "#341723",
@@ -2370,7 +3940,111 @@ const dockActions = computed(() => [
 ]);
 
 const visibleDockActions = computed(() =>
-  dockActions.value.filter((action) => action.visible),
+  dockActions.value
+    .filter((action) => action.visible)
+    .map((action) => {
+      if (action.key !== THEME_SELECTOR_CARD_KEY) {
+        return action;
+      }
+
+      return {
+        ...action,
+        title:
+          selectedThemeChoice.value === "vip"
+            ? "会员主题"
+            : selectedThemeChoice.value === "dark"
+              ? "暗色主题"
+              : "明亮主题",
+        subtitle: "选择你想使用的主题",
+        description: canUseVipTheme.value
+          ? "你可以在这里切换你喜欢的主题：明、暗、会员专属。"
+          : "你可以在这里切换你喜欢的主题：明、暗、会员专属。",
+        icon: selectedThemeChoice.value === "vip" ? "✦" : "☯",
+        accent: selectedThemeChoice.value === "vip" ? "#d6b36c" : "#8e6cff",
+        accentSoft:
+          selectedThemeChoice.value === "vip"
+            ? "rgba(214, 179, 108, 0.3)"
+            : "rgba(142, 108, 255, 0.24)",
+        title: "切换主题",
+        subtitle: action.subtitle,
+        description: action.description,
+        title: "切换主题氛围",
+      };
+    }),
+);
+
+const dockThemeOptions = computed(() => [
+  {
+    key: "light",
+    type: "mode",
+    icon: "☀️",
+    label: "明亮主题",
+    helper: "晨光琉璃",
+    accent: "#c98c3d",
+    accentSoft: "rgba(201, 140, 61, 0.24)",
+    disabled: false,
+    tooltip: "切换到明亮主题",
+  },
+  {
+    key: "dark",
+    type: "mode",
+    icon: "🌙",
+    label: "暗色主题",
+    helper: "深空星幕",
+    accent: "#79a6ff",
+    accentSoft: "rgba(121, 166, 255, 0.24)",
+    disabled: false,
+    tooltip: "切换到暗色主题",
+  },
+  {
+    key: "tarot",
+    type: "theme",
+    icon: "🔮",
+    label: "塔罗牌",
+    helper: "经典卡牌风格",
+    accent: "#8e6cff",
+    accentSoft: "rgba(142, 108, 255, 0.24)",
+    disabled: false,
+    tooltip: "切换到塔罗牌主题",
+  },
+  {
+    key: "poker",
+    type: "theme",
+    icon: "🃏",
+    label: "扑克牌",
+    helper: "经典扑克风格",
+    accent: "#e74c3c",
+    accentSoft: "rgba(231, 76, 60, 0.24)",
+    disabled: false,
+    tooltip: "切换到扑克牌主题",
+    requiresVip: true,
+  },
+  {
+    key: "more",
+    type: "more",
+    icon: "✨",
+    label: "更多主题",
+    helper: "敬请期待",
+    accent: "#aaa",
+    accentSoft: "rgba(170, 170, 170, 0.24)",
+    disabled: true,
+    tooltip: "更多主题即将开放",
+  },
+]);
+
+function isThemeOptionActive(option) {
+  if (option.type === "mode") return option.key === selectedThemeChoice.value;
+  if (option.type === "theme") return option.key === (usePokerTheme.value ? "poker" : "tarot");
+  return false;
+}
+
+const themeDockSubmenuVisible = computed(
+  () =>
+    isDockExpanded.value &&
+    selectedDockCard.value === THEME_SELECTOR_CARD_KEY &&
+    !drawingDockCard.value &&
+    !liftingDockCard.value &&
+    !returningDockCard.value,
 );
 
 const activeDockAction = computed(() => {
@@ -2542,6 +4216,12 @@ watch(isDockExpanded, (expanded) => {
   resetDockSelectionMotion();
 });
 
+watch(canUseVipTheme, (allowed) => {
+  if (!allowed && mapTheme.value === "vip") {
+    handleThemeChange("dark");
+  }
+});
+
 watch(visibleDockActions, (actions) => {
   const keys = new Set(actions.map((action) => action.key));
 
@@ -2614,6 +4294,70 @@ function clearDockHover() {
   syncDockHoverSelection();
 }
 
+function getDockStickyHoverKey() {
+  return selectedDockCard.value || liftingDockCard.value || "";
+}
+
+function getDockStickyHorizontalBounds(key) {
+  if (!key) {
+    return null;
+  }
+
+  const index = visibleDockActions.value.findIndex((action) => action.key === key);
+
+  if (index < 0) {
+    return null;
+  }
+
+  const { cardWidth, spreadX, hoverX } = getDockLayoutMetrics(
+    index,
+    visibleDockActions.value.length,
+    key,
+  );
+  const horizontalTolerance = 4;
+
+  return {
+    left: Math.min(spreadX, hoverX) - horizontalTolerance,
+    right: Math.max(spreadX, hoverX) + cardWidth + horizontalTolerance,
+  };
+}
+
+function isPointerWithinDockStickyHorizontalBounds(key) {
+  if (dockPointerX === null) {
+    return false;
+  }
+
+  const bounds = getDockStickyHorizontalBounds(key);
+
+  if (!bounds) {
+    return false;
+  }
+
+  return dockPointerX >= bounds.left && dockPointerX <= bounds.right;
+}
+
+function handleDockStackPointerMove(event) {
+  if (!dockCardStackRef.value) {
+    return;
+  }
+
+  const rect = dockCardStackRef.value.getBoundingClientRect();
+  dockPointerX = event.clientX - rect.left;
+
+  const stickyHoverKey = getDockStickyHoverKey();
+
+  if (!stickyHoverKey || hoveredDockCard.value !== stickyHoverKey) {
+    return;
+  }
+
+  if (isPointerWithinDockStickyHorizontalBounds(stickyHoverKey)) {
+    return;
+  }
+
+  hoveredDockCard.value = "";
+  syncDockHoverSelection();
+}
+
 function scheduleClearDockHover() {
   if (isPickingPublishLocation.value) {
     hoveredDockCard.value = "";
@@ -2629,14 +4373,32 @@ function scheduleClearDockHover() {
   }
 
   dockHoverClearTimer = window.setTimeout(() => {
+    const stickyHoverKey = getDockStickyHoverKey();
+    const pointerStillInDockMenu = Boolean(dockMenuRef.value?.matches?.(":hover"));
+
+    if (
+      stickyHoverKey &&
+      pointerStillInDockMenu &&
+      isPointerWithinDockStickyHorizontalBounds(stickyHoverKey)
+    ) {
+      hoveredDockCard.value = stickyHoverKey;
+      dockHoverClearTimer = null;
+      syncDockHoverSelection();
+      return;
+    }
+
     hoveredDockCard.value = "";
     dockHoverClearTimer = null;
     syncDockHoverSelection();
-  }, 70);
+  }, 90);
 }
 
 function handleDockCardClick(action) {
   if (isPickingPublishLocation.value) {
+    return;
+  }
+
+  if (action.key === THEME_SELECTOR_CARD_KEY) {
     return;
   }
 
@@ -2669,21 +4431,57 @@ function handleDockCardClick(action) {
   }, 500);
 }
 
+function handleThemeOptionClick(option) {
+  if (!option || dockActionPending.value) {
+    return;
+  }
+
+  if (option.disabled) {
+    showToast("更多主题即将开放，敬请期待", "info");
+    return;
+  }
+
+  if (option.type === "mode") {
+    handleThemeChange(option.key);
+    return;
+  }
+
+  if (option.type === "theme") {
+    if (VIP_THEME_KEYS.has(option.key) && !canUseVipTheme.value) {
+      showToast("请升级会员后使用", "warning");
+      return;
+    }
+    if (option.key === "tarot") {
+      activeDockTheme.value = "tarot";
+      usePokerTheme.value = false;
+    } else if (VIP_THEME_KEYS.has(option.key)) {
+      activeDockTheme.value = option.key;
+      usePokerTheme.value = (option.key === "poker");
+    }
+    saveDockThemeForUser(userStore.user?.id, activeDockTheme.value);
+    return;
+  }
+}
+
 function getDockLayoutMetrics(index, total, actionKey = "") {
   const visibleCount = Math.max(total, 1);
   const cardWidth = 244;
   const cardStep = 148;
   const cardHeight = 344;
-  const compressedStep = 74;
-  const gapClearance = 28;
-  const stackWidth = cardWidth + (visibleCount - 1) * cardStep;
+  const stackSidePadding = 96;
+  const sideRetreatBase = 14;
+  const sideRetreatBoost = 75;
+  const sideRetreatNearBonus = 18;
+  const sideCompressionStep = 25;
+  const stackWidth =
+    cardWidth + (visibleCount - 1) * cardStep + stackSidePadding * 2;
   const middleIndex = (visibleCount - 1) / 2;
   const distanceFromMiddle = index - middleIndex;
   const maxDistance = Math.max(middleIndex, 1);
   const normalizedDistance =
     maxDistance === 0 ? 0 : Math.abs(distanceFromMiddle) / maxDistance;
   const arcLift = Math.round((1 - Math.pow(normalizedDistance, 1.55)) * 74);
-  const baseX = index * cardStep;
+  const baseX = stackSidePadding + index * cardStep;
   const collapsedX = (stackWidth - cardWidth) / 2 + index * 2;
   const collapsedY = 28 - index * 2;
   const spreadY = Math.round(-10 - arcLift);
@@ -2692,52 +4490,49 @@ function getDockLayoutMetrics(index, total, actionKey = "") {
   const hasExtractionGap = gapIndex >= 0;
   let spreadX = baseX;
   let adjustedSpreadRotate = spreadRotate;
-  let extractionLaneX = baseX;
+  let selectedLiftX = baseX;
 
   if (hasExtractionGap) {
     const leftCount = gapIndex;
     const rightCount = visibleCount - gapIndex - 1;
-    const maxLeftStart = baseX - cardWidth - gapClearance;
-    const minRightStart = baseX + cardWidth + gapClearance;
-    const leftCompressedStep =
-      leftCount > 1
-        ? Math.min(compressedStep, Math.max(maxLeftStart / (leftCount - 1), 0))
-        : compressedStep;
-    const rightCompressedStep =
-      rightCount > 1
-        ? Math.min(
-            compressedStep,
-            Math.max(
-              (stackWidth - cardWidth - minRightStart) / (rightCount - 1),
-              0,
-            ),
-          )
-        : compressedStep;
-    const rightStartX =
-      stackWidth - cardWidth - (rightCount - 1) * rightCompressedStep;
-
-    // Shift the selected card toward the nearest gap before lifting it out.
-    if (index === gapIndex && leftCount > 0 && rightCount > 0) {
-      const leftBoundary = (gapIndex - 1) * leftCompressedStep + cardWidth;
-      const rightBoundary = rightStartX;
-      extractionLaneX = (leftBoundary + rightBoundary) / 2 - cardWidth / 2;
-    }
+    const selectedBaseX = stackSidePadding + gapIndex * cardStep;
 
     if (index < gapIndex) {
-      spreadX = index * leftCompressedStep;
-      adjustedSpreadRotate -= 1.6 + (gapIndex - index - 1) * 0.14;
+      const proximityToGap =
+        leftCount <= 1 ? 1 : index / (leftCount - 1);
+      const nearGapBonus =
+        Math.pow(proximityToGap, 1.55) * sideRetreatNearBonus;
+      const retreatAmount =
+        sideRetreatBase +
+        proximityToGap * sideRetreatBoost +
+        nearGapBonus +
+        index * sideCompressionStep;
+      spreadX = baseX - retreatAmount;
+      adjustedSpreadRotate -= 0.75 + proximityToGap * 1.25;
     } else if (index > gapIndex) {
-      spreadX = rightStartX + (index - gapIndex - 1) * rightCompressedStep;
-      adjustedSpreadRotate += 1.6 + (index - gapIndex - 1) * 0.14;
+      const ordinal = index - gapIndex - 1;
+      const proximityToGap =
+        rightCount <= 1 ? 1 : 1 - ordinal / (rightCount - 1);
+      const nearGapBonus =
+        Math.pow(proximityToGap, 1.55) * sideRetreatNearBonus;
+      const retreatAmount =
+        sideRetreatBase +
+        proximityToGap * sideRetreatBoost +
+        nearGapBonus +
+        (rightCount - ordinal - 1) * sideCompressionStep;
+      spreadX = baseX + retreatAmount;
+      adjustedSpreadRotate += 0.75 + proximityToGap * 1.25;
+    } else {
+      selectedLiftX = selectedBaseX;
     }
   }
 
-  const prepX = baseX + (extractionLaneX - baseX) * 0.84;
-  const prepY = spreadY - 24;
-  const prepRotate = distanceFromMiddle * 4.1;
-  const drawX = extractionLaneX;
-  const drawY = spreadY - 116;
-  const drawRotate = distanceFromMiddle * 1.75;
+  const prepX = baseX;
+  const prepY = spreadY - 10;
+  const prepRotate = spreadRotate * 0.78;
+  const drawX = selectedLiftX;
+  const drawY = spreadY - 82;
+  const drawRotate = spreadRotate * 0.32;
   const hoverX = drawX;
   const hoverY = drawY;
   const hoverRotate = drawRotate;
@@ -2836,19 +4631,62 @@ function getDockCardStyle(index, total, action) {
     "--prep-x": `${prepX}px`,
     "--prep-y": `${prepY}px`,
     "--prep-rotate": `${prepRotate}deg`,
-    "--prep-scale": "1.008",
+    "--prep-scale": "1",
     "--draw-x": `${drawX}px`,
     "--draw-y": `${drawY}px`,
     "--draw-rotate": `${drawRotate}deg`,
-    "--draw-scale": "1.02",
+    "--draw-scale": "1.014",
     "--hover-x": `${hoverX}px`,
     "--hover-y": `${hoverY}px`,
     "--hover-rotate": `${hoverRotate}deg`,
-    "--hover-scale": "1.02",
+    "--hover-scale": "1.014",
     "--card-z": `${total - index}`,
     "--card-accent": action.accent,
     "--card-accent-soft": action.accentSoft,
     "--card-ink": action.ink,
+  };
+}
+
+function getDockAnchorStyle(index, total, action) {
+  const {
+    cardWidth,
+    cardHeight,
+    spreadX,
+    spreadY,
+    hoverX,
+    hoverY,
+    motionState,
+  } = getDockLayoutMetrics(index, total, action.key);
+  const paddingX = motionState === "selected" ? 8 : 6;
+  const paddingTop = motionState === "selected" ? 58 : 34;
+  const paddingBottom = motionState === "selected" ? 40 : 24;
+  const anchorX = Math.min(spreadX, hoverX) - paddingX;
+  const anchorY = Math.min(spreadY, hoverY) - paddingTop;
+  const anchorWidth = cardWidth + Math.abs(hoverX - spreadX) + paddingX * 2;
+  const anchorHeight =
+    cardHeight + Math.abs(hoverY - spreadY) + paddingTop + paddingBottom;
+
+  return {
+    "--anchor-x": `${anchorX}px`,
+    "--anchor-y": `${anchorY}px`,
+    width: `${anchorWidth}px`,
+    height: `${anchorHeight}px`,
+    zIndex: motionState === "selected" ? "117" : "115",
+  };
+}
+
+function getDockPlaceholderStyle(index, total, action) {
+  const { cardWidth, cardHeight, spreadX, spreadY, motionState } =
+    getDockLayoutMetrics(index, total, action.key);
+  const paddingX = motionState === "selected" ? 6 : 4;
+  const paddingY = motionState === "selected" ? 26 : 16;
+
+  return {
+    "--placeholder-x": `${spreadX - paddingX}px`,
+    "--placeholder-y": `${spreadY - paddingY}px`,
+    width: `${cardWidth + paddingX * 2}px`,
+    height: `${cardHeight + paddingY * 2}px`,
+    zIndex: motionState === "selected" ? "115" : "113",
   };
 }
 
@@ -2978,26 +4816,402 @@ watch(showUserSidebar, (newValue) => {
     showLikesPanel.value = false;
     showPostsPanel.value = false;
     showFavoritesPanel.value = false;
+    return;
   }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    return;
+  }
+
+  void refreshUserPanelTotals();
+  refreshActiveUserPanelTab();
 });
 
 function closeStoryPanel() {
   showSidebar.value = false;
+  showCommentSettings.value = false;
 }
 
 function closeUserPanel() {
+  // 关闭时保存 bio 和编辑资料弹窗中的更改
+  savePendingChanges();
   showUserSidebar.value = false;
+  showBioFontPicker.value = false;
+  vScrollDisconnect();
+  myProfileSearchQuery.value = '';
+  myProfileSearchVScrollDisconnect();
+  if (myProfileSearchActiveTimer) { clearTimeout(myProfileSearchActiveTimer); myProfileSearchActiveTimer = null; }
+  myProfileSearchActive.value = false;
   showLikesPanel.value = false;
   showPostsPanel.value = false;
   showFavoritesPanel.value = false;
+  editingBioInline.value = false;
+  bioChanged.value = false;
+  resetProfileScrollState();
+}
+
+// --- 新增：Bio 编辑 ---
+function startEditBio() {
+  if (editingBioInline.value) return;
+  editingBioInline.value = true;
+  bioDraft.value = userStore.user?.bio || '';
+  bioFontFamily.value = userStore.user?.bioFontFamily || readBioFontFromCookie();
+  bioFontEffect.value = userStore.user?.bioFontEffect || readBioFontEffectFromCookie();
+  bioChanged.value = false;
+  nextTick(() => {
+    bioInputRef.value?.focus();
+  });
+}
+
+function cancelEditBio() {
+  editingBioInline.value = false;
+  bioDraft.value = '';
+  bioFontFamily.value = '';
+  bioFontEffect.value = '';
+  bioChanged.value = false;
+  showBioFontPicker.value = false;
+}
+
+let _bioSaving = false;
+
+function handleBioBlur() {
+  if (bioFontBtnMousedown.value) return;
+  if (showBioFontPicker.value) return;
+  saveBioInline();
+}
+
+function saveBioInline() {
+  if (_bioSaving) return;
+  if (!editingBioInline.value) return;
+  _bioSaving = true;
+  editingBioInline.value = false;
+  showBioFontPicker.value = false;
+  const newBio = bioDraft.value.trim();
+  const fontFamily = bioFontFamily.value || readBioFontFromCookie();
+  const fontEffect = bioFontEffect.value || readBioFontEffectFromCookie();
+  const oldBio = userStore.user?.bio || '';
+  if (newBio === oldBio && fontFamily === (userStore.user?.bioFontFamily || '') && fontEffect === (userStore.user?.bioFontEffect || '')) {
+    bioChanged.value = false;
+    _bioSaving = false;
+    return;
+  }
+  // 直接提交保存
+  bioChanged.value = false;
+  const profileData = { bio: newBio };
+  if (fontFamily) profileData.bioFontFamily = fontFamily;
+  if (fontEffect) profileData.bioFontEffect = fontEffect;
+  authApi.updateProfile(profileData).then((response) => {
+    userStore.updateUser({ bio: newBio, bioFontFamily: fontFamily, bioFontEffect: fontEffect });
+    syncCurrentUserProfileAcrossStories({ ...(userStore.user || {}), bio: newBio, bioFontFamily: fontFamily, bioFontEffect: fontEffect });
+    showToast('签名已保存', 'success');
+    _bioSaving = false;
+  }).catch((error) => {
+    console.error('保存签名失败:', error);
+    showToast('保存签名失败', 'error');
+    _bioSaving = false;
+  });
+}
+
+// --- 新增：编辑资料弹窗 ---
+function handleOpenEditProfile() {
+  const u = userStore.user || {};
+  editProfileForm.value = {
+    username: u.username || u.name || '',
+    email: u.email || '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  };
+  editProfileErrors.value = { username: '', password: '' };
+  editProfileSaving.value = false;
+  editProfileSavingPassword.value = false;
+  editProfileShowOldPwd.value = false;
+  editProfileShowNewPwd.value = false;
+  editProfileShowConfirmPwd.value = false;
+  pwdVerify.value = {
+    newPasswordMsg: '',
+    newPasswordValid: false,
+    confirmPasswordMsg: '',
+    confirmPasswordValid: false,
+    oldPasswordError: '',
+    canSubmit: false,
+  };
+  showEditProfileModal.value = true;
+}
+
+async function handleSaveEditProfile() {
+  editProfileErrors.value = { username: '', password: '' };
+  const form = editProfileForm.value;
+  const trimmedUsername = form.username.trim();
+
+  // 验证用户名
+  if (trimmedUsername.length > 0 && trimmedUsername.length < 2) {
+    editProfileErrors.value.username = '用户名至少需要 2 个字符';
+    return;
+  }
+  if (trimmedUsername.length > 20) {
+    editProfileErrors.value.username = '用户名最多 20 个字符';
+    return;
+  }
+  if (trimmedUsername && !/^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/.test(trimmedUsername)) {
+    editProfileErrors.value.username = '用户名只能包含字母、数字、中文、下划线和连字符';
+    return;
+  }
+
+  editProfileSaving.value = true;
+  try {
+    const currentUsername = userStore.user?.username || userStore.user?.name;
+    if (trimmedUsername && trimmedUsername !== currentUsername) {
+      const result = await checkUsernameAvailability(trimmedUsername);
+      if (!result.available) {
+        editProfileErrors.value.username = result.message || '该用户名已被使用';
+        return;
+      }
+      const response = await authApi.updateProfile({ username: trimmedUsername });
+      const updatedUser = response?.data ?? response;
+      userStore.updateUser(updatedUser);
+      syncCurrentUserProfileAcrossStories({ ...(userStore.user || {}), ...(updatedUser || {}) });
+    }
+
+    showToast('资料更新成功', 'success');
+    showEditProfileModal.value = false;
+  } catch (error) {
+    const msg = error?.response?.data?.message || error?.response?.data?.error || '';
+    if (msg.includes('用户名') || msg.includes('username')) {
+      editProfileErrors.value.username = msg || '用户名修改失败';
+    } else {
+      showToast(msg || '保存失败，请重试', 'error');
+    }
+  } finally {
+    editProfileSaving.value = false;
+  }
+}
+
+// 确认修改密码（独立逻辑）
+async function handleConfirmChangePassword() {
+  if (!pwdVerify.value.canSubmit || editProfileSavingPassword.value) return;
+
+  const form = editProfileForm.value;
+  editProfileSavingPassword.value = true;
+
+  try {
+    await authApi.changePassword(form.currentPassword, form.newPassword);
+    showToast('密码修改成功', 'success');
+    // 清空密码字段
+    form.currentPassword = '';
+    form.newPassword = '';
+    form.confirmPassword = '';
+    pwdVerify.value = {
+      newPasswordMsg: '',
+      newPasswordValid: false,
+      confirmPasswordMsg: '',
+      confirmPasswordValid: false,
+      oldPasswordError: '',
+      canSubmit: false,
+    };
+  } catch (error) {
+    pwdVerify.value.oldPasswordError = '旧密码不正确';
+  } finally {
+    editProfileSavingPassword.value = false;
+  }
+}
+
+function handleCloseEditProfile() {
+  showEditProfileModal.value = false;
+}
+
+// --- 切换账号 ---
+function handleSwitchAccount() {
+  const currentId = String(userStore.user?.id || '');
+  const stored = JSON.parse(localStorage.getItem('savedAccounts') || '[]');
+  savedAccounts.value = stored.filter((a) => String(a.id) !== currentId).slice(0, 2);
+  showSwitchAccountModal.value = true;
+}
+
+function handleSwitchToAccount(acc) {
+  if (!acc.token) {
+    // 没有保存 token，回退到登录流程
+    showSwitchAccountModal.value = false;
+    isSwitchingAccount.value = true;
+    showUserSidebar.value = false;
+    userStore.logout();
+    showLoginModal.value = true;
+    return;
+  }
+  // 直接用保存的 token 切换，无需重新登录
+  showSwitchAccountModal.value = false;
+  // 先保存当前账号（含 token）到 savedAccounts
+  if (userStore.user?.id && userStore.token) {
+    saveAccountToStorage({ id: userStore.user.id, username: userStore.user.username, email: userStore.user.email, avatar: userStore.user.avatar, token: userStore.token });
+  }
+  userStore.setAuth(acc.token, { id: acc.id, username: acc.username, email: acc.email || '', avatar: acc.avatar || '' });
+  window.location.reload();
+}
+
+function handleAddAccount() {
+  showSwitchAccountModal.value = false;
+  // 保存当前账号（含 token）到 savedAccounts
+  if (userStore.user?.id && userStore.token) {
+    saveAccountToStorage({ id: userStore.user.id, username: userStore.user.username, email: userStore.user.email, avatar: userStore.user.avatar, token: userStore.token });
+  }
+  isSwitchingAccount.value = true;
+  showUserSidebar.value = false;
+  showLoginModal.value = true;
+}
+
+// 保存账号到 localStorage（最多保留 2 个非当前账号）
+function saveAccountToStorage(account) {
+  const stored = JSON.parse(localStorage.getItem('savedAccounts') || '[]');
+  const accId = String(account.id);
+  // 去重
+  const filtered = stored.filter((a) => String(a.id) !== accId);
+  filtered.push(account);
+  // 最多保留 2 个
+  localStorage.setItem('savedAccounts', JSON.stringify(filtered.slice(-2)));
+}
+
+// 切换账号后刷新"我的信息"面板所有内容
+function refreshUserPanel() {
+  // 重置所有列表
+  postsList.value = [];
+  postsPage.value = 1;
+  postsHasMore.value = true;
+  postsTotalCount.value = -1;
+  likesList.value = [];
+  likesPage.value = 1;
+  likesHasMore.value = true;
+  likesTotalCount.value = -1;
+  favoritesList.value = [];
+  favoritesPage.value = 1;
+  favoritesHasMore.value = true;
+  favoritesTotalCount.value = -1;
+  userContentTab.value = 'posts';
+  // 刷新用户信息并加载作品
+  userStore.fetchUser().then(() => {
+    void refreshUserPanelTotals();
+    refreshActiveUserPanelTab();
+  }).catch((error) => {
+    console.error('刷新用户信息失败:', error);
+  });
+}
+
+// LoginModal 登录成功后的回调
+function handleLoginModalClose() {
+  showLoginModal.value = false;
+  if (isSwitchingAccount.value) {
+    isSwitchingAccount.value = false;
+    if (userStore.isLoggedIn && userStore.user?.id && userStore.token) {
+      // 登录成功：保存新账号（含 token）并刷新面板
+      saveAccountToStorage({ id: userStore.user.id, username: userStore.user.username, email: userStore.user.email, avatar: userStore.user.avatar, token: userStore.token });
+      showToast('切换账号成功', 'success');
+      showUserSidebar.value = true;
+      refreshUserPanel();
+    }
+    // 用户取消了登录，不做额外操作
+  }
+}
+
+// --- 新增：标签栏切换 ---
+function switchUserContentTab(tab) {
+  userContentTab.value = tab;
+  // 触发入场动画
+  storyCardAnimationKey.value++;
+  resetProfileScrollState();
+  if (tab === 'posts' && postsList.value.length === 0) loadPostsData();
+  else if (tab === 'likes' && likesList.value.length === 0) loadLikesData();
+  else if (tab === 'favorites' && favoritesList.value.length === 0) loadFavoritesData();
+}
+
+function refreshActiveUserPanelTab() {
+  if (userContentTab.value === "likes") {
+    loadLikesData();
+    return;
+  }
+
+  if (userContentTab.value === "favorites") {
+    loadFavoritesData();
+    return;
+  }
+
+  loadPostsData();
+}
+
+function handleContentListScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  if (scrollHeight - scrollTop - clientHeight < 50) {
+    if (userContentTab.value === 'posts') loadPostsData(true);
+    else if (userContentTab.value === 'likes') loadLikesData(true);
+    else if (userContentTab.value === 'favorites') loadFavoritesData(true);
+  }
+}
+
+// --- 新增：关闭面板时批量保存 ---
+async function savePendingChanges() {
+  const changes = [];
+  const form = editProfileForm.value;
+
+  // Bio 更改
+  if (bioChanged.value) {
+    changes.push({ type: 'bio', value: bioDraft.value.trim() });
+  }
+
+  // 用户名更改（编辑弹窗中）
+  if (showEditProfileModal.value) {
+    const trimmedUsername = form.username.trim();
+    const currentUsername = userStore.user?.username || userStore.user?.name;
+    if (trimmedUsername && trimmedUsername !== currentUsername && trimmedUsername.length >= 2) {
+      changes.push({ type: 'username', value: trimmedUsername });
+    }
+  }
+
+  if (changes.length === 0) return;
+
+  for (const change of changes) {
+    try {
+      if (change.type === 'bio') {
+        await authApi.updateProfile({ bio: change.value });
+        userStore.updateUser({ bio: change.value });
+        bioChanged.value = false;
+      }
+    } catch (error) {
+      console.error(`保存${change.type}失败:`, error);
+    }
+  }
 }
 
 function closePublishPanel() {
+  showFontPicker.value = false;
   isPickingPublishLocation.value = false;
+  isAdjustingPlanePosition.value = false;
+  isAdjustingWaitingForPlane.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  adjustPlaneClickScreenPos.value = null;
+  adjustPlaneSavedPrefill.value = '';
+  adjustPlaneSavedPosition.value = null;
   suggestedPublishLocations.value = [];
   publishPickPrompt.value = null;
+  publishPrefillQuery.value = '';
   pickedPublishLocation.value = null;
   showPublishSidebar.value = false;
+}
+
+function handleAdjustPlanePosition() {
+  adjustPlaneSavedPrefill.value = publishPrefillQuery.value;
+  adjustPlaneSavedPosition.value =
+    extractCoordinates(planePosition.value)
+    || extractCoordinates(mapStore.userLocation)
+    || extractCoordinates(mapStore.center);
+  shouldAutoConfirmPublishPick.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  publishPickPrompt.value = null;
+  suggestedPublishLocations.value = [];
+  pickedPublishLocation.value = null;
+  adjustPlaneClickScreenPos.value = null;
+  showPublishSidebar.value = false;
+  isPickingPublishLocation.value = false;
+  isAdjustingPlanePosition.value = true;
 }
 
 function startPublishMapPick() {
@@ -3005,6 +5219,8 @@ function startPublishMapPick() {
   publishPickPrompt.value = null;
   pickedPublishLocation.value = null;
   isDockExpanded.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
   isPickingPublishLocation.value = true;
 }
 
@@ -3013,6 +5229,8 @@ function cancelPublishMapPick() {
   suggestedPublishLocations.value = [];
   pickedPublishLocation.value = null;
   isDockExpanded.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
   isPickingPublishLocation.value = false;
 }
 
@@ -3021,7 +5239,41 @@ function restorePublishPanelFromPick() {
   suggestedPublishLocations.value = [];
   pickedPublishLocation.value = null;
   isDockExpanded.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
   isPickingPublishLocation.value = false;
+}
+
+function restorePublishPanelFromAdjustPlane() {
+  publishPickPrompt.value = null;
+  suggestedPublishLocations.value = [];
+  pickedPublishLocation.value = null;
+  adjustPlaneClickScreenPos.value = null;
+  if (adjustPlaneSavedPosition.value) {
+    planePosition.value = { ...adjustPlaneSavedPosition.value };
+  }
+  isAdjustingPlanePosition.value = false;
+  isAdjustingWaitingForPlane.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  showPublishSidebar.value = true;
+  nextTick(() => {
+    publishPrefillQuery.value = adjustPlaneSavedPrefill.value;
+  });
+  adjustPlaneSavedPosition.value = null;
+}
+
+function handleDocumentKeydown(e) {
+  if (e.key === "Escape" && isAdjustingPlanePosition.value) {
+    restorePublishPanelFromAdjustPlane();
+    return;
+  }
+  if (e.key === "Escape" && isPickingPublishLocation.value) {
+    restorePublishPanelFromPick();
+  }
+  if (e.key === "Escape" && isPickingDockPublishLocation.value) {
+    restoreDockPublishPanelFromPick();
+  }
 }
 
 function handlePublishClick() {
@@ -3037,14 +5289,155 @@ function handlePublishClick() {
   if (showUserSidebar.value) {
     closeUserPanel();
   }
-  suggestedPublishLocations.value = [];
-  publishPickPrompt.value = null;
-  pickedPublishLocation.value = null;
-  isPickingPublishLocation.value = false;
+  if (showPublishSidebar.value) {
+    closePublishPanel();
+  }
+  isPickingDockPublishLocation.value = false;
+  isAdjustingPlanePosition.value = false;
+  isAdjustingWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  adjustPlaneClickScreenPos.value = null;
   isDockExpanded.value = false;
   setTimeout(() => {
-    showPublishSidebar.value = true;
+    showDockPublishSidebar.value = true;
   }, 100);
+}
+
+function closeDockPublishPanel() {
+  showFontPicker.value = false;
+  isPickingDockPublishLocation.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  dockPublishClickScreenPos.value = null;
+  showDockPublishSidebar.value = false;
+}
+
+function startDockPublishMapPick() {
+  isDockPublishPickPrompt.value = null;
+  dockPublishPickedLocation.value = null;
+  isDockExpanded.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  isPickingDockPublishLocation.value = true;
+}
+
+function cancelDockPublishMapPick() {
+  isDockPublishPickPrompt.value = null;
+  dockPublishPickedLocation.value = null;
+  isDockExpanded.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  isPickingDockPublishLocation.value = false;
+}
+
+function restoreDockPublishPanelFromPick() {
+  isDockPublishPickPrompt.value = null;
+  dockPublishPickedLocation.value = null;
+  isDockExpanded.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  isPickingDockPublishLocation.value = false;
+}
+
+const isDockPublishPickPrompt = ref(null);
+const dockPublishPickedLocation = ref(null);
+const dockPublishSuggestedLocations = ref([]);
+
+async function handleDockPublishSubmit(storyData) {
+  try {
+    const selectedLocation = extractCoordinates(storyData.location);
+    if (!selectedLocation) {
+      showToast("请先选择一个地点后再发布故事", "warning");
+      return;
+    }
+
+    if (!storyData.emotion) {
+      showToast("请先选择一个情绪标签", "warning");
+      return;
+    }
+
+    if (storyData.isTimeCapsule && !storyData.unlockAt) {
+      showToast("请为时光胶囊选择解锁时间", "warning");
+      return;
+    }
+
+    const location = {
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      address:
+        storyData.location?.address || storyData.location?.name || "已选地点",
+      name:
+        storyData.location?.name || storyData.location?.address || "已选地点",
+    };
+
+    const finalEmotionTag = storyData.emotion;
+    const { storyApi } = await import("../../api/story");
+    const { uploadImages, validateImage } = await import("../../utils/upload");
+    let imageUrls = [];
+    if (storyData.images && storyData.images.length > 0) {
+      for (const file of storyData.images) {
+        const validation = validateImage(file);
+        if (!validation.valid) {
+          console.warn("图片验证失败:", validation.error);
+          continue;
+        }
+      }
+      try {
+        imageUrls = await uploadImages(storyData.images);
+        console.log("图片上传成功:", imageUrls);
+      } catch (error) {
+        console.error("图片上传失败:", error);
+      }
+    }
+
+    const createPayload = {
+      content: storyData.content,
+      images: imageUrls,
+      location: {
+        lng: location.longitude,
+        lat: location.latitude,
+      },
+      locationName: location.name,
+      emotionTag: finalEmotionTag,
+      isTimeCapsule: storyData.isTimeCapsule,
+      unlockAt: storyData.unlockAt || null,
+      visibility: storyData.visibility || "public",
+      visibilityStartTime: storyData.visibilityStartTime || null,
+      visibilityEndTime: storyData.visibilityEndTime || null,
+      fontFamily: storyData.fontFamily || null,
+      fontEffect: storyData.fontEffect || null,
+    };
+    const response = await storyApi.createStory(createPayload);
+
+    const newStory = response.data || response;
+    const normalizedNewStory = normalizeStoryForMap(newStory, location);
+
+    if (normalizedNewStory && amapRef.value) {
+      amapRef.value.addNewStoryMarker(normalizedNewStory);
+    }
+
+    if (normalizedNewStory) {
+      mapStore.updateStories([...mapStore.stories, normalizedNewStory]);
+      void hydrateStoryLocations([normalizedNewStory]);
+    } else {
+      console.warn(
+        "[Map] Created story is missing valid coordinates:",
+        newStory,
+      );
+      await loadStories();
+    }
+    updateUserPanelTotalCount(postsTotalCount, 1);
+
+    mapStore.updateCenter(location.latitude, location.longitude);
+    mapStore.updateZoom(15);
+
+    showToast("发布成功！", "success");
+    closeDockPublishPanel();
+  } catch (error) {
+    console.error("发布失败:", error);
+    showToast("发布失败，请重试", "error");
+  }
 }
 
 function formatMapPickAddress(latitude, longitude) {
@@ -3082,9 +5475,24 @@ function buildLocationDistrictLabel(source) {
   return district || city || province || "";
 }
 
+function getNonPlaceholderLocationLabel(...values) {
+  for (const value of values.flat()) {
+    if (typeof value !== "string" || !value.trim()) {
+      continue;
+    }
+
+    const normalized = value.trim();
+    if (!isGenericLocationPlaceholder(normalized)) {
+      return normalized;
+    }
+  }
+
+  return "";
+}
+
 function buildLocationAddressLabel(source, latitude, longitude) {
   const districtLabel = buildLocationDistrictLabel(source);
-  const rawAddress = firstNonEmptyString(
+  const rawAddress = getNonPlaceholderLocationLabel(
     source?.address,
     source?.formattedAddress,
     source?.name,
@@ -3118,6 +5526,7 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
         "\u533f\u540d\u7528\u6237",
       ),
       avatar: firstNonEmptyString(fallbackAuthor?.avatar),
+      vip: fallbackAuthor?.vip ?? false,
     };
   }
 
@@ -3175,6 +5584,7 @@ function resolveStoryAuthor(source, fallbackAuthor = null) {
       source.avatarUrl,
       fallbackAuthor?.avatar,
     ),
+    vip: Boolean(authorObject?.vip ?? userObject?.vip ?? source.author?.vip),
   };
 }
 
@@ -3184,6 +5594,30 @@ function getStoryAuthorName(story) {
 
 function getStoryAuthorAvatar(story) {
   return resolveStoryAuthor(story).avatar;
+}
+
+function getStoryAuthorVip(story) {
+  return Boolean(resolveStoryAuthor(story).vip);
+}
+
+function isCapsuleLocked(story) {
+  if (!story?.isTimeCapsule) return false;
+  if (story.isUnlocked === true) return false;
+  const unlockAt = story.unlockAt;
+  if (!unlockAt) return true;
+  return new Date(unlockAt) > new Date();
+}
+
+function getCapsuleCountdown(story) {
+  if (!story?.unlockAt) return '';
+  const diff = new Date(story.unlockAt) - new Date();
+  if (diff <= 0) return '';
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  if (days > 0) return `${days}天${hours}小时后解锁`;
+  if (hours > 0) return `${hours}小时${minutes}分钟后解锁`;
+  return `${minutes}分钟后解锁`;
 }
 
 function getStoryAuthorInitial(story) {
@@ -3234,7 +5668,28 @@ function isGenericLocationPlaceholder(value) {
     "Map Center",
     "Current Location",
     "Nearby Place",
+    "已选地点",
   ].includes(value.trim());
+}
+
+function sanitizeLocationLabel(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (
+    isGenericLocationPlaceholder(normalized)
+    || isCoordinateOnlyLocationLabel(normalized)
+  ) {
+    return "";
+  }
+
+  return normalized;
 }
 
 function getStoryLocationText(story, fallback = "未知位置") {
@@ -3274,11 +5729,12 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
     province: firstNonEmptyString(overrides.province),
   });
   const province = firstNonEmptyString(overrides.province);
-  const name = pickLocationText([
+  const name = getNonPlaceholderLocationLabel(
     overrides.name,
     overrides.address,
-    "Map Pick",
-  ]);
+    district,
+    "已选地点",
+  );
   const address = buildLocationAddressLabel(
     {
       ...overrides,
@@ -3308,16 +5764,18 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
 
 function pickLocationDisplayName(location, fallback = "") {
   if (!location || typeof location !== "object") {
-    return fallback;
+    return sanitizeLocationLabel(fallback);
   }
 
   const candidates = [
     location.name,
     location.district,
     location.address,
-  ].filter((value) => !isGenericLocationPlaceholder(value));
+  ]
+    .map((value) => sanitizeLocationLabel(value))
+    .filter(Boolean);
 
-  return pickLocationText(candidates, false) || fallback;
+  return pickLocationText(candidates, false) || sanitizeLocationLabel(fallback);
 }
 
 function coordinatesRoughlyEqual(left, right) {
@@ -3729,6 +6187,395 @@ function focusNearbyStoriesOnPoi(poi) {
   scheduleNearbyStoriesReload();
 }
 
+// ========== 全局搜索 - 地点搜索 ==========
+async function performGlobalPlaceSearch(keyword) {
+  if (!keyword || keyword.trim().length < 2) {
+    searchPlaceResults.value = [];
+    return;
+  }
+
+  searchPlaceLoading.value = true;
+  searchPlaceError.value = '';
+
+  try {
+    await ensureNearbyPlaceSearch();
+    const anchor =
+      extractCoordinates(mapStore.userLocation) ||
+      extractCoordinates(mapStore.center);
+    const sortAnchor = extractCoordinates(mapStore.userLocation) || anchor;
+    const { pois, errorMessage } = await searchPoisWithContext({
+      createPlaceSearch: (options = {}) =>
+        new window.AMap.PlaceSearch({
+          pageSize: 10,
+          pageIndex: 1,
+          extensions: 'all',
+          ...options,
+        }),
+      keyword: keyword.trim(),
+      anchor,
+      sortAnchor,
+      locality: currentUserSearchLocality.value,
+      radius: POI_SEARCH_RADIUS_METERS,
+      normalizePoi: normalizeNearbyPoiFromGeocode,
+    });
+
+    searchPlaceResults.value = pois || [];
+    searchPlaceError.value = errorMessage || '';
+    searchPlaceSearched.value = true;
+  } catch (err) {
+    searchPlaceResults.value = [];
+    searchPlaceError.value = '地点搜索暂不可用';
+    console.error('[Map] Place search failed:', err);
+  } finally {
+    searchPlaceLoading.value = false;
+  }
+}
+
+function handlePlaceSelect(poi) {
+  const coords = extractCoordinates(poi);
+  if (!coords) return;
+
+  // 先移动地图到目标位置并放大
+  mapStore.updateCenter(coords.latitude, coords.longitude);
+  mapStore.updateZoom(Math.max(Number(mapStore.zoom) || 12, 15));
+
+  // 等待地图动画稳定后，纸飞机从屏幕边缘飞入
+  setTimeout(() => {
+    if (amapRef.value) {
+      amapRef.value.flyPaperPlaneFromEdge(coords.latitude, coords.longitude);
+    }
+  }, 800);
+
+  // 关闭搜索面板
+  searchFocused.value = false;
+}
+
+function formatDistance(meters) {
+  if (meters == null) return '';
+  if (meters < 1000) return Math.round(meters) + 'm';
+  return (meters / 1000).toFixed(1) + 'km';
+}
+
+// ========== 纸飞机附近故事面板 ==========
+async function loadPlaneNearby(isLoadMore = false) {
+  const pos = planePosition.value || extractCoordinates(mapStore.userLocation) || extractCoordinates(mapStore.center);
+  if (!pos) {
+    planeNearbyError.value = '无法获取位置';
+    return;
+  }
+
+  const page = isLoadMore ? planeNearbyPage.value + 1 : 1;
+  const limit = isLoadMore ? WALL_PAGE_SIZE : WALL_INITIAL_LIMIT;
+
+  if (isLoadMore) {
+    planeNearbyLoadingMore.value = true;
+  } else {
+    planeNearbyLoading.value = true;
+    planeNearbyItems.value = [];
+    planeNearbyPage.value = 0;
+    planeNearbyError.value = null;
+  }
+
+  try {
+    const res = await mapApi.exploreStories(pos.latitude, pos.longitude, 5000, {
+      page,
+      limit,
+      summary: '1',
+    });
+    const data = res?.data || res;
+    const stories = data?.stories || data?.list || data?.items || (Array.isArray(data) ? data : []);
+
+    if (isLoadMore) {
+      planeNearbyItems.value.push(...stories);
+    } else {
+      planeNearbyItems.value = stories;
+    }
+    planeNearbyPage.value = page;
+    planeNearbyTotalPages.value = data?.totalPages || data?.pagination?.totalPages || 1;
+    planeNearbyInitialDone.value = true;
+    planeNearbyError.value = null;
+  } catch (err) {
+    if (!isLoadMore) planeNearbyError.value = '加载附近故事失败';
+    console.error('[PlaneNearby] load failed:', err);
+  } finally {
+    planeNearbyLoading.value = false;
+    planeNearbyLoadingMore.value = false;
+  }
+}
+
+function openPlaneNearby() {
+  if (showPublishSidebar.value) closePublishPanel();
+  if (showUserSidebar.value) closeUserPanel();
+  showPlaneNearby.value = true;
+  isDockExpanded.value = false;
+  loadPlaneNearby(false);
+}
+
+function closePlaneNearby() {
+  showPlaneNearby.value = false;
+  showPlaneNearbyBackToTop.value = false;
+}
+
+const planeNearbyContentRef = ref(null);
+const showPlaneNearbyBackToTop = ref(false);
+
+function handlePlaneNearbyScroll(e) {
+  const el = e.target;
+  if (!el) return;
+  // 加载更多
+  if (planeNearbyLoadingMore.value || !planeNearbyHasMore.value) {
+    // 仍然检测滚动方向
+  } else {
+    const threshold = 100;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
+      loadPlaneNearby(true);
+    }
+  }
+  showPlaneNearbyBackToTop.value = el.scrollTop > 120;
+}
+
+function scrollPlaneNearbyToTop() {
+  planeNearbyContentRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
+  showPlaneNearbyBackToTop.value = false;
+}
+
+// 纸飞机菜单 DOM（悬停触发）
+let planeMenuEl = null;
+let planeMenuHideTimer = null;
+const PLANE_MENU_HIDE_DELAY = 300;
+
+function hidePlaneMenu(immediate = false) {
+  if (planeMenuHideTimer) {
+    clearTimeout(planeMenuHideTimer);
+    planeMenuHideTimer = null;
+  }
+  if (!planeMenuEl) return;
+  if (immediate) {
+    if (planeMenuEl.parentNode) planeMenuEl.parentNode.removeChild(planeMenuEl);
+    planeMenuEl = null;
+    return;
+  }
+  planeMenuEl.style.transition = 'opacity 0.1s ease, transform 0.1s ease';
+  planeMenuEl.style.opacity = '0';
+  planeMenuEl.style.transform = 'translateY(8px)';
+  setTimeout(() => {
+    if (planeMenuEl && planeMenuEl.parentNode) {
+      planeMenuEl.parentNode.removeChild(planeMenuEl);
+    }
+    planeMenuEl = null;
+  }, 100);
+}
+
+function showPlaneMenu(clientX, clientY) {
+  if (planeMenuHideTimer) {
+    clearTimeout(planeMenuHideTimer);
+    planeMenuHideTimer = null;
+  }
+  // 如果菜单已存在且可见，仅更新位置
+  if (planeMenuEl && planeMenuEl.parentNode) {
+    const menuW = planeMenuEl.offsetWidth;
+    const menuH = planeMenuEl.offsetHeight;
+    let left = clientX - menuW / 2;
+    let top = clientY - menuH - 12;
+    if (left < 8) left = 8;
+    if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+    if (top < 8) top = clientY + 16;
+    planeMenuEl.style.left = left + 'px';
+    planeMenuEl.style.top = top + 'px';
+    planeMenuEl.style.opacity = '1';
+    planeMenuEl.style.transform = 'translateY(0)';
+    return;
+  }
+
+  planeMenuEl = document.createElement('div');
+  planeMenuEl.className = 'paper-plane-menu';
+  planeMenuEl.innerHTML = `
+    <div class="plane-menu-item" data-action="nearby">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <span>附近故事</span>
+    </div>
+    <div class="plane-menu-item" data-action="publish">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      <span>发布故事</span>
+    </div>
+  `;
+
+  // 点击选项
+  planeMenuEl.addEventListener('click', (e) => {
+    const item = e.target.closest('.plane-menu-item');
+    if (!item) return;
+    const action = item.dataset.action;
+    hidePlaneMenu();
+    if (action === 'nearby') {
+      openPlaneNearby();
+    } else if (action === 'publish') {
+      handlePaperPlanePublish();
+    }
+  });
+
+  // 鼠标在菜单上时保持显示，离开后延迟隐藏
+  planeMenuEl.addEventListener('mouseenter', () => {
+    if (planeMenuHideTimer) {
+      clearTimeout(planeMenuHideTimer);
+      planeMenuHideTimer = null;
+    }
+  }, { passive: true });
+  planeMenuEl.addEventListener('mouseleave', () => {
+    scheduleHidePlaneMenu();
+  }, { passive: true });
+
+  // 定位菜单在纸飞机位置上方
+  document.body.appendChild(planeMenuEl);
+  const menuW = planeMenuEl.offsetWidth;
+  const menuH = planeMenuEl.offsetHeight;
+  let left = clientX - menuW / 2;
+  let top = clientY - menuH - 12;
+  if (left < 8) left = 8;
+  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+  if (top < 8) top = clientY + 16;
+  planeMenuEl.style.left = left + 'px';
+  planeMenuEl.style.top = top + 'px';
+  planeMenuEl.classList.toggle('dark', effectiveMapTheme.value === 'dark');
+
+  // 触发弹出动画
+  requestAnimationFrame(() => {
+    planeMenuEl.style.opacity = '1';
+    planeMenuEl.style.transform = 'translateY(0)';
+  });
+}
+
+function scheduleHidePlaneMenu() {
+  if (planeMenuHideTimer) clearTimeout(planeMenuHideTimer);
+  planeMenuHideTimer = setTimeout(() => {
+    hidePlaneMenu();
+    planeMenuHideTimer = null;
+  }, PLANE_MENU_HIDE_DELAY);
+}
+
+function handlePaperPlaneHover(point) {
+  if (isAdjustingPlanePosition.value || isPickingPublishLocation.value || isPickingDockPublishLocation.value) return;
+  if (point.screenX != null && point.screenY != null) {
+    showPlaneMenu(point.screenX, point.screenY);
+  }
+}
+
+function handlePaperPlaneLeave() {
+  scheduleHidePlaneMenu();
+}
+
+function handlePaperPlaneClick(point) {
+  // 悬停模式下点击纸飞机也显示菜单
+  if (isAdjustingPlanePosition.value || isPickingPublishLocation.value || isPickingDockPublishLocation.value) return;
+  if (point.screenX != null && point.screenY != null) {
+    showPlaneMenu(point.screenX, point.screenY);
+  } else {
+    const mapRef = document.querySelector('.amap-container');
+    if (mapRef) {
+      const rect = mapRef.getBoundingClientRect();
+      showPlaneMenu(rect.left + rect.width / 2, rect.top + rect.height / 2 - 60);
+    }
+  }
+}
+
+function handlePaperPlanePublish() {
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    showToast("请先登录后再发布故事", "warning");
+    showLoginModal.value = true;
+    return;
+  }
+  // 关闭其他面板
+  if (showSidebar.value) closeStoryPanel();
+  if (showUserSidebar.value) closeUserPanel();
+  if (showPlaneNearby.value) showPlaneNearby.value = false;
+  if (showVipCenter.value) showVipCenter = false;
+  if (showDockPublishSidebar.value) closeDockPublishPanel();
+  isAdjustingPlanePosition.value = false;
+  isAdjustingWaitingForPlane.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  adjustPlaneClickScreenPos.value = null;
+  adjustPlaneSavedPosition.value = null;
+  // 逆地理编码纸飞机位置
+  const coords =
+    extractCoordinates(planePosition.value)
+    || extractCoordinates(mapStore.userLocation)
+    || extractCoordinates(mapStore.center);
+  if (!coords) {
+    showToast('æµ£å¶‡ç–†ç‘™ï½†ç€½æ¾¶è¾«è§¦é”›å²ƒî‡¬é–²å¶ˆç˜¯', 'warning');
+    return;
+  }
+  reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
+    if (!location) return;
+    const displayName = pickPublishLocationSearchText(location, "当前位置");
+    isPickingPublishLocation.value = false;
+    showPublishSidebar.value = true;
+    nextTick(() => {
+      publishPrefillQuery.value = displayName;
+    });
+  });
+}
+
+async function handlePaperPlaneMove(point) {
+  // 始终同步纸飞机实际位置
+  if (point?.latitude != null && point?.longitude != null) {
+    planePosition.value = { latitude: point.latitude, longitude: point.longitude };
+  }
+
+  // 发布故事地图选点 - 纸飞机已飞到选点位置，更新询问弹窗
+  if (isPublishWaitingForPlane.value) {
+    const pickedLocation = await reverseGeocodePickedLocation(
+      point.latitude,
+      point.longitude,
+    );
+    isPublishWaitingForPlane.value = false;
+    if (pickedLocation) {
+      if (shouldAutoConfirmPublishPick.value) {
+        finalizePublishPickSelection(pickedLocation);
+        return;
+      }
+      setPublishPickSelection(pickedLocation, publishPickPrompt.value);
+    }
+    return;
+  }
+
+  // 调整纸飞机位置 - 纸飞机已到达新位置，弹窗确认
+  if (isAdjustingWaitingForPlane.value) {
+    const pickedLocation = await reverseGeocodePickedLocation(point.latitude, point.longitude);
+    isAdjustingWaitingForPlane.value = false;
+    if (pickedLocation) {
+      if (shouldAutoConfirmAdjustPlanePick.value) {
+        finalizeAdjustPlanePickSelection(pickedLocation);
+        return;
+      }
+      setPublishPickSelection(pickedLocation, adjustPlaneClickScreenPos.value);
+    }
+    adjustPlaneClickScreenPos.value = null;
+    return;
+  }
+
+  // 功能卡组发布 - 纸飞机已飞到选点位置，弹窗确认
+  if (isDockPublishWaitingForPlane.value) {
+    const pickedLocation = await reverseGeocodePickedLocation(point.latitude, point.longitude);
+    isDockPublishWaitingForPlane.value = false;
+    if (pickedLocation) {
+      if (shouldAutoConfirmDockPublishPick.value) {
+        finalizeDockPublishPickSelection(pickedLocation);
+        dockPublishClickScreenPos.value = null;
+        return;
+      }
+      setDockPublishPickSelection(pickedLocation, dockPublishClickScreenPos.value);
+    }
+    dockPublishClickScreenPos.value = null;
+    return;
+  }
+
+  // 如果附近故事面板已打开，重新加载
+  if (showPlaneNearby.value) {
+    loadPlaneNearby(false);
+  }
+}
+
 function ensureGeocoder() {
   if (geocoderInstance) {
     return Promise.resolve(geocoderInstance);
@@ -3805,11 +6652,14 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         : null;
       const resolvedLocation = buildFallbackLocation(latitude, longitude, {
         id: `map-pick-${longitude}-${latitude}`,
-        name: pickLocationText([
+        name: getNonPlaceholderLocationLabel(
           firstPoi?.name,
           regeocode.formattedAddress,
-          "Map Pick",
-        ]),
+          district,
+          city,
+          province,
+          "已选地点",
+        ),
         address: pickLocationText([
           firstPoi?.address,
           regeocode.formattedAddress,
@@ -3928,6 +6778,134 @@ function buildSuggestedLocations(rawLocation, nearbyPois = []) {
     : [];
 }
 
+function pickPublishLocationSearchText(location, fallback = "") {
+  const safeFallback = sanitizeLocationLabel(fallback);
+  if (!location || typeof location !== "object") {
+    return safeFallback || "当前位置";
+  }
+
+  const suggestedLocation = buildSuggestedLocations(
+    location,
+    location.nearbyPois || [],
+  )[0];
+  const candidates = [
+    suggestedLocation?.name,
+    suggestedLocation?.address,
+    location.name,
+    location.address,
+    location.formattedAddress,
+    location.district,
+    location.city,
+    safeFallback,
+  ]
+    .map((value) => sanitizeLocationLabel(value))
+    .filter(Boolean);
+
+  return pickLocationText(candidates, false) || safeFallback || "当前位置";
+}
+
+function resolveSuggestedLocationSelection(location) {
+  const suggestedLocations = buildSuggestedLocations(
+    location,
+    location?.nearbyPois || [],
+  );
+  return {
+    suggestedLocations,
+    nextLocation: suggestedLocations[0] || location,
+  };
+}
+
+function finalizePublishPickSelection(location) {
+  const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
+  const displayName = pickPublishLocationSearchText(
+    nextLocation,
+    publishPrefillQuery.value || "当前位置",
+  );
+
+  suggestedPublishLocations.value = suggestedLocations;
+  pickedPublishLocation.value = nextLocation;
+  publishPrefillQuery.value = displayName;
+  publishPickPrompt.value = null;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
+  isPickingPublishLocation.value = false;
+}
+
+function finalizeAdjustPlanePickSelection(location) {
+  const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
+  const displayName = pickPublishLocationSearchText(
+    nextLocation,
+    adjustPlaneSavedPrefill.value || publishPrefillQuery.value || "当前位置",
+  );
+
+  suggestedPublishLocations.value = suggestedLocations;
+  pickedPublishLocation.value = nextLocation;
+  publishPickPrompt.value = null;
+  adjustPlaneClickScreenPos.value = null;
+  isAdjustingPlanePosition.value = false;
+  isPickingPublishLocation.value = false;
+  isAdjustingWaitingForPlane.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  showPublishSidebar.value = true;
+  nextTick(() => {
+    publishPrefillQuery.value = displayName;
+  });
+  adjustPlaneSavedPosition.value = null;
+}
+
+function finalizeDockPublishPickSelection(location) {
+  const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
+
+  dockPublishSuggestedLocations.value = suggestedLocations;
+  dockPublishPickedLocation.value = nextLocation;
+  isDockPublishPickPrompt.value = null;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  dockPublishClickScreenPos.value = null;
+  isPickingDockPublishLocation.value = false;
+}
+
+function setPublishPickSelection(location, screenPos = null) {
+  if (!location) {
+    return;
+  }
+
+  const nextScreenX =
+    toFiniteNumber(screenPos?.screenX)
+    ?? toFiniteNumber(publishPickPrompt.value?.screenX);
+  const nextScreenY =
+    toFiniteNumber(screenPos?.screenY)
+    ?? toFiniteNumber(publishPickPrompt.value?.screenY);
+
+  pickedPublishLocation.value = location;
+  publishPickPrompt.value = {
+    location,
+    screenX: nextScreenX,
+    screenY: nextScreenY,
+  };
+}
+
+function setDockPublishPickSelection(location, screenPos = null) {
+  if (!location) {
+    return;
+  }
+
+  const nextScreenX =
+    toFiniteNumber(screenPos?.screenX)
+    ?? toFiniteNumber(isDockPublishPickPrompt.value?.screenX);
+  const nextScreenY =
+    toFiniteNumber(screenPos?.screenY)
+    ?? toFiniteNumber(isDockPublishPickPrompt.value?.screenY);
+
+  dockPublishPickedLocation.value = location;
+  isDockPublishPickPrompt.value = {
+    location,
+    screenX: nextScreenX,
+    screenY: nextScreenY,
+  };
+}
+
 function getPublishPickPromptStyle(prompt) {
   const promptWidth = 220;
   const viewportWidth = window.innerWidth || 0;
@@ -3956,21 +6934,68 @@ function confirmPublishNearbySearch() {
     return;
   }
 
-  const suggestedLocations = buildSuggestedLocations(
-    prompt.location,
-    prompt.location.nearbyPois || [],
-  );
-  suggestedPublishLocations.value = suggestedLocations;
-  pickedPublishLocation.value = suggestedLocations[0] || prompt.location;
-  publishPickPrompt.value = null;
-  isPickingPublishLocation.value = false;
+  if (isAdjustingPlanePosition.value) {
+    if (isAdjustingWaitingForPlane.value) {
+      shouldAutoConfirmAdjustPlanePick.value = true;
+      publishPickPrompt.value = null;
+      return;
+    }
+
+    finalizeAdjustPlanePickSelection(prompt.location);
+    return;
+  }
+
+  if (isPublishWaitingForPlane.value) {
+    shouldAutoConfirmPublishPick.value = true;
+    publishPickPrompt.value = null;
+    return;
+  }
+
+  finalizePublishPickSelection(prompt.location);
 }
 
 function rejectPublishNearbySearch() {
   publishPickPrompt.value = null;
   suggestedPublishLocations.value = [];
   pickedPublishLocation.value = null;
+  // 调整纸飞机位置模式 - 拒绝后继续调整模式，可重新点击地图
+  if (isAdjustingPlanePosition.value) {
+    shouldAutoConfirmAdjustPlanePick.value = false;
+    isAdjustingWaitingForPlane.value = false;
+    return;
+  }
+  shouldAutoConfirmPublishPick.value = false;
+  isPublishWaitingForPlane.value = false;
   isPickingPublishLocation.value = true;
+}
+
+function confirmDockPublishNearbySearch() {
+  const prompt = isDockPublishPickPrompt.value;
+  if (!prompt?.location) {
+    isDockPublishPickPrompt.value = null;
+    return;
+  }
+
+  if (isDockPublishWaitingForPlane.value) {
+    shouldAutoConfirmDockPublishPick.value = true;
+    isDockPublishPickPrompt.value = null;
+    return;
+  }
+
+  finalizeDockPublishPickSelection(prompt.location);
+}
+
+function rejectDockPublishNearbySearch() {
+  isDockPublishPickPrompt.value = null;
+  dockPublishSuggestedLocations.value = [];
+  dockPublishPickedLocation.value = null;
+  shouldAutoConfirmDockPublishPick.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  isPickingDockPublishLocation.value = true;
+}
+
+function getDockPublishPickPromptStyle(prompt) {
+  return getPublishPickPromptStyle(prompt);
 }
 
 function reverseGeocodePickedLocation(latitude, longitude) {
@@ -3978,7 +7003,67 @@ function reverseGeocodePickedLocation(latitude, longitude) {
 }
 
 async function handlePublishMapClick(point) {
+  hidePlaneMenu();
+  searchFocused.value = false;
+
+  // 调整纸飞机位置模式 - 纸飞机飞到点击位置
+  if (isAdjustingPlanePosition.value) {
+    const coords = extractCoordinates(point);
+    if (!coords) return;
+    isAdjustingWaitingForPlane.value = true;
+    adjustPlaneClickScreenPos.value = { screenX: point?.screenX, screenY: point?.screenY };
+    setPublishPickSelection(
+      buildFallbackLocation(coords.latitude, coords.longitude),
+      adjustPlaneClickScreenPos.value,
+    );
+    if (coordinatesRoughlyEqual(planePosition.value, coords)) {
+      isAdjustingWaitingForPlane.value = false;
+      const pickedLocation = await reverseGeocodePickedLocation(
+        coords.latitude,
+        coords.longitude,
+      );
+      if (pickedLocation) {
+        setPublishPickSelection(pickedLocation, adjustPlaneClickScreenPos.value);
+      }
+      adjustPlaneClickScreenPos.value = null;
+      return;
+    }
+    planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
+    return;
+  }
+
+  // 功能卡组发布 - 地图选点模式（纸飞机飞过去再解析）
+  if (showDockPublishSidebar.value && isPickingDockPublishLocation.value) {
+    const coords = extractCoordinates(point);
+    if (!coords) return;
+    isDockPublishWaitingForPlane.value = true;
+    dockPublishClickScreenPos.value = { screenX: point?.screenX, screenY: point?.screenY };
+    setDockPublishPickSelection(
+      buildFallbackLocation(coords.latitude, coords.longitude),
+      dockPublishClickScreenPos.value,
+    );
+    if (coordinatesRoughlyEqual(planePosition.value, coords)) {
+      isDockPublishWaitingForPlane.value = false;
+      const pickedLocation = await reverseGeocodePickedLocation(
+        coords.latitude,
+        coords.longitude,
+      );
+      if (pickedLocation) {
+        setDockPublishPickSelection(pickedLocation, dockPublishClickScreenPos.value);
+      }
+      dockPublishClickScreenPos.value = null;
+      return;
+    }
+    planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
+    return;
+  }
+  // 纸飞机发布 - 地图选点模式
   if (!showPublishSidebar.value || !isPickingPublishLocation.value) {
+    const coords = extractCoordinates(point);
+    console.log('[Map] Moving paper plane to:', coords);
+    if (coords) {
+      planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
+    }
     return;
   }
 
@@ -3988,27 +7073,40 @@ async function handlePublishMapClick(point) {
   }
 
   suggestedPublishLocations.value = [];
-  const pickedLocation = await reverseGeocodePickedLocation(
-    coords.latitude,
-    coords.longitude,
+  isPublishWaitingForPlane.value = true;
+  setPublishPickSelection(
+    buildFallbackLocation(coords.latitude, coords.longitude),
+    { screenX: point?.screenX, screenY: point?.screenY },
   );
-  pickedPublishLocation.value = pickedLocation;
-  publishPickPrompt.value = {
-    location: pickedLocation,
-    screenX: point?.screenX,
-    screenY: point?.screenY,
-  };
+  if (coordinatesRoughlyEqual(planePosition.value, coords)) {
+    isPublishWaitingForPlane.value = false;
+    const pickedLocation = await reverseGeocodePickedLocation(
+      coords.latitude,
+      coords.longitude,
+    );
+    if (pickedLocation) {
+      setPublishPickSelection(pickedLocation, publishPickPrompt.value);
+    }
+    return;
+  }
+  planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
 }
 
 function handleUserClick() {
   if (showPublishSidebar.value) {
     closePublishPanel();
   }
+  if (showDockPublishSidebar.value) {
+    closeDockPublishPanel();
+  }
   if (showSidebar.value) {
     closeStoryPanel();
   }
+  resetProfileScrollState();
   setTimeout(() => {
     showUserSidebar.value = true;
+    // 面板打开后连接虚拟滚动（等 DOM 渲染完）
+    nextTick(() => vScrollConnect());
   }, 100);
   isDockExpanded.value = false;
 
@@ -4017,6 +7115,8 @@ function handleUserClick() {
       console.error("刷新用户信息失败:", error);
     });
   }
+
+  // 自动加载默认标签页（作品）数据
 }
 
 function handleMyLikes() {
@@ -4044,9 +7144,108 @@ function handleMyPosts() {
   if (showFavoritesPanel.value) showFavoritesPanel.value = false;
   showPostsPanel.value = !showPostsPanel.value;
 
-  if (showPostsPanel.value && postsList.value.length === 0) {
-    loadPostsData();
+  if (showPostsPanel.value) {
+    void loadPostsData();
   }
+}
+
+async function handleFootprints() {
+  if (showLikesPanel.value) showLikesPanel.value = false;
+  if (showPostsPanel.value) showPostsPanel.value = false;
+  if (showFavoritesPanel.value) showFavoritesPanel.value = false;
+
+  if (showFootprints.value) {
+    showFootprints.value = false;
+    isDockExpanded.value = false;
+    return;
+  }
+
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    showToast("登录后才能使用我的足迹", "warning");
+    isDockExpanded.value = false;
+    return;
+  }
+
+  try {
+    const storiesResp = await storyApi.getMyStories({ page: 1, limit: 2 });
+    const storiesData = storiesResp?.data || storiesResp;
+    const totalStories = Number(
+      storiesData?.pagination?.total
+      ?? storiesData?.stories?.length
+      ?? storiesData?.items?.length
+      ?? 0
+    );
+
+    if (totalStories < 2) {
+      showToast("至少发布 2 个故事后才能播放足迹动画", "warning");
+      isDockExpanded.value = false;
+      return;
+    }
+
+    await vipStore.fetchEconomy();
+
+    const result = await vipStore.useFootprint();
+    if (!result.success) {
+      showToast(result.message, 'error');
+      isDockExpanded.value = false;
+      return;
+    }
+
+    showFootprints.value = true;
+  } catch (error) {
+    console.error("打开足迹失败:", error);
+    showToast(error?.message || "打开足迹失败，请稍后重试", "error");
+  }
+
+  isDockExpanded.value = false;
+}
+
+// --- VIP handlers ---
+function handleStoryPolished({ storyId }) {
+  const story = postsList.value.find(s => String(s.id) === String(storyId));
+  if (story) {
+    story._polished = true;
+    story._polishedAt = new Date().toISOString();
+  }
+}
+
+function handlePolishError({ type, message }) {
+  if (type === 'insufficient_coins') {
+    showCoinCenter.value = true;
+  }
+  showToast(message, type === 'insufficient_coins' ? 'warning' : 'error');
+}
+
+function handleCommentSettingsSaved(settings) {
+  console.log('[Map] Comment settings saved:', settings);
+  // 刷新当前故事评论中当前用户的 commentBg
+  if (selectedStory.value && settings) {
+    const currentUserId = String(userStore.user?.id);
+    if (currentUserId) {
+      storyComments.value = storyComments.value.map(c => {
+        if (String(c.userId) === currentUserId) {
+          return { ...c, commentBg: settings };
+        }
+        return c;
+      });
+      selectedStory.value = { ...selectedStory.value, comments: storyComments.value };
+    }
+  }
+}
+
+function handleOpenCommentBg() {
+  commentSettingsFromStory.value = true;
+  showCommentSettings.value = true;
+}
+
+function handleCommentSettingsClose() {
+  showCommentSettings.value = false;
+  commentSettingsFromStory.value = false;
+  vipCenterFromStory.value = false;
+}
+
+function handleVisualCustomizerSaved(settings) {
+  console.log('[Map] Visual customizer saved:', settings);
 }
 
 async function loadLikesData(isLoadMore = false) {
@@ -4086,11 +7285,19 @@ async function loadLikesData(isLoadMore = false) {
       })
       .filter(Boolean);
 
+
     if (isLoadMore) {
       likesList.value.push(...stories);
       likesPage.value++;
     } else {
       likesList.value = stories;
+      storyCardAnimationKey.value++; // 触发入场动画
+    }
+
+    if (data?.pagination?.total != null) {
+      likesTotalCount.value = data.pagination.total;
+    } else if (!isLoadMore) {
+      likesTotalCount.value = stories.length;
     }
 
     void hydrateStoryLocations(stories);
@@ -4104,6 +7311,54 @@ async function loadLikesData(isLoadMore = false) {
     likesLoading.value = false;
     likesLoadingMore.value = false;
   }
+}
+
+function resolveUserPanelPaginationTotal(result) {
+  const data = result?.data ?? result;
+  const total = Number(data?.pagination?.total);
+  return Number.isFinite(total) ? total : null;
+}
+
+async function refreshUserPanelTotals() {
+  const [postsResult, likesResult, favoritesResult] = await Promise.allSettled([
+    storyApi.getMyStories({ page: 1, limit: 1 }),
+    likeApi.getMyLikes({ page: 1, limit: 1 }),
+    favoriteApi.getMyFavorites({ page: 1, limit: 1 }),
+  ]);
+
+  if (postsResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(postsResult.value);
+    if (total !== null) {
+      postsTotalCount.value = total;
+    }
+  }
+
+  if (likesResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(likesResult.value);
+    if (total !== null) {
+      likesTotalCount.value = total;
+    }
+  }
+
+  if (favoritesResult.status === "fulfilled") {
+    const total = resolveUserPanelPaginationTotal(favoritesResult.value);
+    if (total !== null) {
+      favoritesTotalCount.value = total;
+    }
+  }
+}
+
+function updateUserPanelTotalCount(totalCountRef, delta) {
+  if (!delta) {
+    return;
+  }
+
+  const currentTotal = Number(totalCountRef.value);
+  if (!Number.isFinite(currentTotal) || currentTotal < 0) {
+    return;
+  }
+
+  totalCountRef.value = Math.max(0, currentTotal + delta);
 }
 
 async function loadPostsData(isLoadMore = false) {
@@ -4144,13 +7399,25 @@ async function loadPostsData(isLoadMore = false) {
       postsPage.value++;
     } else {
       postsList.value = stories;
+      storyCardAnimationKey.value++; // 触发入场动画
+    }
+
+    // 更新总数
+    if (data?.pagination?.total != null) {
+      postsTotalCount.value = data.pagination.total;
+    } else if (!isLoadMore) {
+      postsTotalCount.value = stories.length;
+    }
+
+    // 判断是否已到最后一页
+    if (stories.length < postsPageSize) {
+      postsHasMore.value = false;
     }
 
     void hydrateStoryLocations(stories);
 
-    if (stories.length < postsPageSize) {
-      postsHasMore.value = false;
-    }
+    // 从后端数据恢复擦亮状态
+    vipStore.restorePolishedStories(rawStories);
   } catch (error) {
     console.error("加载发布数据失败:", error);
   } finally {
@@ -4211,6 +7478,13 @@ async function loadFavoritesData(isLoadMore = false) {
       favoritesPage.value++;
     } else {
       favoritesList.value = basicStories;
+      storyCardAnimationKey.value++; // 触发入场动画
+    }
+
+    if (data?.pagination?.total != null) {
+      favoritesTotalCount.value = data.pagination.total;
+    } else if (!isLoadMore) {
+      favoritesTotalCount.value = basicStories.length;
     }
 
     void hydrateStoryLocations(basicStories);
@@ -4244,6 +7518,7 @@ async function handleToggleFavoriteFromList(story) {
         storyId: story.id,
         favorited: false,
         favoriteCount: Math.max(0, Number(story.favoriteCount ?? 0) - 1),
+        previousFavorited: true,
       });
     } else {
       await favoriteApi.create(story.id);
@@ -4251,6 +7526,7 @@ async function handleToggleFavoriteFromList(story) {
         storyId: story.id,
         favorited: true,
         favoriteCount: Number(story.favoriteCount ?? 0) + 1,
+        previousFavorited: false,
       });
     }
 
@@ -4271,7 +7547,314 @@ async function handleToggleFavoriteFromList(story) {
   }
 }
 
+// --- 搜索功能 ---
+async function loadSearchResults(isLoadMore = false) {
+  const keyword = searchKeyword.value.trim();
+  if (!keyword) return;
+
+  if (isLoadMore) {
+    if (searchLoadingMore.value || !searchHasMore.value) return;
+    searchLoadingMore.value = true;
+    searchPage.value++;
+  } else {
+    searchLoading.value = true;
+    searchPage.value = 1;
+    searchResults.value = [];
+    searchHasMore.value = false;
+    searchStorySearched.value = true;
+  }
+
+  try {
+    const result = await storyApi.searchStories(keyword, {
+      page: searchPage.value,
+      limit: searchPageSize,
+    });
+    const data = result.data || result;
+    const rawStories = Array.isArray(data?.stories) ? data.stories : [];
+    const pagination = data?.pagination || {};
+    const totalPages = pagination.totalPages ?? 1;
+
+    searchHasMore.value = searchPage.value < totalPages;
+
+    const newStories = rawStories.map((item) => {
+      const author = item.author || {};
+      const normalized = {
+        ...item,
+        id: normalizeStoryIdKey(item.id),
+        avatar: author.avatar || null,
+        username: author.username || '匿名用户',
+        author: {
+          id: normalizeStoryIdKey(author.id),
+          username: author.username || '匿名用户',
+          avatar: author.avatar || null,
+          vip: author.vip || 0,
+        },
+        locationName: item.locationName || null,
+      };
+      const storyIdKey = normalizeStoryIdKey(item.id);
+      const likedItem = likesList.value.find((l) => normalizeStoryIdKey(l.id) === storyIdKey);
+      const favItem = favoritesList.value.find((f) => normalizeStoryIdKey(f.id) === storyIdKey);
+      if (likedItem) normalized.isLiked = true;
+      if (favItem) normalized.isFavorited = true;
+      return normalized;
+    });
+
+    if (isLoadMore) {
+      searchResults.value.push(...newStories);
+    } else {
+      searchResults.value = newStories;
+      searchAnimationKey.value++; // 触发入场动画
+    }
+  } catch (error) {
+    console.error("搜索故事失败:", error);
+    showToast("搜索失败，请重试", "error");
+  } finally {
+    searchLoading.value = false;
+    searchLoadingMore.value = false;
+  }
+}
+
+
+const escapeLikeKeyword = (s) => s.replace(/[%_\\]/g, '\\$&');
+const isPureNumber = (s) => /^\d+$/.test(s);
+
+async function performUserSearch(keyword, isLoadMore = false) {
+  if (!keyword) return;
+
+  if (isLoadMore) {
+    if (searchUserLoadingMore.value || !searchUserHasMore.value) return;
+    searchUserLoadingMore.value = true;
+    searchUserPage.value++;
+  } else {
+    searchUserLoading.value = true;
+    searchUserPage.value = 1;
+    searchUserResults.value = [];
+    searchUserHasMore.value = false;
+    searchUserSearched.value = true;
+    searchedUser.value = null;
+    searchedUserStories.value = [];
+    searchUserDetailOpen.value = false;
+  }
+
+  try {
+    const escapedKeyword = escapeLikeKeyword(keyword);
+    const pureNum = isPureNumber(keyword);
+    let exactUser = null;
+    let fuzzyUsers = [];
+
+    // 如果是纯数字，并行：精确ID查找 + 模糊用户名搜索
+    if (pureNum && !isLoadMore) {
+      const [exactResult, fuzzyResult] = await Promise.allSettled([
+        authApi.getUserById(keyword),
+        authApi.searchUsersByUsername(escapedKeyword, { page: 1, limit: searchUserPageSize }),
+      ]);
+
+      if (exactResult.status === 'fulfilled') {
+        const data = exactResult.value?.data || exactResult.value;
+        if (data && !data._updating) {
+          exactUser = {
+            id: normalizeStoryIdKey(data.id),
+            username: data.username || '未设置',
+            avatar: data.avatar || data.avatarUrl || null,
+            bio: data.bio || null,
+            vip: data.vip || 0,
+          };
+        }
+      }
+
+      if (fuzzyResult.status === 'fulfilled') {
+        const fuzzyData = fuzzyResult.value?.data || fuzzyResult.value;
+        fuzzyUsers = Array.isArray(fuzzyData?.users)
+          ? fuzzyData.users.map(normalizeSearchUserResult)
+          : [];
+        const total = fuzzyData?.pagination?.total ?? 0;
+        searchUserHasMore.value = searchUserPageSize < total;
+      }
+    } else if (pureNum && isLoadMore) {
+      // 加载更多时只需模糊搜索（精确ID已查过）
+      const fuzzyResult = await authApi.searchUsersByUsername(escapedKeyword, {
+        page: searchUserPage.value,
+        limit: searchUserPageSize,
+      });
+      const fuzzyData = fuzzyResult?.data || fuzzyResult;
+      fuzzyUsers = Array.isArray(fuzzyData?.users)
+        ? fuzzyData.users.map(normalizeSearchUserResult)
+        : [];
+      const total = fuzzyData?.pagination?.total ?? 0;
+      searchUserHasMore.value = searchUserPage.value < Math.ceil(total / searchUserPageSize);
+    } else {
+      // 非纯数字：只做模糊用户名搜索
+      const fuzzyResult = await authApi.searchUsersByUsername(escapedKeyword, {
+        page: isLoadMore ? searchUserPage.value : 1,
+        limit: searchUserPageSize,
+      });
+      const fuzzyData = fuzzyResult?.data || fuzzyResult;
+      fuzzyUsers = Array.isArray(fuzzyData?.users)
+        ? fuzzyData.users.map(normalizeSearchUserResult)
+        : [];
+      const total = fuzzyData?.pagination?.total ?? 0;
+      const totalPages = Math.ceil(total / searchUserPageSize);
+      if (!isLoadMore) {
+        searchUserHasMore.value = 1 < totalPages;
+        searchUserPage.value = 1;
+      } else {
+        searchUserHasMore.value = searchUserPage.value < totalPages;
+      }
+    }
+
+    if (isLoadMore) {
+      searchUserResults.value.push(...fuzzyUsers);
+    } else {
+      // 合并：精确ID匹配排第一，去除模糊结果中的重复
+      const fuzzyIds = new Set(fuzzyUsers.map((u) => u.id));
+      const merged = exactUser && !fuzzyIds.has(exactUser.id)
+        ? [exactUser, ...fuzzyUsers]
+        : fuzzyUsers;
+      searchUserResults.value = merged;
+      searchAnimationKey.value++; // 触发入场动画
+    }
+  } catch (error) {
+    console.error("搜索用户失败:", error);
+    if (!isLoadMore) {
+      searchUserResults.value = [];
+    }
+  } finally {
+    searchUserLoading.value = false;
+    searchUserLoadingMore.value = false;
+  }
+}
+
+function normalizeSearchUserResult(user) {
+  if (!user) return null;
+  return {
+    id: normalizeStoryIdKey(user.id),
+    username: user.username || '未设置',
+    avatar: user.avatar || user.avatarUrl || null,
+    bio: user.bio || null,
+    vip: user.vip || 0,
+  };
+}
+
+function handleUserSearchScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  if (scrollHeight - scrollTop - clientHeight < 50 && searchUserHasMore.value && !searchUserLoadingMore.value) {
+    const keyword = searchKeyword.value.trim();
+    if (keyword) performUserSearch(keyword, true);
+  }
+}
+
+async function openUserDetail(user) {
+  if (!user?.id) return;
+  searchUserDetailOpen.value = true;
+  searchedUser.value = null;
+  searchedUserStories.value = [];
+  resetProfileScrollState();
+
+  try {
+    const result = await authApi.getUserById(user.id);
+    const data = result.data || result;
+    if (data && !data._updating) {
+      searchedUser.value = {
+        ...data,
+        avatar: data.avatar || data.avatarUrl || null,
+      };
+      const rawStories = Array.isArray(data.stories) ? data.stories : [];
+      searchedUserStories.value = rawStories.map((s) => ({
+        ...s,
+        id: normalizeStoryIdKey(s.id),
+        avatar: data.avatar || null,
+        username: data.username || '匿名用户',
+        author: {
+          id: normalizeStoryIdKey(data.id),
+          username: data.username || '匿名用户',
+          avatar: data.avatar || null,
+          vip: data.vip || 0,
+        },
+      }));
+      searchAnimationKey.value++; // 触发入场动画
+      nextTick(() => userDetailVScrollConnect());
+    }
+  } catch (error) {
+    console.error("获取用户详情失败:", error);
+    showToast("获取用户信息失败", "error");
+    searchUserDetailOpen.value = false;
+  }
+}
+
+function closeUserDetail() {
+  searchUserDetailOpen.value = false;
+  userDetailVScrollDisconnect();
+  userDetailSearchQuery.value = '';
+  userDetailSearchVScrollDisconnect();
+  if (userDetailSearchActiveTimer) { clearTimeout(userDetailSearchActiveTimer); userDetailSearchActiveTimer = null; }
+  userDetailSearchActive.value = false;
+  resetProfileScrollState();
+}
+
+function handleSearchSubmit() {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchFocused.value = true;
+  const keyword = searchKeyword.value.trim();
+  if (!keyword) return;
+  if (searchTab.value === 'story') {
+    loadSearchResults(false);
+  } else {
+    performUserSearch(keyword, false);
+  }
+}
+
+function handleSearchScroll(event) {
+  const { scrollTop, scrollHeight, clientHeight } = event.target;
+  if (scrollHeight - scrollTop - clientHeight < 50 && searchHasMore.value && !searchLoadingMore.value) {
+    loadSearchResults(true);
+  }
+}
+
+function handleSearchUnlike(story) {
+  if (!(story.isLiked)) return;
+  likeApi.remove(story.id).then(() => {
+    story.isLiked = false;
+    const likeCount = Math.max(0, Number(story.likeCount ?? 0) - 1);
+    story.likeCount = likeCount;
+    handleStoryLike({
+      storyId: story.id,
+      liked: false,
+      likeCount,
+      previousLiked: true,
+    });
+  }).catch((err) => {
+    console.error("取消点赞失败:", err);
+    showToast("取消点赞失败", "error");
+  });
+}
+
+function handleSearchToggleFavorite(story) {
+  const isFavorited = story.isFavorited !== false;
+  const action = isFavorited ? favoriteApi.remove(story.id) : favoriteApi.create(story.id);
+  action.then(() => {
+    const nextFavorited = !isFavorited;
+    story.isFavorited = nextFavorited;
+    const favCount = nextFavorited
+      ? Number(story.favoriteCount ?? 0) + 1
+      : Math.max(0, Number(story.favoriteCount ?? 0) - 1);
+    story.favoriteCount = favCount;
+    handleStoryFavorite({
+      storyId: story.id,
+      favorited: nextFavorited,
+      favoriteCount: favCount,
+      previousFavorited: isFavorited,
+    });
+  }).catch((err) => {
+    console.error("收藏操作失败:", err);
+    showToast("操作失败", "error");
+  });
+}
+
 function handleStoryClick(story) {
+  if (isCapsuleLocked(story)) {
+    showToast('时光胶囊未解锁，请等待解锁时间到来', 'warning');
+    return;
+  }
   showFavoritesPanel.value = false;
   showLikesPanel.value = false;
   showPostsPanel.value = false;
@@ -4285,12 +7868,16 @@ async function handleUnlike(story) {
 
   try {
     await likeApi.remove(story.id);
-    const index = likesList.value.findIndex(
-      (item) => normalizeStoryIdKey(item.id) === normalizeStoryIdKey(story.id),
+    const likeCount = Math.max(
+      0,
+      Number(story.likeCount ?? story.likes ?? 0) - 1,
     );
-    if (index > -1) {
-      likesList.value.splice(index, 1);
-    }
+    handleStoryLike({
+      storyId: story.id,
+      liked: false,
+      likeCount,
+      previousLiked: true,
+    });
 
     console.log("已取消点赞:", story.id);
   } catch (error) {
@@ -4312,6 +7899,7 @@ async function handleDeleteStory(story) {
     if (index > -1) {
       postsList.value.splice(index, 1);
     }
+    updateUserPanelTotalCount(postsTotalCount, -1);
 
     console.log("已删除故事:", story.id);
   } catch (error) {
@@ -4557,6 +8145,12 @@ function handleStoriesClick() {
   }
   showSidebar.value = !showSidebar.value;
   isDockExpanded.value = false;
+  console.log('[sidebar] 打开侧边栏, wallAllInitialDone:', wallAllInitialDone.value, 'showSidebar:', showSidebar.value);
+  // 打开侧边栏时同时加载三个标签页
+  if (showSidebar.value && !wallAllInitialDone.value) {
+    console.log('[sidebar] 触发 loadAllWallTabs');
+    loadAllWallTabs();
+  }
 }
 
 function handleLocate() {
@@ -4632,7 +8226,7 @@ async function handlePublishSubmit(storyData) {
       }
     }
 
-    const response = await storyApi.createStory({
+    const createPayload2 = {
       content: storyData.content,
       images: imageUrls,
       location: {
@@ -4646,12 +8240,13 @@ async function handlePublishSubmit(storyData) {
       visibility: storyData.visibility || "public",
       visibilityStartTime: storyData.visibilityStartTime || null,
       visibilityEndTime: storyData.visibilityEndTime || null,
-    });
+      fontFamily: storyData.fontFamily || null,
+      fontEffect: storyData.fontEffect || null,
+    };
+    const response = await storyApi.createStory(createPayload2);
 
     const newStory = response.data || response;
     const normalizedNewStory = normalizeStoryForMap(newStory, location);
-
-    console.log("发布故事成功:", newStory);
 
     if (normalizedNewStory && amapRef.value) {
       amapRef.value.addNewStoryMarker(normalizedNewStory);
@@ -4667,6 +8262,7 @@ async function handlePublishSubmit(storyData) {
       );
       await loadStories();
     }
+    updateUserPanelTotalCount(postsTotalCount, 1);
 
     mapStore.updateCenter(location.latitude, location.longitude);
     mapStore.updateZoom(15);
@@ -4719,6 +8315,7 @@ function handleGuestLogout() {
 }
 
 function handlePageClick(event) {
+  if (isAdjustingPlanePosition.value) return;
   if (showPublishSidebar.value && isPickingPublishLocation.value) {
     return;
   }
@@ -4737,6 +8334,7 @@ function handlePageClick(event) {
   const postsPanel = document.querySelector(".posts-panel");
   const favoritesPanel = document.querySelector(".favorites-panel");
   const dockContainer = document.querySelector(".dock-container");
+  const userDetail = document.querySelector(".search-user-modal-shell");
 
   if (
     likesPanel?.contains(target) ||
@@ -4753,6 +8351,10 @@ function handlePageClick(event) {
     return;
   }
 
+  if (userDetail?.contains(target)) {
+    return;
+  }
+
   if (
     storySidebar?.contains(target) ||
     storyTarotShell?.contains(target) ||
@@ -4764,6 +8366,8 @@ function handlePageClick(event) {
 
   closeStoryPanel();
   closePublishPanel();
+  searchFocused.value = false;
+  searchUserDetailOpen.value = false;
 }
 
 const stories = computed(() => mapStore.stories);
@@ -4950,14 +8554,83 @@ function getMapBounds() {
   return amapRef.value.getBounds();
 }
 
-function handleClusterClick({ cluster, latitude, longitude, count }) {
-  console.log("[Map] cluster clicked:", cluster, count);
+function handleClusterClick({ cluster, latitude, longitude, count, showPopover }) {
+  console.log("[Map] cluster clicked:", cluster, count, showPopover);
 
   const currentZoom = mapStore.zoom;
-  const newZoom = Math.min(currentZoom + 2, 18);
+  const ZOOM_MAX = 18; // 放大上限，同时也是弹出故事列表的阈值
+  const newZoom = Math.min(currentZoom + 2, ZOOM_MAX);
 
+  // 已达上限无法继续放大 → 回退为弹出故事列表
+  if (!Number.isFinite(currentZoom) || currentZoom >= ZOOM_MAX + 2 ) {
+    const pointIds = cluster?.pointIds || [];
+    const allStories = mapStore.stories || [];
+    // 统一转为字符串比较
+    const pidSet = new Set(pointIds.map(String));
+    let matched = pointIds.length > 0
+      ? allStories.filter((s) => pidSet.has(String(s.id ?? "")) || pidSet.has(String(s._id ?? "")))
+      : [];
+
+    // 坐标近邻匹配补充
+    if (matched.length === 0 && count > 1) {
+      const latTol = 0.001;
+      const lngTol = 0.001;
+      allStories.forEach((s) => {
+        const sLat = s.location?.latitude ?? s.location?.lat;
+        const sLng = s.location?.longitude ?? s.location?.lng;
+        if (
+          sLat != null && sLng != null &&
+          Math.abs(sLat - latitude) < latTol &&
+          Math.abs(sLng - longitude) < lngTol &&
+          !matched.find((m) => String(m.id ?? m._id ?? "") === String(s.id ?? s._id ?? ""))
+        ) {
+          matched.push(s);
+        }
+      });
+    }
+
+    if (matched.length >= 1) {
+      clusterPopoverStories.value = matched;
+      showClusterPopover.value = true;
+    }
+    return;
+  }
+
+  // 正常流程：放大地图 +2 级
   mapStore.updateCenter(latitude, longitude);
   mapStore.updateZoom(newZoom);
+
+  // 收集该聚合点关联的故事，用于浮层展示（放大后如果仍有多条故事则展示）
+  const pointIds = cluster?.pointIds || [];
+  const allStories = mapStore.stories || [];
+  const matched = pointIds.length > 0
+    ? allStories.filter((s) => pointIds.includes(s.id) || pointIds.includes(s._id))
+    : [];
+
+  // 坐标近邻匹配（补充）
+  if (matched.length === 0 && count > 1) {
+    const latTol = 0.001;
+    const lngTol = 0.001;
+    allStories.forEach((s) => {
+      const sLat = s.location?.latitude ?? s.location?.lat;
+      const sLng = s.location?.longitude ?? s.location?.lng;
+      if (
+        sLat != null && sLng != null &&
+        Math.abs(sLat - latitude) < latTol &&
+        Math.abs(sLng - longitude) < lngTol &&
+        !matched.find((m) => (m.id || m._id) === (s.id || s._id))
+      ) {
+        matched.push(s);
+      }
+    });
+  }
+
+  // 放大后如果仍有多条重叠故事，且缩放级别足够高（>= ZOOM_MAX-2），才弹出列表
+  // 低缩放时只执行放大操作，不弹列表
+  if (matched.length > 1 && newZoom >= ZOOM_MAX - 2) {
+    clusterPopoverStories.value = matched;
+    showClusterPopover.value = true;
+  }
 
   setTimeout(() => {
     loadStories();
@@ -4973,6 +8646,7 @@ async function loadFeaturedStories() {
     featuredStories.value = list
       .map((s) => normalizeStoryForMap(s))
       .filter(Boolean);
+    storyCardAnimationKey.value++; // 触发入场动画
   } catch (error) {
     console.error("加载精选推荐失败:", error);
     featuredStories.value = [];
@@ -5004,6 +8678,7 @@ async function loadRecommendationFeed(reset = true) {
     const normalized = list.map((s) => normalizeStoryForMap(s)).filter(Boolean);
     if (reset) {
       feedStories.value = normalized;
+      storyCardAnimationKey.value++; // 触发入场动画
     } else {
       feedStories.value = [...feedStories.value, ...normalized];
     }
@@ -5046,6 +8721,12 @@ async function loadMoreFeed() {
 
 function handleMarkerClick(data) {
   const { story, screenX, screenY } = data;
+  // 时光胶囊未解锁时，提示用户
+  const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
+  if (isLocked) {
+    showToast("时光胶囊未解锁，请等待解锁时间到来", "warning");
+    return;
+  }
   openStoryModal(story, 0, {
     directOpen: true,
     startPosition: { x: screenX, y: screenY },
@@ -5339,14 +9020,17 @@ async function handleRandomWalk() {
 }
 
 function handlePreviewImage({ index, images }) {
-  console.log("预览图片:", index, images);
+  if (!images || images.length === 0) return;
+  lightboxImages.value = images;
+  lightboxInitialIndex.value = index || 0;
+  showLightbox.value = true;
 }
 
 function openFeaturedStory(story) {
   openStoryFromCollection(story);
 }
 
-function handleStoryLike({ storyId, liked, likeCount }) {
+function handleStoryLike({ storyId, liked, likeCount, previousLiked }) {
   const currentLikeCount = Number(
     selectedStory.value?.likeCount ??
       selectedStory.value?.likes ??
@@ -5359,6 +9043,10 @@ function handleStoryLike({ storyId, liked, likeCount }) {
 
   storyLikeCount.value = nextLikeCount;
   storyIsLiked.value = liked;
+
+  if (typeof previousLiked === "boolean" && previousLiked !== liked) {
+    updateUserPanelTotalCount(likesTotalCount, liked ? 1 : -1);
+  }
 
   syncStoryAcrossCollections(storyId, (story) => {
     story.likes = nextLikeCount;
@@ -5382,10 +9070,24 @@ function handleStoryLike({ storyId, liked, likeCount }) {
   }
 }
 
-function handleStoryFavorite({ storyId, favorited, favoriteCount }) {
+function handleStoryFavorite({
+  storyId,
+  favorited,
+  favoriteCount,
+  previousFavorited,
+}) {
   storyIsFavorited.value = favorited;
   if (typeof favoriteCount === "number") {
     storyFavoriteCount.value = Math.max(0, favoriteCount);
+  }
+  if (
+    typeof previousFavorited === "boolean" &&
+    previousFavorited !== favorited
+  ) {
+    updateUserPanelTotalCount(
+      favoritesTotalCount,
+      favorited ? 1 : -1,
+    );
   }
   syncStoryAcrossCollections(storyId, (story) => {
     story.isFavorited = favorited;
@@ -5447,11 +9149,18 @@ async function handleStoryReport({ storyId, reason, description }) {
 }
 
 function handleThemeChange(theme) {
-  mapTheme.value = theme;
-  localStorage.setItem("mapTheme", theme);
+  const normalizedTheme = normalizeThemeChoice(theme);
+  const nextTheme =
+    normalizedTheme === "vip" && !canUseVipTheme.value ? "dark" : normalizedTheme;
+
+  mapTheme.value = nextTheme;
+  localStorage.setItem("mapTheme", nextTheme);
   window.dispatchEvent(
     new CustomEvent("map-theme-change", {
-      detail: { theme },
+      detail: {
+        theme: nextTheme === "vip" ? "dark" : nextTheme,
+        selectedTheme: nextTheme,
+      },
     }),
   );
 }
@@ -5614,6 +9323,16 @@ async function prefetchUnreadCount() {
 }
 
 onMounted(() => {
+  const uid = userStore.user?.id;
+  const savedFont = uid ? (localStorage.getItem(`vip_font_${uid}`) || localStorage.getItem('storyFont')) : localStorage.getItem('storyFont');
+  if (savedFont) {
+    document.documentElement.style.setProperty('--story-font', `'${savedFont}', cursive, sans-serif`);
+    document.cookie = `vip_default_font=${encodeURIComponent(savedFont)};path=/;max-age=${365 * 86400};SameSite=Lax`;
+  }
+  if (uid) {
+    const savedEffect = localStorage.getItem(`vip_font_effect_${uid}`) || '';
+    document.cookie = `vip_default_font_effect=${encodeURIComponent(savedEffect)};path=/;max-age=${365 * 86400};SameSite=Lax`;
+  }
   getUserLocation();
   loadStories();
   setTimeout(loadClusterData, 1000);
@@ -5622,6 +9341,7 @@ onMounted(() => {
   }, 60000);
 
   document.addEventListener("click", handleDocumentClick);
+  document.addEventListener("keydown", handleDocumentKeydown);
   window.addEventListener("resize", scheduleWelcomeTextFit);
   scheduleWelcomeTextFit();
   if (document.fonts?.ready) {
@@ -5631,7 +9351,14 @@ onMounted(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
 
-  if (userStore.isLoggedIn && !userStore.isGuest) {
+  if (userStore.isGuest) {
+    // 游客强制回退到默认主题
+    if (VIP_THEME_KEYS.has(getActiveThemeKey())) {
+      activeDockTheme.value = DEFAULT_THEME_KEY;
+      usePokerTheme.value = false;
+      saveDockThemeForUser(userStore.user?.id, DEFAULT_THEME_KEY);
+    }
+  } else if (userStore.isLoggedIn && !userStore.isGuest) {
     const loadTasks = [loadNotifications(), loadAnnouncements()];
     Promise.all(loadTasks).then(() => {
       const hasUnread =
@@ -5655,6 +9382,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener("click", handleDocumentClick);
+  document.removeEventListener("keydown", handleDocumentKeydown);
   window.removeEventListener("resize", scheduleWelcomeTextFit);
   clearNearbySearchTimer();
   clearNearbyCenterLabelTimer();
@@ -5926,7 +9654,7 @@ onUnmounted(() => {
   bottom: auto;
   right: auto;
   width: min(860px, calc(100vw - 48px));
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
   border-radius: 32px;
   border: 1px solid rgba(196, 142, 48, 0.36);
   background: linear-gradient(
@@ -6104,10 +9832,108 @@ onUnmounted(() => {
 
 .sidebar-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   z-index: 1;
+  padding: 0;
+  /* 隐藏滚动条但保留滚轮功能 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sidebar-content::-webkit-scrollbar {
+  display: none;
+}
+
+/* 故事墙标签页 - 不产生独立滚动，由 sidebar-content 统一滚动 */
+.wall-tab-scroll {
+  overflow: visible;
   padding: 16px 24px 24px;
+}
+
+/* 返回顶部按钮 - 固定在容器右下角 */
+.wall-back-to-top {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  top: auto;
+  z-index: 10;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(13, 19, 34, 0.82);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 18px 36px -18px rgba(0, 0, 0, 0.55);
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.wall-back-to-top:hover {
+  background: rgba(26, 35, 58, 0.96);
+  border-color: rgba(255, 255, 255, 0.36);
+  transform: scale(1.08);
+}
+.wall-back-to-top svg {
+  width: 20px;
+  height: 20px;
+}
+.wall-back-to-top.dark {
+  border-color: rgba(141, 176, 235, 0.24);
+  background: rgba(15, 22, 40, 0.9);
+}
+.wall-back-to-top:not(.dark) {
+  border-color: rgba(196, 142, 48, 0.28);
+  background: rgba(63, 40, 11, 0.82);
+  color: #fffaf1;
+}
+/* 标签栏包裹层 - 为返回顶部按钮提供定位上下文 */
+.user-content-tabs-wrapper {
+  position: relative;
+  margin-bottom: 0;
+}
+.wall-back-to-top.profile-back-to-top {
+  position: absolute;
+}
+.wall-back-to-top:not(.dark):hover {
+  background: rgba(88, 56, 18, 0.95);
+}
+
+/* 返回顶部过渡动画 */
+.back-to-top-enter-active,
+.back-to-top-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.back-to-top-enter-from,
+.back-to-top-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* 故事墙 Grid 布局 */
+.story-wall-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding-bottom: 20px;
+}
+
+/* 响应式：窄屏改为 2 列 */
+@media (max-width: 480px) {
+  .story-wall-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 加载更多提示 */
+.wall-loading-more {
+  text-align: center;
+  padding: 16px 0 24px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .loading {
@@ -6130,9 +9956,14 @@ onUnmounted(() => {
 }
 
 .story-list {
+  position: relative;
+  padding-bottom: 64px;
+}
+
+/* 非 Feed 的 story-list 保持 grid 布局（如精选等） */
+.story-list:not(.vscroll-container) {
   display: grid;
   gap: 14px;
-  padding-bottom: 64px;
 }
 
 .story-list :deep(.story-card),
@@ -6407,13 +10238,14 @@ onUnmounted(() => {
   border-radius: 14px;
   overflow: hidden;
   cursor: pointer;
+  transform: scale(0.96);
   transition: all 0.3s;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
 .featured-story-card:hover {
   background: rgba(255, 255, 255, 0.12);
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
@@ -6615,6 +10447,12 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(255, 239, 192, 0.98);
   --dock-card-active-frame: rgba(236, 190, 96, 0.82);
   --dock-card-active-corner: rgba(228, 176, 66, 0.92);
+  --dock-submenu-shadow: rgba(8, 13, 29, 0.28);
+  --dock-submenu-option-text: rgba(255, 255, 255, 0.84);
+  --dock-submenu-option-muted: rgba(255, 255, 255, 0.6);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.08);
+  --dock-submenu-option-border: rgba(255, 255, 255, 0.08);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.14);
   position: fixed;
   bottom: 32px;
   right: 96px;
@@ -6664,6 +10502,12 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(255, 245, 213, 1);
   --dock-card-active-frame: rgba(222, 164, 61, 0.88);
   --dock-card-active-corner: rgba(215, 151, 41, 0.96);
+  --dock-submenu-shadow: rgba(72, 41, 15, 0.18);
+  --dock-submenu-option-text: rgba(255, 249, 238, 0.9);
+  --dock-submenu-option-muted: rgba(255, 238, 214, 0.66);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.1);
+  --dock-submenu-option-border: rgba(255, 242, 220, 0.12);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.16);
 }
 
 .dock-container.dock-dark {
@@ -6704,10 +10548,66 @@ onUnmounted(() => {
   --dock-card-active-border: rgba(226, 238, 255, 0.98);
   --dock-card-active-frame: rgba(155, 193, 255, 0.78);
   --dock-card-active-corner: rgba(155, 193, 255, 0.96);
+  --dock-submenu-shadow: rgba(5, 8, 20, 0.34);
+  --dock-submenu-option-text: rgba(238, 244, 255, 0.88);
+  --dock-submenu-option-muted: rgba(198, 214, 245, 0.62);
+  --dock-submenu-option-bg: rgba(255, 255, 255, 0.06);
+  --dock-submenu-option-border: rgba(198, 214, 245, 0.08);
+  --dock-submenu-option-hover: rgba(255, 255, 255, 0.1);
+}
+
+.dock-container.dock-vip-theme {
+  --dock-main-gradient: linear-gradient(
+    135deg,
+    rgba(56, 37, 17, 0.98) 0%,
+    rgba(97, 70, 28, 0.97) 48%,
+    rgba(39, 25, 11, 0.98) 100%
+  );
+  --dock-main-shadow: rgba(39, 24, 7, 0.42);
+  --dock-main-border: rgba(248, 225, 171, 0.26);
+  --dock-info-bg: linear-gradient(
+    145deg,
+    rgba(42, 26, 10, 0.98) 0%,
+    rgba(92, 63, 23, 0.96) 100%
+  );
+  --dock-info-border: rgba(248, 225, 171, 0.22);
+  --dock-info-kicker: rgba(255, 224, 163, 0.94);
+  --dock-info-text: rgba(255, 247, 231, 0.82);
+  --dock-card-surface: linear-gradient(
+    160deg,
+    #24150a 0%,
+    #5b3b16 52%,
+    #8c6730 100%
+  );
+  --dock-card-border: rgba(236, 196, 112, 0.5);
+  --dock-card-frame: rgba(242, 210, 139, 0.34);
+  --dock-card-pattern: rgba(255, 225, 161, 0.16);
+  --dock-card-edge-ring: rgba(255, 221, 145, 0.14);
+  --dock-card-edge-glow: rgba(255, 210, 116, 0.24);
+  --dock-card-order: rgba(255, 232, 187, 0.46);
+  --dock-card-subtitle: rgba(255, 244, 222, 0.74);
+  --dock-card-icon-bg: linear-gradient(
+    145deg,
+    rgba(137, 100, 37, 0.92) 0%,
+    rgba(76, 49, 18, 0.88) 100%
+  );
+  --dock-card-active-border: rgba(255, 238, 194, 0.98);
+  --dock-card-active-frame: rgba(255, 215, 124, 0.86);
+  --dock-card-active-corner: rgba(255, 205, 104, 0.98);
+  --dock-submenu-shadow: rgba(41, 25, 7, 0.34);
+  --dock-submenu-option-text: rgba(255, 248, 233, 0.92);
+  --dock-submenu-option-muted: rgba(248, 228, 188, 0.72);
+  --dock-submenu-option-bg: rgba(255, 247, 230, 0.08);
+  --dock-submenu-option-border: rgba(255, 225, 171, 0.14);
+  --dock-submenu-option-hover: rgba(255, 247, 230, 0.14);
 }
 
 .dock-container.show-user-sidebar {
-  right: calc(320px + 96px);
+  right: 96px;
+}
+
+.dock-container.show-dock-publish-sidebar {
+  right: 96px;
 }
 
 .dock-container.locked {
@@ -6882,6 +10782,7 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.dock-card-placeholder,
 .dock-card-anchor {
   display: block;
   position: absolute;
@@ -6893,13 +10794,26 @@ onUnmounted(() => {
   opacity: 0;
   cursor: pointer;
   pointer-events: auto;
-  transform: translate3d(var(--spread-x), var(--spread-y), 0)
-    rotate(var(--spread-rotate));
-  transform-origin: center bottom;
-  z-index: 12;
+}
+
+.dock-card-placeholder {
+  transform: translate3d(var(--placeholder-x), var(--placeholder-y), 0);
+  transform-origin: center center;
+  z-index: 113;
+}
+
+.dock-card-anchor {
+  transform: translate3d(var(--anchor-x), var(--anchor-y), 0);
+  transform-origin: center center;
+  z-index: 115;
+}
+
+.dock-card-hitbox-disabled {
+  pointer-events: none !important;
 }
 
 .dock-card {
+  --active-breathe-y: 0px;
   position: absolute;
   left: 0;
   bottom: 0;
@@ -6923,7 +10837,9 @@ onUnmounted(() => {
   transform-origin: center bottom;
   opacity: 0;
   pointer-events: auto;
-  will-change: transform, box-shadow, opacity, filter;
+  will-change: transform, opacity, filter;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
   transition:
     transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.52s ease,
@@ -6932,11 +10848,17 @@ onUnmounted(() => {
     border-color 0.52s ease;
 }
 
+.dock-card.selector {
+  cursor: default;
+}
+
 .dock-card-body {
   position: relative;
   height: 100%;
   border-radius: inherit;
   overflow: hidden;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .dock-card::before {
@@ -7005,6 +10927,25 @@ onUnmounted(() => {
   transition-delay: 0ms !important;
 }
 
+.dock-container.dock-dark .dock-card-stack.selected-state
+  .dock-card:not(.active):not(.drawing):not(.lifting):not(.returning) {
+  opacity: 1;
+  filter: saturate(0.9) brightness(0.86) contrast(0.94);
+}
+
+.dock-container.dock-light .dock-card-stack.selected-state
+  .dock-card:not(.active):not(.drawing):not(.lifting):not(.returning) {
+  opacity: 1;
+  filter: saturate(0.9) brightness(0.95) contrast(0.94);
+}
+
+.dock-card-stack.selection-motion
+  .dock-card:not(.drawing):not(.lifting):not(.active):not(.returning) {
+  transition-duration: 0.24s, 0.26s, 0.26s, 0.18s, 0.26s;
+  transition-timing-function:
+    cubic-bezier(0.2, 0.82, 0.22, 1), ease, ease, ease, ease;
+}
+
 .dock-card-stack.selection-motion .dock-card.drawing {
   transition-delay: 85ms, 0ms, 0ms, 0ms, 0ms !important;
 }
@@ -7025,16 +10966,29 @@ onUnmounted(() => {
 .dock-menu.expanded .dock-card.lifting {
   transform: translate3d(var(--draw-x), var(--draw-y), 0)
     rotate(var(--draw-rotate)) scale(var(--draw-scale));
-  transition-duration: 0.24s, 0.22s, 0.22s, 0.16s, 0.22s;
+  transition-duration: 0.1s, 0.12s, 0.12s, 0.1s, 0.12s;
   transition-timing-function:
     cubic-bezier(0.2, 0.88, 0.24, 1), ease, ease, ease, ease;
   z-index: 116 !important;
 }
 
 .dock-menu.expanded .dock-card.active {
-  transform: translate3d(var(--hover-x), var(--hover-y), 0)
-    rotate(var(--hover-rotate)) scale(var(--hover-scale));
-  transition-duration: 0.16s, 0.22s, 0.22s, 0.16s, 0.22s;
+  transform: translate3d(
+      var(--hover-x),
+      calc(var(--hover-y) + var(--active-breathe-y)),
+      0
+    )
+    rotate(var(--hover-rotate))
+    scale(var(--hover-scale));
+  transition-duration: 0.12s, 0.16s, 0.16s, 0.12s, 0.16s;
+  animation: dockCardActiveBreath 2.4s linear 0.5s infinite;
+  animation-fill-mode: backwards;
+  box-shadow:
+    0 24px 44px rgba(8, 12, 24, 0.34),
+    0 0 0 1px var(--dock-card-edge-ring),
+    0 0 28px -5px var(--card-accent-soft),
+    inset 0 0 0 2px rgba(255, 246, 223, 0.84),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
   z-index: 116 !important;
 }
 
@@ -7158,6 +11112,47 @@ onUnmounted(() => {
   }
 }
 
+@property --active-breathe-y {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes dockCardActiveBreath {
+  0%,
+  100% {
+    --active-breathe-y: 0px;
+  }
+  12.5% {
+    --active-breathe-y: -1.15px;
+  }
+  25% {
+    --active-breathe-y: -2px;
+  }
+  37.5% {
+    --active-breathe-y: -1.15px;
+  }
+  50% {
+    --active-breathe-y: 0px;
+  }
+  62.5% {
+    --active-breathe-y: 1.15px;
+  }
+  75% {
+    --active-breathe-y: 2px;
+  }
+  87.5% {
+    --active-breathe-y: 1.15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-menu.expanded .dock-card.active,
+  .dock-card.rippling .dock-card-ripple {
+    animation: none !important;
+  }
+}
+
 .dock-card-corner {
   position: absolute;
   width: 34px;
@@ -7224,6 +11219,145 @@ onUnmounted(() => {
   justify-content: center;
   text-align: center;
   gap: 12px;
+}
+
+.dock-card-face--theme-selector {
+  gap: 0;
+  padding: 20px 16px 18px;
+}
+
+.dock-theme-inline {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.dock-theme-inline__eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dock-card-order);
+}
+
+.dock-theme-inline__title {
+  margin-bottom: 16px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--card-ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.dock-theme-inline__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 260px;
+  padding-right: 4px;
+}
+
+.dock-theme-inline__list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dock-theme-inline__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dock-theme-inline__list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+.dock-theme-inline__list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dock-theme-inline-option {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 11px 12px;
+  font: inherit;
+  border-radius: 18px;
+  border: 2px solid rgba(186, 154, 98, 0.72);
+  background: #ffffff;
+  color: #23170c;
+  text-align: left;
+  box-shadow:
+    0 10px 20px -16px rgba(15, 12, 10, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.54);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.dock-theme-inline-option:hover,
+.dock-theme-inline-option:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(161, 124, 57, 0.88);
+  background: #ffffff;
+  box-shadow:
+    0 14px 24px -20px rgba(15, 12, 10, 0.46),
+    0 0 0 1px rgba(180, 139, 67, 0.2);
+}
+
+.dock-theme-inline-option.active {
+  border-color: #c99a2e;
+  background: #ffffff;
+  box-shadow:
+    0 16px 28px -20px rgba(15, 12, 10, 0.4),
+    0 0 0 2px rgba(217, 176, 74, 0.38);
+}
+
+.dock-theme-inline-option.disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  box-shadow: none;
+  background: #ffffff;
+  border-color: rgba(175, 154, 118, 0.72);
+  color: rgba(61, 47, 33, 0.88);
+}
+
+.dock-theme-inline-option__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dock-theme-inline-option__icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.dock-theme-inline-option__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.dock-theme-inline-option__meta {
+  font-size: 11px;
+  color: rgba(69, 54, 35, 0.82);
 }
 
 .dock-card-pattern {
@@ -7299,6 +11433,15 @@ onUnmounted(() => {
     display: none;
   }
 
+  .dock-theme-inline__title {
+    margin-bottom: 14px;
+    font-size: 18px;
+  }
+
+  .dock-theme-inline-option {
+    padding: 10px 11px;
+  }
+
   .dock-card {
     width: 186px;
     height: 262px;
@@ -7309,6 +11452,271 @@ onUnmounted(() => {
     height: 68px;
     font-size: 36px;
   }
+
+  .poker-mode .dock-card {
+    width: 186px;
+    height: 262px;
+    border-radius: 24px;
+  }
+
+  .poker-mode .poker-corner {
+    width: 40px;
+    height: 46px;
+  }
+
+  .poker-mode .poker-corner__value {
+    font-size: 22px;
+  }
+
+  .poker-mode .poker-corner__suit {
+    font-size: 17px;
+  }
+
+  .poker-mode .poker-corner--tr {
+    top: 8px;
+    right: 8px;
+  }
+
+  .poker-mode .poker-corner--bl {
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .poker-mode .poker-figure {
+    font-size: 40px;
+  }
+
+  .poker-mode .poker-center-icon {
+    width: 60px;
+    height: 60px;
+    font-size: 32px;
+  }
+
+  .poker-mode .poker-center-title {
+    font-size: 16px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   扑克主题样式 — 仅在 .poker-mode 下激活
+   ═══════════════════════════════════════════════════ */
+
+/* 扑克模式 — 卡片外观覆盖 */
+.poker-mode .dock-card {
+  padding: 0;
+  border-radius: 60px;
+  border: 1.5px solid var(--dock-card-border);
+  overflow: hidden;
+  box-shadow:
+    0 20px 38px rgba(8, 12, 24, 0.26),
+    0 0 0 1px var(--dock-card-edge-ring),
+    var(--poker-inner-shadow, inset 0 0 0 1.5px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8));
+}
+
+.poker-mode .dock-card::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 55px;
+  border: 1px solid var(--dock-card-frame);
+  background: none;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.poker-mode .dock-card::after {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 48px;
+  border: 0.5px solid var(--dock-card-pattern);
+  background: none;
+  mix-blend-mode: normal;
+  pointer-events: none;
+}
+
+/* 扑克模式 — 隐藏经典主题元素 */
+.poker-mode .dock-card-suit,
+.poker-mode .dock-card-order,
+.poker-mode .dock-card-corner,
+.poker-mode .dock-card-pattern,
+.poker-mode .dock-card-icon,
+.poker-mode .dock-card-title,
+.poker-mode .dock-card-subtitle {
+  display: none !important;
+}
+
+/* 扑克模式 — 浅色卡片表面 */
+.poker-mode.dock-light .dock-card {
+  background: linear-gradient(165deg, #ffffff 0%, #f8f6f2 48%, #f0ece4 100%);
+  border-color: rgba(30, 30, 30, 0.18);
+}
+
+/* 扑克模式 — 深色卡片表面 */
+.poker-mode.dock-dark .dock-card {
+  background: linear-gradient(165deg, #1a1a1a 0%, #222222 48%, #181818 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 扑克模式 — VIP 卡片表面 */
+.poker-mode.dock-vip-theme .dock-card {
+  background: linear-gradient(165deg, #3d2a14 0%, #2a1e0e 48%, #1a1208 100%);
+  border-color: rgba(236, 196, 112, 0.35);
+}
+
+/* ── 扑克角标 ── */
+.poker-corner {
+  position: absolute;
+  width: 52px;
+  height: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  line-height: 1;
+  gap: 0;
+}
+
+.poker-corner--tr {
+  top: 12px;
+  right: 12px;
+}
+
+.poker-corner--bl {
+  bottom: 12px;
+  left: 12px;
+  transform: rotate(180deg);
+}
+
+.poker-corner__value {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.poker-corner__suit {
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* 花色颜色：♠♣ 黑色，♥♦ 红色 */
+.poker-mode.dock-light .poker-corner__value,
+.poker-mode.dock-light .poker-corner__suit {
+  color: #1a1a1a;
+}
+
+.poker-mode.dock-light .poker-corner__suit.suit-red {
+  color: #c0392b;
+}
+
+.poker-mode.dock-dark .poker-corner__value,
+.poker-mode.dock-dark .poker-corner__suit {
+  color: #e0e0e0;
+}
+
+.poker-mode.dock-dark .poker-corner__suit.suit-red {
+  color: #e74c5c;
+}
+
+.poker-mode.dock-vip-theme .poker-corner__value,
+.poker-mode.dock-vip-theme .poker-corner__suit {
+  color: #f0dca0;
+}
+
+.poker-mode.dock-vip-theme .poker-corner__suit.suit-red {
+  color: #e8a040;
+}
+
+/* ── 扑克人物水印 (J/Q/K) ── */
+.poker-figure {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 64px;
+  line-height: 1;
+  opacity: 0.1;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.poker-mode.dock-light .poker-figure { color: #1a1a1a; }
+.poker-mode.dock-dark .poker-figure { color: #e0e0e0; }
+.poker-mode.dock-vip-theme .poker-figure { color: #f0dca0; }
+
+/* ── 扑克中心图标 ── */
+.poker-center-icon {
+  position: relative;
+  z-index: 2;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  background: var(--dock-card-icon-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease;
+}
+
+.poker-mode.dock-light .poker-center-icon {
+  color: #1a1a1a;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92) 0%, rgba(240, 236, 228, 0.88) 100%);
+}
+
+.poker-mode.dock-dark .poker-center-icon {
+  color: #e0e0e0;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+}
+
+.poker-mode.dock-vip-theme .poker-center-icon {
+  color: #f0dca0;
+  background: linear-gradient(145deg, rgba(137, 100, 37, 0.92) 0%, rgba(76, 49, 18, 0.88) 100%);
+}
+
+/* ── 扑克中心标题 ── */
+.poker-center-title {
+  position: relative;
+  z-index: 2;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin-top: 10px;
+}
+
+.poker-mode.dock-light .poker-center-title { color: #1a1a1a; }
+.poker-mode.dock-dark .poker-center-title { color: #e0e0e0; }
+.poker-mode.dock-vip-theme .poker-center-title { color: #f0dca0; }
+
+/* 扑克模式 — 主题选择器卡片内联 */
+.poker-mode .dock-card-face--theme-selector {
+  padding: 40px 36px 52px 36px;
+}
+
+.poker-mode .dock-theme-inline {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+
+/* 扑克模式 — 激活卡片增强 */
+.poker-mode .dock-menu.expanded .dock-card.drawing,
+.poker-mode .dock-menu.expanded .dock-card.lifting,
+.poker-mode .dock-menu.expanded .dock-card.active {
+  border-width: 2px;
+  border-color: var(--dock-card-active-frame, rgba(255, 255, 255, 0.18));
+  box-shadow:
+    0 28px 44px rgba(8, 12, 24, 0.32),
+    0 0 28px -5px var(--card-accent-soft, rgba(255, 255, 255, 0.08)),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .publish-modal-enter-active,
@@ -7323,6 +11731,13 @@ onUnmounted(() => {
     opacity 0.26s ease;
 }
 
+.publish-modal-enter-active .map-search-user-detail,
+.publish-modal-leave-active .map-search-user-detail {
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease;
+}
+
 .publish-modal-enter-from,
 .publish-modal-leave-to {
   opacity: 0;
@@ -7330,6 +11745,12 @@ onUnmounted(() => {
 
 .publish-modal-enter-from .publish-modal,
 .publish-modal-leave-to .publish-modal {
+  opacity: 0;
+  transform: translateY(26px) scale(0.96);
+}
+
+.publish-modal-enter-from .map-search-user-detail,
+.publish-modal-leave-to .map-search-user-detail {
   opacity: 0;
   transform: translateY(26px) scale(0.96);
 }
@@ -7356,6 +11777,7 @@ onUnmounted(() => {
 .publish-modal-shell.pick-mode {
   pointer-events: none;
   align-items: flex-end;
+  padding: 0;
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -7364,7 +11786,7 @@ onUnmounted(() => {
 .publish-modal {
   position: relative;
   width: min(980px, calc(100vw - 48px));
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
   border-radius: 36px;
   overflow: hidden;
   border: 1px solid rgba(196, 142, 48, 0.38);
@@ -7381,7 +11803,8 @@ onUnmounted(() => {
 }
 
 .publish-modal-shell.pick-mode .publish-modal {
-  width: min(420px, calc(100vw - 28px));
+  width: 100%;
+  height: auto;
   max-height: none;
   pointer-events: none;
   overflow: visible;
@@ -7492,7 +11915,7 @@ onUnmounted(() => {
 .publish-modal-scroll {
   position: relative;
   z-index: 1;
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
   overflow-y: auto;
   padding: 28px;
 }
@@ -7500,64 +11923,61 @@ onUnmounted(() => {
 .publish-pick-dock {
   pointer-events: auto;
   width: 100%;
-  padding: 16px 18px 18px;
-  border: 1px solid rgba(255, 245, 228, 0.22);
-  border-radius: 24px 24px 0 0;
+  padding: 20px 32px;
+  border: none;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
-  background: linear-gradient(
-    160deg,
-    rgba(36, 23, 9, 0.94) 0%,
-    rgba(67, 42, 18, 0.96) 100%
-  );
-  color: #fff8ef;
-  box-shadow:
-    0 -10px 36px -18px rgba(0, 0, 0, 0.62),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.78);
+  color: #ffffff;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
   cursor: pointer;
   transition:
     transform 0.22s ease,
-    background 0.22s ease;
+    background 0.22s ease,
+    opacity 0.22s ease;
 }
 
 .publish-pick-dock:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
+  background: rgba(0, 0, 0, 0.84);
 }
 
 .publish-modal.dark .publish-pick-dock {
-  border-color: rgba(198, 219, 255, 0.18);
-  background: linear-gradient(
-    160deg,
-    rgba(10, 17, 33, 0.94) 0%,
-    rgba(17, 30, 58, 0.96) 100%
-  );
-  color: #eef4ff;
+  background: rgba(0, 0, 0, 0.78);
+  color: #ffffff;
 }
 
 .pick-dock-handle {
-  width: 62px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.46);
-  align-self: center;
-  margin-bottom: 4px;
+  display: none;
 }
 
 .publish-pick-dock strong {
   font-size: 16px;
+  font-weight: 700;
   letter-spacing: 0.02em;
+  text-align: center;
 }
 
 .publish-pick-dock span:last-child {
   font-size: 13px;
   line-height: 1.6;
-  color: rgba(255, 248, 239, 0.76);
+  color: rgba(255, 255, 255, 0.65);
+  text-align: center;
 }
 
 .publish-modal.dark .publish-pick-dock span:last-child {
-  color: rgba(238, 244, 255, 0.74);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+@media (max-width: 640px) {
+  .publish-pick-dock {
+    padding: 18px 24px calc(18px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .publish-pick-confirm {
@@ -7674,7 +12094,8 @@ onUnmounted(() => {
   right: auto;
   bottom: auto;
   width: min(900px, calc(100vw - 48px));
-  max-height: min(90vh, 960px);
+  height: min(90vh, 960px);
+  height: min(90vh, 960px);
   border-radius: 36px;
   border: 1px solid rgba(196, 142, 48, 0.34);
   background: linear-gradient(
@@ -7693,8 +12114,8 @@ onUnmounted(() => {
     opacity 0.26s ease,
     visibility 0.26s ease;
   z-index: 341;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr;
   visibility: hidden;
   pointer-events: none;
   opacity: 0;
@@ -7823,10 +12244,12 @@ onUnmounted(() => {
 
 .user-sidebar-content {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   position: relative;
   z-index: 1;
-  padding: 20px 28px 28px;
+  padding: 20px 36px 28px;
+  display: flex;
+  flex-direction: column;
 }
 
 .guest-profile {
@@ -8382,6 +12805,115 @@ onUnmounted(() => {
   border-color: rgba(244, 67, 54, 0.3) !important;
 }
 
+.footprints-btn {
+  background: linear-gradient(
+    135deg,
+    rgba(232, 184, 109, 0.2) 0%,
+    rgba(240, 147, 251, 0.2) 100%
+  ) !important;
+  border-color: rgba(232, 184, 109, 0.3) !important;
+}
+
+.footprints-btn:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(232, 184, 109, 0.3) 0%,
+    rgba(240, 147, 251, 0.3) 100%
+  ) !important;
+  border-color: rgba(232, 184, 109, 0.5) !important;
+}
+
+.footprints-btn.active {
+  background: linear-gradient(
+    135deg,
+    rgba(232, 184, 109, 0.5) 0%,
+    rgba(240, 147, 251, 0.5) 100%
+  ) !important;
+  border-color: rgba(232, 184, 109, 0.8) !important;
+  box-shadow: 0 0 15px rgba(232, 184, 109, 0.3) !important;
+}
+
+/* 定位按钮 - 右下角 */
+.locate-btn {
+  position: fixed;
+  bottom: 100px;
+  right: 15px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(102, 126, 234, 0.25);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #667eea;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 190;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.25s ease;
+}
+
+.locate-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+  border-color: rgba(102, 126, 234, 0.45);
+}
+
+.locate-btn:active {
+  transform: scale(0.95);
+}
+
+.locate-btn.dark {
+  background: rgba(26, 26, 46, 0.92);
+  border-color: rgba(143, 180, 255, 0.2);
+  color: #8fb4ff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.locate-btn.dark:hover {
+  box-shadow: 0 4px 16px rgba(143, 180, 255, 0.2);
+  border-color: rgba(143, 180, 255, 0.4);
+}
+
+/* ===== 调整纸飞机位置模式 - 底部提示栏 ===== */
+.adjust-plane-overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: none;
+}
+
+.adjust-plane-dock {
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: center;
+}
+
+.adjust-overlay-fade-enter-active {
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adjust-overlay-fade-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adjust-overlay-fade-enter-from,
+.adjust-overlay-fade-leave-to {
+  opacity: 0;
+  transform: translateY(100%);
+}
+
 .logout-action-btn:hover {
   background: linear-gradient(
     135deg,
@@ -8408,8 +12940,8 @@ onUnmounted(() => {
     transform 0.3s ease,
     visibility 0.3s ease;
   z-index: 149;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr;
   visibility: hidden;
   pointer-events: none;
 }
@@ -8554,18 +13086,68 @@ onUnmounted(() => {
 }
 
 .panel-item {
-  padding: 16px;
+  padding: 18px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 3px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
 }
 
 .panel-item:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(102, 126, 234, 0.3);
-  transform: translateX(-2px);
+  transform: translate3d(0, -3px, 0);
+  box-shadow: 0 18px 30px -24px rgba(0, 0, 0, 0.35);
+}
+
+/* 故事卡片入场动画 - stagger: 0.12s | duration: 0.45s | distance: 80vh */
+/* animation-delay 通过模板内联 style 设置，此处不声明 */
+
+@keyframes storyCardEntrance {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 34px, 0);
+  }
+  60% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.story-card-enter {
+  animation: storyCardEntrance 0.52s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+/* 动态加载的卡片：快速淡入，无延迟等待 */
+.story-wall-grid .story-card-enter.no-anim-delay {
+  animation: storyCardFadeIn 0.3s ease forwards;
+}
+
+@keyframes storyCardFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.story-list :deep(.story-card.story-card-enter) {
+  animation: storyCardEntrance 0.52s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-card-enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .item-avatar {
@@ -8601,8 +13183,8 @@ onUnmounted(() => {
 }
 
 .item-action-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -8627,6 +13209,67 @@ onUnmounted(() => {
 
 .item-action-btn.delete-btn:hover {
   background: rgba(244, 67, 54, 0.2);
+}
+
+/* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
 }
 
 .item-content {
@@ -8672,23 +13315,13 @@ onUnmounted(() => {
   gap: 4px;
 }
 
-.likes-panel .item-footer,
-.posts-panel .item-footer,
-.favorites-panel .item-footer {
-  justify-content: flex-start;
+.user-content-list .item-footer {
+  display: flex;
+  justify-content: flex-end;
   gap: 14px;
 }
 
-.likes-panel .item-location,
-.posts-panel .item-location,
-.favorites-panel .item-location {
-  flex: 1;
-  min-width: 0;
-}
-
-.likes-panel .item-likes,
-.posts-panel .item-likes,
-.favorites-panel .item-likes {
+.user-content-list .item-likes {
   white-space: nowrap;
 }
 
@@ -8704,19 +13337,26 @@ onUnmounted(() => {
   line-height: 0;
 }
 
-.likes-panel .item-action-btn span::before,
-.favorites-panel .item-action-btn span::before {
-  font-size: 15px;
+.likes-panel .item-action-btn span::before {
+  font-size: 18px;
   line-height: 1;
 }
 
-.likes-panel .unlike-btn span::before,
+.favorites-panel .item-action-btn span::before {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.likes-panel .unlike-btn span::before {
+  content: "❌";
+}
+
 .favorites-panel .unfavorite-btn span::before {
-  content: "❌️";
+  content: "⭐";
 }
 
 .favorites-panel .unfavorite-btn.is-restorable span::before {
-  content: "⭐️";
+  content: "✨";
 }
 
 .panel-loading-more,
@@ -9647,6 +14287,141 @@ onUnmounted(() => {
   color: #3c2910;
 }
 
+/* 浅色模式下内容列表的卡片样式 */
+.user-sidebar:not(.dark) .user-content-list .panel-item {
+  border-color: rgba(164, 122, 48, 0.38);
+}
+
+.user-sidebar:not(.dark) .user-content-list .item-author {
+  color: #333;
+}
+
+.user-sidebar:not(.dark) .user-content-list /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.item-content {
+  color: #2c2c2c;
+}
+
+.user-sidebar:not(.dark) .user-content-list .item-time {
+  color: #888;
+}
+
+.user-sidebar:not(.dark) .user-content-list .item-footer {
+  color: #666;
+}
+
+.user-sidebar {
+  --profile-story-card-bg: rgba(24, 34, 56, 0.92);
+  --profile-story-card-bg-hover: rgba(31, 45, 73, 0.98);
+  --profile-story-card-border: rgba(151, 186, 255, 0.3);
+  --profile-story-card-border-hover: rgba(191, 214, 255, 0.52);
+  --profile-story-card-shadow: 0 24px 40px -30px rgba(3, 8, 20, 0.85);
+  --profile-story-card-shadow-hover: 0 26px 42px -28px rgba(3, 8, 20, 0.92);
+  --profile-story-card-text: #ffffff;
+  --profile-story-card-muted: rgba(255, 255, 255, 0.84);
+}
+
+.user-sidebar:not(.dark) {
+  --profile-story-card-bg: rgba(255, 245, 229, 0.96);
+  --profile-story-card-bg-hover: rgba(255, 239, 215, 0.99);
+  --profile-story-card-border: rgba(94, 66, 22, 0.28);
+  --profile-story-card-border-hover: rgba(94, 66, 22, 0.42);
+  --profile-story-card-shadow: 0 24px 40px -30px rgba(94, 66, 22, 0.28);
+  --profile-story-card-shadow-hover: 0 26px 42px -28px rgba(94, 66, 22, 0.34);
+  --profile-story-card-text: #000000;
+  --profile-story-card-muted: rgba(0, 0, 0, 0.82);
+}
+
+.user-sidebar .user-content-list .panel-item {
+  background: var(--profile-story-card-bg);
+  border: 1.5px solid var(--profile-story-card-border);
+  box-shadow: var(--profile-story-card-shadow);
+}
+
+.user-sidebar .user-content-list .panel-item:hover {
+  background: var(--profile-story-card-bg-hover);
+  border-color: var(--profile-story-card-border-hover);
+  box-shadow: var(--profile-story-card-shadow-hover);
+}
+
+.user-sidebar .user-content-list .panel-item.is-capsule-locked:hover {
+  background: var(--profile-story-card-bg);
+}
+
+.user-sidebar .user-content-list .item-author,
+.user-sidebar .user-content-list .item-content {
+  color: var(--profile-story-card-text);
+}
+
+.user-sidebar .user-content-list .item-time,
+.user-sidebar .user-content-list .item-footer,
+.user-sidebar .user-content-list .item-likes {
+  color: var(--profile-story-card-muted);
+}
+
+.user-sidebar .user-content-list .item-action-btn {
+  color: var(--profile-story-card-text);
+}
+
 .story-sidebar.dark .sidebar-header h3,
 .user-sidebar.dark .user-sidebar-header h3,
 .user-sub-sidebar.dark .sub-sidebar-header h4,
@@ -9991,7 +14766,7 @@ onUnmounted(() => {
   .story-tarot-stage,
   .user-sub-sidebar {
     width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
+    height: calc(100vh - 24px);
     border-radius: 28px;
   }
 
@@ -10081,71 +14856,6 @@ onUnmounted(() => {
   }
   to {
     transform: rotate(360deg);
-  }
-}
-
-.project-title {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 280px;
-  padding: 12px 20px;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 107, 107, 0.2) 0%,
-    rgba(255, 165, 0, 0.2) 14.28%,
-    rgba(255, 215, 0, 0.2) 28.57%,
-    rgba(168, 230, 207, 0.2) 42.85%,
-    rgba(102, 126, 234, 0.2) 57.14%,
-    rgba(255, 107, 157, 0.2) 71.43%,
-    rgba(255, 107, 107, 0.2) 85.71%,
-    rgba(255, 107, 107, 0.2) 100%
-  );
-  background-size: 600% 100%;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  font-family: "Georgia", "Times New Roman", serif;
-  font-size: 28px;
-  font-weight: 700;
-  background-clip: padding-box;
-  letter-spacing: 2px;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: colorFlow 20s linear infinite;
-}
-
-.project-title::before {
-  content: "EchoStar";
-  background: linear-gradient(
-    90deg,
-    rgba(0, 148, 148, 1) 0%,
-    rgba(0, 90, 255, 1) 14.28%,
-    rgba(0, 40, 255, 1) 28.57%,
-    rgba(87, 25, 48, 1) 42.85%,
-    rgba(153, 129, 21, 1) 57.14%,
-    rgba(0, 148, 98, 1) 71.43%,
-    rgba(0, 148, 148, 1) 85.71%,
-    rgba(0, 148, 148, 1) 100%
-  );
-  background-size: 600% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: colorFlow 20s linear infinite reverse;
-  text-shadow: none;
-}
-
-@keyframes colorFlow {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 85.71% 50%;
   }
 }
 
@@ -10723,5 +15433,2415 @@ onUnmounted(() => {
     right: 20px;
     left: 20px;
   }
+}
+
+/* ============ 新用户信息面板样式 ============ */
+
+/* 用户头像+用户名/ID 新布局 */
+.user-profile-new {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 0;
+}
+
+.user-profile-new .user-avatar-wrapper {
+  flex-shrink: 0;
+}
+
+.user-identity-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.user-identity-top {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-display-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+.user-display-name:not(.has-vip) {
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+  -webkit-text-fill-color: unset;
+  color: #333;
+}
+
+.user-display-name.has-vip {
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+@keyframes vipGoldFlow {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+
+/* VIP 样式已移除 */
+
+/* VIP 文字标签 - 头像旁的VIP标识（鎏金渐变斜体浮夸风） */
+.vip-text-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1.5px solid rgba(255, 215, 0, 0.55);
+  border-radius: 6px;
+  background-color: #ffd700;
+  background-image: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff5cc 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-size: 16px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 1px;
+  line-height: 1.3;
+  animation: vipGoldFlow 3s linear infinite;
+  box-shadow: 0 0 8px rgba(255, 215, 0, 0.2), inset 0 0 4px rgba(255, 215, 0, 0.08);
+}
+
+.vip-text-badge:hover {
+  transform: scale(1.08);
+  filter: brightness(1.15);
+}
+
+/* VIP 小徽标 - 用于紧凑列表（item-meta内、slot内等） */
+.vip-text-badge-sm {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #5d4037;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  line-height: 16px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.vip-text-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+}
+
+.vip-text-badge--inactive {
+  background-color: transparent;
+  background-image: linear-gradient(90deg, #8b6914 0%, #c9a227 25%, #c9b896 50%, #c9a227 75%, #8b6914 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  border: 1.5px solid rgba(184, 135, 46, 0.45);
+  font-style: normal;
+  animation: vipGoldFlow 3s linear infinite;
+  box-shadow: 0 0 6px rgba(255, 215, 0, 0.15);
+}
+
+/* VIP 用户名+徽标行内容器 - 保持同行 */
+.vip-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+/* 通用 VIP 用户名流金样式 */
+.vip-username.has-vip {
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+  display: inline;
+}
+
+.icon-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.icon-edit-btn:hover {
+  background: #f0f0f0;
+  color: #555;
+}
+
+.user-star-id {
+  font-size: 12px;
+  color: #999;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  letter-spacing: 0.5px;
+}
+
+.wallet-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.18), rgba(245, 166, 35, 0.24));
+  color: #7a5200;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.wallet-inline-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px -14px rgba(173, 121, 13, 0.7);
+}
+
+.wallet-inline-btn__icon {
+  font-size: 14px;
+}
+
+.wallet-inline-btn__label {
+  opacity: 0.88;
+}
+
+.user-identity-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.switch-account-btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #e8f0fe;
+  color: #1a73e8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.switch-account-btn:hover {
+  background: #d2e3fc;
+}
+
+.logout-inline-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #999;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.logout-inline-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Bio 签名区域 */
+.user-bio-area {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  margin: 0 0 8px 0;
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
+  border-radius: 10px;
+  cursor: text;
+  transition: border-color 0.15s, background 0.15s;
+  min-height: 40px;
+}
+
+.user-bio-area:hover {
+  border-color: #ddd;
+  background: #f5f5f5;
+}
+
+.bio-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.bio-text {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* VIP 个性签名样式 */
+.vip-bio {
+  background: rgba(255, 223, 120, 0.45) !important;
+  border-color: rgba(218, 180, 60, 0.5) !important;
+}
+.vip-bio .bio-text {
+  font-size: 15px;
+  font-weight: 600;
+  background: linear-gradient(90deg, #ff4444, #ff8888, #ff5555, #ff3333, #ff7777, #ff4444);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vip-bio-flow 3s linear infinite;
+}
+@keyframes vip-bio-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.dark .vip-bio {
+  background: rgba(255, 215, 0, 0.08) !important;
+  border-color: rgba(255, 200, 0, 0.2) !important;
+}
+
+.bio-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bio-input-wrap textarea {
+  width: 100%;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+.bio-input-wrap textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.bio-char-count {
+  font-size: 11px;
+  color: #bbb;
+  text-align: right;
+}
+
+.inline-font-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn-comment-bg {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(184, 135, 46, 0.25);
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  color: #3d2e0a;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px -6px rgba(255, 215, 0, 0.4);
+}
+
+.btn-comment-bg:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px rgba(255, 215, 0, 0.5);
+}
+
+.btn-comment-bg--locked {
+  background: rgba(184, 135, 46, 0.08);
+  border-color: rgba(0,0,0,0.1);
+  color: #888;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.btn-comment-bg--locked:hover {
+  background: rgba(184, 135, 46, 0.15);
+  transform: translateY(-1px);
+}
+
+.font-clear-btn {
+  padding: 6px 12px;
+  border: 1px solid rgba(200, 100, 100, 0.3);
+  border-radius: 14px;
+  background: rgba(200, 100, 100, 0.08);
+  color: var(--panel-muted, #bbb);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-clear-btn:hover {
+  background: rgba(200, 100, 100, 0.18);
+}
+
+.bio-edit-icon {
+  flex-shrink: 0;
+  padding-top: 2px;
+  color: #ccc;
+}
+
+/* 标签栏 */
+.user-content-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #eee;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.content-tab {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.content-tab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 2px;
+  background: #667eea;
+  border-radius: 1px;
+  transition: width 0.2s;
+}
+
+.content-tab.active {
+  color: #333;
+}
+
+.content-tab.active::after {
+  width: 60%;
+}
+
+.content-tab:hover {
+  color: #555;
+}
+
+.tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #aaa;
+  background: #f0f0f0;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.content-tab.active .tab-count {
+  color: #667eea;
+  background: #eef0ff;
+}
+
+/* 内容列表区域 */
+.user-content-list {
+  position: relative; /* 虚拟滚动子元素绝对定位需要 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 12px 28px;
+  overscroll-behavior-y: contain; /* 防止过度滚动 */
+}
+
+
+/* 虚拟滚动相关样式 */
+.vscroll-spacer {
+  position: relative;
+  width: 100%;
+  pointer-events: none;
+}
+
+.vscroll-item {
+  box-sizing: border-box;
+}
+
+/* 用户面板卡片间距（由 composable gap:12 处理，此处不再重复） */
+
+/* 隐藏整个侧边栏的外层滚动条 */
+.user-sidebar {
+  overflow: hidden !important;
+  scrollbar-width: none;
+}
+
+.user-sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.user-sidebar-content {
+  scrollbar-width: none;
+}
+
+.user-sidebar-content::-webkit-scrollbar {
+  display: none;
+}
+
+/* 隐藏故事列表滚动条但保留滚动功能 */
+.user-content-list {
+  scrollbar-width: none;
+}
+
+.user-content-list::-webkit-scrollbar {
+  display: none;
+}
+
+.profile-story-list {
+  padding-top: 0;
+}
+
+/* 编辑资料弹窗 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+
+.modal-overlay.dark {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.edit-profile-modal {
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.edit-profile-modal.dark {
+  background: #1a1a2e;
+  color: #edf3ff;
+}
+
+.edit-profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.edit-profile-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.edit-profile-body {
+  padding: 20px;
+}
+
+.edit-field {
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.edit-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.optional-hint {
+  font-weight: 400;
+  color: #aaa;
+}
+
+.edit-field input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.edit-field input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.edit-input-wrap input {
+  padding-right: 40px;
+}
+
+/* 隐藏浏览器原生的密码显示/隐藏按钮 */
+.edit-input-wrap input::-ms-reveal,
+.edit-input-wrap input::-ms-clear {
+  display: none;
+}
+
+.edit-input-wrap input::-webkit-credentials-auto-fill-button,
+.edit-input-wrap input::-webkit-reveal-password-button {
+  display: none !important;
+}
+
+.edit-field input:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.eye-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.eye-toggle:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dark .eye-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.eye-toggle svg {
+  display: block;
+}
+
+.edit-input-wrap {
+  position: relative;
+}
+
+.field-error-inline {
+  display: block;
+  font-size: 12px;
+  color: #dc2626;
+  margin-top: 4px;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 4px;
+}
+
+.edit-profile-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid #eee;
+}
+
+.edit-profile-footer .btn-cancel {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: #f5f5f5;
+  color: #555;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.edit-profile-footer .btn-save {
+  padding: 8px 24px;
+  border: none;
+  border-radius: 8px;
+  background: #667eea;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.edit-profile-footer .btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 修改密码分隔区 */
+.edit-password-section {
+  padding-top: 8px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  border-top: 1px solid #eee;
+}
+
+.edit-password-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.dark .edit-password-section {
+  border-top-color: #333;
+}
+
+.dark .edit-password-title {
+  color: #aab;
+}
+
+/* 密码验证提示样式 */
+.validation-tip {
+  margin-top: 2px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tip-error {
+  border: 1px solid #dc2626;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.tip-error .tip-text {
+  color: #dc2626;
+}
+
+.tip-success {
+  border: 1px solid #16a34a;
+  background: rgba(34, 197, 94, 0.1);
+  margin-bottom: 8px;
+}
+
+.tip-success .tip-text {
+  color: #16a34a;
+}
+
+.dark .tip-error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.dark .tip-error .tip-text {
+  color: #fca5a5;
+}
+
+.dark .tip-success {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.dark .tip-success .tip-text {
+  color: #86efac;
+}
+
+/* 确认修改密码按钮 */
+.btn-confirm-password {
+  width: 100%;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: #667eea;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  margin-top: 4px;
+}
+
+.btn-confirm-password:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-confirm-password:not(:disabled):hover {
+  opacity: 0.85;
+}
+
+.dark .btn-confirm-password {
+  background: #5a6fd6;
+}
+
+/* 切换账号弹窗 */
+.switch-account-modal {
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.switch-account-modal.dark {
+  background: #1a1a2e;
+  color: #edf3ff;
+}
+
+.switch-account-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.switch-account-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.switch-account-body {
+  padding: 20px;
+}
+
+.account-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.account-slot:hover {
+  background: #f9fafb;
+  border-color: #ddd;
+}
+
+.account-slot.current {
+  background: #f0f7ff;
+  border-color: #c2d9ff;
+  cursor: default;
+}
+
+.slot-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.slot-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.slot-current-badge {
+  font-size: 11px;
+  color: #1a73e8;
+  background: #e8f0fe;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.add-slot {
+  border-style: dashed;
+  border-color: #ccc;
+  justify-content: center;
+}
+
+.add-slot:hover {
+  border-color: #999;
+  background: #fafafa;
+}
+
+.add-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px dashed #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #aaa;
+}
+
+/* 暗色模式适配 */
+.dark .user-display-name {
+  color: #edf3ff;
+}
+
+.dark .user-display-name:not(.has-vip) {
+  -webkit-text-fill-color: unset;
+}
+
+.dark .user-display-name.has-vip {
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #ffe4b5 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+.dark .user-star-id { color: #8899aa; }
+.dark .wallet-inline-btn {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.16), rgba(143, 180, 255, 0.18));
+  color: #f4e2a5;
+}
+.dark .user-bio-area { background: #1e2a3a; border-color: #2a3a4a; }
+.dark .bio-text { color: #aabbcc; }
+.dark .bio-input-wrap textarea { background: #0f1a2a; border-color: #2a3a4a; color: #edf3ff; }
+.dark .user-content-tabs { border-bottom-color: #2a3a4a; }
+.dark .content-tab { color: #7788aa; }
+.dark .content-tab.active { color: #b8cfff; }
+.dark .content-tab.active::after { background: #8fb4ff; }
+.dark .tab-count { color: #556677; background: #1e2a3a; }
+.dark .content-tab.active .tab-count { color: #8fb4ff; background: #1a2a4a; }
+.dark .icon-edit-btn { color: #667788; }
+.dark .icon-edit-btn:hover { background: #2a3a4a; color: #aabbcc; }
+.dark .bio-edit-icon { color: #445566; }
+.dark .logout-inline-btn { color: #778899; }
+.dark .logout-inline-btn:hover { background: #3a2020; color: #ff6b6b; }
+.dark .switch-account-btn { background: #1a2a4a; color: #8fb4ff; }
+.dark .switch-account-btn:hover { background: #243656; }
+.dark .edit-profile-header { border-bottom-color: #2a3a4a; }
+.dark .edit-profile-footer { border-top-color: #2a3a4a; }
+.dark .edit-field label { color: #8899aa; }
+.dark .edit-field input { background: #0f1a2a; border-color: #2a3a4a; color: #edf3ff; }
+.dark .edit-field input:disabled { background: #162030; color: #556677; }
+.dark .switch-account-header { border-bottom-color: #2a3a4a; }
+.dark .account-slot { border-color: #2a3a4a; }
+.dark .account-slot:hover { background: #1a2a3a; border-color: #3a4a5a; }
+.dark .account-slot.current { background: #162030; border-color: #2a4a6a; }
+.dark .slot-name { color: #c8d8e8; }
+.dark .slot-current-badge { color: #8fb4ff; background: #1a2a4a; }
+.dark .add-slot { border-color: #3a4a5a; }
+.dark .add-slot:hover { border-color: #4a5a6a; background: #162030; }
+.dark .add-avatar { border-color: #4a5a6a; color: #5a6a7a; }
+.dark .edit-profile-footer .btn-cancel { background: #2a3a4a; color: #aabbcc; }
+
+/* ===== 地图搜索框 ===== */
+.map-search-bar {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: min(520px, calc(100vw - 40px));
+  transition: filter 0.3s ease;
+}
+.map-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  height: 44px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 2px solid rgba(0, 0, 0, 0.14);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.18);
+  transition: all 0.25s ease;
+}
+/* 浅色模式暖色调 */
+.map-search-bar:not(.dark) .map-search-input-wrap {
+  background: linear-gradient(135deg, rgba(250, 239, 217, 0.92) 0%, rgba(240, 223, 191, 0.92) 100%);
+  border-color: rgba(92, 51, 20, 0.65);
+  border-width: 3px;
+  box-shadow:
+    0 10px 28px rgba(7, 11, 22, 0.2),
+    0 0 0 1px rgba(255, 248, 232, 0.72),
+    0 0 24px rgba(114, 80, 22, 0.18);
+}
+.map-search-bar:not(.dark) .map-search-input-wrap:focus-within {
+  border-color: rgba(72, 38, 12, 0.82);
+  border-width: 3px;
+  box-shadow:
+    0 12px 32px rgba(7, 11, 22, 0.24),
+    0 0 0 1px rgba(255, 248, 232, 0.86),
+    0 0 0 5px rgba(35, 29, 18, 0.14),
+    0 0 34px rgba(196, 142, 48, 0.28);
+}
+.map-search-bar.dark .map-search-input-wrap {
+  background: rgba(20, 28, 42, 0.88);
+  border-color: rgba(248, 251, 255, 0.78);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 22px rgba(214, 230, 255, 0.18);
+}
+.map-search-input-wrap:focus-within {
+  border-color: rgba(102, 126, 234, 0.62);
+  box-shadow:
+    0 12px 30px rgba(102, 126, 234, 0.18),
+    0 0 0 4px rgba(102, 126, 234, 0.12);
+}
+.map-search-bar.dark .map-search-input-wrap:focus-within {
+  border-color: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.44),
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 5px rgba(230, 240, 255, 0.14),
+    0 0 34px rgba(143, 180, 255, 0.34);
+}
+/* 浅色模式文字颜色 */
+.map-search-bar:not(.dark) .map-search-icon { color: #8b6d3a; }
+.map-search-bar:not(.dark) .map-search-input { color: #3c2910; }
+.map-search-bar:not(.dark) .map-search-input::placeholder { color: rgba(94, 63, 20, 0.45); }
+.map-search-bar:not(.dark) .map-search-clear { background: rgba(164, 122, 48, 0.12); }
+.map-search-bar:not(.dark) .map-search-clear svg { color: #8b6d3a; }
+.map-search-bar:not(.dark) .map-search-clear:hover { background: rgba(164, 122, 48, 0.22); }
+.map-search-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: #999;
+}
+.map-search-bar.dark .map-search-icon { color: #667788; }
+.map-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: #333;
+  line-height: 1.4;
+}
+.map-search-input::placeholder { color: #aaa; }
+.map-search-bar.dark .map-search-input { color: #dde4f0; }
+.map-search-bar.dark .map-search-input::placeholder { color: #556677; }
+.map-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.map-search-clear svg { width: 14px; height: 14px; color: #888; }
+.map-search-clear:hover { background: rgba(0, 0, 0, 0.12); }
+.map-search-bar.dark .map-search-clear { background: rgba(255, 255, 255, 0.08); }
+.map-search-bar.dark .map-search-clear svg { color: #778899; }
+.map-search-bar.dark .map-search-clear:hover { background: rgba(255, 255, 255, 0.15); }
+
+/* ===== 搜索结果面板 ===== */
+.map-search-results {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 49;
+  width: min(480px, calc(100vw - 40px));
+  max-height: calc(100vh - 110px);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  transition: filter 0.3s ease;
+}
+/* 浅色模式暖色调 */
+.map-search-results:not(.dark) {
+  background: linear-gradient(160deg, rgba(250, 239, 217, 0.97) 0%, rgba(240, 223, 191, 0.97) 52%, rgba(229, 206, 166, 0.97) 100%);
+  border-color: rgba(196, 142, 48, 0.3);
+  box-shadow: 0 8px 40px rgba(7, 11, 22, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+.map-search-results:not(.dark) .search-tabs {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+}
+.map-search-results:not(.dark) .search-tab { color: #8b6d3a; }
+.map-search-results:not(.dark) .search-tab:hover { color: #5e3f14; }
+.map-search-results:not(.dark) .search-tab.active { color: #96772e; }
+.map-search-results:not(.dark) .search-tab.active::after { background: #96772e; }
+.map-search-results:not(.dark) .map-search-empty { color: #8b6d3a; }
+.map-search-results:not(.dark) .search-user-profile .user-display-name { color: #3c2910; }
+.map-search-results:not(.dark) .search-user-profile .user-star-id { color: #8b6d3a; }
+.map-search-results.dark {
+  background: rgba(20, 28, 42, 0.95);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+}
+.map-search-results-list {
+  position: relative; /* 虚拟滚动子元素绝对定位需要 */
+  overflow-y: auto;
+  max-height: calc(100vh - 120px);
+  padding: 8px;
+  scrollbar-width: none;
+}
+.map-search-results-list::-webkit-scrollbar { display: none; }
+.map-search-card {
+}
+.map-search-card:last-child { }
+.map-search-results.dark .map-search-card.panel-item {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(182, 208, 255, 0.12);
+}
+.map-search-results.dark .map-search-card /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.item-content { color: rgba(255, 255, 255, 0.85); }
+.map-search-results.dark .map-search-card .item-author { color: #fff; }
+.map-search-results.dark .map-search-card .item-time { color: rgba(255, 255, 255, 0.5); }
+.map-search-results.dark .map-search-card .item-footer { color: rgba(255, 255, 255, 0.5); }
+.map-search-results:not(.dark) .map-search-card.panel-item {
+  background: rgba(255, 252, 246, 0.34);
+  border-color: rgba(164, 122, 48, 0.35);
+  border-width: 1.5px;
+  box-shadow: 0 18px 26px -22px rgba(98, 75, 34, 0.18);
+}
+.map-search-results:not(.dark) .map-search-card.panel-item:hover {
+  background: rgba(255, 250, 242, 0.52);
+  border-color: rgba(164, 122, 48, 0.35);
+}
+.map-search-results:not(.dark) .map-search-card /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.map-search-results:not(.dark) .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .map-search-card .item-author { color: #333; }
+.map-search-results:not(.dark) .map-search-card .item-time { color: #888; }
+.map-search-results:not(.dark) .map-search-card .item-footer { color: #666; }
+/* 搜索用户结果面板内故事列表浅色模式文字 */
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item {
+  background: rgba(255, 252, 246, 0.34);
+  border-color: rgba(164, 122, 48, 0.38);
+  box-shadow: 0 18px 26px -22px rgba(98, 75, 34, 0.18);
+}
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item:hover {
+  background: rgba(255, 250, 242, 0.52);
+  border-color: rgba(164, 122, 48, 0.52);
+}
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.map-search-results:not(.dark) .search-user-profile .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-author { color: #333; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-time { color: #888; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-footer { color: #666; }
+.map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-likes { color: #666; }
+.map-search-results:not(.dark) .search-user-profile .panel-empty { color: #8b6d3a; }
+.map-search-results:not(.dark) .search-user-profile .user-content-tabs { border-bottom-color: rgba(148, 111, 46, 0.18); }
+.map-search-results:not(.dark) .search-user-profile .content-tab { color: #8b6d3a; }
+.map-search-results:not(.dark) .search-user-profile .content-tab.active { color: #3c2910; }
+.map-search-results:not(.dark) .search-user-profile .tab-count { color: #8b6d3a; background: rgba(255, 252, 246, 0.5); }
+.map-search-results:not(.dark) .search-user-profile .user-bio-area { background: rgba(255, 252, 246, 0.34); border-color: rgba(164, 122, 48, 0.16); }
+.map-search-results:not(.dark) .search-user-profile .bio-text { color: #3c2910; }
+.map-search-empty {
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #999;
+}
+.map-search-results.dark .map-search-empty { color: #556677; }
+
+/* 搜索面板内点赞/收藏按钮图标放大 */
+.map-search-card .item-action-btn span { font-size: 0; line-height: 0; }
+.map-search-card .item-action-btn span::before { font-size: 18px; line-height: 1; }
+.map-search-card .unlike-btn span::before { content: "❌"; }
+.map-search-card .unfavorite-btn span::before { content: "❌"; }
+
+/* 搜索面板过渡动画 */
+.search-panel-fade-enter-active,
+.search-panel-fade-leave-active {
+  transition: all 0.2s ease;
+}
+.search-panel-fade-enter-from,
+.search-panel-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px);
+}
+
+/* ===== 搜索标签页 ===== */
+.search-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+.map-search-results.dark .search-tabs { border-bottom-color: rgba(255, 255, 255, 0.08); }
+.search-tab {
+  padding: 10px 18px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: #999;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+.search-tab:hover { color: #666; }
+.search-tab.active { color: #667eea; }
+.search-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 18px;
+  right: 18px;
+  height: 2px;
+  background: #667eea;
+  border-radius: 1px;
+}
+.map-search-results.dark .search-tab { color: #556677; }
+.map-search-results.dark .search-tab:hover { color: #8899aa; }
+.map-search-results.dark .search-tab.active { color: #8fb4ff; }
+.map-search-results.dark .search-tab.active::after { background: #8fb4ff; }
+
+/* ===== 搜索用户卡片 ===== */
+.search-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+.search-user-card:hover {
+  background: rgba(139, 170, 220, 0.12);
+}
+.map-search-results:not(.dark) .search-user-card:hover {
+  background: rgba(139, 110, 50, 0.08);
+}
+.search-user-card__avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.search-user-card__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.search-user-card__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.search-user-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #edf3ff;
+}
+.map-search-results:not(.dark) .search-user-card__name { color: #333; }
+.search-user-card__id {
+  font-size: 11px;
+  color: #667788;
+}
+.map-search-results:not(.dark) .search-user-card__id { color: #999; }
+.search-user-card__arrow {
+  width: 16px;
+  height: 16px;
+  color: #667788;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+.map-search-results:not(.dark) .search-user-card__arrow { color: #999; }
+
+/* ===== 用户详情弹窗 ===== */
+.search-user-modal-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 10100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 11, 22, 0.55);
+  backdrop-filter: blur(6px);
+}
+.map-search-user-detail .user-sidebar-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  padding: 20px 28px 28px;
+  display: flex;
+  flex-direction: column;
+}
+.map-search-user-detail .search-user-profile {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-search-user-detail {
+  position: relative;
+  width: min(900px, calc(100vw - 48px));
+  height: min(90vh, 960px);
+  height: min(90vh, 960px);
+  --profile-story-card-bg: rgba(24, 34, 56, 0.92);
+  --profile-story-card-bg-hover: rgba(31, 45, 73, 0.98);
+  --profile-story-card-border: rgba(151, 186, 255, 0.3);
+  --profile-story-card-border-hover: rgba(191, 214, 255, 0.52);
+  --profile-story-card-shadow: 0 24px 40px -30px rgba(3, 8, 20, 0.85);
+  --profile-story-card-shadow-hover: 0 26px 42px -28px rgba(3, 8, 20, 0.92);
+  --profile-story-card-text: #ffffff;
+  --profile-story-card-muted: rgba(255, 255, 255, 0.84);
+  border-radius: 36px;
+  border: 1px solid rgba(196, 142, 48, 0.34);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 23, 37, 0.97) 0%,
+    rgba(31, 42, 64, 0.98) 56%,
+    rgba(17, 25, 42, 0.98) 100%
+  );
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.map-search-user-detail::before {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(199, 151, 60, 0.22);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 浅色模式 */
+.map-search-user-detail:not(.dark) {
+  --profile-story-card-bg: rgba(255, 245, 229, 0.96);
+  --profile-story-card-bg-hover: rgba(255, 239, 215, 0.99);
+  --profile-story-card-border: rgba(94, 66, 22, 0.28);
+  --profile-story-card-border-hover: rgba(94, 66, 22, 0.42);
+  --profile-story-card-shadow: 0 24px 40px -30px rgba(94, 66, 22, 0.28);
+  --profile-story-card-shadow-hover: 0 26px 42px -28px rgba(94, 66, 22, 0.34);
+  --profile-story-card-text: #000000;
+  --profile-story-card-muted: rgba(0, 0, 0, 0.82);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 52%,
+    rgba(229, 206, 166, 0.98) 100%
+  );
+  border-color: rgba(196, 142, 48, 0.38);
+  box-shadow:
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+.map-search-user-detail:not(.dark)::before {
+  border-color: rgba(199, 151, 60, 0.22);
+}
+.map-search-user-detail:not(.dark) .user-sidebar-header {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 245, 0.42) 0%,
+    rgba(255, 245, 227, 0.14) 100%
+  );
+}
+.map-search-user-detail:not(.dark) .user-sidebar-header h3 {
+  color: #3c2910;
+}
+.map-search-user-detail .close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  min-width: 88px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(13, 19, 34, 0.82);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.map-search-user-detail .close-btn:hover {
+  background: rgba(26, 35, 58, 0.96);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+.map-search-user-detail .close-btn span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 100%;
+  width: 100%;
+  transform: translate(-0.25px, -1.25px);
+}
+.map-search-user-detail:not(.dark) .close-btn {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.map-search-user-detail:not(.dark) .close-btn:hover {
+  background: rgba(53, 34, 13, 0.92);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+.map-search-user-detail:not(.dark) .user-content-list .panel-item {
+  border-color: rgba(164, 122, 48, 0.38);
+}
+.map-search-user-detail .user-content-list .panel-item {
+  background: var(--profile-story-card-bg);
+  border: 1.5px solid var(--profile-story-card-border);
+  box-shadow: var(--profile-story-card-shadow);
+}
+.map-search-user-detail .user-content-list .panel-item:hover {
+  background: var(--profile-story-card-bg-hover);
+  border-color: var(--profile-story-card-border-hover);
+  box-shadow: var(--profile-story-card-shadow-hover);
+}
+.map-search-user-detail .user-content-list .panel-item.is-capsule-locked:hover {
+  background: var(--profile-story-card-bg);
+}
+.map-search-user-detail .user-content-list .item-author,
+.map-search-user-detail .user-content-list .item-content {
+  color: var(--profile-story-card-text);
+}
+.map-search-user-detail .user-content-list .item-time,
+.map-search-user-detail .user-content-list .item-footer,
+.map-search-user-detail .user-content-list .item-likes {
+  color: var(--profile-story-card-muted);
+}
+.map-search-user-detail:not(.dark) .user-content-list .item-author { color: #3c2910; }
+.map-search-user-detail:not(.dark) .user-content-list /* ── 时光胶囊锁定条 ── */
+.panel-item.is-capsule-locked {
+  cursor: not-allowed;
+}
+.panel-item.is-capsule-locked:hover {
+  background: rgba(255, 255, 255, 0.03);
+  transform: none;
+}
+
+.capsule-lock-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(160, 185, 215, 0.18) 0%, rgba(140, 170, 205, 0.12) 100%);
+  border: 1px solid rgba(180, 200, 225, 0.2);
+}
+
+.capsule-lock-icon {
+  color: rgba(160, 185, 215, 0.7);
+  flex-shrink: 0;
+  animation: capsule-lock-pulse 3s ease-in-out infinite;
+}
+
+.capsule-lock-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.8);
+  letter-spacing: 0.02em;
+}
+
+.capsule-lock-timer {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(160, 185, 215, 0.55);
+  white-space: nowrap;
+}
+
+@keyframes capsule-lock-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+/* 暗色模式下的胶囊锁定条 — 侧边栏默认为暗色 */
+.user-sidebar:not(.dark) .capsule-lock-strip {
+  background: linear-gradient(135deg, rgba(80, 110, 160, 0.15) 0%, rgba(60, 95, 145, 0.1) 100%);
+  border-color: rgba(100, 140, 200, 0.15);
+}
+.user-sidebar:not(.dark) .capsule-lock-icon {
+  color: rgba(120, 160, 220, 0.65);
+}
+.user-sidebar:not(.dark) .capsule-lock-label {
+  color: rgba(130, 165, 220, 0.8);
+}
+.user-sidebar:not(.dark) .capsule-lock-timer {
+  color: rgba(130, 165, 220, 0.5);
+}
+
+.map-search-user-detail:not(.dark) .item-content { color: #3c2910; }
+.map-search-user-detail:not(.dark) .user-content-list .item-time { color: #3c2910; }
+.map-search-user-detail:not(.dark) .user-content-list .item-footer { color: #3c2910; }
+.map-search-user-detail:not(.dark) .bio-text { color: #3c2910; }
+.map-search-user-detail:not(.dark) .panel-empty { color: #3c2910; }
+.map-search-user-detail:not(.dark) .content-tab { color: #3c2910; }
+.map-search-user-detail:not(.dark) .content-tab.active { color: #5e3f14; }
+
+/* ===== 搜索用户信息面板 ===== */
+
+/* ===== 个人主页搜索（左侧弹窗） ===== */
+.profile-search-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  width: min(480px, 42vw);
+  height: min(90vh, 960px);
+  border-radius: 36px;
+  border: 1px solid rgba(196, 142, 48, 0.34);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 23, 37, 0.97) 0%,
+    rgba(31, 42, 64, 0.98) 56%,
+    rgba(17, 25, 42, 0.98) 100%
+  );
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.profile-search-panel::before {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 28px;
+  border: 1px solid rgba(199, 151, 60, 0.22);
+  pointer-events: none;
+  z-index: 0;
+}
+.profile-search-panel:not(.dark) {
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 52%,
+    rgba(229, 206, 166, 0.98) 100%
+  );
+  border-color: rgba(196, 142, 48, 0.38);
+  box-shadow:
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+.profile-search-panel:not(.dark)::before {
+  border-color: rgba(199, 151, 60, 0.22);
+}
+
+.profile-search-header {
+  position: relative;
+  z-index: 1;
+  padding: 28px 28px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-right: 108px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+}
+.profile-search-panel:not(.dark) .profile-search-header {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 245, 0.42) 0%,
+    rgba(255, 245, 227, 0.14) 100%
+  );
+}
+.profile-search-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+}
+.profile-search-panel:not(.dark) .profile-search-header h3 {
+  color: #3c2910;
+}
+.profile-search-count {
+  font-size: 14px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+.profile-search-header .close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  min-width: 88px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(13, 19, 34, 0.82);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.profile-search-header .close-btn:hover {
+  background: rgba(26, 35, 58, 0.96);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+.profile-search-panel:not(.dark) .close-btn {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+}
+.profile-search-panel:not(.dark) .close-btn:hover {
+  background: rgba(53, 34, 13, 0.92);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.profile-search-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  padding: 16px 10px 20px;
+  scrollbar-width: none;
+}
+.profile-search-list .vscroll-item {
+  left: 20px !important;
+  right:20px !important;
+}
+.profile-search-list::-webkit-scrollbar {
+  display: none;
+}
+.profile-search-panel:not(.dark) .panel-empty {
+  color: #3c2910;
+}
+.profile-search-panel:not(.dark) .panel-item {
+  border-color: rgba(164, 122, 48, 0.38);
+}
+.profile-search-panel:not(.dark) .item-author {
+  color: #3c2910;
+}
+.profile-search-panel:not(.dark) .item-content {
+  color: #2c2c2c;
+}
+.profile-search-panel:not(.dark) .item-time {
+  color: #888;
+}
+.profile-search-panel:not(.dark) .item-footer {
+  color: #666;
+}
+.profile-search-panel.dark .panel-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.profile-search-panel.dark .panel-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(102, 126, 234, 0.3);
+}
+.profile-search-panel.dark .item-author {
+  color: #ffffff;
+}
+.profile-search-panel.dark .item-content {
+  color: rgba(255, 255, 255, 0.85);
+}
+.profile-search-panel.dark .item-time {
+  color: rgba(255, 255, 255, 0.5);
+}
+.profile-search-panel.dark .item-footer {
+  color: rgba(255, 255, 255, 0.5);
+}
+.profile-search-panel.dark .panel-empty {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* 搜索面板入场/出场动画 */
+.profile-search-panel-enter-active,
+.profile-search-panel-leave-active {
+  transition: opacity 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.profile-search-panel-enter-from,
+.profile-search-panel-leave-to {
+  opacity: 0;
+  transform: translateX(40px) scale(0.95);
+}
+
+/* 搜索框样式 */
+.profile-search-input-wrapper {
+  position: relative;
+  margin-bottom: 4px;
+}
+.profile-search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 36px 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+  box-sizing: border-box;
+}
+.profile-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+.profile-search-input:focus {
+  border-color: rgba(199, 151, 60, 0.5);
+  background: rgba(255, 255, 255, 0.09);
+}
+.search-clear-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.search-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 浅色模式搜索框 */
+.user-sidebar:not(.dark) .profile-search-input,
+.map-search-user-detail:not(.dark) .profile-search-input {
+  border-color: rgba(164, 122, 48, 0.18);
+  background: rgba(255, 253, 248, 0.74);
+  color: #3c2910;
+}
+.user-sidebar:not(.dark) .profile-search-input::placeholder,
+.map-search-user-detail:not(.dark) .profile-search-input::placeholder {
+  color: rgba(94, 63, 20, 0.5);
+}
+.user-sidebar:not(.dark) .profile-search-input:focus,
+.map-search-user-detail:not(.dark) .profile-search-input:focus {
+  border-color: rgba(164, 122, 48, 0.4);
+  background: rgba(255, 253, 248, 0.9);
+}
+.user-sidebar:not(.dark) .search-clear-btn,
+.map-search-user-detail:not(.dark) .search-clear-btn {
+  background: rgba(164, 122, 48, 0.15);
+  color: #5e3f14;
+}
+.user-sidebar:not(.dark) .search-clear-btn:hover,
+.map-search-user-detail:not(.dark) .search-clear-btn:hover {
+  background: rgba(164, 122, 48, 0.3);
+}
+
+/* 搜索面板并排：主面板不闪，保持原尺寸平滑位移 */
+
+.map-search-user-detail {
+  transition: margin-left 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.search-user-modal-shell.has-profile-search .map-search-user-detail {
+  margin-left: -250px;
+}
+
+.user-modal-shell.has-profile-search .user-sidebar.show-sidebar {
+  transform: translate(calc(-50% - 250px), -50%) scale(1) !important;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* 搜索面板绝对定位到个人主页右侧 */
+
+/* 我的主页：profile 用 fixed + transform 偏移，右侧边 = 50% - 250px + P/2 */
+.user-modal-shell .profile-search-panel {
+  left: calc(50% - 230px + min(450px, (100vw - 48px) / 2));
+}
+
+/* 他人主页：profile 用 flex + margin-left 偏移，右侧边 = 50% + P/2 - 125px */
+.search-user-modal-shell .profile-search-panel {
+  left: calc(50% + min(450px, calc((100vw - 48px) / 2)) - 105px);
+}
+
+@media (max-width: 1200px) {
+  .search-user-modal-shell.has-profile-search .map-search-user-detail {
+    margin-left: -200px;
+  }
+  .user-modal-shell.has-profile-search .user-sidebar.show-sidebar {
+    transform: translate(calc(-50% - 200px), -50%) scale(1) !important;
+  }
+  .user-modal-shell .profile-search-panel {
+    left: calc(50% - 180px + min(450px, (100vw - 48px) / 2));
+  }
+  .search-user-modal-shell .profile-search-panel {
+    left: calc(50% + min(450px, calc((100vw - 48px) / 2)) - 80px);
+  }
+}
+
+@media (max-width: 700px) {
+  .search-user-modal-shell.has-profile-search .map-search-user-detail {
+    margin-left: 0;
+  }
+  .user-modal-shell.has-profile-search .user-sidebar.show-sidebar {
+    transform: translate(-50%, -50%) scale(1) !important;
+  }
+  .search-user-modal-shell .profile-search-panel,
+  .user-modal-shell .profile-search-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    margin: 0;
+    width: 100vw;
+    height: 45vh;
+    border-radius: 36px 36px 0 0;
+  }
+}
+.search-user-profile {
+  padding: 12px 8px 4px;
+}
+.search-user-profile .user-profile-new {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.search-user-profile .user-avatar-large {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  cursor: default;
+}
+.search-user-profile .user-avatar-large img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.search-user-profile .user-identity-area {
+  flex: 1;
+  min-width: 0;
+}
+.search-user-profile .user-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.search-user-profile .user-display-name {
+  font-size: 18px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-search-user-detail.dark .search-user-profile .user-display-name { color: #edf3ff; }
+.map-search-user-detail:not(.dark) .search-user-profile .user-display-name { color: #3c2910; }
+.search-user-profile .user-star-id {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+.map-search-user-detail.dark .search-user-profile .user-star-id { color: #556677; }
+.map-search-user-detail:not(.dark) .search-user-profile .user-star-id { color: #3c2910; }
+.search-user-bio {
+  cursor: default !important;
+  margin-top: 12px;
+}
+.search-user-bio .bio-edit-icon { display: none; }
+.search-user-profile .user-content-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: none;
+  overscroll-behavior-y: contain;
+}
+.search-user-profile .user-content-list::-webkit-scrollbar {
+  display: none;
+}
+.map-search-results-list {
+  max-height: calc(100vh - 160px);
+}
+
+/* 使用 JS 控制模糊 */
+.search-blur .map-search-bar,
+.search-blur .map-search-results {
+  filter: blur(4px);
+  opacity: 0.6;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+/* 搜索面板始终保持可交互，不受 blur 影响 */
+.map-search-results {
+  pointer-events: auto !important;
+}
+.map-search-bar {
+  pointer-events: auto !important;
+}
+
+/* ===== 地点搜索结果项 ===== */
+.search-place-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.search-place-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.search-place-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(255, 107, 107, 0.1);
+}
+.search-place-info {
+  flex: 1;
+  min-width: 0;
+}
+.search-place-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-search-results.dark .search-place-name { color: #edf3ff; }
+.map-search-results:not(.dark) .search-place-name { color: #1a1a2e; }
+.search-place-addr {
+  font-size: 12px;
+  color: #8899aa;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-search-results:not(.dark) .search-place-addr { color: #666; }
+.search-place-dist {
+  font-size: 12px;
+  color: #8899aa;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.map-search-results:not(.dark) .search-place-dist { color: #999; }
+
+/* ===== 纸飞机附近故事面板 ===== */
+.plane-nearby-sidebar {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  right: auto;
+  width: min(860px, calc(100vw - 48px));
+  height: min(90vh, 960px);
+  border-radius: 32px;
+  border: 1px solid rgba(196, 142, 48, 0.36);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 23, 37, 0.96) 0%,
+    rgba(31, 42, 64, 0.97) 56%,
+    rgba(17, 25, 42, 0.98) 100%
+  );
+  box-shadow:
+    0 40px 80px -32px rgba(3, 7, 18, 0.72),
+    0 0 0 1px rgba(255, 248, 232, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translate(-50%, -50%) scale(0.96);
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease,
+    visibility 0.26s ease;
+  z-index: 340;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 亮色模式 - 与故事墙一致暖色调 */
+.plane-nearby-sidebar:not(.dark) {
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 52%,
+    rgba(229, 206, 166, 0.98) 100%
+  );
+  border-color: rgba(196, 142, 48, 0.38);
+  box-shadow:
+    0 40px 80px -32px rgba(7, 11, 22, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+  color: #3c2910;
+}
+
+.publish-modal-enter-active .plane-nearby-sidebar,
+.publish-modal-leave-active .plane-nearby-sidebar {
+  transition:
+    transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.26s ease;
+}
+.publish-modal-enter-from .plane-nearby-sidebar {
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0;
+}
+.publish-modal-leave-to .plane-nearby-sidebar {
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0;
+}
+
+.plane-nearby-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.plane-nearby-sidebar:not(.dark) .plane-nearby-header {
+  border-bottom-color: rgba(148, 111, 46, 0.18);
+}
+
+.plane-nearby-header__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.plane-nearby-header__icon {
+  font-size: 22px;
+}
+.plane-nearby-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+.plane-nearby-sidebar.dark .plane-nearby-header h3 { color: #edf3ff; }
+.plane-nearby-sidebar:not(.dark) .plane-nearby-header h3 { color: #3c2910; }
+
+.plane-nearby-sidebar .close-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.plane-nearby-sidebar:not(.dark) .close-btn {
+  background: rgba(196, 142, 48, 0.15);
+  color: #5c3a13;
+}
+.plane-nearby-sidebar .close-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.plane-nearby-sidebar:not(.dark) .close-btn:hover {
+  background: rgba(196, 142, 48, 0.28);
+}
+
+.plane-nearby-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 24px 24px;
+  position: relative;
+  /* 隐藏滚动条但保留滚轮功能 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.plane-nearby-content::-webkit-scrollbar {
+  display: none;
+}
+
+.plane-nearby-sidebar .map-search-empty {
+  text-align: center;
+  padding: 16px 0;
+  font-size: 13px;
+}
+.plane-nearby-sidebar.dark .map-search-empty { color: #667788; }
+.plane-nearby-sidebar:not(.dark) .map-search-empty { color: rgba(75, 48, 16, 0.78); }
+
+.plane-nearby-sidebar .loading,
+.plane-nearby-sidebar .empty {
+  text-align: center;
+  padding: 40px 20px;
+  font-size: 14px;
+}
+.plane-nearby-sidebar.dark .loading,
+.plane-nearby-sidebar.dark .empty { color: #8899aa; }
+.plane-nearby-sidebar:not(.dark) .loading,
+.plane-nearby-sidebar:not(.dark) .empty { color: #3c2910; }
+.plane-nearby-sidebar .empty .hint {
+  font-size: 12px;
+  color: #667788;
+  margin-top: 6px;
+}
+.plane-nearby-sidebar:not(.dark) .empty .hint { color: rgba(75, 48, 16, 0.78); }
+
+/* 纸飞机附近面板 - Grid 布局 */
+.plane-nearby-sidebar .story-wall-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding-bottom: 20px;
+}
+@media (max-width: 480px) {
+  .plane-nearby-sidebar .story-wall-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.plane-nearby-sidebar .wall-loading-more {
+  text-align: center;
+  padding: 16px 0;
+  font-size: 13px;
+}
+.plane-nearby-sidebar.dark .wall-loading-more { color: #667788; }
+.plane-nearby-sidebar:not(.dark) .wall-loading-more { color: rgba(75, 48, 16, 0.78); }
+</style>
+
+<style>
+.paper-plane-menu {
+  position: fixed;
+  z-index: 1200;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  padding: 6px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: auto;
+  min-width: 120px;
+}
+.paper-plane-menu.dark {
+  background: #000000;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.paper-plane-menu::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  border-radius: 2px;
+  transform: translateX(-50%) rotate(45deg);
+}
+.plane-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+  color: #000;
+  transition: background 0.15s;
+  user-select: none;
+}
+.paper-plane-menu.dark .plane-menu-item {
+  color: #fff;
+}
+.plane-menu-item[data-action="nearby"] {
+  background: #FF6B6B;
+  border-radius: 10px;
+  color: #fff;
+}
+.plane-menu-item[data-action="publish"] {
+  background: #FF9E9E;
+  border-radius: 10px;
+  color: #fff;
+}
+.paper-plane-menu.dark .plane-menu-item[data-action="nearby"],
+.paper-plane-menu.dark .plane-menu-item[data-action="publish"] {
+  color: #fff;
+}
+.plane-menu-item:hover {
+  filter: brightness(1.1);
+}
+.plane-menu-item svg {
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 </style>

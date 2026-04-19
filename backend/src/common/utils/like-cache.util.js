@@ -351,7 +351,7 @@ class LikeCacheUtil {
       include: [{
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit, 10),
@@ -365,7 +365,8 @@ class LikeCacheUtil {
         user: {
           id: like.userId,
           username: like.user?.username || 'Anonymous',
-          avatar: like.user?.avatarUrl || null
+          avatar: like.user?.avatarUrl || null,
+          vip: like.user?.vip || 0
         }
       })),
       pagination: {

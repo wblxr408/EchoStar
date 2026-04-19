@@ -1,0 +1,226 @@
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import type { Story, Location, Cluster } from '../types/map';
+
+/**
+ * 地图状态管理
+ * 使用 TypeScript 和 Composition API
+ */
+
+// 坐标精度阈值
+const COORD_EPSILON = 0.000001;
+
+export const useMapStore = defineStore('map', () => {
+  // 主题状态
+  const theme = ref<'light' | 'dark'>(localStorage.getItem('theme') as 'light' | 'dark' || 'light');
+
+  // 当前地图中心点
+  const center = ref<Location>({
+    latitude: 39.9042, // 北京天安门
+    longitude: 116.4074
+  });
+
+  // 当前缩放级别
+  const zoom = ref(12);
+
+  // 当前用户位置
+  const userLocation = ref<Location | null>(null);
+
+  // 地图范围内的故事列表
+  const stories = ref<Story[]>([]);
+
+  // 选中的故事
+  const selectedStory = ref<Story | null>(null);
+
+  // 聚合点数据
+  const clusters = ref<Cluster[]>([]);
+
+  // 是否正在加载
+  const isLoading = ref(false);
+
+  // 计算属性：故事数量
+  const storyCount = computed(() => stories.value.length);
+  
+  // 计算属性：是否有用户位置
+  const hasUserLocation = computed(() => userLocation.value !== null);
+
+  /**
+   * 设置主题
+   */
+  function setTheme(newTheme: 'light' | 'dark'): void {
+    theme.value = newTheme;
+    localStorage.setItem('theme', newTheme);
+    
+    // 更新 CSS 变量
+    document.documentElement.setAttribute('data-theme', newTheme);
+  }
+
+  /**
+   * 切换主题
+   */
+  function toggleTheme(): void {
+    setTheme(theme.value === 'light' ? 'dark' : 'light');
+  }
+
+  /**
+   * 验证坐标是否有效
+   */
+  function isValidCoordinate(lat: number, lng: number): boolean {
+    return (
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180
+    );
+  }
+
+  /**
+   * 检查两个坐标是否相同
+   */
+  function isSameLocation(loc1: Location | null, loc2: { latitude: number; longitude: number }): boolean {
+    if (!loc1) return false;
+    return (
+      Math.abs(loc1.latitude - loc2.latitude) < COORD_EPSILON &&
+      Math.abs(loc1.longitude - loc2.longitude) < COORD_EPSILON
+    );
+  }
+
+  /**
+   * 更新地图中心
+   */
+  function updateCenter(lat: number, lng: number): void {
+    if (!isValidCoordinate(lat, lng)) return;
+
+    const newCenter = { latitude: lat, longitude: lng };
+    if (isSameLocation(center.value, newCenter)) return;
+
+    center.value = newCenter;
+  }
+
+  /**
+   * 更新缩放级别
+   */
+  function updateZoom(level: number): void {
+    const nextZoom = Math.max(1, Math.min(20, Number(level)));
+    if (!Number.isFinite(nextZoom) || zoom.value === nextZoom) return;
+    zoom.value = nextZoom;
+  }
+
+  /**
+   * 设置用户位置
+   */
+  function setUserLocation(lat: number, lng: number): void {
+    if (!isValidCoordinate(lat, lng)) return;
+
+    const newLocation = { latitude: lat, longitude: lng };
+    if (isSameLocation(userLocation.value, newLocation)) return;
+
+    userLocation.value = newLocation;
+  }
+
+  /**
+   * 清除用户位置
+   */
+  function clearUserLocation(): void {
+    userLocation.value = null;
+  }
+
+  /**
+   * 更新故事列表
+   */
+  function updateStories(newStories: Story[]): void {
+    stories.value = Array.isArray(newStories) ? newStories : [];
+  }
+
+  /**
+   * 添加单个故事
+   */
+  function addStory(story: Story): void {
+    const exists = stories.value.some(s => s.id === story.id);
+    if (!exists) {
+      stories.value.unshift(story);
+    }
+  }
+
+  /**
+   * 移除故事
+   */
+  function removeStory(storyId: string | number): void {
+    const index = stories.value.findIndex(s => s.id === storyId);
+    if (index > -1) {
+      stories.value.splice(index, 1);
+    }
+  }
+
+  /**
+   * 选择故事
+   */
+  function selectStory(story: Story | null): void {
+    selectedStory.value = story;
+  }
+
+  /**
+   * 清除选中
+   */
+  function clearSelection(): void {
+    selectedStory.value = null;
+  }
+
+  /**
+   * 更新聚合数据
+   */
+  function updateClusters(newClusters: Cluster[]): void {
+    clusters.value = Array.isArray(newClusters) ? newClusters : [];
+  }
+
+  /**
+   * 设置加载状态
+   */
+  function setLoading(loading: boolean): void {
+    isLoading.value = loading;
+  }
+
+  /**
+   * 重置地图状态
+   */
+  function reset(): void {
+    center.value = { latitude: 39.9042, longitude: 116.4074 };
+    zoom.value = 12;
+    stories.value = [];
+    selectedStory.value = null;
+    clusters.value = [];
+    isLoading.value = false;
+  }
+
+  return {
+    // 状态
+    theme,
+    center,
+    zoom,
+    userLocation,
+    stories,
+    selectedStory,
+    clusters,
+    isLoading,
+    // 计算属性
+    storyCount,
+    hasUserLocation,
+    // 方法
+    setTheme,
+    toggleTheme,
+    updateCenter,
+    updateZoom,
+    setUserLocation,
+    clearUserLocation,
+    updateStories,
+    addStory,
+    removeStory,
+    selectStory,
+    clearSelection,
+    updateClusters,
+    setLoading,
+    reset
+  };
+});

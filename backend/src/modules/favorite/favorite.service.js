@@ -209,11 +209,11 @@ class FavoriteServiceClass {
       include: [{
         model: Story,
         as: 'story',
-        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName'],
+        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName', 'fontFamily', 'fontEffect'],
         include: [{
           model: User,
           as: 'author',
-          attributes: ['id', 'username', 'avatarUrl']
+          attributes: ['id', 'username', 'avatarUrl', 'vip']
         }]
       }],
       order: [['createdAt', 'DESC']],
@@ -253,13 +253,16 @@ class FavoriteServiceClass {
             createdAt: favorite.story?.createdAt,
             location: parseStoryLocationValue(favorite.story?.location),
             locationName: favorite.story?.locationName,
+            fontFamily: favorite.story?.fontFamily || null,
+            fontEffect: favorite.story?.fontEffect || null,
             likeCount: likeCounts[normalizedStoryId] || 0,
             favoriteCount: favoriteCounts[normalizedStoryId] || 0,
             author: favorite.story?.author
               ? {
                   id: favorite.story.author.id,
                   username: favorite.story.author.username,
-                  avatar: favorite.story.author.avatarUrl || null
+                  avatar: favorite.story.author.avatarUrl || null,
+                  vip: favorite.story.author.vip || 0
                 }
               : null
           }

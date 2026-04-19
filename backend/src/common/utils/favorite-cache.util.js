@@ -357,7 +357,7 @@ class FavoriteCacheUtil {
       include: [{
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit, 10),
@@ -371,7 +371,8 @@ class FavoriteCacheUtil {
         user: {
           id: item.userId,
           username: item.user?.username || 'Anonymous',
-          avatar: item.user?.avatarUrl || null
+          avatar: item.user?.avatarUrl || null,
+          vip: item.user?.vip || 0
         }
       })),
       pagination: {

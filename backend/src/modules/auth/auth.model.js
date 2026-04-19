@@ -72,11 +72,60 @@ export const User = sequelize.define('User', {
     field: 'user_status',
     comment: '用户状态（deleted/normal/recommended）'
   },
+  vip: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    field: 'vip',
+    comment: 'VIP状态（0非会员，1会员）',
+    validate: {
+      isIn: [[0, 1]]
+    }
+  },
+  emotionCoins: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    field: 'emotion_coins',
+    comment: '情绪币余额'
+  },
+  lastCheckInAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'last_check_in_at',
+    comment: '最近一次签到时间'
+  },
+  checkInStreak: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    field: 'check_in_streak',
+    comment: '连续签到天数'
+  },
   bio: {
     type: DataTypes.STRING(500),
     allowNull: true,
     field: 'bio',
     comment: '个性签名'
+  },
+  bioFontFamily: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    field: 'bio_font_family',
+    comment: '个性签名VIP字体'
+  },
+  bioFontEffect: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    field: 'bio_font_effect',
+    comment: '个性签名VIP字体特效'
+  },
+  commentBg: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: null,
+    field: 'comment_bg',
+    comment: 'VIP评论背景设置（{type, color, gradientColor, useGradient}）'
   }
 }, {
   tableName: 'users',

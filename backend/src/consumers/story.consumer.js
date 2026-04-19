@@ -50,7 +50,8 @@ class StoryConsumer {
       this.consumer = new SimpleConsumer({
         consumerGroup: config.storyConsumerGroup,
         endpoints: config.endpoints,
-        subscriptions: new Map([[config.topic, '*']])
+        //subscriptions: new Map([[config.topic, '*']])
+        subscriptions: new Map([[process.env.ROCKETMQ_STORY_TOPIC, '*']])
       });
 
       await this.consumer.startup();
@@ -166,27 +167,45 @@ class StoryConsumer {
    * 处理创建故事
    */
   async handleCreate(payload) {
-    const { storyId, userId, content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility, visibilityStartTime, visibilityEndTime } = payload;
+    const { storyId, userId, content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility, visibilityStartTime, visibilityEndTime, fontFamily, fontEffect, lockKey } = payload;
 
-    await Story.create({
-      id: storyId,
-      userId,
-      content,
-      images: images || [],
-      location: {
-        type: 'Point',
-        coordinates: [location.lng, location.lat]
-      },
-      locationName,
-      emotionTag,
-      isTimeCapsule: isTimeCapsule || false,
-      unlockAt: isTimeCapsule ? new Date(unlockAt) : null,
-      visibility,
-      visibilityStartTime: visibilityStartTime || null,
-      visibilityEndTime: visibilityEndTime || null
-    });
+    const redis = redisClient.getClient();
 
-    await clearUpdatingMarker(`story:raw:${storyId}`);
+    try {
+      await Story.create({
+        id: storyId,
+        userId,
+        content,
+        images: images || [],
+        location: {
+          type: 'Point',
+          coordinates: [location.lng, location.lat]
+        },
+        locationName,
+        emotionTag,
+        isTimeCapsule: isTimeCapsule || false,
+        unlockAt: isTimeCapsule ? new Date(unlockAt) : null,
+        visibility,
+        visibilityStartTime: visibilityStartTime || null,
+        visibilityEndTime: visibilityEndTime || null,
+        fontFamily: fontFamily || null,
+        fontEffect: fontEffect || null
+      });
+
+      console.log(`✅ 故事创建成功 [storyId: ${storyId}]`);
+    } catch (dbError) {
+      console.error(`❌ 故事创建失败 [storyId: ${storyId}]:`, dbError);
+
+      // 主键冲突不抛异常
+      if (dbError.name !== 'SequelizeUniqueConstraintError' && dbError.code !== '23505') {
+        throw dbError;
+      }
+    } finally {
+      // 释放锁（无论成功失败）
+      await redis.del(lockKey);
+      await clearUpdatingMarker(`story:raw:${storyId}`);
+      console.log(`🔓 锁已释放 [lockKey: ${lockKey}]`);
+    }
   }
 
   /**

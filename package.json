@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@amap/amap-jsapi-loader": "^1.0.1",
     "ali-oss": "^6.23.0",
     "qiniu": "^7.15.1"
   }

@@ -5,7 +5,7 @@ import { StoryService } from './story.service.js';
  */
 export const createStory = async (req, res, next) => {
   try {
-    const { content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility, visibilityStartTime, visibilityEndTime } = req.body;
+    const { content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility, visibilityStartTime, visibilityEndTime, fontFamily, fontEffect } = req.body;
     const userId = req.user.id;
 
     const story = await StoryService.createStory(userId, {
@@ -18,7 +18,9 @@ export const createStory = async (req, res, next) => {
       unlockAt,
       visibility,
       visibilityStartTime,
-      visibilityEndTime
+      visibilityEndTime,
+      fontFamily,
+      fontEffect
     });
 
     res.json({ code: 0, data: story });
@@ -114,6 +116,21 @@ export const modifyStory = async (req, res, next) => {
 };
 
 /**
+ * 擦亮故事
+ */
+export const polishStory = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const result = await StoryService.polishStory(id, userId);
+    res.json({ code: 0, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * 修改故事可见性
  */
 export const updateVisibility = async (req, res, next) => {
@@ -153,8 +170,9 @@ export const searchStories = async (req, res, next) => {
  */
 export const getFeaturedStories = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const result = await StoryService.getFeaturedStories({ page, limit });
+    const { page = 1, limit = 20, summary } = req.query;
+    const isSummary = summary === '1' || summary === 'true';
+    const result = await StoryService.getFeaturedStories({ page, limit, summary: isSummary });
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);
@@ -166,9 +184,9 @@ export const getFeaturedStories = async (req, res, next) => {
  */
 export const getAllStoriesForAdmin = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, visibility } = req.query;
+    const { page = 1, limit = 20, visibility, isRecommended } = req.query;
 
-    const result = await StoryService.getAllStoriesForAdmin({ page, limit, visibility });
+    const result = await StoryService.getAllStoriesForAdmin({ page, limit, visibility, isRecommended });
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);

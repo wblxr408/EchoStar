@@ -189,6 +189,27 @@ export const mockAuthApi = {
         }
       }
     };
+  },
+
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    await delay();
+    const results = mockUsers.filter(u =>
+      u.status !== 'deleted' &&
+      u.username.toLowerCase().includes(keyword.trim().toLowerCase())
+    );
+    const start = (page - 1) * limit;
+    return {
+      code: 0,
+      data: {
+        users: results.slice(start, start + limit),
+        pagination: {
+          total: results.length,
+          page,
+          limit,
+          totalPages: Math.ceil(results.length / limit)
+        }
+      }
+    };
   }
 };
 
@@ -227,7 +248,13 @@ export const mockStoryApi = {
     }
     return {
       code: 0,
-      data: story
+      data: {
+        ...story,
+        likeCount: story.likeCount ?? story.likes ?? 0,
+        commentCount: story.commentCount ?? story.comments ?? 0,
+        favoriteCount: story.favoriteCount ?? story.favorites ?? 0,
+        viewCount: story.viewCount ?? story.views ?? 0
+      }
     };
   },
 
@@ -343,10 +370,14 @@ export const mockStoryApi = {
     const limit = params.limit || 20;
     const start = (page - 1) * limit;
     const visibility = params.visibility;
+    const isRecommended = params.isRecommended;
 
     let stories = mockStories;
     if (visibility) {
       stories = stories.filter(s => s.visibility === visibility);
+    }
+    if (isRecommended === 'true' || isRecommended === true) {
+      stories = stories.filter(s => s.isRecommended);
     }
 
     return {
@@ -358,6 +389,13 @@ export const mockStoryApi = {
           content: s.content,
           visibility: s.visibility || 'public',
           createdAt: s.createdAt,
+          likeCount: s.likeCount ?? s.likes ?? 0,
+          commentCount: s.commentCount ?? s.comments ?? 0,
+          favoriteCount: s.favoriteCount ?? s.favorites ?? 0,
+          viewCount: s.viewCount ?? s.views ?? 0,
+          isRecommended: s.isRecommended || false,
+          locationName: s.locationName,
+          location: s.location,
           author: s.author || mockUser
         })),
         pagination: {
@@ -365,6 +403,27 @@ export const mockStoryApi = {
           page,
           limit,
           totalPages: Math.ceil(stories.length / limit)
+        }
+      }
+    };
+  },
+
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    await delay();
+    const results = mockUsers.filter(u =>
+      u.status !== 'deleted' &&
+      u.username.toLowerCase().includes(keyword.trim().toLowerCase())
+    );
+    const start = (page - 1) * limit;
+    return {
+      code: 0,
+      data: {
+        users: results.slice(start, start + limit),
+        pagination: {
+          total: results.length,
+          page,
+          limit,
+          totalPages: Math.ceil(results.length / limit)
         }
       }
     };
@@ -534,6 +593,27 @@ export const mockMapApi = {
         id: Date.now(),
         ...data,
         createdAt: new Date().toISOString()
+      }
+    };
+  },
+
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    await delay();
+    const results = mockUsers.filter(u =>
+      u.status !== 'deleted' &&
+      u.username.toLowerCase().includes(keyword.trim().toLowerCase())
+    );
+    const start = (page - 1) * limit;
+    return {
+      code: 0,
+      data: {
+        users: results.slice(start, start + limit),
+        pagination: {
+          total: results.length,
+          page,
+          limit,
+          totalPages: Math.ceil(results.length / limit)
+        }
       }
     };
   }
@@ -1038,6 +1118,27 @@ export const mockAdminApi = {
           page,
           pageSize,
           totalPages: Math.ceil(filteredUsers.length / pageSize)
+        }
+      }
+    };
+  },
+
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    await delay();
+    const results = mockUsers.filter(u =>
+      u.status !== 'deleted' &&
+      u.username.toLowerCase().includes(keyword.trim().toLowerCase())
+    );
+    const start = (page - 1) * limit;
+    return {
+      code: 0,
+      data: {
+        users: results.slice(start, start + limit),
+        pagination: {
+          total: results.length,
+          page,
+          limit,
+          totalPages: Math.ceil(results.length / limit)
         }
       }
     };

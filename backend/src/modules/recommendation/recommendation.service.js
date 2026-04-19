@@ -1,26 +1,63 @@
-import { Story } from '../story/story.model.js';
-import { Like } from '../like/like.model.js';
-import { User } from '../auth/auth.model.js';
-import { sequelize } from '../../config/database.js';
 import { Op } from 'sequelize';
-import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
+import { sequelize } from '../../config/database.js';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
+import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
+import { User } from '../auth/auth.model.js';
+import { Comment } from '../comment/comment.model.js';
+import { Favorite } from '../favorite/favorite.model.js';
+import { Like } from '../like/like.model.js';
+import { Story } from '../story/story.model.js';
 
-// ===================== 常量配置 =====================
 const RECOMMENDATION = {
-  CANDIDATE_POOL_SIZE: 300,
+  CANDIDATE_POOL_SIZE: 320,
   FEED_PAGE_SIZE: 20,
-  RANDOM_WALK_TOP_N: 30,
-  MAX_EXPLORE_RADIUS: 500000, // 500km，随机漫步可全国范围
-  SPATIAL_WEIGHT: 0.4,
-  TEMPORAL_WEIGHT: 0.35,
-  EMOTIONAL_WEIGHT: 0.25,
-  TEMPORAL_HALF_LIFE_DAYS: 7,
-  SPATIAL_DECAY_KM: 50,
-  HOT_ZONE_THRESHOLD: 5
+  RANDOM_WALK_TOP_N: 24,
+  MAX_EXPLORE_RADIUS: 500000,
+  LOCAL_RECALL_RADIUS: 150000,
+  RECENT_LOCAL_LIMIT: 140,
+  PREFERENCE_RECALL_LIMIT: 120,
+  AUTHOR_RECALL_LIMIT: 60,
+  TRENDING_RECALL_LIMIT: 120,
+  ADMIN_RECALL_LIMIT: 50,
+  FALLBACK_RECALL_LIMIT: 120,
+  TEMPORAL_HALF_LIFE_DAYS: 6,
+  SPATIAL_DECAY_KM: 35,
+  MAX_RERANK_SCAN: 80,
+  WEIGHTS: {
+    spatial: 0.22,
+    emotion: 0.22,
+    engagement: 0.18,
+    freshness: 0.14,
+    author: 0.08,
+    novelty: 0.06,
+    exploration: 0.06,
+    curation: 0.04
+  }
 };
 
-// ===================== 工具函数 =====================
+const STORY_ATTRIBUTES = [
+  'id',
+  'userId',
+  'content',
+  'images',
+  'location',
+  'locationName',
+  'emotionTag',
+  'isRecommended',
+  'isTimeCapsule',
+  'unlockAt',
+  'viewCount',
+  'createdAt'
+];
+
+const UNLOCKED_CONDITION = sequelize.literal(`
+  NOT (
+    is_time_capsule = true
+    AND unlock_at IS NOT NULL
+    AND unlock_at > NOW()
+  )
+`);
+
 const parsePoint = (locationVal) => {
   if (!locationVal) return { lat: 0, lng: 0 };
   if (locationVal.type === 'Point' && Array.isArray(locationVal.coordinates)) {
@@ -56,224 +93,635 @@ const normalizeStoryId = (storyId) => {
     : String(storyId).trim();
 };
 
-// ===================== 用户偏好 =====================
-async function getUserPreferredEmotionTags(userId, limit = 50) {
-  if (!userId) return {};
-  const likes = await Like.findAll({
-    where: { userId },
-    include: [{
-      model: Story,
-      as: 'story',
-      required: false,
-      attributes: ['emotionTag']
-    }],
-    order: [['createdAt', 'DESC']],
-    limit
-  });
-  const tagCounts = {};
-  for (const like of likes) {
-    const tag = like.story?.emotionTag;
-    if (tag) {
-      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-    }
-  }
-  return tagCounts;
+const incrementCounter = (target, key, weight = 1) => {
+  if (!key) return;
+  target[key] = (target[key] || 0) + weight;
+};
+
+const toTopKeys = (counter, limit) => Object.entries(counter || {})
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, limit)
+  .map(([key]) => key);
+
+function buildGridKey(story) {
+  const { lat, lng } = story._coords || parsePoint(story.location);
+  return `${Math.round(lat * 30)}_${Math.round(lng * 30)}`;
 }
 
-// ===================== 候选故事池 =====================
-async function fetchCandidateStories(options = {}) {
-  const { lat, lng, radius = RECOMMENDATION.MAX_EXPLORE_RADIUS } = options;
+async function getUserInteractionProfile(userId, limit = 80) {
+  if (!userId) {
+    return {
+      emotionCounts: {},
+      authorCounts: {},
+      interactedStoryIds: new Set(),
+      totalEmotionInteractions: 0,
+      totalAuthorInteractions: 0
+    };
+  }
+
+  const storyInclude = [{
+    model: Story,
+    as: 'story',
+    required: false,
+    attributes: ['id', 'emotionTag', 'userId']
+  }];
+
+  const [likes, favorites, comments] = await Promise.all([
+    Like.findAll({
+      where: { userId },
+      include: storyInclude,
+      order: [['createdAt', 'DESC']],
+      limit
+    }),
+    Favorite.findAll({
+      where: { userId },
+      include: storyInclude,
+      order: [['createdAt', 'DESC']],
+      limit
+    }),
+    Comment.findAll({
+      where: { userId, status: 'active' },
+      include: storyInclude,
+      order: [['createdAt', 'DESC']],
+      limit
+    })
+  ]);
+
+  const emotionCounts = {};
+  const authorCounts = {};
+  const interactedStoryIds = new Set();
+
+  const consume = (items, weight) => {
+    for (const item of items) {
+      const story = item.story;
+      if (!story) continue;
+      const storyId = normalizeStoryId(story.id);
+      interactedStoryIds.add(storyId);
+      incrementCounter(emotionCounts, story.emotionTag, weight);
+      incrementCounter(authorCounts, String(story.userId), weight);
+    }
+  };
+
+  consume(likes, 1);
+  consume(favorites, 1.3);
+  consume(comments, 1.1);
+
+  return {
+    emotionCounts,
+    authorCounts,
+    interactedStoryIds,
+    totalEmotionInteractions: Object.values(emotionCounts).reduce((sum, value) => sum + value, 0),
+    totalAuthorInteractions: Object.values(authorCounts).reduce((sum, value) => sum + value, 0)
+  };
+}
+
+function buildBaseWhere(options = {}) {
+  const {
+    lat,
+    lng,
+    radius,
+    moodFilter,
+    emotionTags,
+    authorIds,
+    adminOnly,
+    excludeStoryIds
+  } = options;
+
   const where = {
     visibility: 'public',
     location: { [Op.not]: null },
-    [Op.and]: [getVisibilityTimeCondition()]
+    [Op.and]: [getVisibilityTimeCondition(), UNLOCKED_CONDITION]
   };
 
-  let replacements = {};
-  let spatialCondition = null;
-  if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
-    spatialCondition = sequelize.literal(`
+  if (moodFilter) {
+    where.emotionTag = moodFilter;
+  } else if (Array.isArray(emotionTags) && emotionTags.length > 0) {
+    where.emotionTag = { [Op.in]: emotionTags };
+  }
+
+  if (Array.isArray(authorIds) && authorIds.length > 0) {
+    where.userId = { [Op.in]: authorIds };
+  }
+
+  if (adminOnly) {
+    where.isRecommended = true;
+  }
+
+  if (Array.isArray(excludeStoryIds) && excludeStoryIds.length > 0) {
+    where.id = { [Op.notIn]: excludeStoryIds };
+  }
+
+  let replacements;
+  if (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Number.isFinite(radius) &&
+    radius > 0
+  ) {
+    where[Op.and].push(sequelize.literal(`
       ST_DWithin(
         location,
         ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
         :radius
       )
-    `);
+    `));
     replacements = { lat, lng, radius };
-    where[Op.and].push(spatialCondition);
   }
+
+  return { where, replacements };
+}
+
+async function fetchStoriesByRecall(options = {}) {
+  const {
+    lat,
+    lng,
+    radius,
+    moodFilter,
+    emotionTags,
+    authorIds,
+    adminOnly = false,
+    excludeStoryIds,
+    limit = RECOMMENDATION.CANDIDATE_POOL_SIZE,
+    order = [['createdAt', 'DESC']]
+  } = options;
+
+  const { where, replacements } = buildBaseWhere({
+    lat,
+    lng,
+    radius,
+    moodFilter,
+    emotionTags,
+    authorIds,
+    adminOnly,
+    excludeStoryIds
+  });
 
   const stories = await Story.findAll({
     where,
-    replacements: Object.keys(replacements).length ? replacements : undefined,
-    attributes: ['id', 'content', 'images', 'location', 'locationName', 'emotionTag', 'isRecommended', 'createdAt'],
+    replacements,
+    attributes: STORY_ATTRIBUTES,
     include: [{
       model: User,
       as: 'author',
-      attributes: ['id', 'username', 'avatarUrl']
+      attributes: ['id', 'username', 'avatarUrl', 'vip', 'status']
     }],
-    order: [['createdAt', 'DESC']],
-    limit: RECOMMENDATION.CANDIDATE_POOL_SIZE
+    order,
+    limit
   });
 
-  return stories.map(s => {
-    const plain = s.get({ plain: true });
-    // 确保雪花ID始终为字符串，防止JS精度丢失导致负数截断
+  return stories.map((story) => {
+    const plain = story.get({ plain: true });
     plain.id = normalizeStoryId(plain.id);
-    return {
-      ...plain,
-      _coords: parsePoint(s.location)
-    };
+    plain._coords = parsePoint(story.location);
+    return plain;
   });
 }
 
-// ===================== 评分函数 =====================
-function computeSpatialScore(story, userLat, userLng, gridCountMap) {
-  const { lat, lng } = story._coords || parsePoint(story.location);
-  let distanceScore = 1;
-  if (userLat != null && userLng != null && Number.isFinite(userLat) && Number.isFinite(userLng)) {
-    const distKm = haversineKm(userLat, userLng, lat, lng);
-    distanceScore = 1 / (1 + distKm / RECOMMENDATION.SPATIAL_DECAY_KM);
+function mergeCandidateStories(candidateGroups = []) {
+  const merged = [];
+  const seen = new Set();
+
+  for (const group of candidateGroups) {
+    for (const story of group || []) {
+      const storyId = normalizeStoryId(story.id);
+      if (!storyId || seen.has(storyId)) continue;
+      seen.add(storyId);
+      merged.push(story);
+      if (merged.length >= RECOMMENDATION.CANDIDATE_POOL_SIZE) {
+        return merged;
+      }
+    }
   }
-  const gridKey = `${Math.round(lat * 50)}_${Math.round(lng * 50)}`;
-  const gridCount = gridCountMap[gridKey] || 0;
-  const hotZoneBonus = Math.min(0.3, (gridCount / RECOMMENDATION.HOT_ZONE_THRESHOLD) * 0.1);
-  const adminBonus = story.isRecommended ? 0.2 : 0;
-  return Math.min(1, distanceScore + hotZoneBonus + adminBonus);
+
+  return merged;
 }
 
-function computeTemporalScore(story) {
+async function recallCandidateStories(options = {}) {
+  const { userId, lat, lng, moodFilter } = options;
+  const profile = await getUserInteractionProfile(userId);
+  const preferredEmotionTags = moodFilter ? [] : toTopKeys(profile.emotionCounts, 3);
+  const preferredAuthorIds = toTopKeys(profile.authorCounts, 2)
+    .map((id) => parseInt(id, 10))
+    .filter(Number.isFinite);
+
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+
+  const recallTasks = [
+    hasCoords
+      ? fetchStoriesByRecall({
+          lat,
+          lng,
+          radius: RECOMMENDATION.LOCAL_RECALL_RADIUS,
+          moodFilter,
+          limit: RECOMMENDATION.RECENT_LOCAL_LIMIT,
+          order: [['createdAt', 'DESC']]
+        })
+      : fetchStoriesByRecall({
+          moodFilter,
+          limit: RECOMMENDATION.RECENT_LOCAL_LIMIT,
+          order: [['createdAt', 'DESC']]
+        }),
+    moodFilter || preferredEmotionTags.length > 0
+      ? fetchStoriesByRecall({
+          moodFilter,
+          emotionTags: preferredEmotionTags,
+          limit: RECOMMENDATION.PREFERENCE_RECALL_LIMIT,
+          order: [['createdAt', 'DESC']]
+        })
+      : Promise.resolve([]),
+    preferredAuthorIds.length > 0
+      ? fetchStoriesByRecall({
+          moodFilter,
+          authorIds: preferredAuthorIds,
+          limit: RECOMMENDATION.AUTHOR_RECALL_LIMIT,
+          order: [['createdAt', 'DESC']]
+        })
+      : Promise.resolve([]),
+    fetchStoriesByRecall({
+      moodFilter,
+      limit: RECOMMENDATION.TRENDING_RECALL_LIMIT,
+      order: [
+        [sequelize.literal('is_recommended DESC NULLS LAST')],
+        ['viewCount', 'DESC'],
+        ['createdAt', 'DESC']
+      ]
+    }),
+    fetchStoriesByRecall({
+      moodFilter,
+      adminOnly: true,
+      limit: RECOMMENDATION.ADMIN_RECALL_LIMIT,
+      order: [['createdAt', 'DESC']]
+    })
+  ];
+
+  const candidateGroups = await Promise.all(recallTasks);
+  let candidates = mergeCandidateStories(candidateGroups);
+
+  if (candidates.length < RECOMMENDATION.CANDIDATE_POOL_SIZE) {
+    const fallbackStories = await fetchStoriesByRecall({
+      moodFilter,
+      excludeStoryIds: candidates.map((story) => story.id),
+      limit: RECOMMENDATION.FALLBACK_RECALL_LIMIT,
+      order: [['createdAt', 'DESC']]
+    });
+
+    candidates = mergeCandidateStories([...candidateGroups, fallbackStories]);
+  }
+
+  return { candidates, profile };
+}
+
+async function fetchStoryMetrics(storyIds = []) {
+  if (storyIds.length === 0) {
+    return {
+      likeCounts: {},
+      favoriteCounts: {},
+      commentCounts: {}
+    };
+  }
+
+  const [likes, favorites, comments] = await Promise.all([
+    Like.findAll({
+      where: { story_id: { [Op.in]: storyIds } },
+      attributes: [
+        ['story_id', 'storyId'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['story_id'],
+      raw: true
+    }),
+    Favorite.findAll({
+      where: { story_id: { [Op.in]: storyIds } },
+      attributes: [
+        ['story_id', 'storyId'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['story_id'],
+      raw: true
+    }),
+    Comment.findAll({
+      where: { story_id: { [Op.in]: storyIds }, status: 'active' },
+      attributes: [
+        ['story_id', 'storyId'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['story_id'],
+      raw: true
+    })
+  ]);
+
+  const buildMap = (rows) => rows.reduce((acc, row) => {
+    acc[normalizeStoryId(row.storyId)] = Number(row.count || 0);
+    return acc;
+  }, {});
+
+  return {
+    likeCounts: buildMap(likes),
+    favoriteCounts: buildMap(favorites),
+    commentCounts: buildMap(comments)
+  };
+}
+
+function buildGridCountMap(stories) {
+  return stories.reduce((acc, story) => {
+    const key = buildGridKey(story);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function computeSpatialScore(story, userLat, userLng) {
+  if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+    return 0.6;
+  }
+
+  const { lat, lng } = story._coords || parsePoint(story.location);
+  const distKm = haversineKm(userLat, userLng, lat, lng);
+  return Math.exp(-distKm / RECOMMENDATION.SPATIAL_DECAY_KM);
+}
+
+function computeFreshnessScore(story) {
   const createdAt = story.createdAt ? new Date(story.createdAt) : new Date();
   const ageDays = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
   return Math.exp(-ageDays * Math.LN2 / RECOMMENDATION.TEMPORAL_HALF_LIFE_DAYS);
 }
 
-function computeEmotionalScore(story, userPreferredTags, moodFilter) {
-  const tag = story.emotionTag || '';
-  if (moodFilter && tag === moodFilter) return 1;
-  if (Object.keys(userPreferredTags || {}).length > 0) {
-    const total = Object.values(userPreferredTags).reduce((a, b) => a + b, 0);
-    const weight = (userPreferredTags[tag] || 0) / total;
-    return 0.3 + 0.7 * Math.min(1, weight * 3);
+function computeEmotionScore(story, profile, moodFilter) {
+  if (moodFilter) {
+    return story.emotionTag === moodFilter ? 1 : 0;
   }
-  return 0.5;
+
+  if (!profile.totalEmotionInteractions) {
+    return story.emotionTag ? 0.6 : 0.5;
+  }
+
+  const matchWeight = (profile.emotionCounts[story.emotionTag] || 0) / profile.totalEmotionInteractions;
+  return Math.min(1, 0.35 + matchWeight * 2.5);
 }
 
-// ===================== 主推荐逻辑 =====================
-function buildGridCountMap(stories) {
-  const map = {};
-  for (const s of stories) {
-    const { lat, lng } = s._coords || parsePoint(s.location);
-    const key = `${Math.round(lat * 50)}_${Math.round(lng * 50)}`;
-    map[key] = (map[key] || 0) + 1;
+function computeAuthorScore(story, profile) {
+  const authorId = String(story.author?.id || story.userId || '');
+  const affinity = profile.totalAuthorInteractions
+    ? (profile.authorCounts[authorId] || 0) / profile.totalAuthorInteractions
+    : 0;
+
+  let score = 0.45 + Math.min(0.28, affinity * 1.8);
+
+  if (story.author?.vip) {
+    score += 0.08;
   }
-  return map;
+
+  if (story.author?.status === 'recommended') {
+    score += 0.08;
+  }
+
+  if (story.isRecommended) {
+    score += 0.08;
+  }
+
+  return Math.min(1, score);
 }
 
-function scoreAndSortStories(stories, options) {
-  const { userLat, userLng, userPreferredTags, moodFilter } = options;
+function computeEngagementInputs(story, metrics) {
+  const storyId = normalizeStoryId(story.id);
+  const likeCount = metrics.likeCounts[storyId] || 0;
+  const favoriteCount = metrics.favoriteCounts[storyId] || 0;
+  const commentCount = metrics.commentCounts[storyId] || 0;
+  const viewCount = Number(story.viewCount || 0);
+  const rawEngagement = likeCount + favoriteCount * 1.6 + commentCount * 1.8 + Math.log1p(viewCount) * 0.35;
+
+  return { likeCount, favoriteCount, commentCount, viewCount, rawEngagement };
+}
+
+function computeNoveltyScore(story, profile) {
+  const storyId = normalizeStoryId(story.id);
+  if (profile.interactedStoryIds.has(storyId)) {
+    return 0.08;
+  }
+
+  const authorId = String(story.author?.id || story.userId || '');
+  const authorSeen = profile.authorCounts[authorId] || 0;
+  if (authorSeen >= 3) {
+    return 0.55;
+  }
+
+  return 0.92;
+}
+
+function computeExplorationScore(story, engagementInputs, gridCountMap, maxGridCount) {
+  const gridKey = buildGridKey(story);
+  const gridDensity = gridCountMap[gridKey] || 1;
+  const sparseAreaScore = 1 - Math.min(1, gridDensity / Math.max(1, maxGridCount));
+  const coldStartScore = 1 - Math.min(1, engagementInputs.rawEngagement / 6);
+  return (sparseAreaScore + coldStartScore) / 2;
+}
+
+function scoreCandidates(stories, options = {}) {
+  const { userLat, userLng, moodFilter, profile, metrics } = options;
   const gridCountMap = buildGridCountMap(stories);
+  const maxGridCount = Math.max(1, ...Object.values(gridCountMap));
 
-  const scored = stories.map(story => {
-    const spatial = computeSpatialScore(story, userLat, userLng, gridCountMap);
-    const temporal = computeTemporalScore(story);
-    const emotional = computeEmotionalScore(story, userPreferredTags, moodFilter);
+  const engagementByStory = {};
+  let maxEngagement = 1;
+  for (const story of stories) {
+    const storyId = normalizeStoryId(story.id);
+    const inputs = computeEngagementInputs(story, metrics);
+    engagementByStory[storyId] = inputs;
+    maxEngagement = Math.max(maxEngagement, inputs.rawEngagement);
+  }
+
+  return stories.map((story) => {
+    const storyId = normalizeStoryId(story.id);
+    const engagementInputs = engagementByStory[storyId];
+
+    const spatial = computeSpatialScore(story, userLat, userLng);
+    const emotion = computeEmotionScore(story, profile, moodFilter);
+    const engagement = Math.min(1, engagementInputs.rawEngagement / maxEngagement);
+    const freshness = computeFreshnessScore(story);
+    const author = computeAuthorScore(story, profile);
+    const novelty = computeNoveltyScore(story, profile);
+    const exploration = computeExplorationScore(story, engagementInputs, gridCountMap, maxGridCount);
+    const curation = story.isRecommended ? 1 : 0;
+
     const total =
-      spatial * RECOMMENDATION.SPATIAL_WEIGHT +
-      temporal * RECOMMENDATION.TEMPORAL_WEIGHT +
-      emotional * RECOMMENDATION.EMOTIONAL_WEIGHT;
-    return { story, total, spatial, temporal, emotional };
-  });
+      spatial * RECOMMENDATION.WEIGHTS.spatial +
+      emotion * RECOMMENDATION.WEIGHTS.emotion +
+      engagement * RECOMMENDATION.WEIGHTS.engagement +
+      freshness * RECOMMENDATION.WEIGHTS.freshness +
+      author * RECOMMENDATION.WEIGHTS.author +
+      novelty * RECOMMENDATION.WEIGHTS.novelty +
+      exploration * RECOMMENDATION.WEIGHTS.exploration +
+      curation * RECOMMENDATION.WEIGHTS.curation;
 
-  scored.sort((a, b) => b.total - a.total);
-  return scored;
+    return {
+      story,
+      total,
+      spatial,
+      emotion,
+      engagement,
+      freshness,
+      author,
+      novelty,
+      exploration,
+      curation,
+      gridKey: buildGridKey(story)
+    };
+  }).sort((a, b) => b.total - a.total);
 }
 
-function formatStoryForResponse(story) {
+function rerankStories(scoredStories, options = {}) {
+  const { moodFilter } = options;
+  const selected = [];
+  const remaining = [...scoredStories];
+  const authorCounts = {};
+  const emotionCounts = {};
+  const gridCounts = {};
+
+  while (remaining.length > 0) {
+    const scanLimit = Math.min(remaining.length, RECOMMENDATION.MAX_RERANK_SCAN);
+    let bestIndex = 0;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < scanLimit; i += 1) {
+      const item = remaining[i];
+      const authorId = String(item.story.author?.id || item.story.userId || '');
+      const emotionTag = item.story.emotionTag || '';
+      const authorPenalty = (authorCounts[authorId] || 0) * 0.1;
+      const emotionPenalty = moodFilter ? 0 : (emotionCounts[emotionTag] || 0) * 0.05;
+      const gridPenalty = (gridCounts[item.gridKey] || 0) * 0.07;
+      const explorationBonus = selected.length < 6 ? item.exploration * 0.04 : 0;
+      const rerankScore = item.total - authorPenalty - emotionPenalty - gridPenalty + explorationBonus;
+
+      if (rerankScore > bestScore) {
+        bestScore = rerankScore;
+        bestIndex = i;
+      }
+    }
+
+    const [picked] = remaining.splice(bestIndex, 1);
+    picked.rerankScore = bestScore;
+    selected.push(picked);
+
+    const authorId = String(picked.story.author?.id || picked.story.userId || '');
+    const emotionTag = picked.story.emotionTag || '';
+    authorCounts[authorId] = (authorCounts[authorId] || 0) + 1;
+    emotionCounts[emotionTag] = (emotionCounts[emotionTag] || 0) + 1;
+    gridCounts[picked.gridKey] = (gridCounts[picked.gridKey] || 0) + 1;
+  }
+
+  return selected;
+}
+
+function weightedRandomPick(items) {
+  if (!items.length) return null;
+
+  const weights = items.map((item) => Math.max(0.05, item.rerankScore || item.total) * (1 + item.exploration * 0.2));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  let cursor = Math.random() * totalWeight;
+
+  for (let i = 0; i < items.length; i += 1) {
+    cursor -= weights[i];
+    if (cursor <= 0) {
+      return items[i];
+    }
+  }
+
+  return items[items.length - 1];
+}
+
+function formatStoryForResponse(story, options = {}) {
   const { lat, lng } = story._coords || parsePoint(story.location);
+  const rawImages = safeParseJSONB(story.images, []);
+
   return {
     id: normalizeStoryId(story.id),
     content: story.content,
-    images: safeParseJSONB(story.images, []),
+    images: options.summary && rawImages.length > 1 ? [rawImages[0]] : rawImages,
     username: story.author?.username || story.username || '',
     avatar: story.author?.avatarUrl || story.avatar || null,
     author: story.author
       ? {
           id: story.author.id,
           username: story.author.username || '匿名用户',
-          avatar: story.author.avatarUrl || null
+          avatar: story.author.avatarUrl || null,
+          vip: story.author.vip || 0
         }
       : null,
     location: { latitude: lat, longitude: lng },
     locationName: story.locationName,
     emotionTag: story.emotionTag,
     isRecommended: story.isRecommended,
+    fontFamily: story.fontFamily || null,
+    fontEffect: story.fontEffect || null,
     createdAt: story.createdAt
   };
 }
 
-// ===================== 导出服务 =====================
+async function buildRecommendationList(options = {}) {
+  const { userId, lat, lng, moodFilter } = options;
+  const { candidates, profile } = await recallCandidateStories({ userId, lat, lng, moodFilter });
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const metrics = await fetchStoryMetrics(candidates.map((story) => story.id));
+  const scored = scoreCandidates(candidates, {
+    userLat: lat,
+    userLng: lng,
+    moodFilter,
+    profile,
+    metrics
+  });
+
+  return rerankStories(scored, { moodFilter });
+}
+
 export const RecommendationService = {
   async randomWalk(options = {}) {
-    const { userId, lat, lng, moodFilter } = options;
-    const userPreferredTags = await getUserPreferredEmotionTags(userId);
-    const candidates = await fetchCandidateStories({
-      lat: lat ?? 39.9,
-      lng: lng ?? 116.4,
-      radius: RECOMMENDATION.MAX_EXPLORE_RADIUS
-    });
+    const { lat, lng, moodFilter } = options;
+    const rankedStories = await buildRecommendationList(options);
+    const topStories = rankedStories.slice(0, RECOMMENDATION.RANDOM_WALK_TOP_N);
+    const picked = weightedRandomPick(topStories);
 
-    if (candidates.length === 0) return null;
+    if (!picked) {
+      return null;
+    }
 
-    const scored = scoreAndSortStories(candidates, {
-      userLat: lat,
-      userLng: lng,
-      userPreferredTags,
-      moodFilter
-    });
-
-    const topN = scored.slice(0, RECOMMENDATION.RANDOM_WALK_TOP_N);
-    const pick = topN[Math.floor(Math.random() * topN.length)];
-    if (!pick) return null;
-
-    const { story } = pick;
-    const { lat: slat, lng: slng } = story._coords || parsePoint(story.location);
+    const story = picked.story;
+    const { lat: storyLat, lng: storyLng } = story._coords || parsePoint(story.location);
 
     return {
-      location: { latitude: slat, longitude: slng },
-      story: formatStoryForResponse(story)
+      location: { latitude: storyLat, longitude: storyLng },
+      story: formatStoryForResponse(story, {
+        lat: Number.isFinite(lat) ? lat : undefined,
+        lng: Number.isFinite(lng) ? lng : undefined,
+        moodFilter
+      })
     };
   },
 
   async getFeed(options = {}) {
-    const { userId, lat, lng, moodFilter, page = 1, limit = RECOMMENDATION.FEED_PAGE_SIZE } = options;
-    const userPreferredTags = await getUserPreferredEmotionTags(userId);
-    const candidates = await fetchCandidateStories({
-      lat: lat ?? 39.9,
-      lng: lng ?? 116.4,
-      radius: RECOMMENDATION.MAX_EXPLORE_RADIUS
-    });
+    const {
+      page = 1,
+      limit = RECOMMENDATION.FEED_PAGE_SIZE,
+      summary
+    } = options;
 
-    const scored = scoreAndSortStories(candidates, {
-      userLat: lat,
-      userLng: lng,
-      userPreferredTags,
-      moodFilter
-    });
-
+    const rankedStories = await buildRecommendationList(options);
     const offset = (page - 1) * limit;
-    const pageItems = scored.slice(offset, offset + limit);
+    const pageItems = rankedStories.slice(offset, offset + limit);
 
     return {
       stories: pageItems.map(({ story }) => ({
-        ...formatStoryForResponse(story),
-        content: story.content?.length > 100 ? story.content.substring(0, 100) + '...' : story.content
+        ...formatStoryForResponse(story, { summary }),
+        content: story.content?.length > 100 ? `${story.content.substring(0, 100)}...` : story.content
       })),
       pagination: {
-        total: scored.length,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(scored.length / limit)
+        total: rankedStories.length,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        totalPages: Math.ceil(rankedStories.length / limit)
       }
     };
   }

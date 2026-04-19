@@ -146,6 +146,32 @@ export const unbanUser = async (req, res, next) => {
 };
 
 /**
+ * 升级用户为VIP
+ */
+export const upgradeUserToVip = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { days = 30 } = req.body;
+    const adminId = req.user.id;
+
+    const result = await AdminService.upgradeUserToVip(userId, adminId, days);
+    res.json({
+      code: 0,
+      message: '升级成功',
+      data: result
+    });
+  } catch (error) {
+    if (error.name === 'AdminError') {
+      return res.status(error.statusCode || 400).json({
+        code: error.statusCode || 400,
+        message: error.message
+      });
+    }
+    next(error);
+  }
+};
+
+/**
  * 数据统计
  */
 export const getStatistics = async (req, res, next) => {

@@ -108,21 +108,43 @@
               v-for="story in filteredStories"
               :key="story.id"
               class="story-card"
+              :class="{
+                'is-shadowbanned': story.isShadowbanned,
+                'has-story-badge': story.isShadowbanned || story.isRecommended
+              }"
               @click="openStoryDetail(story.id)"
             >
               <div class="story-badges">
-                  <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
-                </div>
+                <span v-if="story.isRecommended && !story.isShadowbanned" class="badge recommended">⭐ 已推荐</span>
+                <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
+              </div>
               <div class="story-content">
-                <p class="story-text">{{ story.content }}</p>
-                <div class="story-tags">
-                  <span class="emotion-tag">{{ story.emotionTag || story.emotion }}</span>
-                  <span class="location-tag">📍 {{ story.locationName || story.location }}</span>
-                </div>
-                <div class="story-stats">
-                  <span>❤️ {{ story.likeCount || story.likes || 0 }}</span>
-                  <span>💬 {{ story.commentCount || story.comments || 0 }}</span>
-                  <span>👁️ {{ story.viewCount || story.views || 0 }}</span>
+                <p class="story-text" :title="story.content">{{ story.content }}</p>
+                <div class="story-meta">
+                  <div class="story-tags">
+                    <span class="emotion-tag">{{ story.emotionTag || story.emotion }}</span>
+                    <span class="location-tag" :title="story.locationName || formatLocation(story.location)">
+                      📍 {{ story.locationName || formatLocation(story.location) }}
+                    </span>
+                  </div>
+                  <div class="story-stats">
+                    <span class="story-stat-item">
+                      <span class="story-stat-label">点赞</span>
+                      <span class="story-stat-value">{{ story.likeCount }}</span>
+                    </span>
+                    <span class="story-stat-item">
+                      <span class="story-stat-label">评论</span>
+                      <span class="story-stat-value">{{ story.commentCount }}</span>
+                    </span>
+                    <span class="story-stat-item">
+                      <span class="story-stat-label">收藏</span>
+                      <span class="story-stat-value">{{ story.favoriteCount }}</span>
+                    </span>
+                    <span class="story-stat-item">
+                      <span class="story-stat-label">浏览</span>
+                      <span class="story-stat-value">{{ story.viewCount }}</span>
+                    </span>
+                  </div>
                 </div>
               </div>
               <div class="story-actions" @click.stop>
@@ -159,6 +181,13 @@
                 </button>
               </div>
             </div>
+          </div>
+
+          <!-- 翻页控件 -->
+          <div v-if="storyTotalPages > 1" class="pagination">
+            <button class="page-btn" :disabled="storyPage <= 1" @click="storyPrevPage">上一页</button>
+            <span class="page-info">第 {{ storyPage }} / {{ storyTotalPages }} 页（共 {{ storyPagination.total }} 条）</span>
+            <button class="page-btn" :disabled="storyPage >= storyTotalPages" @click="storyNextPage">下一页</button>
           </div>
         </section>
 
@@ -216,17 +245,32 @@
                 </tr>
               </tbody>
             </table>
+            <div v-if="bannedUserPage < bannedUserPagination.totalPages" class="load-more-bar">
+              <button class="load-more-btn" :disabled="bannedUserLoadingMore" @click="loadMoreBannedUsers">
+                {{ bannedUserLoadingMore ? '加载中...' : '加载更多' }}
+              </button>
+              <span class="page-info">{{ bannedUsers.length }} / {{ bannedUserPagination.total }} 条</span>
+            </div>
+            <div v-else-if="bannedUsers.length > 0" class="load-more-bar">
+              <span class="page-info">已加载全部 {{ bannedUserPagination.total }} 条</span>
+            </div>
           </div>
 
           <!-- 正常用户 -->
           <div v-if="userFilter === 'normal'" class="users-list">
             <div class="search-bar">
-              <input v-model="userSearch" placeholder="搜索用户..." class="search-input">
+              <select v-model="userSearchType" class="search-type-select">
+                <option value="username">用户名</option>
+                <option value="email">邮箱</option>
+                <option value="id">用户ID</option>
+              </select>
+              <input v-model="userSearch" :placeholder="searchPlaceholder" class="search-input">
             </div>
             <table class="users-table">
               <thead>
                 <tr>
                   <th>用户信息</th>
+                  <th>VIP状态</th>
                   <th>发布故事</th>
                   <th>注册时间</th>
                   <th>操作</th>
@@ -238,22 +282,42 @@
                     <div class="user-cell">
                       <img :src="user.avatar" class="user-avatar">
                       <div class="user-info">
-                        <span class="user-name">{{ user.name }}</span>
+                        <span class="user-name">{{ user.name }} <span v-if="user.vip" class="vip-badge">VIP</span></span>
                         <span class="user-email">{{ user.email }}</span>
+                        <span class="user-id">ID: {{ user.id }}</span>
                       </div>
                     </div>
+                  </td>
+                  <td>
+                    <span v-if="user.vip" class="vip-status active">👑 VIP会员</span>
+                    <span v-else class="vip-status inactive">普通用户</span>
                   </td>
                   <td>{{ user.storyCount }}</td>
                   <td>{{ formatShortTime(user.createdAt) }}</td>
                   <td>
-                    <!-- API 8.4 封禁 -->
-                    <button class="btn-ban" @click="showBanDialog(user.id)">
-                      封禁
-                    </button>
+                    <div class="user-action-btns">
+                      <!-- API 升级VIP -->
+                      <button class="btn-vip-upgrade" @click="showUpgradeVipDialog(user.id)">
+                        👑 升级VIP
+                      </button>
+                      <!-- API 8.4 封禁 -->
+                      <button class="btn-ban" @click="showBanDialog(user.id)">
+                        封禁
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
             </table>
+            <div v-if="!userSearch && normalUserPage < normalUserPagination.totalPages" class="load-more-bar">
+              <button class="load-more-btn" :disabled="normalUserLoadingMore" @click="loadMoreNormalUsers">
+                {{ normalUserLoadingMore ? '加载中...' : '加载更多' }}
+              </button>
+              <span class="page-info">{{ normalUsers.length }} / {{ normalUserPagination.total }} 条</span>
+            </div>
+            <div v-else-if="!userSearch && normalUsers.length > 0" class="load-more-bar">
+              <span class="page-info">已加载全部 {{ normalUserPagination.total }} 条</span>
+            </div>
           </div>
         </section>
 
@@ -364,6 +428,7 @@
               <span class="detail-time">{{ formatShortTime(storyDetail.createdAt) }}</span>
             </div>
             <div class="detail-badges">
+              <span v-if="storyDetail.isRecommended && storyDetail.visibility !== 'shadowban'" class="badge-sm recommended">⭐ 已推荐</span>
               <span v-if="storyDetail.visibility === 'shadowban'" class="badge-sm shadowbanned">👻 已隐藏</span>
               <span v-if="storyDetail.isTimeCapsule" class="badge-sm capsule">⏳ 时光胶囊</span>
             </div>
@@ -401,6 +466,11 @@
               <span class="stat-icon">💬</span>
               <span class="stat-num">{{ storyDetail.commentCount || 0 }}</span>
               <span class="stat-label">评论</span>
+            </div>
+            <div class="detail-stat">
+              <span class="stat-icon">⭐</span>
+              <span class="stat-num">{{ storyDetail.favoriteCount || 0 }}</span>
+              <span class="stat-label">收藏</span>
             </div>
             <div class="detail-stat">
               <span class="stat-icon">👁️</span>
@@ -462,6 +532,62 @@
         <div class="modal-actions">
           <button class="btn-cancel" @click="showBanModal = false">取消</button>
           <button class="btn-confirm" @click="confirmBan">确认封禁</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIP升级确认弹窗 -->
+    <div v-if="showVipUpgradeModal" class="modal-overlay" @click.self="showVipUpgradeModal = false">
+      <div class="modal-content vip-upgrade-modal">
+        <h3>👑 升级VIP会员</h3>
+        <div v-if="vipUpgradeUser" class="vip-upgrade-info">
+          <div class="vip-info-card">
+            <div class="vip-info-row">
+              <span class="vip-info-label">用户ID</span>
+              <span class="vip-info-value">{{ vipUpgradeUser.id }}</span>
+            </div>
+            <div class="vip-info-row">
+              <span class="vip-info-label">用户名</span>
+              <span class="vip-info-value">{{ vipUpgradeUser.name }}</span>
+            </div>
+            <div class="vip-info-row">
+              <span class="vip-info-label">邮箱</span>
+              <span class="vip-info-value">{{ vipUpgradeUser.email }}</span>
+            </div>
+            <div class="vip-info-row">
+              <span class="vip-info-label">注册时间</span>
+              <span class="vip-info-value">{{ formatShortTime(vipUpgradeUser.createdAt) }}</span>
+            </div>
+            <div class="vip-info-row">
+              <span class="vip-info-label">当前VIP状态</span>
+              <span class="vip-info-value" :class="vipUpgradeUser.vip ? 'vip-active' : 'vip-inactive'">
+                {{ vipUpgradeUser.vip ? '👑 VIP会员' : '普通用户' }}
+              </span>
+            </div>
+          </div>
+          <div class="vip-duration-select">
+            <label>VIP有效期</label>
+            <select v-model="vipUpgradeDays">
+              <option :value="7">7天</option>
+              <option :value="30">30天</option>
+              <option :value="90">90天</option>
+              <option :value="180">180天</option>
+              <option :value="365">365天</option>
+            </select>
+          </div>
+          <p v-if="vipUpgradeUser.vip" class="vip-extend-tip">
+            该用户当前已是VIP会员，升级将在原到期时间基础上延长 {{ vipUpgradeDays }} 天。
+          </p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="showVipUpgradeModal = false">取消</button>
+          <button
+            class="btn-confirm btn-vip-confirm"
+            :disabled="vipUpgrading"
+            @click="confirmUpgradeVip"
+          >
+            {{ vipUpgrading ? '升级中...' : '确认升级' }}
+          </button>
         </div>
       </div>
     </div>
@@ -603,37 +729,78 @@ watch(currentTab, (newTab) => {
 // ============ 故事管理（API 2.10, 8.1-8.3） ============
 const storyFilter = ref('all');
 const stories = ref([]);
+const storyPage = ref(1);
+const storyPageSize = 10;
+const storyPagination = ref({ total: 0, page: 1, limit: 10, totalPages: 0 });
 
 const filteredStories = computed(() => {
-  if (storyFilter.value === 'recommended') {
-    return stories.value.filter(s => s.isRecommended);
-  }
-  if (storyFilter.value === 'shadowbanned') {
-    return stories.value.filter(s => s.visibility === 'shadowban');
-  }
   return stories.value;
 });
 
+const storyTotalPages = computed(() => storyPagination.value.totalPages || 0);
+
+function toCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) ? count : 0;
+}
+
+function normalizeAdminStory(story) {
+  return {
+    ...story,
+    likeCount: toCount(story.likeCount ?? story.likes),
+    commentCount: toCount(story.commentCount ?? story.comments),
+    favoriteCount: toCount(story.favoriteCount ?? story.favorites),
+    viewCount: toCount(story.viewCount ?? story.views),
+    isRecommended: Boolean(story.isRecommended),
+    isShadowbanned: story.visibility === 'shadowban'
+  };
+}
+
 async function loadStories() {
   try {
-    const params = {};
+    const params = {
+      page: storyPage.value,
+      limit: storyPageSize,
+    };
     if (storyFilter.value === 'shadowbanned') {
       params.visibility = 'shadowban';
+    } else if (storyFilter.value === 'recommended') {
+      params.isRecommended = 'true';
     }
     const response = await storyApi.getAdminStories(params);
     const data = response.data || response;
-    stories.value = (data?.stories || []).map(s => ({
-      ...s,
-      isRecommended: s.isRecommended || false,
-      isShadowbanned: s.visibility === 'shadowban'
-    }));
+    stories.value = (data?.stories || []).map(normalizeAdminStory);
+    if (data?.pagination) {
+      storyPagination.value = data.pagination;
+    }
   } catch (error) {
     console.error('加载故事列表失败:', error);
   }
 }
 
 function refreshStories() {
+  storyPage.value = 1;
   loadStories();
+}
+
+// 切换筛选时重置页码
+watch(storyFilter, () => {
+  storyPage.value = 1;
+  loadStories();
+});
+
+function storyPrevPage() {
+  if (storyPage.value > 1) {
+    storyPage.value--;
+    loadStories();
+  }
+}
+
+function storyNextPage() {
+  if (storyPage.value < storyTotalPages.value) {
+    storyPage.value++;
+    loadStories();
+  }
 }
 
 // ============ 故事详情弹窗 ============
@@ -652,7 +819,11 @@ async function openStoryDetail(storyId) {
     const data = response.data || response;
     storyDetail.value = {
       ...data,
-      isRecommended: data.isRecommended || false
+      likeCount: toCount(data.likeCount),
+      commentCount: toCount(data.commentCount),
+      favoriteCount: toCount(data.favoriteCount),
+      viewCount: toCount(data.viewCount),
+      isRecommended: Boolean(data.isRecommended)
     };
   } catch (error) {
     console.error('加载故事详情失败:', error);
@@ -671,7 +842,10 @@ function formatLocation(loc) {
 }
 
 async function handleRecommendFromDetail(storyId) {
-  const reason = await showPrompt('请输入推荐理由：');
+  const reason = await showPrompt('请输入推荐理由：', {
+    theme: 'light',
+    placeholder: '例如：内容优质、值得优先展示'
+  });
   if (reason === null || !reason.trim()) return;
   try {
     const response = await adminApi.recommend(storyId, reason);
@@ -710,7 +884,10 @@ async function handleUnrecommendFromDetail(storyId) {
 }
 
 async function handleShadowbanFromDetail(storyId) {
-  const reason = await showPrompt('请输入隐藏理由：');
+  const reason = await showPrompt('请输入隐藏理由：', {
+    theme: 'light',
+    placeholder: '例如：包含违规内容，需要临时隐藏'
+  });
   if (reason === null || !reason.trim()) return;
   try {
     await adminApi.shadowban(storyId, reason);
@@ -751,7 +928,10 @@ async function handleRestoreFromDetail(storyId) {
 
 // API 8.1 推荐
 async function handleRecommendStory(storyId) {
-  const reason = await showPrompt('请输入推荐理由：');
+  const reason = await showPrompt('请输入推荐理由：', {
+    theme: 'light',
+    placeholder: '例如：内容优质、值得优先展示'
+  });
   if (reason === null || !reason.trim()) return;
   try {
     const response = await adminApi.recommend(storyId, reason);
@@ -786,7 +966,10 @@ async function handleUnrecommendStory(storyId) {
 
 // API 8.2 Shadowban
 async function handleShadowbanStory(storyId) {
-  const reason = await showPrompt('请输入隐藏理由：');
+  const reason = await showPrompt('请输入隐藏理由：', {
+    theme: 'light',
+    placeholder: '例如：包含违规内容，需要临时隐藏'
+  });
   if (reason === null || !reason.trim()) return;
   try {
     await adminApi.shadowban(storyId, reason);
@@ -828,49 +1011,162 @@ const userTabs = ref([
 const bannedUsers = ref([]);
 const normalUsers = ref([]);
 const userSearch = ref('');
+const userSearchType = ref('username');
+const USER_PAGE_SIZE = 20;
+
+const normalUserPage = ref(1);
+const bannedUserPage = ref(1);
+const normalUserPagination = ref({ total: 0, totalPages: 0 });
+const bannedUserPagination = ref({ total: 0, totalPages: 0 });
+const normalUserLoadingMore = ref(false);
+const bannedUserLoadingMore = ref(false);
+
+const searchPlaceholder = computed(() => {
+  const map = { username: '输入用户名搜索...', email: '输入邮箱搜索...', id: '输入用户ID搜索...' };
+  return map[userSearchType.value] || '搜索用户...';
+});
 
 const filteredNormalUsers = computed(() => {
   if (!userSearch.value) return normalUsers.value;
+  const keyword = userSearch.value.trim();
+  if (userSearchType.value === 'id') {
+    return normalUsers.value.filter(u => String(u.id).includes(keyword));
+  }
+  if (userSearchType.value === 'email') {
+    return normalUsers.value.filter(u => u.email?.toLowerCase().includes(keyword.toLowerCase()));
+  }
   return normalUsers.value.filter(u =>
-    u.username?.includes(userSearch.value) ||
-    u.email?.includes(userSearch.value)
+    u.username?.includes(keyword) ||
+    u.name?.includes(keyword)
   );
 });
+
+function mapUserItem(u) {
+  return {
+    id: u.id,
+    name: u.username,
+    username: u.username,
+    email: u.email,
+    avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
+    status: u.status,
+    vip: u.vip || 0,
+    createdAt: u.createdAt,
+    storyCount: 0
+  };
+}
+
+function updateUserTabCounts() {
+  userTabs.value = [
+    { key: 'normal', label: '正常用户', count: normalUserPagination.value.total },
+    { key: 'banned', label: '封禁账号', count: bannedUserPagination.value.total }
+  ];
+}
 
 async function loadUsers() {
   try {
     // 加载正常用户
-    const normalRes = await adminApi.getUsers({ category: 'normal', pageSize: 50 });
+    const normalRes = await adminApi.getUsers({ category: 'normal', page: 1, pageSize: USER_PAGE_SIZE });
     const normalData = normalRes.data || normalRes;
-    normalUsers.value = (normalData?.users || []).map(u => ({
-      id: u.id,
-      name: u.username,
-      email: u.email,
-      avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
-      status: u.status,
-      createdAt: u.createdAt,
-      storyCount: 0 // 后端暂未返回
-    }));
+    normalUsers.value = (normalData?.users || []).map(mapUserItem);
+    normalUserPagination.value = normalData?.pagination || { total: 0, totalPages: 0 };
+    normalUserPage.value = 1;
 
     // 加载封禁用户
-    const bannedRes = await adminApi.getUsers({ category: 'deleted', pageSize: 50 });
+    const bannedRes = await adminApi.getUsers({ category: 'deleted', page: 1, pageSize: USER_PAGE_SIZE });
     const bannedData = bannedRes.data || bannedRes;
     bannedUsers.value = (bannedData?.users || []).map(u => ({
       id: u.id,
       name: u.username,
+      username: u.username,
       email: u.email,
       avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
-      banReason: '违规操作', // 后端暂未返回
+      banReason: '违规操作',
       bannedAt: u.createdAt
     }));
+    bannedUserPagination.value = bannedData?.pagination || { total: 0, totalPages: 0 };
+    bannedUserPage.value = 1;
 
-    // 更新标签计数
-    userTabs.value = [
-      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
-      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
-    ];
+    updateUserTabCounts();
   } catch (error) {
     console.error('加载用户列表失败:', error);
+  }
+}
+
+async function loadMoreNormalUsers() {
+  if (normalUserLoadingMore.value || normalUserPage.value >= normalUserPagination.value.totalPages) return;
+  normalUserLoadingMore.value = true;
+  try {
+    const nextPage = normalUserPage.value + 1;
+    const res = await adminApi.getUsers({ category: 'normal', page: nextPage, pageSize: USER_PAGE_SIZE });
+    const data = res.data || res;
+    const newUsers = (data?.users || []).map(mapUserItem);
+    normalUsers.value = [...normalUsers.value, ...newUsers];
+    normalUserPagination.value = data?.pagination || normalUserPagination.value;
+    normalUserPage.value = nextPage;
+    updateUserTabCounts();
+  } catch (error) {
+    console.error('加载更多正常用户失败:', error);
+  } finally {
+    normalUserLoadingMore.value = false;
+  }
+}
+
+async function loadMoreBannedUsers() {
+  if (bannedUserLoadingMore.value || bannedUserPage.value >= bannedUserPagination.value.totalPages) return;
+  bannedUserLoadingMore.value = true;
+  try {
+    const nextPage = bannedUserPage.value + 1;
+    const res = await adminApi.getUsers({ category: 'deleted', page: nextPage, pageSize: USER_PAGE_SIZE });
+    const data = res.data || res;
+    const newUsers = (data?.users || []).map(u => ({
+      id: u.id,
+      name: u.username,
+      username: u.username,
+      email: u.email,
+      avatar: u.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.id}`,
+      banReason: '违规操作',
+      bannedAt: u.createdAt
+    }));
+    bannedUsers.value = [...bannedUsers.value, ...newUsers];
+    bannedUserPagination.value = data?.pagination || bannedUserPagination.value;
+    bannedUserPage.value = nextPage;
+    updateUserTabCounts();
+  } catch (error) {
+    console.error('加载更多封禁用户失败:', error);
+  } finally {
+    bannedUserLoadingMore.value = false;
+  }
+}
+
+// ============ VIP升级 ============
+const showVipUpgradeModal = ref(false);
+const vipUpgradeUser = ref(null);
+const vipUpgradeDays = ref(30);
+const vipUpgrading = ref(false);
+
+function showUpgradeVipDialog(userId) {
+  vipUpgradeUser.value = normalUsers.value.find(u => u.id === userId);
+  vipUpgradeDays.value = 30;
+  showVipUpgradeModal.value = true;
+}
+
+async function confirmUpgradeVip() {
+  if (!vipUpgradeUser.value) return;
+  vipUpgrading.value = true;
+  try {
+    await adminApi.upgradeVip(vipUpgradeUser.value.id, vipUpgradeDays.value);
+    showToast(`已将用户 ${vipUpgradeUser.value.name} 升级为VIP（${vipUpgradeDays.value}天）`, 'success');
+    // 更新本地状态
+    const user = normalUsers.value.find(u => u.id === vipUpgradeUser.value.id);
+    if (user) {
+      user.vip = 1;
+    }
+    showVipUpgradeModal.value = false;
+  } catch (error) {
+    console.error('VIP升级失败:', error);
+    showToast(error.response?.data?.message || error.message || '升级失败', 'error');
+  } finally {
+    vipUpgrading.value = false;
   }
 }
 
@@ -891,18 +1187,7 @@ async function confirmBan() {
     await adminApi.banUser(selectedUser.value.id, banReason.value);
     showToast(`已封禁用户: ${selectedUser.value.name}`, 'success');
     showBanModal.value = false;
-    // 从正常用户列表移除，添加到封禁列表
-    normalUsers.value = normalUsers.value.filter(u => u.id !== selectedUser.value.id);
-    bannedUsers.value.push({
-      ...selectedUser.value,
-      banReason: banReason.value,
-      bannedAt: new Date()
-    });
-    // 同步更新标签计数
-    userTabs.value = [
-      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
-      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
-    ];
+    await loadUsers();
   } catch (error) {
     console.error('封禁失败:', error);
     showToast(error.message || '操作失败', 'error');
@@ -914,23 +1199,7 @@ async function handleUnbanUser(userId) {
   try {
     await adminApi.unbanUser(userId);
     showToast('已解封用户', 'success');
-    // 从封禁列表移除，添加到正常用户列表
-    const user = bannedUsers.value.find(u => u.id === userId);
-    if (user) {
-      bannedUsers.value = bannedUsers.value.filter(u => u.id !== userId);
-      normalUsers.value.push({
-        ...user,
-        storyCount: user.storyCount || 0,
-        createdAt: user.createdAt || new Date(),
-        banReason: undefined,
-        bannedAt: undefined
-      });
-    }
-    // 同步更新标签计数
-    userTabs.value = [
-      { key: 'normal', label: '正常用户', count: normalUsers.value.length },
-      { key: 'banned', label: '封禁账号', count: bannedUsers.value.length }
-    ];
+    await loadUsers();
   } catch (error) {
     console.error('解封失败:', error);
     showToast(error.message || '操作失败', 'error');
@@ -1389,14 +1658,60 @@ function handleLogout() {
 .stories-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  align-items: stretch;
   gap: 20px;
 }
 
+/* 翻页控件 */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.page-btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  background: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #333;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ffdb64 0%, #ffcc00 100%);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 14px;
+  color: #666;
+  min-width: 180px;
+  text-align: center;
+}
+
 .story-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 340px;
   border: 1px solid #f0f0f0;
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
   background: white;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 .story-image {
@@ -1412,10 +1727,12 @@ function handleLogout() {
 
 .story-badges {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 12px;
+  left: 12px;
   display: flex;
   gap: 6px;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .badge {
@@ -1431,40 +1748,107 @@ function handleLogout() {
 }
 
 .badge.shadowbanned {
-  background: #6c757d;
+  background: rgba(71, 85, 105, 0.92);
   color: white;
 }
 
 .story-content {
-  padding: 16px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 18px 16px 14px;
+}
+
+.story-card.has-story-badge .story-content {
+  padding-top: 52px;
+}
+
+.story-card .story-text {
+  margin: 0;
+  flex: 1 1 auto;
+  color: #243045;
+  font-size: 14px;
+  line-height: 1.65;
+  word-break: break-word;
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6; /* 兼容旧版WebKit内核浏览器（老Chrome、Safari、移动端浏览器） */
+  line-clamp: 6; /* 标准属性，兼容现代浏览器（Chrome 115+、Firefox 117+等） */
+}
+
+.story-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
 }
 
 .story-tags {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
+  margin: 0;
 }
 
 .emotion-tag, .location-tag {
+  display: inline-flex;
+  align-items: center;
   font-size: 12px;
   color: #2d8a6e;
   background: #e8f5e9;
   padding: 4px 10px;
   border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-tag {
+  max-width: 100%;
+  flex: 1 1 100%;
 }
 
 .story-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 0;
+}
+
+.story-stat-item {
   display: flex;
-  gap: 16px;
-  font-size: 13px;
-  color: #999;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.story-stat-label {
+  font-size: 12px;
+}
+
+.story-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
 }
 
 .story-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  padding: 12px 16px;
+  padding: 12px 16px 16px;
   border-top: 1px solid #f0f0f0;
+}
+
+.story-actions .btn-action:only-child {
+  grid-column: 1 / -1;
 }
 
 .btn-action {
@@ -1505,6 +1889,36 @@ function handleLogout() {
 /* 用户管理 */
 .users-list {
   margin-top: 20px;
+}
+.load-more-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid #eee;
+}
+.load-more-btn {
+  padding: 8px 24px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.load-more-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+  border-color: #bbb;
+}
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.page-info {
+  color: #888;
+  font-size: 13px;
 }
 
 .list-header {
@@ -1807,7 +2221,7 @@ function handleLogout() {
 
 .story-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
 }
 
 /* 故事详情弹窗 */
@@ -2040,8 +2454,9 @@ function handleLogout() {
 
 /* 统计 */
 .detail-stats {
-  display: flex;
-  justify-content: space-around;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 12px;
   padding: 16px 0;
   border-top: 1px solid #f0f0f0;
   border-bottom: 1px solid #f0f0f0;
@@ -2299,5 +2714,198 @@ function handleLogout() {
 .ann-modal-fade-enter-from,
 .ann-modal-fade-leave-to {
   opacity: 0;
+}
+
+/* --- VIP升级相关样式 --- */
+.search-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.search-type-select {
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #555;
+  background: #fff;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.search-type-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.search-bar .search-input {
+  flex: 1;
+}
+
+.user-action-btns {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.user-id {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.vip-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #7b5800;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.vip-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.vip-status.active {
+  background: linear-gradient(135deg, #fff8e1, #ffecb3);
+  color: #f57f17;
+}
+
+.vip-status.inactive {
+  background: #f5f5f5;
+  color: #999;
+}
+
+.btn-vip-upgrade {
+  padding: 6px 12px;
+  border: 1px solid #ffd700;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #fff8e1, #fff3cd);
+  color: #b8860b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-vip-upgrade:hover {
+  background: linear-gradient(135deg, #ffecb3, #ffe082);
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+}
+
+/* VIP升级弹窗 */
+.vip-upgrade-modal h3 {
+  color: #b8860b;
+}
+
+.vip-upgrade-info {
+  margin: 16px 0;
+}
+
+.vip-info-card {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.vip-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.vip-info-row:last-child {
+  border-bottom: none;
+}
+
+.vip-info-label {
+  font-size: 14px;
+  color: #888;
+  font-weight: 500;
+}
+
+.vip-info-value {
+  font-size: 14px;
+  color: #333;
+  font-weight: 600;
+}
+
+.vip-info-value.vip-active {
+  color: #f57f17;
+}
+
+.vip-info-value.vip-inactive {
+  color: #999;
+}
+
+.vip-duration-select {
+  margin-bottom: 12px;
+}
+
+.vip-duration-select label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+}
+
+.vip-duration-select select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #333;
+  background: #fff;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.vip-duration-select select:focus {
+  outline: none;
+  border-color: #ffd700;
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.12);
+}
+
+.vip-extend-tip {
+  font-size: 13px;
+  color: #e65100;
+  background: #fff3e0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 0;
+}
+
+.btn-vip-confirm {
+  background: linear-gradient(135deg, #ffd700, #ffaa00) !important;
+  color: #5d4037 !important;
+  border: none !important;
+}
+
+.btn-vip-confirm:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ffca28, #ff8f00) !important;
+  box-shadow: 0 2px 12px rgba(255, 215, 0, 0.4);
+}
+
+.btn-vip-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

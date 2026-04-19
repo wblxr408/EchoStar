@@ -182,11 +182,11 @@ class LikeServiceClass {
       include: [{
         model: Story,
         as: 'story',
-        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName'],
+        attributes: ['id', 'content', 'images', 'emotionTag', 'createdAt', 'location', 'locationName', 'fontFamily', 'fontEffect'],
         include: [{
           model: User,
           as: 'author',
-          attributes: ['id', 'username', 'avatarUrl']
+          attributes: ['id', 'username', 'avatarUrl', 'vip']
         }]
       }],
       order: [['createdAt', 'DESC']],
@@ -220,13 +220,16 @@ class LikeServiceClass {
           createdAt: like.story?.createdAt,
           location: parseStoryLocationValue(like.story?.location),
           locationName: like.story?.locationName,
+          fontFamily: like.story?.fontFamily || null,
+          fontEffect: like.story?.fontEffect || null,
           likeCount: likeCounts[like.storyId] || 0,
           favoriteCount: favoriteCounts[like.storyId] || 0,
           author: like.story?.author
             ? {
                 id: like.story.author.id,
                 username: like.story.author.username,
-                avatar: like.story.author.avatarUrl || null
+                avatar: like.story.author.avatarUrl || null,
+                vip: like.story.author.vip || 0
               }
             : null
         }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as authController from '../modules/auth/auth.controller.js';
 import { authenticateJWT, requireAdmin } from '../modules/auth/auth.middleware.js';
+import { validateUpdateProfile } from '../modules/auth/auth.validator.js';
 import { strictLimiter } from '../common/middleware/rate-limit.js';
 
 const router = Router();
@@ -46,6 +47,11 @@ router.get('/me', authenticateJWT, authController.getCurrentUser);
 router.delete('/me', authenticateJWT, authController.deleteAccount);
 
 /**
+ * GET /api/auth/users/search - 根据用户名模糊搜索用户
+ */
+router.get('/users/search', authController.searchUsersByUsername);
+
+/**
  * GET /api/users/:userId - 查看其他用户信息
  */
 router.get('/users/:userId', authController.getUserById);
@@ -53,7 +59,7 @@ router.get('/users/:userId', authController.getUserById);
 /**
  * PUT /api/users/me - 修改个人信息
  */
-router.put('/users/me', authenticateJWT, authController.updateProfile);
+router.put('/users/me', authenticateJWT, validateUpdateProfile, authController.updateProfile);
 
 /**
  * GET /api/auth/avatar/upload-token - 获取头像上传凭证

@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div class="paper-plane-overlay" @click="handleClose">
+    <div class="paper-plane-overlay" :class="{ dark: isDark }" @click="handleClose">
       <div class="paper-sheet" @click.stop>
         <div class="paper-texture"></div>
         <span class="tarot-suit suit-top">✦</span>
@@ -25,12 +25,12 @@
         <div class="story-content-wrapper">
           <div class="story-header">
             <div class="user-info">
-              <div class="avatar-shell">
+              <div class="avatar-shell clickable-avatar" @click.stop="handleViewAuthorProfile">
                 <img v-if="storyAuthorAvatar" :src="storyAuthorAvatar" :alt="storyAuthorName" class="avatar" />
                 <span v-else class="avatar-fallback">{{ getInitial(storyAuthorName) }}</span>
               </div>
               <div class="user-details">
-                <span class="username">{{ storyAuthorName }}</span>
+                <span class="vip-name-row" @click.stop="handleViewAuthorProfile" style="cursor:pointer"><span class="username vip-username" :class="{ 'has-vip': storyAuthorVip }">{{ storyAuthorName }}</span><span class="vip-text-badge-sm" v-if="storyAuthorVip">VIP</span></span>
                 <span class="time">{{ formatRelativeTime(story.createdAt) }}</span>
               </div>
             </div>
@@ -39,7 +39,7 @@
 
           <div class="story-body">
             <div class="story-text-card">
-              <p class="story-text">{{ story.content }}</p>
+              <p class="story-text" :style="storyFontStyle">{{ story.content }}</p>
             </div>
 
             <div v-if="story.images && story.images.length > 0" class="story-images">
@@ -112,32 +112,54 @@
                 placeholder="写下你的评论..."
                 rows="2"
                 class="comment-textarea"
+                :style="getCommentFontStyle({ fontFamily: commentFontFamily || readDefaultFontFromCookie(), fontEffect: commentFontEffect || readDefaultFontEffectFromCookie() })"
               ></textarea>
               <div class="comment-actions">
-                <button type="button" class="btn-cancel" @click="showCommentInput = false">取消</button>
-                <button
-                  type="button"
-                  class="btn-submit"
-                  :disabled="!newComment.trim()"
-                  @click="submitComment"
-                >
-                  发布
-                </button>
+                <div class="comment-actions__left">
+                  <button type="button" class="btn-comment-bg"
+                    :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
+                    @click="vipStore.isVipActive ? (showCommentFontPicker = !showCommentFontPicker) : emit('request-vip')">
+                    {{ vipStore.isVipActive ? '🔤 个性字体' : '🔒 个性字体' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-comment-bg"
+                    :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
+                    @click="handleCommentBgClick"
+                  >
+                    {{ vipStore.isVipActive ? '🎨 更改评论背景' : '🔒 更改评论背景' }}
+                  </button>
+                </div>
+                <div class="comment-actions__right">
+                  <button type="button" class="btn-cancel" @click="showCommentInput = false">取消</button>
+                  <button
+                    type="button"
+                    class="btn-submit"
+                    :disabled="!newComment.trim()"
+                    @click="submitComment"
+                  >
+                    发布
+                  </button>
+                </div>
               </div>
             </div>
 
             <div class="comments-list">
-              <div v-for="comment in comments" :key="comment.id" class="comment-item">
-                <div class="comment-avatar">
+              <div v-for="comment in comments" :key="comment.id"
+                class="comment-item"
+                :class="{ 'is-vip-card': comment.vip, 'has-custom-bg': !!getCommentBgStyle(comment) }"
+                :style="getCommentBgStyle(comment)"
+              >
+                <div class="comment-avatar clickable-avatar" @click.stop="handleViewCommentProfile(comment)">
                   <img v-if="comment.avatar" :src="comment.avatar" :alt="comment.author" />
                   <span v-else>{{ getInitial(comment.author) }}</span>
                 </div>
                 <div class="comment-content">
                   <div class="comment-header">
-                    <span class="comment-author">{{ comment.author }}</span>
+                    <span class="vip-name-row" @click.stop="handleViewCommentProfile(comment)" style="cursor:pointer"><span class="comment-author vip-username" :class="{ 'has-vip': comment.vip }">{{ comment.author }}</span><span class="vip-text-badge-sm" v-if="comment.vip">VIP</span></span>
                     <span class="comment-time">{{ formatRelativeTime(comment.createdAt) }}</span>
                   </div>
-                  <p class="comment-text">{{ comment.content }}</p>
+                  <p class="comment-text" :style="getCommentFontStyle(comment)">{{ comment.content }}</p>
                 </div>
               </div>
               <div v-if="comments.length === 0" class="no-comments">
@@ -150,7 +172,7 @@
     </div>
 
     <Teleport to="body" v-if="showReportModal">
-      <div class="report-modal-overlay" @click.self="closeReportModal">
+      <div class="report-modal-overlay" :class="{ dark: isDark }" @click.self="closeReportModal">
         <div class="report-modal-content">
           <span class="tarot-suit suit-top report-suit">✦</span>
           <span class="tarot-suit suit-bottom report-suit">✦</span>
@@ -217,6 +239,17 @@
         </div>
       </div>
     </Teleport>
+
+    <FontPicker
+      :visible="showCommentFontPicker"
+      :is-dark="isDark"
+      target-type="comment"
+      :selected-font="commentFontFamily"
+      :selected-effect="commentFontEffect"
+      @select="commentFontFamily = $event"
+      @select-effect="commentFontEffect = $event"
+      @close="showCommentFontPicker = false"
+    />
   </Teleport>
 </template>
 
@@ -226,10 +259,16 @@ import { formatRelativeTime } from '../utils/time';
 import { getEmotionEmoji } from '../utils/emotion';
 import { REPORT_TYPES } from '../utils/report';
 import { useUserStore } from '../stores/user';
+import { useVipStore } from '../stores/vip';
 import { reportApi } from '../api/report';
 import { showToast } from '../composables/useToast.js';
+import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+import FontPicker from './FontPicker.vue';
+
+injectFontEffectAnimations();
 
 const userStore = useUserStore();
+const vipStore = useVipStore();
 
 const props = defineProps({
   story: {
@@ -251,10 +290,21 @@ const props = defineProps({
   favoritePending: {
     type: Boolean,
     default: false
+  },
+  isDark: {
+    type: Boolean,
+    default: false
   }
 });
 
-const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report']);
+const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile', 'open-comment-bg', 'request-vip', 'openVipCenter']);
+
+const storyFontStyle = computed(() => {
+  const ff = props.story?.fontFamily || '';
+  const fe = props.story?.fontEffect || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
+});
 
 const isLiked = ref(false);
 const likeCount = ref(0);
@@ -264,6 +314,26 @@ const commentCount = ref(0);
 const showCommentInput = ref(false);
 const newComment = ref('');
 const comments = ref([]);
+
+const showCommentFontPicker = ref(false);
+const commentFontFamily = ref('');
+const commentFontEffect = ref('');
+
+function readDefaultFontFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+function readDefaultFontEffectFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font_effect=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function getCommentFontStyle(comment) {
+  const ff = comment?.fontFamily || '';
+  const fe = comment?.fontEffect || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
+}
 
 const showReportModal = ref(false);
 const selectedReportReason = ref('');
@@ -290,6 +360,20 @@ const storyAuthorAvatar = computed(() => {
     : null;
 
   return authorObject?.avatar || props.story?.avatar || '';
+});
+
+const storyAuthorId = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
+  return authorObject?.id ?? props.story?.authorId ?? props.story?.userId ?? null;
+});
+
+const storyAuthorVip = computed(() => {
+  const authorObject = props.story?.author && typeof props.story.author === 'object'
+    ? props.story.author
+    : null;
+  return Boolean(authorObject?.vip || props.story?.vip);
 });
 
 function resolveLikeCount(story) {
@@ -342,11 +426,43 @@ function getInitial(name) {
   return String(name || '匿').trim().slice(0, 1).toUpperCase() || '匿';
 }
 
+/**
+ * 根据评论者的 commentBg 配置计算背景样式
+ * 支持纯色和渐变两种模式
+ */
+function getCommentBgStyle(comment) {
+  let bg = comment?.commentBg;
+  // 兜底：如果是当前用户自己的评论，且服务端未返回 commentBg（可能数据库尚未同步），
+  // 则使用本地 vipStore 的设置
+  if ((!bg || typeof bg !== 'object') && userStore.isLoggedIn && comment?.userId && String(comment.userId) === String(userStore.user?.id)) {
+    const fallbackBg = vipStore.savedCommentBg;
+    if (fallbackBg && typeof fallbackBg === 'object') {
+      bg = fallbackBg;
+    }
+  }
+  if (!bg || typeof bg !== 'object') return null;
+
+  if (bg.useGradient && bg.gradientColor) {
+    const angle = bg.gradientDirection || 135;
+    return {
+      background: `linear-gradient(${angle}deg, ${bg.color}, ${bg.gradientColor})`,
+    };
+  }
+
+  if (bg.color) {
+    return { background: bg.color };
+  }
+
+  return null;
+}
+
 function previewImage(index) {
   emit('preview-image', { index, images: props.story.images });
 }
 
 function handleClose() {
+  showCommentFontPicker.value = false;
+  showCommentInput.value = false;
   emit('close');
 }
 
@@ -387,17 +503,43 @@ function submitComment() {
     return;
   }
 
-  const payload = { storyId: props.story.id, content };
+  const fontFamily = commentFontFamily.value || readDefaultFontFromCookie();
+  const fontEffect = commentFontEffect.value || readDefaultFontEffectFromCookie();
+  const payload = { storyId: props.story.id, content, fontFamily, fontEffect };
   emit('submit-comment', payload);
   emit('submitComment', payload);
 
   newComment.value = '';
+  commentFontFamily.value = '';
+  commentFontEffect.value = '';
   showCommentInput.value = false;
+}
+
+function handleCommentBgClick() {
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    showToast('请先登录后再使用', 'warning');
+    return;
+  }
+  if (vipStore.isVipActive) {
+    emit('open-comment-bg');
+  } else {
+    emit('open-vip-center');
+  }
 }
 
 function openReportModal() {
   reportError.value = '';
   showReportModal.value = true;
+}
+
+function handleViewAuthorProfile() {
+  if (!storyAuthorId.value) return;
+  emit('view-user-profile', { id: storyAuthorId.value, username: storyAuthorName.value, avatar: storyAuthorAvatar.value, vip: storyAuthorVip.value });
+}
+
+function handleViewCommentProfile(comment) {
+  if (!comment.userId) return;
+  emit('view-user-profile', { id: comment.userId, username: comment.author, avatar: comment.avatar, vip: comment.vip });
 }
 
 function closeReportModal() {
@@ -688,17 +830,60 @@ async function submitReport() {
   line-height: 1;
 }
 
+.clickable-avatar {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.clickable-avatar:hover {
+  opacity: 0.75;
+}
+
 .user-details {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  align-items: flex-start;
 }
 
 .username {
   font-size: 16px;
   font-weight: 700;
   color: var(--story-detail-text);
+}
+
+.vip-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.vip-username.has-vip {
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 25%, #fff 50%, #ffd700 75%, #b8860b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vipGoldFlow 3s linear infinite;
+}
+
+.vip-text-badge-sm {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  color: #5d4037;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  line-height: 14px;
+  margin-top: 1px;
+}
+
+@keyframes vipGoldFlow {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .time {
@@ -739,7 +924,6 @@ async function submitReport() {
   color: var(--story-detail-text);
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'Georgia', 'Times New Roman', serif;
 }
 
 .story-images {
@@ -913,6 +1097,52 @@ async function submitReport() {
   margin-bottom: 16px;
 }
 
+.inline-font-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.font-action-btn {
+  padding: 4px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel-strong);
+  color: var(--story-detail-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-action-btn:hover {
+  border-color: var(--story-detail-accent);
+  color: var(--story-detail-accent);
+}
+
+.font-action-btn.font-active {
+  border-color: var(--story-detail-accent);
+  background: var(--story-detail-accent-soft);
+  color: var(--story-detail-accent);
+}
+
+.font-clear-btn {
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--story-detail-frame);
+  background: transparent;
+  color: var(--story-detail-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-clear-btn:hover {
+  border-color: rgba(179, 52, 43, 0.4);
+  color: #b3342b;
+}
+
 .comment-textarea,
 .report-textarea {
   width: 100%;
@@ -939,12 +1169,65 @@ async function submitReport() {
   box-shadow: 0 0 0 3px var(--story-detail-accent-soft);
 }
 
-.comment-actions,
+.comment-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.comment-actions__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comment-actions__right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
 .report-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 10px;
   margin-top: 14px;
+}
+
+.btn-comment-bg {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(184, 135, 46, 0.25);
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  color: #3d2e0a;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px -6px rgba(255, 215, 0, 0.4);
+}
+
+.btn-comment-bg:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px rgba(255, 215, 0, 0.5);
+}
+
+.btn-comment-bg--locked {
+  background: rgba(184, 135, 46, 0.08);
+  border-color: var(--story-detail-frame);
+  color: var(--story-detail-muted);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.btn-comment-bg--locked:hover {
+  background: rgba(184, 135, 46, 0.15);
+  transform: translateY(-1px);
 }
 
 .btn-cancel,
@@ -992,8 +1275,14 @@ async function submitReport() {
   align-items: start;
   padding: 14px;
   border-radius: 20px;
-  border: 1px solid var(--story-detail-frame);
   background: var(--story-detail-panel-strong);
+  box-shadow: inset 0 0 0 1px var(--story-detail-frame);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.comment-item.has-custom-bg {
+  box-shadow: none;
+  overflow: hidden;
 }
 
 .comment-avatar {
@@ -1012,6 +1301,7 @@ async function submitReport() {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 6px;
+  flex-wrap: wrap;
 }
 
 .comment-author {
@@ -1360,5 +1650,203 @@ async function submitReport() {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* ===== 深色模式 ===== */
+.paper-plane-overlay.dark {
+  --story-detail-surface: linear-gradient(160deg, rgba(28, 34, 56, 0.98) 0%, rgba(22, 28, 48, 0.98) 54%, rgba(18, 22, 38, 0.98) 100%);
+  --story-detail-border: rgba(80, 100, 140, 0.35);
+  --story-detail-frame: rgba(90, 115, 160, 0.25);
+  --story-detail-pattern: rgba(120, 145, 190, 0.1);
+  --story-detail-panel: rgba(35, 45, 70, 0.6);
+  --story-detail-panel-strong: rgba(40, 52, 80, 0.75);
+  --story-detail-text: #d8e2f0;
+  --story-detail-muted: rgba(180, 195, 220, 0.65);
+  --story-detail-accent: #7b9ce0;
+  --story-detail-accent-soft: rgba(123, 156, 224, 0.12);
+  background:
+    radial-gradient(circle at top, rgba(60, 80, 140, 0.2) 0%, transparent 30%),
+    rgba(4, 6, 14, 0.78);
+}
+
+.paper-plane-overlay.dark .paper-sheet {
+  box-shadow:
+    0 40px 88px -36px rgba(2, 4, 10, 0.88),
+    0 0 0 1px rgba(100, 130, 180, 0.1),
+    inset 0 1px 0 rgba(120, 150, 200, 0.1);
+}
+
+.paper-plane-overlay.dark .paper-texture {
+  background:
+    radial-gradient(circle at top, rgba(100, 140, 220, 0.08) 0%, transparent 26%),
+    linear-gradient(180deg, rgba(100, 140, 220, 0.04) 0%, transparent 100%);
+  opacity: 0.6;
+}
+
+.paper-plane-overlay.dark .close-btn {
+  background: rgba(20, 28, 50, 0.9);
+  border-color: rgba(100, 130, 180, 0.2);
+  color: #c8d8f0;
+}
+
+.paper-plane-overlay.dark .close-btn:hover {
+  background: rgba(30, 40, 65, 0.96);
+  border-color: rgba(120, 150, 200, 0.35);
+}
+
+.paper-plane-overlay.dark .paper-sheet::before,
+.paper-plane-overlay.dark .report-modal-content::before {
+  border-color: var(--story-detail-frame);
+  background:
+    radial-gradient(circle at center, rgba(100, 140, 220, 0.08) 0 18%, transparent 18.5%),
+    radial-gradient(circle at center, transparent 0 40%, var(--story-detail-pattern) 40.5%, transparent 41.5%),
+    linear-gradient(0deg, transparent calc(50% - 1px), var(--story-detail-pattern) 50%, transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent calc(50% - 1px), var(--story-detail-pattern) 50%, transparent calc(50% + 1px));
+}
+
+.paper-plane-overlay.dark .paper-sheet::after,
+.paper-plane-overlay.dark .report-modal-content::after {
+  background:
+    radial-gradient(circle at top center, rgba(100, 140, 220, 0.1) 0%, transparent 24%),
+    repeating-linear-gradient(135deg, rgba(100, 140, 220, 0.02) 0 6px, rgba(100, 140, 220, 0) 6px 12px);
+}
+
+.paper-plane-overlay.dark .avatar-shell,
+.paper-plane-overlay.dark .comment-avatar {
+  background: linear-gradient(145deg, rgba(60, 80, 120, 0.4) 0%, var(--story-detail-accent-soft) 100%);
+  border-color: rgba(100, 130, 180, 0.15);
+}
+
+.paper-plane-overlay.dark .story-images img {
+  background: linear-gradient(145deg, rgba(25, 35, 55, 0.9) 0%, rgba(18, 25, 42, 0.7) 100%);
+}
+
+.paper-plane-overlay.dark .story-images img:hover {
+  border-color: var(--story-detail-accent);
+  box-shadow: 0 18px 30px -24px rgba(0, 0, 0, 0.6);
+}
+
+.paper-plane-overlay.dark .btn-cancel {
+  border-color: rgba(80, 100, 140, 0.25);
+}
+
+.paper-plane-overlay.dark .btn-comment-bg {
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  border-color: rgba(255, 215, 0, 0.2);
+  color: #3d2e0a;
+}
+
+.paper-plane-overlay.dark .btn-comment-bg--locked {
+  background: rgba(143, 180, 255, 0.06);
+  border-color: rgba(143, 180, 255, 0.15);
+  color: rgba(180, 200, 255, 0.6);
+  box-shadow: none;
+}
+
+.paper-plane-overlay.dark .btn-comment-bg--locked:hover {
+  background: rgba(143, 180, 255, 0.12);
+}
+
+.paper-plane-overlay.dark .btn-submit {
+  background: linear-gradient(135deg, rgba(55, 75, 120, 0.96) 0%, rgba(70, 95, 145, 0.96) 100%);
+  box-shadow: 0 20px 30px -24px rgba(10, 15, 30, 0.7);
+}
+
+.paper-plane-overlay.dark .action-btn:hover {
+  box-shadow: 0 18px 28px -24px rgba(0, 0, 0, 0.6);
+}
+
+.paper-plane-overlay.dark .action-btn.liked,
+.paper-plane-overlay.dark .action-btn.favorited {
+  box-shadow:
+    0 0 0 2px var(--story-detail-accent-soft),
+    0 20px 30px -24px rgba(0, 0, 0, 0.6);
+}
+
+.paper-plane-overlay.dark .emotion-icon {
+  background: var(--story-detail-panel-strong);
+}
+
+/* 深色 - 举报弹窗 */
+.report-modal-overlay.dark {
+  background:
+    radial-gradient(circle at top, rgba(50, 70, 130, 0.12) 0%, transparent 30%),
+    rgba(4, 6, 14, 0.7);
+}
+
+.report-modal-overlay.dark .report-modal-content {
+  box-shadow:
+    0 40px 88px -36px rgba(2, 4, 10, 0.88),
+    0 0 0 1px rgba(100, 130, 180, 0.1),
+    inset 0 1px 0 rgba(120, 150, 200, 0.1);
+}
+
+.report-modal-overlay.dark .report-card-headline,
+.report-modal-overlay.dark .report-panel {
+  background: linear-gradient(180deg, rgba(30, 40, 65, 0.9) 0%, rgba(25, 34, 56, 0.72) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(100, 140, 200, 0.15),
+    0 18px 30px -26px rgba(4, 8, 18, 0.5);
+}
+
+.report-modal-overlay.dark .reason-option span {
+  background: linear-gradient(180deg, rgba(30, 40, 65, 0.98) 0%, rgba(25, 34, 56, 0.92) 100%);
+  border-color: rgba(80, 100, 140, 0.25);
+  color: var(--story-detail-text);
+  box-shadow:
+    0 16px 26px -24px rgba(4, 8, 18, 0.6),
+    inset 0 1px 0 rgba(100, 140, 200, 0.1);
+}
+
+.report-modal-overlay.dark .reason-option span:hover {
+  border-color: rgba(123, 156, 224, 0.4);
+  box-shadow:
+    0 22px 32px -24px rgba(4, 8, 18, 0.7),
+    0 0 0 1px rgba(100, 140, 200, 0.12);
+}
+
+.report-modal-overlay.dark .reason-option input:checked + span {
+  border-color: var(--story-detail-accent);
+  background: linear-gradient(180deg, rgba(35, 48, 78, 1) 0%, rgba(28, 38, 62, 0.96) 100%);
+  box-shadow:
+    0 0 0 3px var(--story-detail-accent-soft),
+    0 24px 36px -26px rgba(4, 8, 18, 0.7);
+}
+
+.report-modal-overlay.dark .report-actions .btn-cancel {
+  border-color: rgba(80, 100, 140, 0.2);
+  background: linear-gradient(180deg, rgba(30, 40, 65, 0.96) 0%, rgba(25, 34, 56, 0.92) 100%);
+  color: #a0b4d0;
+  box-shadow:
+    0 16px 26px -24px rgba(4, 8, 18, 0.5),
+    inset 0 1px 0 rgba(100, 140, 200, 0.1);
+}
+
+.report-modal-overlay.dark .report-actions .btn-cancel:hover {
+  border-color: rgba(123, 156, 224, 0.35);
+  background: linear-gradient(180deg, rgba(35, 48, 78, 0.98) 0%, rgba(28, 38, 62, 0.94) 100%);
+}
+
+.report-modal-overlay.dark .report-actions .btn-submit {
+  background: linear-gradient(135deg, rgba(50, 68, 110, 0.98) 0%, rgba(65, 88, 135, 0.98) 100%);
+  box-shadow:
+    0 22px 34px -24px rgba(4, 8, 18, 0.88),
+    0 0 0 1px rgba(100, 140, 200, 0.1);
+}
+
+.report-modal-overlay.dark .report-actions .btn-submit:hover {
+  box-shadow:
+    0 28px 38px -24px rgba(4, 8, 18, 0.92),
+    0 0 0 1px rgba(100, 140, 200, 0.15);
+}
+
+.report-modal-overlay.dark .report-error {
+  background: rgba(179, 52, 43, 0.12);
+  color: #e88;
+}
+
+.report-modal-overlay.dark .comment-textarea,
+.report-modal-overlay.dark .report-textarea {
+  background: var(--story-detail-panel-strong);
 }
 </style>

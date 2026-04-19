@@ -2,6 +2,38 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { authApi } from "../api/auth";
 
+// ── 按账号隔离的 VIP 字体 cookie 管理 ──
+function applyUserFontCookies(userId) {
+  const font = localStorage.getItem(`vip_font_${userId}`) || '';
+  const effect = localStorage.getItem(`vip_font_effect_${userId}`) || '';
+  document.cookie = `vip_default_font=${encodeURIComponent(font)};path=/;max-age=${365 * 86400};SameSite=Lax`;
+  document.cookie = `vip_default_font_effect=${encodeURIComponent(effect)};path=/;max-age=${365 * 86400};SameSite=Lax`;
+  return { font, effect };
+}
+
+function clearFontCookies() {
+  document.cookie = 'vip_default_font=;path=/;max-age=0';
+  document.cookie = 'vip_default_font_effect=;path=/;max-age=0';
+}
+
+// ── 按账号隔离的卡牌主题管理 ──
+function applyUserDockTheme(userId) {
+  const saved = localStorage.getItem(`dockTheme_${userId}`);
+  if (saved !== null) {
+    localStorage.setItem('dockTheme', saved);
+  }
+  return saved;
+}
+
+function saveDockThemeForUser(userId, themeKey) {
+  if (userId && userId !== 'guest') {
+    localStorage.setItem(`dockTheme_${userId}`, themeKey);
+  }
+  localStorage.setItem('dockTheme', themeKey);
+}
+
+export { applyUserFontCookies, clearFontCookies, applyUserDockTheme, saveDockThemeForUser };
+
 export const useUserStore = defineStore("user", () => {
   const savedUser = localStorage.getItem("user");
   const user = ref(savedUser ? JSON.parse(savedUser) : null);
@@ -132,6 +164,11 @@ export const useUserStore = defineStore("user", () => {
     localStorage.setItem("token", newToken);
     setUser(newUser);
     localStorage.removeItem("isGuest");
+    // 恢复该账号的 VIP 字体 cookie 和卡牌主题
+    if (newUser?.id) {
+      applyUserFontCookies(newUser.id);
+      applyUserDockTheme(newUser.id);
+    }
   }
 
   function loginAsGuest() {
@@ -139,6 +176,16 @@ export const useUserStore = defineStore("user", () => {
     isLoggedIn.value = true;
     setUser({ username: "游客用户", id: "guest", email: "" });
     localStorage.setItem("isGuest", "true");
+    // 游客清空字体 cookie，但不删除其他账号的存储
+    clearFontCookies();
+    localStorage.removeItem('storyFont');
+    localStorage.removeItem('vipStatus');
+    localStorage.removeItem('commentBg');
+    localStorage.removeItem('dockTheme');
+    localStorage.setItem('dockTheme', 'tarot');
+    localStorage.removeItem('vip_comment_bg');
+    localStorage.removeItem('vip_profile_bg');
+    localStorage.removeItem('vip_emotion_styles');
   }
 
   function exitGuestMode() {

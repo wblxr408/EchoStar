@@ -33,7 +33,7 @@ router.get('/upload-token', authenticateJWT, storyController.getUploadToken);
 router.get('/search', optionalAuth, storyController.searchStories);
 
 /**
- * GET /api/stories/featured - 获取精选推荐故事（必须在 /:id 前面）
+ * GET /api/stories/featured - 获取精选推荐故事
  */
 router.get('/featured', optionalAuth, storyController.getFeaturedStories);
 
@@ -58,6 +58,11 @@ router.post(
 );
 
 /**
+ * POST /api/stories/:id/polish - 擦亮故事
+ */
+router.post('/:id/polish', authenticateJWT, storyController.polishStory);
+
+/**
  * PUT /api/stories/:id/visibility - 修改故事可见性
  */
 router.put('/:id/visibility', authenticateJWT, storyController.updateVisibility);
@@ -66,6 +71,7 @@ router.put('/:id/visibility', authenticateJWT, storyController.updateVisibility)
  * POST /api/stories/:id/unlock - 解锁时光胶囊（定时任务调用）
  */
 router.post('/:id/unlock', storyController.unlockTimeCapsule);
+
 
 /**
  * GET /api/stories/admin/all - 管理员获取所有帖子

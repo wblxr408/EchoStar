@@ -8,6 +8,8 @@ import nodemailer from 'nodemailer';
 import { Op } from 'sequelize';
 import { getRandomDefaultAvatar } from '../../common/utils/oss.js'; 
 import { clearUserCache } from './auth.middleware.js';
+import { VipService } from '../vip/vip.service.js';
+
 
 /**
  * Auth Service - 认证业务逻辑
@@ -22,27 +24,29 @@ const AuthServiceImpl = {
     const codeKey = `verification_code:${fixedEmail}`;
 
     try {
-      // 1. 先打印Redis客户端，看看拿到的是什么
       const redis = redisClient.getClient();
-      console.log('🔍 拿到的Redis客户端:', redis);
 
-      // 2. 邮件发送
-      const transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: process.env.EMAIL_PORT,
-        secure: process.env.EMAIL_SECURE === 'true',
-        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-      });
+      // 有邮件配置时发送邮件，否则仅打印到控制台
+      if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        const transporter = nodemailer.createTransport({
+          host: process.env.EMAIL_HOST,
+          port: parseInt(process.env.EMAIL_PORT) || 465,
+          secure: process.env.EMAIL_SECURE === 'true',
+          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+        });
 
-      const mailOptions = {
-        from: `"EchoStar 官方团队" <${process.env.EMAIL_USER}>`,
-        to: fixedEmail,
-        subject: 'EchoStar 验证码',
-        html: `你的验证码：${code}（5分钟有效）`
-      };
+        const mailOptions = {
+          from: `"EchoStar 官方团队" <${process.env.EMAIL_USER}>`,
+          to: fixedEmail,
+          subject: 'EchoStar 验证码',
+          html: `你的验证码：${code}（5分钟有效）`
+        };
 
-      await transporter.sendMail(mailOptions);
-      console.log('✅ 邮件发送成功');
+        await transporter.sendMail(mailOptions);
+        console.log(`✅ 邮件发送成功 (邮箱: ${fixedEmail})`);
+      } else {
+        console.log(`\n🔑 [未配置邮件] 验证码: ${code} (邮箱: ${fixedEmail}, 5分钟有效)\n`);
+      }
 
       // ===================== 终极调试：用最原始的方式 =====================
       console.log('🔍 准备执行Redis SET，Key:', codeKey, 'Value:', code);
@@ -117,7 +121,23 @@ const AuthServiceImpl = {
       avatarUrl: defaultAvatar 
     });
 
-    return { accessToken: this.generateToken(user.id), user: { id: user.id, username: user.username, avatar: user.avatarUrl } };
+    // 注册赠送1周VIP
+    try {
+      await VipService.upgradeUserToVip(user.id, null, 7);
+    } catch (vipErr) {
+      console.warn('[register] 赠送VIP失败，不影响注册:', vipErr.message);
+    }
+
+    return {
+      accessToken: this.generateToken(user.id),
+      user: {
+        id: user.id,
+        username: user.username,
+        avatar: user.avatarUrl,
+        vip: 1,
+        emotionCoins: user.emotionCoins || 0
+      }
+    };
   },
 
   /**
@@ -159,15 +179,24 @@ const AuthServiceImpl = {
       avatarUrl: defaultAvatar
     });
 
+    // 注册赠送1周VIP
+    try {
+      await VipService.upgradeUserToVip(user.id, null, 7);
+    } catch (vipErr) {
+      console.warn('[register_2] 赠送VIP失败，不影响注册:', vipErr.message);
+    }
+
     // 6. 生成 Token
     const token = this.generateToken(user.id);
 
     return {
-      accessToken: token,  // ✅ 修改为 accessToken
+      accessToken: token,
       user: {
         id: user.id,
-        username: user.username,  // ✅ 普通注册只返回 id 和 username
-        avatar: user.avatarUrl  // ✅ 返回头像
+        username: user.username,
+        avatar: user.avatarUrl,
+        vip: 1,
+        emotionCoins: user.emotionCoins || 0
       }
     };
   },
@@ -194,7 +223,9 @@ const AuthServiceImpl = {
         id: admin.id,
         email: admin.email,
         username: admin.username,
-        avatar: admin.avatarUrl  // ✅ 映射为 avatar
+        avatar: admin.avatarUrl,  // ✅ 映射为 avatar
+        vip: admin.vip,
+        emotionCoins: admin.emotionCoins || 0
       }
     }
   },
@@ -230,7 +261,9 @@ const AuthServiceImpl = {
         id: user.id,
         email: user.email,
         username: user.username,
-        avatar: user.avatarUrl 
+        avatar: user.avatarUrl,
+        vip: user.vip,
+        emotionCoins: user.emotionCoins || 0
       }
     };
   },
@@ -254,7 +287,7 @@ const AuthServiceImpl = {
    */
   async fetchUserRaw(userId) {
     const user = await User.findByPk(userId, {
-      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'status', 'createdAt']
+      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'bioFontFamily', 'bioFontEffect', 'status', 'createdAt', 'vip', 'emotionCoins', 'lastCheckInAt', 'checkInStreak']
     });
 
     if (!user) return null;
@@ -266,7 +299,13 @@ const AuthServiceImpl = {
       avatarUrl: user.avatarUrl,
       role: user.role,
       bio: user.bio,
+      bioFontFamily: user.bioFontFamily || null,
+      bioFontEffect: user.bioFontEffect || null,
       status: user.status,
+      vip: user.vip,
+      emotionCoins: user.emotionCoins || 0,
+      lastCheckInAt: user.lastCheckInAt || null,
+      checkInStreak: user.checkInStreak || 0,
       createdAt: user.createdAt
     };
   },
@@ -296,8 +335,14 @@ const AuthServiceImpl = {
       username: rawData.username,
       avatar: rawData.avatarUrl,
       bio: rawData.bio,
+      bioFontFamily: rawData.bioFontFamily || null,
+      bioFontEffect: rawData.bioFontEffect || null,
       role: rawData.role,
       status: rawData.status,
+      vip: rawData.vip,
+      emotionCoins: rawData.emotionCoins || 0,
+      lastCheckInAt: rawData.lastCheckInAt || null,
+      checkInStreak: rawData.checkInStreak || 0,
       createdAt: rawData.createdAt
     };
   },
@@ -380,6 +425,10 @@ const AuthServiceImpl = {
       username: rawData.username,
       avatar: rawData.avatarUrl,
       bio: rawData.bio,
+      bioFontFamily: rawData.bioFontFamily || null,
+      bioFontEffect: rawData.bioFontEffect || null,
+      vip: rawData.vip,
+      emotionCoins: rawData.emotionCoins || 0,
       stories: stories.map(story => ({
         id: story.id,
         content: story.content,
@@ -394,7 +443,7 @@ const AuthServiceImpl = {
   /**
    * 修改个人信息
    */
-  async updateProfile(userId, { username, avatarUrl, bio }) {
+  async updateProfile(userId, { username, avatarUrl, bio, bioFontFamily, bioFontEffect }) {
     const user = await User.findByPk(userId);
 
     if (!user) {
@@ -420,6 +469,8 @@ const AuthServiceImpl = {
     if (username !== undefined) updateData.username = username;
     if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
     if (bio !== undefined) updateData.bio = bio;
+    if (bioFontFamily !== undefined) updateData.bioFontFamily = bioFontFamily || null;
+    if (bioFontEffect !== undefined) updateData.bioFontEffect = bioFontEffect || null;
 
     await user.update(updateData);
 
@@ -450,7 +501,10 @@ const AuthServiceImpl = {
       id: user.id,
       username: user.username,
       avatar: user.avatarUrl,
-      bio: user.bio
+      bio: user.bio,
+      vip: user.vip
+      ,
+      emotionCoins: user.emotionCoins || 0
     };
   },
 
@@ -533,7 +587,7 @@ const AuthServiceImpl = {
 
     const { count, rows } = await User.findAndCountAll({
       where: { status: statusFilter },
-      attributes: ['id', 'username', 'email', 'role', 'status', 'bio', 'avatarUrl', 'createdAt'],
+      attributes: ['id', 'username', 'email', 'role', 'status', 'bio', 'avatarUrl', 'createdAt', 'vip', 'emotionCoins'],
       order: [['createdAt', 'DESC']],
       offset,
       limit: pageSize
@@ -546,6 +600,80 @@ const AuthServiceImpl = {
         page: parseInt(page),
         pageSize: parseInt(pageSize),
         totalPages: Math.ceil(count / pageSize)
+      }
+    };
+  },
+
+  /**
+   * 根据用户名模糊搜索用户
+   * @param {string} keyword - 搜索关键词
+   * @param {number} page - 页码
+   * @param {number} limit - 每页数量
+   */
+  async searchUsersByUsername(keyword, { page = 1, limit = 20 } = {}) {
+    // =====================
+    // 业务逻辑验证
+    // =====================
+
+    // 1. 验证关键词
+    if (!keyword || typeof keyword !== 'string') {
+      throw new Error('请提供搜索关键词');
+    }
+
+    const trimmedKeyword = keyword.trim().replace(/[%_\\]/g, '\\$&');
+
+    if (trimmedKeyword === '') {
+      throw new Error('搜索关键词不能为空');
+    }
+
+    // 关键词长度限制
+    if (trimmedKeyword.length < 1) {
+      throw new Error('搜索关键词不能为空');
+    }
+
+    if (trimmedKeyword.length > 50) {
+      throw new Error('搜索关键词不能超过50个字符');
+    }
+
+    // 2. 验证分页参数
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    if (isNaN(pageNum) || pageNum < 1) {
+      throw new Error('页码必须大于0');
+    }
+
+    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+      throw new Error('每页数量必须在1-100之间');
+    }
+
+    // =====================
+    // 业务逻辑处理
+    // =====================
+
+    const offset = (pageNum - 1) * limitNum;
+
+    // 使用pg_trgm索引进行模糊搜索
+    const { count, rows } = await User.findAndCountAll({
+      where: {
+        username: {
+          [Op.iLike]: `%${trimmedKeyword}%`
+        },
+        status: ['normal', 'recommended']
+      },
+      attributes: ['id', 'username', 'avatarUrl', 'bio', 'vip', 'emotionCoins', 'createdAt'],
+      order: [['createdAt', 'DESC']],
+      offset,
+      limit: limitNum
+    });
+
+    return {
+      users: rows,
+      pagination: {
+        total: count,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(count / limitNum)
       }
     };
   }

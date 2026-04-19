@@ -7,8 +7,9 @@ pnpm-debug.log*
 
 # Environment files
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+frontend/.env.development
 
 # Logs
 logs/
@@ -52,3 +53,9 @@ coverage/
 dump.rdb
 "backend/logic/"
 backend/scripts/seed-data.js
+
+# Project folders
+.codebuddy/
+pro/
+
+docs/

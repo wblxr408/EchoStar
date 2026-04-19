@@ -8,12 +8,15 @@ function normalizeStoryId(storyId) {
 }
 
 export const commentApi = {
-  create(storyId, content) {
+  create(storyId, content, fontOptions = {}) {
     const normalizedStoryId = normalizeStoryId(storyId);
     if (commentApiProxy) {
-      return commentApiProxy.create(normalizedStoryId, content);
+      return commentApiProxy.create(normalizedStoryId, content, fontOptions);
     }
-    return api.post("/v1/comments", { storyId: normalizedStoryId, content });
+    const payload = { storyId: normalizedStoryId, content };
+    if (fontOptions.fontFamily) payload.fontFamily = fontOptions.fontFamily;
+    if (fontOptions.fontEffect) payload.fontEffect = fontOptions.fontEffect;
+    return api.post("/v1/comments", payload);
   },
 
   search(keyword, params = {}) {

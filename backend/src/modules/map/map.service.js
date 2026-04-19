@@ -53,7 +53,11 @@ const MapServiceUtil = {
     'location', // 直接查原始字段
     'locationName',  // ✅ 新增：地点名称
     'emotionTag',
+    'isTimeCapsule',
+    'unlockAt',
     'isRecommended',
+    'fontFamily',
+    'fontEffect',
     'createdAt'
   ],
 
@@ -74,23 +78,26 @@ const MapServiceUtil = {
   },
 
   // ✅ 核心修改：用 JS 手动解析经纬度
-  formatStory(story) {
+  // options.summary 为 true 时只返回 images[0]，减少传输量
+  formatStory(story, options = {}) {
     if (!story) return null;
 
     // 手动解析 location
     const { lat, lng } = parsePoint(story.location);
+    const rawImages = safeParseJSONB(story.images, []);
 
     return {
       id: normalizeStoryId(story.id),
       content: story.content,
-      images: safeParseJSONB(story.images, []),
+      images: options.summary && rawImages.length > 1 ? [rawImages[0]] : rawImages,
       username: story.author?.username || story.username || '',
       avatar: story.author?.avatarUrl || story.avatar || null,
       author: story.author
         ? {
             id: story.author.id,
             username: story.author.username || '匿名用户',
-            avatar: story.author.avatarUrl || null
+            avatar: story.author.avatarUrl || null,
+            vip: story.author.vip || 0
           }
         : null,
       location: {
@@ -99,39 +106,84 @@ const MapServiceUtil = {
       },
       locationName: story.locationName,  // ✅ 新增：地点名称
       emotionTag: story.emotionTag,
+      isTimeCapsule: !!story.isTimeCapsule,
+      unlockAt: story.unlockAt || null,
+      isUnlocked: !story.isTimeCapsule || (story.unlockAt && new Date(story.unlockAt) <= new Date()),
       isRecommended: story.isRecommended,
+      fontFamily: story.fontFamily || null,
+      fontEffect: story.fontEffect || null,
       createdAt: story.createdAt
     };
   }
 };
-
-// ===================== 核心地图服务 =====================
 export const MapService = {
-  async exploreStories(latitude, longitude, radius) {
-    const stories = await Story.findAll({
+  /**
+   * 范围查询故事
+   * @param {number} latitude
+   * @param {number} longitude
+   * @param {number} radius - 米
+   * @param {Object} options - { page, limit, summary }
+   *   page/limit 存在时启用分页，返回 { stories, pagination }
+   *   summary 为 true 时 images 只返回第一张
+   *   不传分页参数时保持向后兼容，直接返回数组
+   */
+  async exploreStories(latitude, longitude, radius, options = {}) {
+    const { page, limit, summary } = options;
+    const usePagination = page != null || limit != null;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(Math.max(parseInt(limit) || CONSTANTS.MAX_EXPLORE_LIMIT, 1), CONSTANTS.MAX_EXPLORE_LIMIT);
+
+    const queryOpts = {
       where: {
         visibility: CONSTANTS.PUBLIC_VISIBILITY,
         location: { [Op.not]: null },
         [Op.and]: [
           MapServiceUtil.getDWithinCondition(),
-          getVisibilityTimeCondition()
+          getVisibilityTimeCondition(),
+          sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
         ]
       },
       replacements: { lat: latitude, lng: longitude, radius },
       attributes: MapServiceUtil.STORY_ATTRIBUTES,
-      include: [{
+      include: [({
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
-      }],
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
+      })],
       order: [['createdAt', 'DESC']],
-      limit: CONSTANTS.MAX_EXPLORE_LIMIT
-    });
+      limit: limitNum,
+    };
 
-    return stories.map(s => ({
-      ...MapServiceUtil.formatStory(s),
+    if (usePagination) {
+      queryOpts.offset = (pageNum - 1) * limitNum;
+    }
+
+    let stories;
+    let pagination;
+
+    if (usePagination) {
+      const { count, rows } = await Story.findAndCountAll(queryOpts);
+      stories = rows;
+      pagination = {
+        total: count,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(count / limitNum)
+      };
+    } else {
+      stories = await Story.findAll(queryOpts);
+    }
+
+    const formatted = stories.map(s => ({
+      ...MapServiceUtil.formatStory(s, { summary }),
       content: s.content.length > 100 ? s.content.substring(0, 100) + '...' : s.content
     }));
+
+    if (usePagination) {
+      return { stories: formatted, pagination };
+    }
+    // 向后兼容：无分页时直接返回数组
+    return formatted;
   },
 
   /**
@@ -144,7 +196,10 @@ export const MapService = {
       where: {
         visibility: CONSTANTS.PUBLIC_VISIBILITY,
         location: { [Op.not]: null },
-        [Op.and]: [getVisibilityTimeCondition()]
+        [Op.and]: [
+          getVisibilityTimeCondition(),
+          sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
+        ]
       },
       order: [
         [sequelize.literal('is_recommended DESC NULLS LAST')],
@@ -176,7 +231,9 @@ export const MapService = {
         location: { [Op.not]: null },
         [Op.and]: [
           MapServiceUtil.getDWithinCondition(),
-          getVisibilityTimeCondition()
+          getVisibilityTimeCondition(),
+          // 排除未解锁的时光胶囊
+          sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
         ]
       },
       replacements: { lat: latitude, lng: longitude, radius },
@@ -184,7 +241,7 @@ export const MapService = {
       include: [{
         model: User,
         as: 'author',
-        attributes: ['id', 'username', 'avatarUrl']
+        attributes: ['id', 'username', 'avatarUrl', 'vip']
       }],
       order: [['createdAt', 'DESC']],
       limit: CONSTANTS.MAX_WALL_LIMIT
@@ -222,18 +279,25 @@ export const MapService = {
         neLng: northEast.lng,
         neLat: northEast.lat
       },
-      attributes: ['id', 'location', 'emotionTag']
+      attributes: ['id', 'location', 'emotionTag', 'isTimeCapsule', 'unlockAt', 'fontFamily', 'fontEffect']
     });
 
     // 🔥 传入动态计算的网格大小（根据 zoom 级别）
     const gridSize = this.getDynamicGridSize(zoom);
     const points = stories.map(s => {
       const { lat, lng } = parsePoint(s.location);
+      const isLocked = s.isTimeCapsule && (!s.unlockAt || new Date(s.unlockAt) > new Date());
       return {
         id: normalizeStoryId(s.id),
         latitude: lat,
         longitude: lng,
-        emotionTag: s.emotionTag
+        emotionTag: s.emotionTag,
+        isTimeCapsule: !!s.isTimeCapsule,
+        unlockAt: s.unlockAt || null,
+        isUnlocked: !s.isTimeCapsule || (s.unlockAt && new Date(s.unlockAt) <= new Date()),
+        isLocked,
+        fontFamily: s.fontFamily || null,
+        fontEffect: s.fontEffect || null
       };
     });
 
