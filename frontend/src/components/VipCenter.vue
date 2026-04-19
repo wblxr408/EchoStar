@@ -183,7 +183,7 @@ const props = defineProps({
   isDark: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['close', 'open-polish', 'open-comment-settings', 'open-visual', 'open-footprints'])
+const emit = defineEmits(['close', 'open-polish', 'open-comment-settings', 'open-visual', 'open-footprints', 'open-fonts'])
 
 const vipStore = useVipStore()
 const historyLoading = ref(false)
@@ -198,6 +198,7 @@ const benefits = [
   { key: 'footprint', icon: '🗺️', name: '我的足迹', desc: 'VIP 免费不限次', action: 'open-footprints' },
   { key: 'polish', icon: '✨', name: '擦亮故事', desc: 'VIP 免费不限次', action: 'open-polish' },
   { key: 'comment', icon: '💬', name: '评论装扮', desc: '气泡装饰免费使用', action: 'open-comment-settings' },
+  { key: 'font', icon: '🔤', name: '个性字体', desc: '个性字体随意用', action: 'open-fonts' },
 ]
 
 const privilegeDetails = [
@@ -260,7 +261,7 @@ function handleBenefitClick(benefit) {
     showToast('开通 VIP 后即可使用该功能')
     return
   }
-  emit(benefit.action)
+  emit(benefit.action, benefit)
 }
 
 async function handlePurchaseVip(packageKey) {
@@ -323,16 +324,12 @@ function formatDate(dateStr) {
 .vip-center-shell {
   position: fixed;
   inset: 0;
-  z-index: 340;
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 36px 24px;
-  background:
-    radial-gradient(circle at top, rgba(255, 229, 176, 0.16) 0%, transparent 30%),
-    rgba(8, 11, 19, 0.5);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: transparent;
 }
 
 .vip-center {
@@ -710,17 +707,17 @@ function formatDate(dateStr) {
 
 .vip-benefits-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
 }
 
 .vip-benefit {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 18px;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.55);
   border: 1px solid rgba(184, 135, 46, 0.1);
   cursor: pointer;
@@ -748,14 +745,14 @@ function formatDate(dateStr) {
 }
 
 .vip-benefit__icon-wrap {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(255, 215, 0, 0.1);
-  font-size: 26px;
+  font-size: 20px;
   flex-shrink: 0;
 }
 
@@ -766,15 +763,15 @@ function formatDate(dateStr) {
 
 .vip-benefit__name {
   display: block;
-  margin-bottom: 2px;
-  font-size: 14px;
+  margin-bottom: 1px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .vip-benefit__desc {
   display: block;
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 10px;
+  line-height: 1.3;
   opacity: 0.55;
 }
 

@@ -324,7 +324,7 @@ function saveSettings() {
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 1100;
+  z-index: 1101;
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;

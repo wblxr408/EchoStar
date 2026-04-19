@@ -708,14 +708,19 @@ function initPaperPlane(coords) {
   if (paperPlaneInitialized || !map || !window.AMap) return;
   // 稍微偏南一点，避免和用户定位标完全重叠
   const offsetCoords = { latitude: coords.latitude - 0.0008, longitude: coords.longitude };
-  paperPlaneMarker = createPaperPlaneMarker(offsetCoords);
+    paperPlaneMarker = createPaperPlaneMarker(offsetCoords);
   if (paperPlaneMarker) {
     map.add(paperPlaneMarker);
-    paperPlaneMarker.on('click', () => {
+    paperPlaneMarker.on('click', (e) => {
       const pos = paperPlaneMarker.getPosition();
+      // 计算纸飞机在容器中的像素位置
+      const pixel = map.lngLatToContainer(pos);
+      const containerRect = mapContainer.value.getBoundingClientRect();
       emit('paper-plane-click', {
         latitude: pos.getLat(),
         longitude: pos.getLng(),
+        screenX: containerRect.left + pixel.getX(),
+        screenY: containerRect.top + pixel.getY(),
       });
     });
     paperPlaneInitialized = true;
@@ -939,7 +944,7 @@ function showPaperPlaneTooltip() {
   if (!paperPlaneTooltipEl) {
     paperPlaneTooltipEl = document.createElement('div');
     paperPlaneTooltipEl.className = 'paper-plane-tooltip';
-    paperPlaneTooltipEl.innerHTML = '<span>点击纸飞机</span><span>查看附近故事</span>';
+    paperPlaneTooltipEl.innerHTML = '<span>点击纸飞机</span><span>查看选项</span>';
     paperPlaneTooltipEl.style.pointerEvents = 'none';
     paperPlaneTooltipEl.style.zIndex = '1100';
     document.body.appendChild(paperPlaneTooltipEl);
