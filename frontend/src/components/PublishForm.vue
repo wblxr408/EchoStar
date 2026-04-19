@@ -17,7 +17,7 @@
       <div class="section-heading">
         <span class="section-kicker">Place Search</span>
         <h3>选择故事落点</h3>
-        <p>已经使用了纸飞机的位置，可以在下方文本框更正并选中你想要的地址<br/>不支持自定义地址哦，手动更改之后必须选择一个候选项~</p>
+        <p>当前已经使用了<span class="plane-pos-highlight">纸飞机的位置</span>，可以在下方文本框更正并选中你想要的地址或者点击"手动调整纸飞机位置"按钮在地图上手动调整纸飞机位置</p>
       </div>
 
       <div class="location-search">
@@ -27,9 +27,14 @@
           placeholder="搜索你想留下故事的地方"
           @keyup.enter="performPoiSearch"
         />
+        <div v-if="userEditedLocation && !form.selectedLocation" class="search-warning-bar">
+          <span class="search-warning-text">你修改了地点，请从下方搜索结果中选择一个地址</span>
+        </div>
       </div>
 
-      <p v-if="userEditedLocation && !form.selectedLocation" class="search-feedback warning">你修改了地点，请从下方搜索结果中选择一个地址</p>
+      <button type="button" class="adjust-plane-btn" @click="emit('adjust-plane-position')">
+        手动调整纸飞机位置
+      </button>
 
       <p v-if="searchError" class="search-feedback error">{{ searchError }}</p>
       <p v-else-if="searching" class="search-feedback">正在查找相关地点...</p>
@@ -81,6 +86,15 @@
         ></textarea>
         <span class="char-count">{{ form.content.length }}/500</span>
       </div>
+      <!-- 个性字体 - 紧贴故事输入框下方 -->
+      <div v-if="vipStore.isVipActive" class="inline-font-row">
+        <button type="button" class="font-action-btn" :class="{ 'font-active': form.fontFamily || form.fontEffect }" @click="showFontPicker = true">
+          {{ (form.fontFamily || form.fontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
+        </button>
+        <button v-if="form.fontFamily || form.fontEffect" type="button" class="font-clear-btn" @click="clearFontAndEffect">
+          清除
+        </button>
+      </div>
     </section>
 
     <section class="section-card media-card">
@@ -97,22 +111,6 @@
         <h3>选择情绪</h3>
       </div>
       <EmotionSelector v-model="form.emotion" />
-    </section>
-
-    <section v-if="vipStore.isVipActive" class="section-card font-card">
-      <div class="section-heading">
-        <span class="section-kicker">Typography</span>
-        <h3>个性字体样式</h3>
-        <p>为你的故事选择专属字体和文字效果</p>
-      </div>
-      <div class="font-actions">
-        <button type="button" class="font-action-btn" :class="{ 'font-active': form.fontFamily || form.fontEffect }" @click="showFontPicker = true">
-          {{ (form.fontFamily || form.fontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
-        </button>
-        <button v-if="form.fontFamily || form.fontEffect" type="button" class="font-clear-btn" @click="clearFontAndEffect">
-          清除
-        </button>
-      </div>
     </section>
 
     <section class="section-card split-card">
@@ -264,7 +262,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['submit', 'cancel']);
+const emit = defineEmits(['submit', 'cancel', 'adjust-plane-position']);
 
 const vipStore = useVipStore();
 
@@ -1497,6 +1495,15 @@ function handleSubmit() {
   font-size: 12px;
 }
 
+.inline-font-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+
+
 .font-actions {
   position: relative;
   z-index: 1;
@@ -1562,6 +1569,72 @@ function handleSubmit() {
   .split-card {
     grid-template-columns: 1fr;
   }
+}
+
+.plane-pos-highlight {
+  color: #c42828;
+  font-weight: 600;
+}
+
+.theme-dark .plane-pos-highlight {
+  color: #ff5555;
+}
+
+.search-warning-bar {
+  margin-top: 0;
+  padding: 8px 12px;
+  border-radius: 0 0 14px 14px;
+  background: rgba(220, 50, 50, 0.1);
+  border: 1px solid rgba(220, 50, 50, 0.22);
+  border-top: 1px solid rgba(220, 50, 50, 0.1);
+}
+
+.search-warning-bar .search-warning-text {
+  display: block;
+  font-size: 13px;
+  color: #d43030;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.theme-dark .search-warning-bar {
+  background: rgba(255, 80, 80, 0.12);
+  border-color: rgba(255, 80, 80, 0.28);
+  border-top-color: rgba(255, 80, 80, 0.15);
+}
+
+.theme-dark .search-warning-bar .search-warning-text {
+  color: #ff6b6b;
+}
+
+.adjust-plane-btn {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--panel-soft);
+  color: var(--panel-strong);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, border-color 0.22s ease;
+}
+
+.adjust-plane-btn:hover {
+  border-color: var(--accent);
+  background: var(--panel-soft-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -12px var(--accent);
+}
+
+.search-feedback.warning {
+  color: #b8860b;
+}
+
+.theme-dark .search-feedback.warning {
+  color: #ffd27a;
 }
 
 @media (max-width: 640px) {

@@ -115,6 +115,15 @@
         ></textarea>
         <span class="char-count">{{ form.content.length }}/500</span>
       </div>
+      <!-- 个性字体 - 紧贴故事输入框下方 -->
+      <div v-if="vipStore.isVipActive" class="inline-font-row">
+        <button type="button" class="font-action-btn" :class="{ 'font-active': form.fontFamily || form.fontEffect }" @click="showFontPicker = true">
+          {{ (form.fontFamily || form.fontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
+        </button>
+        <button v-if="form.fontFamily || form.fontEffect" type="button" class="font-clear-btn" @click="clearFontAndEffect">
+          清除
+        </button>
+      </div>
     </section>
 
     <section class="section-card media-card">
@@ -231,6 +240,17 @@
         发布故事
       </button>
     </footer>
+
+    <FontPicker
+      :visible="showFontPicker"
+      :is-dark="mapTheme === 'dark'"
+      target-type="story"
+      :selected-font="form.fontFamily"
+      :selected-effect="form.fontEffect"
+      @select="handleFontSelect"
+      @select-effect="handleEffectSelect"
+      @close="showFontPicker = false"
+    />
   </div>
 </template>
 
@@ -238,7 +258,10 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import ImageUploader from './ImageUploader.vue';
 import EmotionSelector from './EmotionSelector.vue';
+import FontPicker from './FontPicker.vue';
 import { searchPoisWithContext } from '../utils/poiSearch';
+import { useVipStore } from '../stores/vip';
+import { injectFontEffectAnimations } from '../composables/useFontEffect';
 
 const props = defineProps({
   visible: {
@@ -273,6 +296,12 @@ const props = defineProps({
 
 const emit = defineEmits(['submit', 'cancel', 'request-map-pick', 'cancel-map-pick']);
 
+const vipStore = useVipStore();
+
+injectFontEffectAnimations();
+
+const showFontPicker = ref(false);
+
 const DEFAULT_FORM = () => ({
   content: '',
   images: [],
@@ -285,7 +314,9 @@ const DEFAULT_FORM = () => ({
   useTimeWindow: false,
   visibilityPreset: null,
   visibilityStartTime: '',
-  visibilityEndTime: ''
+  visibilityEndTime: '',
+  fontFamily: '',
+  fontEffect: ''
 });
 
 const form = ref(DEFAULT_FORM());
@@ -859,6 +890,19 @@ function toggleMapPick() {
   emit('request-map-pick');
 }
 
+function handleFontSelect(family) {
+  form.value.fontFamily = family;
+}
+
+function handleEffectSelect(effect) {
+  form.value.fontEffect = effect;
+}
+
+function clearFontAndEffect() {
+  form.value.fontFamily = '';
+  form.value.fontEffect = '';
+}
+
 function handleSubmit() {
   if (!isValid.value) {
     return;
@@ -871,7 +915,9 @@ function handleSubmit() {
     isTimeCapsule: form.value.isTimeCapsule,
     unlockAt: form.value.unlockAt,
     visibility: form.value.visibility,
-    location: form.value.selectedLocation
+    location: form.value.selectedLocation,
+    fontFamily: form.value.fontFamily || undefined,
+    fontEffect: form.value.fontEffect || undefined
   };
 
   // 只在选择了公开可见且启用了时间窗口时才传递时间参数
@@ -1503,6 +1549,49 @@ function handleSubmit() {
 
 .emotion-card :deep(.emotion-btn.active .emotion-label) {
   color: var(--panel-strong);
+}
+
+.inline-font-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.font-action-btn {
+  padding: 10px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--panel-soft);
+  color: var(--panel-strong);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-action-btn:hover {
+  border-color: var(--accent);
+  background: var(--panel-soft-strong);
+}
+
+.font-action-btn.font-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.font-clear-btn {
+  padding: 10px 14px;
+  border: 1px solid rgba(200, 100, 100, 0.3);
+  border-radius: 14px;
+  background: rgba(200, 100, 100, 0.08);
+  color: var(--panel-muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-clear-btn:hover {
+  background: rgba(200, 100, 100, 0.18);
 }
 
 .media-card :deep(.upload-area) {

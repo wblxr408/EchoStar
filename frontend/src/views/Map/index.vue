@@ -19,7 +19,7 @@
       </transition>
 
     <!-- 搜索框 -->
-    <div class="map-search-bar" :class="{ dark: effectiveMapTheme === 'dark' }" @click.stop>
+    <div v-show="!isAdjustingPlanePosition" class="map-search-bar" :class="{ dark: effectiveMapTheme === 'dark' }" @click.stop>
       <div class="map-search-input-wrap">
         <svg class="map-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input
@@ -317,6 +317,7 @@
     </div>
 
     <button
+      v-show="!isAdjustingPlanePosition"
       class="locate-btn"
       :class="{ dark: effectiveMapTheme === 'dark' }"
       title="回到我的位置"
@@ -577,6 +578,7 @@
     </transition>
 
     <div
+      v-show="!isAdjustingPlanePosition"
       :class="[
         'dock-container',
         effectiveMapTheme === 'dark' ? 'dock-dark' : 'dock-light',
@@ -873,6 +875,7 @@
                 :prefill-query="publishPrefillQuery"
                 @submit="handlePublishSubmit"
                 @cancel="closePublishPanel"
+                @adjust-plane-position="handleAdjustPlanePosition"
               />
             </div>
           </template>
@@ -982,6 +985,16 @@
               否
             </button>
           </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 调整纸飞机位置模式 - 底部提示栏 -->
+    <transition name="adjust-overlay-fade">
+      <div v-if="isAdjustingPlanePosition" class="adjust-plane-overlay">
+        <div class="adjust-plane-overlay-content">
+          <strong>点击地图上的某个位置来更新纸飞机位置</strong>
+          <span>更新完成后将自动重新打开发布窗口</span>
         </div>
       </div>
     </transition>
@@ -1747,6 +1760,10 @@ const pickedPublishLocation = ref(null);
 const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
 const publishPrefillQuery = ref('');
+const isAdjustingPlanePosition = ref(false);
+const isAdjustingWaitingForPlane = ref(false);
+const isDockPublishWaitingForPlane = ref(false);
+const dockPublishClickScreenPos = ref(null);
 const showLoginModal = ref(false);
 const showNotificationPanel = ref(false);
 const notificationTab = ref("messages");
@@ -1822,7 +1839,7 @@ const nearbyCenterSummary = computed(() => {
 const anyPanelOpen = computed(() => {
   return showSidebar.value || showPlaneNearby.value || showUserSidebar.value || showPublishSidebar.value || showDockPublishSidebar.value
     || showSwitchAccountModal.value || showLoginModal.value || showNotificationPanel.value
-    || showEditProfileModal.value || isDockExpanded.value;
+    || showEditProfileModal.value || isDockExpanded.value || isAdjustingPlanePosition.value;
 });
 const hoveredDockCard = ref("");
 const selectedDockCard = ref("");
@@ -4994,11 +5011,19 @@ async function savePendingChanges() {
 
 function closePublishPanel() {
   isPickingPublishLocation.value = false;
+  isAdjustingPlanePosition.value = false;
+  isAdjustingWaitingForPlane.value = false;
   suggestedPublishLocations.value = [];
   publishPickPrompt.value = null;
   publishPrefillQuery.value = '';
   pickedPublishLocation.value = null;
   showPublishSidebar.value = false;
+}
+
+function handleAdjustPlanePosition() {
+  showPublishSidebar.value = false;
+  isPickingPublishLocation.value = false;
+  isAdjustingPlanePosition.value = true;
 }
 
 function startPublishMapPick() {
@@ -5026,6 +5051,7 @@ function restorePublishPanelFromPick() {
 }
 
 function handleDocumentKeydown(e) {
+  if (isAdjustingPlanePosition.value) return;
   if (e.key === "Escape" && isPickingPublishLocation.value) {
     restorePublishPanelFromPick();
   }
@@ -5051,6 +5077,8 @@ function handlePublishClick() {
     closePublishPanel();
   }
   isPickingDockPublishLocation.value = false;
+  isAdjustingPlanePosition.value = false;
+  isAdjustingWaitingForPlane.value = false;
   isDockExpanded.value = false;
   setTimeout(() => {
     showDockPublishSidebar.value = true;
@@ -6142,6 +6170,8 @@ function handlePaperPlanePublish() {
   if (showPlaneNearby.value) showPlaneNearby.value = false;
   if (showVipCenter.value) showVipCenter = false;
   if (showDockPublishSidebar.value) closeDockPublishPanel();
+  isAdjustingPlanePosition.value = false;
+  isAdjustingWaitingForPlane.value = false;
   // 逆地理编码纸飞机位置
   const coords = { latitude: planePosition.value.latitude, longitude: planePosition.value.longitude };
   reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
@@ -6155,11 +6185,46 @@ function handlePaperPlanePublish() {
   });
 }
 
-function handlePaperPlaneMove(point) {
+async function handlePaperPlaneMove(point) {
   // 始终同步纸飞机实际位置
   if (point?.latitude != null && point?.longitude != null) {
     planePosition.value = { latitude: point.latitude, longitude: point.longitude };
   }
+
+  // 调整纸飞机位置 - 纸飞机已到达新位置
+  if (isAdjustingWaitingForPlane.value) {
+    isAdjustingWaitingForPlane.value = false;
+    isAdjustingPlanePosition.value = false;
+    const coords = { latitude: point.latitude, longitude: point.longitude };
+    const location = await reverseGeocodeLocationDetail(coords.latitude, coords.longitude);
+    if (!location) {
+      showToast('位置解析失败，请重试', 'warning');
+      return;
+    }
+    const displayName = pickLocationDisplayName(location, location.name || '当前位置');
+    isPickingPublishLocation.value = false;
+    showPublishSidebar.value = true;
+    nextTick(() => {
+      publishPrefillQuery.value = displayName;
+    });
+    return;
+  }
+
+  // 功能卡组发布 - 纸飞机已飞到选点位置
+  if (isDockPublishWaitingForPlane.value) {
+    isDockPublishWaitingForPlane.value = false;
+    const pickedLocation = await reverseGeocodePickedLocation(point.latitude, point.longitude);
+    dockPublishPickedLocation.value = pickedLocation;
+    const screenPos = dockPublishClickScreenPos.value || {};
+    isDockPublishPickPrompt.value = {
+      location: pickedLocation,
+      screenX: screenPos.screenX,
+      screenY: screenPos.screenY,
+    };
+    dockPublishClickScreenPos.value = null;
+    return;
+  }
+
   // 如果附近故事面板已打开，重新加载
   if (showPlaneNearby.value) {
     loadPlaneNearby(false);
@@ -6442,21 +6507,25 @@ function reverseGeocodePickedLocation(latitude, longitude) {
 }
 
 async function handlePublishMapClick(point) {
-  console.log('[Map] handlePublishMapClick called:', { point, showPublishSidebar: showPublishSidebar.value, isPickingPublishLocation: isPickingPublishLocation.value, showDockPublishSidebar: showDockPublishSidebar.value, isPickingDockPublishLocation: isPickingDockPublishLocation.value });
   hidePlaneMenu();
   searchFocused.value = false;
-  // 功能卡组发布 - 地图选点模式
+
+  // 调整纸飞机位置模式 - 纸飞机飞到点击位置
+  if (isAdjustingPlanePosition.value) {
+    const coords = extractCoordinates(point);
+    if (!coords) return;
+    isAdjustingWaitingForPlane.value = true;
+    planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
+    return;
+  }
+
+  // 功能卡组发布 - 地图选点模式（纸飞机飞过去再解析）
   if (showDockPublishSidebar.value && isPickingDockPublishLocation.value) {
     const coords = extractCoordinates(point);
     if (!coords) return;
-    dockPublishSuggestedLocations.value = [];
-    const pickedLocation = await reverseGeocodePickedLocation(coords.latitude, coords.longitude);
-    dockPublishPickedLocation.value = pickedLocation;
-    isDockPublishPickPrompt.value = {
-      location: pickedLocation,
-      screenX: point?.screenX,
-      screenY: point?.screenY,
-    };
+    isDockPublishWaitingForPlane.value = true;
+    dockPublishClickScreenPos.value = { screenX: point?.screenX, screenY: point?.screenY };
+    planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
     return;
   }
   // 纸飞机发布 - 地图选点模式
@@ -7687,6 +7756,7 @@ function handleGuestLogout() {
 }
 
 function handlePageClick(event) {
+  if (isAdjustingPlanePosition.value) return;
   if (showPublishSidebar.value && isPickingPublishLocation.value) {
     return;
   }
@@ -12241,6 +12311,55 @@ onUnmounted(() => {
 .locate-btn.dark:hover {
   box-shadow: 0 4px 16px rgba(143, 180, 255, 0.2);
   border-color: rgba(143, 180, 255, 0.4);
+}
+
+/* ===== 调整纸飞机位置模式 - 底部提示栏 ===== */
+.adjust-plane-overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  padding: 20px 32px;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(16px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.adjust-plane-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+}
+
+.adjust-plane-overlay-content strong {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.adjust-plane-overlay-content span {
+  font-size: 13px;
+  opacity: 0.65;
+}
+
+.adjust-overlay-fade-enter-active {
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adjust-overlay-fade-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adjust-overlay-fade-enter-from,
+.adjust-overlay-fade-leave-to {
+  opacity: 0;
+  transform: translateY(100%);
 }
 
 .logout-action-btn:hover {
