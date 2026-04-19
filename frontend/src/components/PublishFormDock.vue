@@ -123,9 +123,6 @@
           @click="vipStore.isVipActive ? (showFontPicker = !showFontPicker) : emit('request-vip')">
           {{ vipStore.isVipActive ? '🔤 个性字体' : '🔒 个性字体' }}
         </button>
-        <button v-if="form.fontFamily || form.fontEffect" type="button" class="font-clear-btn" @click="clearFontAndEffect">
-          清除
-        </button>
       </div>
     </section>
 

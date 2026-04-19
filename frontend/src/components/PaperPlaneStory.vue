@@ -114,35 +114,33 @@
                 class="comment-textarea"
                 :style="getCommentFontStyle({ fontFamily: commentFontFamily || readDefaultFontFromCookie(), fontEffect: commentFontEffect || readDefaultFontEffectFromCookie() })"
               ></textarea>
-              <div class="inline-font-row">
-                <button type="button" class="btn-comment-bg"
-                  :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
-                  @click="vipStore.isVipActive ? (showCommentFontPicker = !showCommentFontPicker) : emit('request-vip')">
-                  {{ vipStore.isVipActive ? '🔤 个性字体' : '🔒 个性字体' }}
-                </button>
-                <button v-if="commentFontFamily || commentFontEffect" type="button" class="font-clear-btn"
-                  @click="commentFontFamily = ''; commentFontEffect = ''">
-                  清除
-                </button>
-              </div>
               <div class="comment-actions">
-                <button
-                  type="button"
-                  class="btn-comment-bg"
-                  :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
-                  @click="handleCommentBgClick"
-                >
-                  {{ vipStore.isVipActive ? '🎨 更改评论背景' : '🔒 更改评论背景' }}
-                </button>
-                <button type="button" class="btn-cancel" @click="showCommentInput = false">取消</button>
-                <button
-                  type="button"
-                  class="btn-submit"
-                  :disabled="!newComment.trim()"
-                  @click="submitComment"
-                >
-                  发布
-                </button>
+                <div class="comment-actions__left">
+                  <button type="button" class="btn-comment-bg"
+                    :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
+                    @click="vipStore.isVipActive ? (showCommentFontPicker = !showCommentFontPicker) : emit('request-vip')">
+                    {{ vipStore.isVipActive ? '🔤 个性字体' : '🔒 个性字体' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-comment-bg"
+                    :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
+                    @click="handleCommentBgClick"
+                  >
+                    {{ vipStore.isVipActive ? '🎨 更改评论背景' : '🔒 更改评论背景' }}
+                  </button>
+                </div>
+                <div class="comment-actions__right">
+                  <button type="button" class="btn-cancel" @click="showCommentInput = false">取消</button>
+                  <button
+                    type="button"
+                    class="btn-submit"
+                    :disabled="!newComment.trim()"
+                    @click="submitComment"
+                  >
+                    发布
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1169,7 +1167,26 @@ async function submitReport() {
   box-shadow: 0 0 0 3px var(--story-detail-accent-soft);
 }
 
-.comment-actions,
+.comment-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.comment-actions__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comment-actions__right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
 .report-actions {
   display: flex;
   justify-content: flex-end;
@@ -1179,7 +1196,6 @@ async function submitReport() {
 }
 
 .btn-comment-bg {
-  margin-right: auto;
   height: 36px;
   padding: 0 14px;
   border-radius: 12px;

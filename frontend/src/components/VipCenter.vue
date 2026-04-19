@@ -198,7 +198,6 @@ const activateSuccess = ref(false)
 
 const benefits = [
   { key: 'footprint', icon: '🗺️', name: '我的足迹', desc: 'VIP 免费不限次', action: 'open-footprints' },
-  { key: 'polish', icon: '✨', name: '擦亮故事', desc: 'VIP 免费不限次', action: 'open-polish' },
   { key: 'comment', icon: '💬', name: '评论装扮', desc: '气泡装饰免费使用', action: 'open-comment-settings' },
   { key: 'font', icon: '🔤', name: '个性字体', desc: '个性字体随意用', action: 'open-fonts' },
 ]
@@ -711,7 +710,7 @@ function formatDate(dateStr) {
 
 .vip-benefits-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
 

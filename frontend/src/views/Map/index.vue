@@ -1229,20 +1229,16 @@
                     @click.stop
                     @keyup.esc="cancelEditBio"
                     @keydown.enter.exact.prevent="saveBioInline"
-                    @blur="saveBioInline"
+                    @blur="handleBioBlur"
                     :style="getBioFontStyle(bioFontFamily || readBioFontFromCookie(), bioFontEffect || readBioFontEffectFromCookie())"
                   ></textarea>
                   <span class="bio-char-count">{{ bioDraft.length }}/200</span>
                   <div class="inline-font-row" @click.stop>
                     <button type="button" class="btn-comment-bg"
                       :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
-                      @click.stop="vipStore.isVipActive ? (showBioFontPicker = !showBioFontPicker) : (showVipCenter = true)">
+                      @mousedown.prevent="bioFontBtnMousedown = true"
+                      @click.stop="bioFontBtnMousedown = false; vipStore.isVipActive ? (showBioFontPicker = !showBioFontPicker) : (showVipCenter = true)">
                       {{ vipStore.isVipActive ? '🔤 个性字体' : '🔒 个性字体' }}
-                    </button>
-                    <button v-if="bioFontFamily || bioFontEffect" type="button" class="font-clear-btn"
-                      :style="{ color: isDarkMap ? '#bbb' : '#888', borderColor: isDarkMap ? 'rgba(200,100,100,0.4)' : 'rgba(200,100,100,0.3)', background: isDarkMap ? 'rgba(200,100,100,0.12)' : 'rgba(200,100,100,0.08)' }"
-                      @click.stop="bioFontFamily = ''; bioFontEffect = ''">
-                      清除
                     </button>
                   </div>
                 </span>
@@ -2135,6 +2131,7 @@ const bioChanged = ref(false);
 const showBioFontPicker = ref(false);
 const bioFontFamily = ref('');
 const bioFontEffect = ref('');
+const bioFontBtnMousedown = ref(false);
 
 function readBioFontFromCookie() {
   const match = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);
@@ -4842,6 +4839,11 @@ function cancelEditBio() {
 }
 
 let _bioSaving = false;
+
+function handleBioBlur() {
+  if (bioFontBtnMousedown.value) return;
+  saveBioInline();
+}
 
 function saveBioInline() {
   if (_bioSaving) return;
