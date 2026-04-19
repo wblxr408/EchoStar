@@ -312,6 +312,8 @@
         @cluster-click="handleClusterClick"
         @theme-change="handleThemeChange"
         @paper-plane-click="handlePaperPlaneClick"
+        @paper-plane-hover="handlePaperPlaneHover"
+        @paper-plane-leave="handlePaperPlaneLeave"
         @paper-plane-move="handlePaperPlaneMove"
       />
     </div>
@@ -830,9 +832,8 @@
       @close="showLightbox = false"
     />
 
-    <transition name="publish-modal">
-      <div
-        v-if="showPublishSidebar"
+    <div
+        v-show="showPublishSidebar"
         class="publish-modal-shell"
         :class="{ 'pick-mode': isPickingPublishLocation }"
         @click.self="closePublishPanel"
@@ -906,12 +907,10 @@
           </div>
         </div>
       </div>
-      </transition>
 
     <!-- 功能卡组发布故事面板（旧版独立） -->
-    <transition name="publish-modal">
       <div
-        v-if="showDockPublishSidebar"
+        v-show="showDockPublishSidebar"
         class="publish-modal-shell"
         :class="{ 'pick-mode': isPickingDockPublishLocation }"
         @click.self="closeDockPublishPanel"
@@ -987,7 +986,6 @@
           </div>
         </div>
       </div>
-    </transition>
 
     <!-- 调整纸飞机位置模式 - 底部提示栏 -->
     <transition name="adjust-overlay-fade">
@@ -998,6 +996,32 @@
         </div>
       </div>
     </transition>
+
+    <!-- 调整纸飞机位置 - 确认弹窗（独立于发布面板，不受 showPublishSidebar 控制） -->
+    <div
+      v-if="publishPickPrompt && isAdjustingPlanePosition"
+      class="publish-pick-confirm"
+      :style="getPublishPickPromptStyle(publishPickPrompt)"
+      @click.stop
+    >
+      <p>是否在这附近搜索？</p>
+      <div class="publish-pick-confirm-actions">
+        <button
+          type="button"
+          class="confirm-btn"
+          @click="confirmPublishNearbySearch"
+        >
+          是
+        </button>
+        <button
+          type="button"
+          class="cancel-btn"
+          @click="rejectPublishNearbySearch"
+        >
+          否
+        </button>
+      </div>
+    </div>
 
     <transition name="publish-modal">
       <div v-if="showUserSidebar" class="user-modal-shell" :class="{ 'has-profile-search': myProfileSearchActive }">
@@ -1760,10 +1784,12 @@ const pickedPublishLocation = ref(null);
 const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
 const publishPrefillQuery = ref('');
+const adjustPlaneSavedPrefill = ref('');
 const isAdjustingPlanePosition = ref(false);
 const isAdjustingWaitingForPlane = ref(false);
 const isDockPublishWaitingForPlane = ref(false);
 const dockPublishClickScreenPos = ref(null);
+const adjustPlaneClickScreenPos = ref(null);
 const showLoginModal = ref(false);
 const showNotificationPanel = ref(false);
 const notificationTab = ref("messages");
@@ -5013,6 +5039,8 @@ function closePublishPanel() {
   isPickingPublishLocation.value = false;
   isAdjustingPlanePosition.value = false;
   isAdjustingWaitingForPlane.value = false;
+  adjustPlaneClickScreenPos.value = null;
+  adjustPlaneClickScreenPos.value = null;
   suggestedPublishLocations.value = [];
   publishPickPrompt.value = null;
   publishPrefillQuery.value = '';
@@ -5021,6 +5049,7 @@ function closePublishPanel() {
 }
 
 function handleAdjustPlanePosition() {
+  adjustPlaneSavedPrefill.value = publishPrefillQuery.value;
   showPublishSidebar.value = false;
   isPickingPublishLocation.value = false;
   isAdjustingPlanePosition.value = true;
@@ -5051,7 +5080,17 @@ function restorePublishPanelFromPick() {
 }
 
 function handleDocumentKeydown(e) {
-  if (isAdjustingPlanePosition.value) return;
+  if (e.key === "Escape" && isAdjustingPlanePosition.value) {
+    publishPickPrompt.value = null;
+    adjustPlaneClickScreenPos.value = null;
+    isAdjustingPlanePosition.value = false;
+    isAdjustingWaitingForPlane.value = false;
+    showPublishSidebar.value = true;
+    nextTick(() => {
+      publishPrefillQuery.value = adjustPlaneSavedPrefill.value;
+    });
+    return;
+  }
   if (e.key === "Escape" && isPickingPublishLocation.value) {
     restorePublishPanelFromPick();
   }
@@ -5079,6 +5118,7 @@ function handlePublishClick() {
   isPickingDockPublishLocation.value = false;
   isAdjustingPlanePosition.value = false;
   isAdjustingWaitingForPlane.value = false;
+  adjustPlaneClickScreenPos.value = null;
   isDockExpanded.value = false;
   setTimeout(() => {
     showDockPublishSidebar.value = true;
@@ -5162,7 +5202,7 @@ async function handleDockPublishSubmit(storyData) {
       }
     }
 
-    const response = await storyApi.createStory({
+    const createPayload = {
       content: storyData.content,
       images: imageUrls,
       location: {
@@ -5176,12 +5216,13 @@ async function handleDockPublishSubmit(storyData) {
       visibility: storyData.visibility || "public",
       visibilityStartTime: storyData.visibilityStartTime || null,
       visibilityEndTime: storyData.visibilityEndTime || null,
-    });
+      fontFamily: storyData.fontFamily || null,
+      fontEffect: storyData.fontEffect || null,
+    };
+    const response = await storyApi.createStory(createPayload);
 
     const newStory = response.data || response;
     const normalizedNewStory = normalizeStoryForMap(newStory, location);
-
-    console.log("发布故事成功:", newStory);
 
     if (normalizedNewStory && amapRef.value) {
       amapRef.value.addNewStoryMarker(normalizedNewStory);
@@ -6070,32 +6111,52 @@ function scrollPlaneNearbyToTop() {
   showPlaneNearbyBackToTop.value = false;
 }
 
-// 纸飞机菜单 DOM
+// 纸飞机菜单 DOM（悬停触发）
 let planeMenuEl = null;
 let planeMenuHideTimer = null;
+const PLANE_MENU_HIDE_DELAY = 300;
 
-function hidePlaneMenu() {
+function hidePlaneMenu(immediate = false) {
   if (planeMenuHideTimer) {
     clearTimeout(planeMenuHideTimer);
     planeMenuHideTimer = null;
   }
-  if (planeMenuEl) {
-    planeMenuEl.style.opacity = '0';
-    planeMenuEl.style.transform = 'translateY(4px)';
-    setTimeout(() => {
-      if (planeMenuEl && planeMenuEl.parentNode) {
-        planeMenuEl.parentNode.removeChild(planeMenuEl);
-      }
-      planeMenuEl = null;
-    }, 200);
+  if (!planeMenuEl) return;
+  if (immediate) {
+    if (planeMenuEl.parentNode) planeMenuEl.parentNode.removeChild(planeMenuEl);
+    planeMenuEl = null;
+    return;
   }
+  planeMenuEl.style.transition = 'opacity 0.1s ease, transform 0.1s ease';
+  planeMenuEl.style.opacity = '0';
+  planeMenuEl.style.transform = 'translateY(8px)';
+  setTimeout(() => {
+    if (planeMenuEl && planeMenuEl.parentNode) {
+      planeMenuEl.parentNode.removeChild(planeMenuEl);
+    }
+    planeMenuEl = null;
+  }, 100);
 }
 
 function showPlaneMenu(clientX, clientY) {
-  hidePlaneMenu();
   if (planeMenuHideTimer) {
     clearTimeout(planeMenuHideTimer);
     planeMenuHideTimer = null;
+  }
+  // 如果菜单已存在且可见，仅更新位置
+  if (planeMenuEl && planeMenuEl.parentNode) {
+    const menuW = planeMenuEl.offsetWidth;
+    const menuH = planeMenuEl.offsetHeight;
+    let left = clientX - menuW / 2;
+    let top = clientY - menuH - 12;
+    if (left < 8) left = 8;
+    if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+    if (top < 8) top = clientY + 16;
+    planeMenuEl.style.left = left + 'px';
+    planeMenuEl.style.top = top + 'px';
+    planeMenuEl.style.opacity = '1';
+    planeMenuEl.style.transform = 'translateY(0)';
+    return;
   }
 
   planeMenuEl = document.createElement('div');
@@ -6124,7 +6185,18 @@ function showPlaneMenu(clientX, clientY) {
     }
   });
 
-  // 定位菜单在点击位置上方
+  // 鼠标在菜单上时保持显示，离开后延迟隐藏
+  planeMenuEl.addEventListener('mouseenter', () => {
+    if (planeMenuHideTimer) {
+      clearTimeout(planeMenuHideTimer);
+      planeMenuHideTimer = null;
+    }
+  }, { passive: true });
+  planeMenuEl.addEventListener('mouseleave', () => {
+    scheduleHidePlaneMenu();
+  }, { passive: true });
+
+  // 定位菜单在纸飞机位置上方
   document.body.appendChild(planeMenuEl);
   const menuW = planeMenuEl.offsetWidth;
   const menuH = planeMenuEl.offsetHeight;
@@ -6137,19 +6209,38 @@ function showPlaneMenu(clientX, clientY) {
   planeMenuEl.style.top = top + 'px';
   planeMenuEl.classList.toggle('dark', effectiveMapTheme.value === 'dark');
 
-  // 触发动画
+  // 触发弹出动画
   requestAnimationFrame(() => {
     planeMenuEl.style.opacity = '1';
     planeMenuEl.style.transform = 'translateY(0)';
   });
 }
 
+function scheduleHidePlaneMenu() {
+  if (planeMenuHideTimer) clearTimeout(planeMenuHideTimer);
+  planeMenuHideTimer = setTimeout(() => {
+    hidePlaneMenu();
+    planeMenuHideTimer = null;
+  }, PLANE_MENU_HIDE_DELAY);
+}
+
+function handlePaperPlaneHover(point) {
+  if (isAdjustingPlanePosition.value || isPickingPublishLocation.value || isPickingDockPublishLocation.value) return;
+  if (point.screenX != null && point.screenY != null) {
+    showPlaneMenu(point.screenX, point.screenY);
+  }
+}
+
+function handlePaperPlaneLeave() {
+  scheduleHidePlaneMenu();
+}
+
 function handlePaperPlaneClick(point) {
-  // 使用纸飞机的屏幕坐标定位菜单（上方）
+  // 悬停模式下点击纸飞机也显示菜单
+  if (isAdjustingPlanePosition.value || isPickingPublishLocation.value || isPickingDockPublishLocation.value) return;
   if (point.screenX != null && point.screenY != null) {
     showPlaneMenu(point.screenX, point.screenY);
   } else {
-    // fallback
     const mapRef = document.querySelector('.amap-container');
     if (mapRef) {
       const rect = mapRef.getBoundingClientRect();
@@ -6172,6 +6263,8 @@ function handlePaperPlanePublish() {
   if (showDockPublishSidebar.value) closeDockPublishPanel();
   isAdjustingPlanePosition.value = false;
   isAdjustingWaitingForPlane.value = false;
+  adjustPlaneClickScreenPos.value = null;
+  adjustPlaneClickScreenPos.value = null;
   // 逆地理编码纸飞机位置
   const coords = { latitude: planePosition.value.latitude, longitude: planePosition.value.longitude };
   reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
@@ -6191,36 +6284,34 @@ async function handlePaperPlaneMove(point) {
     planePosition.value = { latitude: point.latitude, longitude: point.longitude };
   }
 
-  // 调整纸飞机位置 - 纸飞机已到达新位置
+  // 调整纸飞机位置 - 纸飞机已到达新位置，弹窗确认
   if (isAdjustingWaitingForPlane.value) {
     isAdjustingWaitingForPlane.value = false;
-    isAdjustingPlanePosition.value = false;
-    const coords = { latitude: point.latitude, longitude: point.longitude };
-    const location = await reverseGeocodeLocationDetail(coords.latitude, coords.longitude);
-    if (!location) {
-      showToast('位置解析失败，请重试', 'warning');
-      return;
+    const pickedLocation = await reverseGeocodePickedLocation(point.latitude, point.longitude);
+    if (pickedLocation) {
+      publishPickPrompt.value = {
+        location: pickedLocation,
+        screenX: adjustPlaneClickScreenPos.value?.screenX,
+        screenY: adjustPlaneClickScreenPos.value?.screenY,
+      };
+      pickedPublishLocation.value = pickedLocation;
     }
-    const displayName = pickLocationDisplayName(location, location.name || '当前位置');
-    isPickingPublishLocation.value = false;
-    showPublishSidebar.value = true;
-    nextTick(() => {
-      publishPrefillQuery.value = displayName;
-    });
+    adjustPlaneClickScreenPos.value = null;
     return;
   }
 
-  // 功能卡组发布 - 纸飞机已飞到选点位置
+  // 功能卡组发布 - 纸飞机已飞到选点位置，弹窗确认
   if (isDockPublishWaitingForPlane.value) {
     isDockPublishWaitingForPlane.value = false;
     const pickedLocation = await reverseGeocodePickedLocation(point.latitude, point.longitude);
-    dockPublishPickedLocation.value = pickedLocation;
-    const screenPos = dockPublishClickScreenPos.value || {};
-    isDockPublishPickPrompt.value = {
-      location: pickedLocation,
-      screenX: screenPos.screenX,
-      screenY: screenPos.screenY,
-    };
+    if (pickedLocation) {
+      isDockPublishPickPrompt.value = {
+        location: pickedLocation,
+        screenX: dockPublishClickScreenPos.value?.screenX,
+        screenY: dockPublishClickScreenPos.value?.screenY,
+      };
+      dockPublishPickedLocation.value = pickedLocation;
+    }
     dockPublishClickScreenPos.value = null;
     return;
   }
@@ -6458,6 +6549,21 @@ function confirmPublishNearbySearch() {
     return;
   }
 
+  // 调整纸飞机位置模式 - 确认后打开发布面板
+  if (isAdjustingPlanePosition.value) {
+    const suggestedLocations = buildSuggestedLocations(
+      prompt.location,
+      prompt.location.nearbyPois || [],
+    );
+    suggestedPublishLocations.value = suggestedLocations;
+    pickedPublishLocation.value = suggestedLocations[0] || prompt.location;
+    publishPickPrompt.value = null;
+    isAdjustingPlanePosition.value = false;
+    isPickingPublishLocation.value = false;
+    showPublishSidebar.value = true;
+    return;
+  }
+
   const suggestedLocations = buildSuggestedLocations(
     prompt.location,
     prompt.location.nearbyPois || [],
@@ -6472,6 +6578,10 @@ function rejectPublishNearbySearch() {
   publishPickPrompt.value = null;
   suggestedPublishLocations.value = [];
   pickedPublishLocation.value = null;
+  // 调整纸飞机位置模式 - 拒绝后继续调整模式，可重新点击地图
+  if (isAdjustingPlanePosition.value) {
+    return;
+  }
   isPickingPublishLocation.value = true;
 }
 
@@ -6515,6 +6625,7 @@ async function handlePublishMapClick(point) {
     const coords = extractCoordinates(point);
     if (!coords) return;
     isAdjustingWaitingForPlane.value = true;
+    adjustPlaneClickScreenPos.value = { screenX: point?.screenX, screenY: point?.screenY };
     planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
     return;
   }
@@ -7666,7 +7777,7 @@ async function handlePublishSubmit(storyData) {
       }
     }
 
-    const response = await storyApi.createStory({
+    const createPayload2 = {
       content: storyData.content,
       images: imageUrls,
       location: {
@@ -7682,12 +7793,11 @@ async function handlePublishSubmit(storyData) {
       visibilityEndTime: storyData.visibilityEndTime || null,
       fontFamily: storyData.fontFamily || null,
       fontEffect: storyData.fontEffect || null,
-    });
+    };
+    const response = await storyApi.createStory(createPayload2);
 
     const newStory = response.data || response;
     const normalizedNewStory = normalizeStoryForMap(newStory, location);
-
-    console.log("发布故事成功:", newStory);
 
     if (normalizedNewStory && amapRef.value) {
       amapRef.value.addNewStoryMarker(normalizedNewStory);
@@ -8767,6 +8877,7 @@ onMounted(() => {
   const savedFont = localStorage.getItem('storyFont');
   if (savedFont) {
     document.documentElement.style.setProperty('--story-font', `'${savedFont}', cursive, sans-serif`);
+    document.cookie = `vip_default_font=${encodeURIComponent(savedFont)};path=/;max-age=${365 * 86400};SameSite=Lax`;
   }
   getUserLocation();
   loadStories();
@@ -17180,7 +17291,7 @@ onUnmounted(() => {
   padding: 6px;
   opacity: 0;
   transform: translateY(4px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease;
   pointer-events: auto;
   min-width: 120px;
 }

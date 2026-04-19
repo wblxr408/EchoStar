@@ -255,7 +255,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ImageUploader from './ImageUploader.vue';
 import EmotionSelector from './EmotionSelector.vue';
 import FontPicker from './FontPicker.vue';
@@ -302,6 +302,16 @@ injectFontEffectAnimations();
 
 const showFontPicker = ref(false);
 
+function readDefaultFontFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function readDefaultFontEffectFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font_effect=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 const DEFAULT_FORM = () => ({
   content: '',
   images: [],
@@ -320,6 +330,14 @@ const DEFAULT_FORM = () => ({
 });
 
 const form = ref(DEFAULT_FORM());
+
+// 组件通过 v-if 创建时 visible 已经是 true，watcher 不会触发初始值，所以用 onMounted
+onMounted(() => {
+  const cookieFont = readDefaultFontFromCookie();
+  const cookieEffect = readDefaultFontEffectFromCookie();
+  if (cookieFont) form.value.fontFamily = cookieFont;
+  if (cookieEffect) form.value.fontEffect = cookieEffect;
+});
 const searchResults = ref([]);
 const searching = ref(false);
 const resolvingCurrentLocation = ref(false);
@@ -425,15 +443,21 @@ const poiSearchAnchor = computed(() => {
 
 watch(
   () => props.visible,
-  (isVisible, wasVisible) => {
+  (isVisible) => {
     if (isVisible) {
       ensurePlaceSearch().catch(() => {});
+      if (!form.value.fontFamily) {
+        const cookieFont = readDefaultFontFromCookie();
+        if (cookieFont) form.value.fontFamily = cookieFont;
+      }
+      if (!form.value.fontEffect) {
+        const cookieEffect = readDefaultFontEffectFromCookie();
+        if (cookieEffect) form.value.fontEffect = cookieEffect;
+      }
       return;
     }
 
-    if (wasVisible) {
-      window.setTimeout(resetForm, 260);
-    }
+    // 不再在关闭时重置表单，保留用户输入以便重选位置后恢复
   }
 );
 
@@ -548,6 +572,14 @@ function resetForm() {
   searchError.value = '';
   hasSearched.value = false;
   form.value = DEFAULT_FORM();
+  const defaultFont = readDefaultFontFromCookie();
+  if (defaultFont) {
+    form.value.fontFamily = defaultFont;
+  }
+  const defaultEffect = readDefaultFontEffectFromCookie();
+  if (defaultEffect) {
+    form.value.fontEffect = defaultEffect;
+  }
 }
 
 function clearSearchTimer() {
@@ -935,6 +967,9 @@ function handleSubmit() {
   }
 
   emit('submit', payload);
+
+  // 发布成功后由父组件关闭面板，这里立即重置表单
+  resetForm();
 }
 </script>
 

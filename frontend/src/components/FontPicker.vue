@@ -127,6 +127,11 @@ const currentFont = ref(props.selectedFont || '')
 const currentEffect = ref(props.selectedEffect || '')
 const previewText = ref('当前字体样式预览')
 
+function readCookie(name) {
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 const SOLID_COLORS = [
   { key: 'color_gold', label: '金色', value: '#d4a017' },
   { key: 'color_pink', label: '粉色', value: '#e84393' },
@@ -198,7 +203,7 @@ watch(() => props.visible, (v) => {
   if (v) {
     fontList.splice(0, fontList.length, ...DEFAULT_FONTS.map(f => ({ ...f })))
     currentFont.value = props.selectedFont || (props.targetType === 'global' ? (localStorage.getItem('storyFont') || '') : '')
-    currentEffect.value = props.selectedEffect || ''
+    currentEffect.value = props.selectedEffect || (props.targetType === 'global' ? readCookie('vip_default_font_effect') : '')
     previewText.value = '当前字体样式预览'
   }
 })
@@ -221,6 +226,7 @@ function handleApplyFont(family) {
   if (props.targetType === 'global') {
     localStorage.setItem('storyFont', family)
     document.documentElement.style.setProperty('--story-font', `'${family}', cursive, sans-serif`)
+    document.cookie = `vip_default_font=${encodeURIComponent(family)};path=/;max-age=${365 * 86400};SameSite=Lax`
   }
 
   emit('select', family)
@@ -234,6 +240,11 @@ function handleApplyEffect(key) {
     return
   }
   currentEffect.value = key
+
+  if (props.targetType === 'global') {
+    document.cookie = `vip_default_font_effect=${encodeURIComponent(key)};path=/;max-age=${365 * 86400};SameSite=Lax`
+  }
+
   emit('select', currentFont.value)
   emit('selectEffect', key)
   showToast('特效已选择', 'success')
@@ -246,6 +257,8 @@ function handleClear() {
   if (props.targetType === 'global') {
     localStorage.removeItem('storyFont')
     document.documentElement.style.removeProperty('--story-font')
+    document.cookie = 'vip_default_font=;path=/;max-age=0'
+    document.cookie = 'vip_default_font_effect=;path=/;max-age=0'
   }
 
   emit('select', '')

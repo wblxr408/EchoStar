@@ -68,6 +68,8 @@ const emit = defineEmits([
   "map-click",
   "cluster-click",
   "paper-plane-click",
+  "paper-plane-hover",
+  "paper-plane-leave",
   "paper-plane-move",
 ]);
 
@@ -723,6 +725,30 @@ function initPaperPlane(coords) {
         screenY: containerRect.top + pixel.getY(),
       });
     });
+
+    // 鼠标悬停/离开纸飞机时触发菜单
+    const getPlaneScreenPos = () => {
+      const pos = paperPlaneMarker.getPosition();
+      const pixel = map.lngLatToContainer(pos);
+      const containerRect = mapContainer.value.getBoundingClientRect();
+      return {
+        latitude: pos.getLat(),
+        longitude: pos.getLng(),
+        screenX: containerRect.left + pixel.getX(),
+        screenY: containerRect.top + pixel.getY(),
+      };
+    };
+    const planeDom = paperPlaneMarker.dom || paperPlaneMarker.De || paperPlaneMarker.contentDom || paperPlaneMarker.getContentDom?.();
+    if (planeDom) {
+      planeDom.addEventListener('mouseenter', () => {
+        clearPaperPlaneTooltip();
+        emit('paper-plane-hover', getPlaneScreenPos());
+      }, { passive: true });
+      planeDom.addEventListener('mouseleave', () => {
+        emit('paper-plane-leave');
+      }, { passive: true });
+    }
+
     paperPlaneInitialized = true;
     // 更新 planePosition 以反映实际位置
     emit('paper-plane-move', { latitude: offsetCoords.latitude, longitude: offsetCoords.longitude });
