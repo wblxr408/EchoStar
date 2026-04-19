@@ -23,6 +23,8 @@ export function useVirtualScroll({
   gap = 0, // 项之间的间距（px）
   maxBottomPadding = 60, // 底部最大允许空白（px）
   onNearBottom,
+  nearBottomThreshold = 120,
+  nearBottomCooldownMs = 120,
 }) {
   const containerRef = ref(null)
 
@@ -33,6 +35,7 @@ export function useVirtualScroll({
 
   const scrollTop = ref(0)
   const containerHeight = ref(0)
+  let lastNearBottomTriggerAt = 0
 
   // 根据已测量项目计算平均高度，用于估算未测量的项目
   const measuredAvgHeight = computed(() => {
@@ -112,20 +115,19 @@ export function useVirtualScroll({
     const ch = containerHeight.value > 0 ? containerHeight.value : estimatedHeight * 5
     const st = scrollTop.value
     const start = Math.max(0, st - estimatedHeight * bufferCount)
-    const end = ch + estimatedHeight * (bufferCount + 1)
+    const end = st + ch + estimatedHeight * (bufferCount + 1)
 
     const result = []
-    let foundFirst = false
+    const startIndex = findStartIndex(start)
 
-    for (let i = 0; i < list.length; i++) {
+    for (let i = startIndex; i < list.length; i++) {
       const top = getItemOffset(i)
       const h = getItemOccupiedSpace(i)
       const bottom = top + h
 
       if (bottom > start && top < end) {
         result.push({ data: list[i], index: i, top })
-        foundFirst = true
-      } else if (foundFirst && top >= end) {
+      } else if (top >= end) {
         break
       }
     }
@@ -163,8 +165,11 @@ export function useVirtualScroll({
     // 触发加载更多回调
     if (onNearBottom && itemList.value?.length > 0) {
       const threshold = 120 // 距底部多少像素时触发
+      const normalizedThreshold = Math.max(threshold, Number(nearBottomThreshold) || 0)
       const distToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-      if (distToBottom < threshold) {
+      const now = Date.now()
+      if (distToBottom < normalizedThreshold && now - lastNearBottomTriggerAt >= nearBottomCooldownMs) {
+        lastNearBottomTriggerAt = now
         onNearBottom()
       }
     }

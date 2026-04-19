@@ -1798,6 +1798,7 @@ import { useVirtualScroll } from "../../composables/useVirtualScroll.js";
 
 const mapStore = useMapStore();
 const userStore = useUserStore();
+const vipStore = useVipStore();
 
 const clusters = ref([]);
 
@@ -1945,6 +1946,36 @@ const canUseVipTheme = computed(
     Boolean(userStore.user?.vip) &&
     Boolean(userStore.isLoggedIn) &&
     !userStore.isGuest,
+);
+const accountSessionKey = computed(() => {
+  const isLogged = Boolean(userStore.isLoggedIn);
+  const isGuestUser = Boolean(userStore.isGuest);
+  const userId = userStore.user?.id ? String(userStore.user.id) : "";
+  const token = userStore.token || "";
+  return `${isLogged ? 1 : 0}|${isGuestUser ? 1 : 0}|${userId}|${token}`;
+});
+let vipAccountSyncToken = 0;
+
+async function syncVipStateForAccountChange() {
+  const syncToken = ++vipAccountSyncToken;
+  await vipStore.refreshAccountState();
+  if (syncToken !== vipAccountSyncToken) {
+    return;
+  }
+
+  if (!vipStore.isVipActive && VIP_THEME_KEYS.has(getActiveThemeKey())) {
+    activeDockTheme.value = DEFAULT_THEME_KEY;
+    usePokerTheme.value = false;
+    saveDockThemeForUser(userStore.user?.id, DEFAULT_THEME_KEY);
+  }
+}
+
+watch(
+  accountSessionKey,
+  () => {
+    void syncVipStateForAccountChange();
+  },
+  { immediate: true },
 );
 let dockHoverClearTimer = null;
 let dockSelectionTimer = null;
@@ -2230,7 +2261,6 @@ const commentSettingsFromStory = ref(false);
 const vipCenterFromStory = ref(false);
 const fontPickerFromStory = ref(false);
 const showVisualCustomizer = ref(false);
-const vipStore = useVipStore();
 const likesList = ref([]);
 const postsList = ref([]);
 const favoritesList = ref([]);
@@ -2246,9 +2276,9 @@ const favoritesPage = ref(1);
 const likesHasMore = ref(true);
 const postsHasMore = ref(true);
 const favoritesHasMore = ref(true);
-const likesPageSize = 10;
-const postsPageSize = 10;
-const favoritesPageSize = 10;
+const likesPageSize = 20;
+const postsPageSize = 20;
+const favoritesPageSize = 20;
 
 // 虚拟滚动：根据当前标签页动态切换数据源
 const currentVirtualList = computed(() => {
@@ -2272,7 +2302,8 @@ const {
   itemList: currentVirtualList,
   estimatedHeight: 160,
   gap: 12, // 卡片间距（替代原 flex gap）
-  bufferCount: 4,
+  bufferCount: 8,
+  nearBottomThreshold: 1200,
   onNearBottom: () => {
     // 滚动到底部附近时加载更多
     if (userContentTab.value === 'posts') loadPostsData(true);
@@ -9327,14 +9358,7 @@ onMounted(() => {
       usePokerTheme.value = false;
       saveDockThemeForUser(userStore.user?.id, DEFAULT_THEME_KEY);
     }
-  } else if (userStore.isLoggedIn) {
-    vipStore.fetchStatus().then(() => {
-      if (!vipStore.isVipActive && VIP_THEME_KEYS.has(getActiveThemeKey())) {
-        activeDockTheme.value = DEFAULT_THEME_KEY;
-        usePokerTheme.value = false;
-        saveDockThemeForUser(userStore.user?.id, DEFAULT_THEME_KEY);
-      }
-    }).catch(() => {});
+  } else if (userStore.isLoggedIn && !userStore.isGuest) {
     const loadTasks = [loadNotifications(), loadAnnouncements()];
     Promise.all(loadTasks).then(() => {
       const hasUnread =
