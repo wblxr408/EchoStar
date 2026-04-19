@@ -352,7 +352,7 @@ export const useVipStore = defineStore('vip', () => {
     // 调用后端擦亮API
     try {
       const res = await vipApi.polishStory(storyId);
-      const { polishedAt, polishExpiresAt } = res.data?.data || {};
+      const { polishedAt, polishExpiresAt } = res.data || {};
       if (polishedAt && polishExpiresAt) {
         markStoryPolished(storyId, polishedAt, polishExpiresAt);
       }

@@ -146,7 +146,8 @@
 
         <div v-if="form.isTimeCapsule" class="time-capsule-config">
           <label>解锁时间</label>
-          <input v-model="form.unlockAt" type="datetime-local" :min="minUnlockTime" />
+          <input v-model="form.unlockAt" type="datetime-local" :min="minUnlockTime" @change="handleUnlockTimeChange" />
+          <p v-if="unlockTimeError" class="search-feedback error">{{ unlockTimeError }}</p>
         </div>
       </div>
 
@@ -299,6 +300,7 @@ const resolvingCurrentLocation = ref(false);
 const searchError = ref('');
 const hasSearched = ref(false);
 const timeWindowError = ref('');
+const unlockTimeError = ref('');
 const themeClass = computed(() => `theme-${props.mapTheme === 'dark' ? 'dark' : 'light'}`);
 
 const TIME_PRESETS = {
@@ -376,15 +378,46 @@ const isValid = computed(() => {
   return true;
 });
 
-const minUnlockTime = computed(() => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
+const currentTime = ref(Date.now());
+let nowTimer = null;
+
+function formatDatetimeLocal(ts) {
+  const d = new Date(ts);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
   return `${year}-${month}-${day}T${hours}:${minutes}`;
-});
+}
+
+const minUnlockTime = computed(() => formatDatetimeLocal(currentTime.value));
+
+function handleUnlockTimeChange() {
+  unlockTimeError.value = '';
+  if (!form.value.unlockAt) return;
+  const selected = new Date(form.value.unlockAt);
+  const now = new Date();
+  if (selected <= now) {
+    unlockTimeError.value = '解锁时间不能早于当前时间，已自动调整';
+    form.value.unlockAt = formatDatetimeLocal(now.getTime() + 60 * 1000);
+  }
+}
+
+// 每10秒更新一次当前时间，确保 min 属性实时生效
+watch(
+  () => props.visible,
+  (isVisible) => {
+    if (isVisible) {
+      currentTime.value = Date.now();
+      nowTimer = setInterval(() => { currentTime.value = Date.now(); }, 10000);
+    } else if (nowTimer) {
+      clearInterval(nowTimer);
+      nowTimer = null;
+    }
+  },
+  { immediate: true }
+);
 
 const userPresetLocation = computed(() => {
   return normalizePresetLocation(props.userLocation, '当前地理位置');
@@ -525,6 +558,10 @@ watch(
 onBeforeUnmount(() => {
   clearSearchTimer();
   activeSearchToken += 1;
+  if (nowTimer) {
+    clearInterval(nowTimer);
+    nowTimer = null;
+  }
 });
 
 function resetForm() {
@@ -534,6 +571,7 @@ function resetForm() {
   searching.value = false;
   searchError.value = '';
   hasSearched.value = false;
+  unlockTimeError.value = '';
   form.value = DEFAULT_FORM();
 }
 
