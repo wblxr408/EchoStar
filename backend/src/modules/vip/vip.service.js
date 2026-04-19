@@ -197,7 +197,7 @@ export const VipService = {
 
   async checkUserVipStatus(userId) {
     const user = await User.findByPk(userId, {
-      attributes: ['id', 'vip', 'emotionCoins', 'lastCheckInAt', 'checkInStreak']
+      attributes: ['id', 'vip', 'emotionCoins', 'lastCheckInAt', 'checkInStreak', 'commentBg']
     });
 
     const vipOrder = await VipOrder.findOne({
@@ -216,7 +216,8 @@ export const VipService = {
       expiresAt: vipOrder?.expiresAt || null,
       emotionCoins: user?.emotionCoins || 0,
       lastCheckInAt: user?.lastCheckInAt || null,
-      checkInStreak: user?.checkInStreak || 0
+      checkInStreak: user?.checkInStreak || 0,
+      commentBg: user?.commentBg || null
     };
   },
 
@@ -744,6 +745,25 @@ export const VipService = {
 
     await clearUserCache(userId);
     return result;
+  },
+
+  /**
+   * 保存/更新用户评论背景设置（仅VIP）
+   */
+  async saveCommentBg(userId, commentBg) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new Error('用户不存在');
+    }
+    if (!user.vip) {
+      throw new Error('仅VIP用户可设置评论背景');
+    }
+
+    await user.update({ commentBg });
+
+    return {
+      commentBg: user.commentBg
+    };
   },
 
 };

@@ -52,4 +52,9 @@ router.post('/economy/consume', vipController.consumeEmotionCoinItem);
  */
 router.post('/economy/purchase-vip', vipController.purchaseVipWithCoins);
 
+/**
+ * PUT /api/v1/vip/comment-bg - 保存/更新VIP评论背景设置
+ */
+router.put('/comment-bg', vipController.saveCommentBg);
+
 export default router;

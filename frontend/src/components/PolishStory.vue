@@ -254,9 +254,9 @@ onUnmounted(() => {
 
 .polish-toast {
   position: fixed;
-  top: 80px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   z-index: 9999;
   display: flex;
   align-items: center;
@@ -318,11 +318,11 @@ onUnmounted(() => {
 
 .polish-toast-enter-from {
   opacity: 0;
-  transform: translateX(-50%) translateY(-16px) scale(0.92);
+  transform: translate(-50%, -50%) translateY(-16px) scale(0.92);
 }
 
 .polish-toast-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(-8px) scale(0.96);
+  transform: translate(-50%, -50%) translateY(-8px) scale(0.96);
 }
 </style>

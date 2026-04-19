@@ -4,8 +4,8 @@
       <!-- Header -->
       <div class="cs-header">
         <div class="cs-header__left">
-          <span class="cs-header__icon">💬</span>
-          <span class="cs-header__title">评论高级设置</span>
+          <span class="cs-header__icon">🎨</span>
+          <span class="cs-header__title">评论装扮</span>
           <span v-if="vipStore.isVipActive" class="cs-vip-badge">VIP</span>
         </div>
         <button class="cs-close" @click="handleClose" aria-label="关闭">
@@ -15,8 +15,9 @@
 
       <!-- Purchase Gate (non-VIP, no active bubble decor) -->
       <div v-if="!canUseBubbleDecor" class="cs-vip-gate">
-        <span class="cs-vip-gate__icon">💬</span>
-        <p class="cs-vip-gate__title">评论高级设置</p>
+        <span class="cs-vip-gate__icon">🎨</span>
+        <p class="cs-vip-gate__title">评论背景装扮</p>
+        <p class="cs-vip-gate__desc">自定义你的评论背景样式，让其他用户看到你独特的评论风格</p>
         <p class="cs-vip-gate__desc">VIP 用户免费使用；非 VIP 可花费 {{ BUBBLE_DECOR_COST }} 币解锁 7 天</p>
         <button class="cs-vip-gate__btn" :disabled="purchasing" @click="handlePurchaseBubbleDecor">
           <span v-if="purchasing">购买中...</span>
@@ -27,148 +28,119 @@
 
       <!-- Settings Content -->
       <template v-else>
-        <!-- Time Window -->
-        <section class="cs-section">
-          <h3 class="cs-section__title">
-            <span>⏰</span>
-            <span>评论时间窗口</span>
-          </h3>
-          <p class="cs-section__desc">设置故事发布后允许评论的时间范围</p>
-          <div class="cs-time-options">
-            <button
-              v-for="opt in timeOptions"
-              :key="opt.value"
-              class="cs-time-btn"
-              :class="{ 'cs-time-btn--active': timeWindow === opt.value }"
-              @click="timeWindow = opt.value"
-            >
-              {{ opt.label }}
-            </button>
-          </div>
-        </section>
-
-        <!-- Keyword Filter -->
-        <section class="cs-section">
-          <h3 class="cs-section__title">
-            <span>🚫</span>
-            <span>关键词过滤</span>
-          </h3>
-          <p class="cs-section__desc">包含这些关键词的评论将被自动隐藏</p>
-          <div class="cs-keyword-input-wrap">
-            <input
-              v-model="newKeyword"
-              class="cs-keyword-input"
-              type="text"
-              placeholder="输入关键词后回车添加"
-              @keydown.enter="addKeyword"
-            />
-            <button class="cs-keyword-add-btn" @click="addKeyword">添加</button>
-          </div>
-          <div v-if="keywords.length > 0" class="cs-keyword-tags">
-            <span v-for="(kw, i) in keywords" :key="i" class="cs-keyword-tag">
-              {{ kw }}
-              <button class="cs-keyword-remove" @click="removeKeyword(i)">×</button>
-            </span>
-          </div>
-        </section>
-
-        <!-- Commenter Qualification -->
-        <section class="cs-section">
-          <h3 class="cs-section__title">
-            <span>👤</span>
-            <span>评论者资格</span>
-          </h3>
-          <p class="cs-section__desc">限制哪些用户可以在你的故事下评论</p>
-          <div class="cs-qual-options">
-            <label v-for="opt in qualOptions" :key="opt.value" class="cs-qual-item">
-              <input
-                type="radio"
-                :value="opt.value"
-                v-model="qualLevel"
-                class="cs-qual-radio"
-              />
-              <span class="cs-qual-label">{{ opt.label }}</span>
-              <span class="cs-qual-desc">{{ opt.desc }}</span>
+        <div class="cs-body">
+          <!-- Gradient Toggle -->
+          <section class="cs-section">
+            <h3 class="cs-section__title">
+              <span>✨</span>
+              <span>渐变模式</span>
+            </h3>
+            <p class="cs-section__desc">开启后可设置双色渐变效果</p>
+            <label class="cs-toggle-wrap" @click="useGradient = !useGradient">
+              <span class="cs-toggle-track" :class="{ 'cs-toggle-track--on': useGradient }">
+                <span class="cs-toggle-thumb"></span>
+              </span>
+              <span class="cs-toggle-label">{{ useGradient ? '已开启' : '已关闭' }}</span>
             </label>
-          </div>
-        </section>
+          </section>
 
-        <!-- Comment Background (VIP Exclusive) -->
-        <section class="cs-section cs-section--vip">
-          <h3 class="cs-section__title">
-            <span>🎨</span>
-            <span>评论区背景</span>
-            <span class="cs-vip-tag">VIP专属</span>
-          </h3>
-          <p class="cs-section__desc">自定义评论区的背景样式</p>
+          <!-- Color Pickers -->
+          <section class="cs-section cs-section--color">
+            <h3 class="cs-section__title">
+              <span>🎨</span>
+              <span>{{ useGradient ? '渐变色设置' : '纯色设置' }}</span>
+            </h3>
 
-          <!-- Background type selector -->
-          <div class="cs-bg-type-tabs">
-            <button
-              v-for="t in bgTypes"
-              :key="t.value"
-              class="cs-bg-type-btn"
-              :class="{ 'cs-bg-type-btn--active': bgType === t.value }"
-              @click="bgType = t.value"
-            >
-              {{ t.label }}
-            </button>
-          </div>
-
-          <!-- Solid color picker -->
-          <div v-if="bgType === 'solid'" class="cs-bg-colors">
-            <button
-              v-for="c in solidColors"
-              :key="c"
-              class="cs-bg-color-swatch"
-              :class="{ 'cs-bg-color-swatch--active': bgSolid === c }"
-              :style="{ background: c }"
-              @click="bgSolid = c"
-            ></button>
-          </div>
-
-          <!-- Gradient picker -->
-          <div v-if="bgType === 'gradient'" class="cs-bg-gradients">
-            <button
-              v-for="(g, i) in gradients"
-              :key="i"
-              class="cs-bg-gradient-swatch"
-              :class="{ 'cs-bg-gradient-swatch--active': bgGradient === g.css }"
-              :style="{ background: g.css }"
-              @click="bgGradient = g.css"
-            ></button>
-          </div>
-
-          <!-- Sticker picker -->
-          <div v-if="bgType === 'sticker'" class="cs-bg-stickers">
-            <button
-              v-for="(s, i) in stickers"
-              :key="i"
-              class="cs-bg-sticker-btn"
-              :class="{ 'cs-bg-sticker-btn--active': bgSticker === s.emoji }"
-              @click="bgSticker = s.emoji"
-            >
-              <span class="cs-bg-sticker-emoji">{{ s.emoji }}</span>
-              <span class="cs-bg-sticker-name">{{ s.name }}</span>
-            </button>
-          </div>
-
-          <!-- Preview -->
-          <div class="cs-bg-preview" :style="previewStyle">
-            <div class="cs-bg-preview-comment">
-              <div class="cs-bg-preview-avatar">😊</div>
-              <div class="cs-bg-preview-bubble">
-                <span class="cs-bg-preview-name">旅行者</span>
-                <span class="cs-bg-preview-text">这条评论的背景就是预览效果</span>
+            <!-- Primary Color -->
+            <div class="cs-color-row">
+              <label class="cs-color-label">{{ useGradient ? '起始色' : '背景色' }}</label>
+              <div class="cs-color-picker-group">
+                <input
+                  type="color"
+                  v-model="primaryColor"
+                  class="cs-color-input-native"
+                  :title="'选择颜色'"
+                />
+                <div class="cs-color-swatch-large" :style="{ background: primaryColor }">
+                  <span class="cs-color-hex">{{ primaryColor.toUpperCase() }}</span>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+
+            <!-- Secondary Color (gradient only) -->
+            <div v-if="useGradient" class="cs-color-row">
+              <label class="cs-color-label">结束色</label>
+              <div class="cs-color-picker-group">
+                <input
+                  type="color"
+                  v-model="secondaryColor"
+                  class="cs-color-input-native"
+                  title="选择渐变结束色"
+                />
+                <div class="cs-color-swatch-large" :style="{ background: secondaryColor }">
+                  <span class="cs-color-hex">{{ secondaryColor.toUpperCase() }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preset Colors (quick pick) -->
+            <div class="cs-presets">
+              <span class="cs-presets-label">快捷选色</span>
+              <div class="cs-presets-grid">
+                <button
+                  v-for="(c, i) in presetColors"
+                  :key="i"
+                  class="cs-preset-btn"
+                  :class="{ 'cs-preset-btn--active': isPresetActive(c) }"
+                  :style="{ background: c }"
+                  @click="applyPreset(c)"
+                  :title="c"
+                ></button>
+              </div>
+            </div>
+
+            <!-- Gradient Direction (gradient only) -->
+            <div v-if="useGradient" class="cs-gradient-dir">
+              <span class="cs-presets-label">渐变方向</span>
+              <div class="cs-dir-grid">
+                <button
+                  v-for="dir in gradientDirections"
+                  :key="dir.value"
+                  class="cs-dir-btn"
+                  :class="{ 'cs-dir-btn--active': gradientDirection === dir.value }"
+                  @click="gradientDirection = dir.value"
+                  :title="dir.label"
+                >
+                  <span class="cs-dir-arrow" :style="{ transform: dir.rotate }">→</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Preview -->
+          <section class="cs-section cs-section--preview">
+            <h3 class="cs-section__title">
+              <span>👁</span>
+              <span>效果预览</span>
+            </h3>
+            <div class="cs-preview-area" :style="previewStyle">
+              <div class="cs-preview-comment">
+                <div class="cs-preview-avatar">😊</div>
+                <div class="cs-preview-bubble">
+                  <span class="cs-preview-name">{{ vipStore.isVipActive ? 'VIP用户' : '我的评论' }}</span>
+                  <span class="cs-preview-text">这就是其他用户看到我评论时显示的背景效果</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
 
         <!-- Actions -->
         <div class="cs-actions">
           <button class="cs-action-btn cs-action-btn--secondary" @click="resetSettings">重置</button>
-          <button class="cs-action-btn cs-action-btn--primary" @click="saveSettings">保存设置</button>
+          <button class="cs-action-btn cs-action-btn--primary" :disabled="saving" @click="saveSettings">
+            {{ saving ? '保存中...' : '保存设置' }}
+          </button>
         </div>
       </template>
     </div>
@@ -176,7 +148,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useVipStore } from '../stores/vip'
 import { showToast } from '../composables/useToast'
 
@@ -192,6 +164,7 @@ const vipStore = useVipStore()
 const BUBBLE_DECOR_COST = 100
 const purchasing = ref(false)
 const purchaseError = ref('')
+const saving = ref(false)
 
 const canUseBubbleDecor = computed(() => {
   if (vipStore.isVipActive) return true
@@ -209,113 +182,105 @@ async function handlePurchaseBubbleDecor() {
   purchasing.value = false
 }
 
-// Time window
-const timeOptions = [
-  { label: '不限', value: 'unlimited' },
-  { label: '7天', value: '7d' },
-  { label: '30天', value: '30d' },
-  { label: '关闭评论', value: 'closed' },
+// ===== Background Settings =====
+
+const useGradient = ref(false)
+const primaryColor = ref('#fff8e7')
+const secondaryColor = ref('#fcb69f')
+const gradientDirection = ref(135)
+
+// Preset colors for quick selection
+const presetColors = [
+  // Warm tones
+  '#fff8e7', '#ffecd2', '#fce4ec', '#fef2f2',
+  // Cool tones
+  '#f0f9ff', '#e0f2fe', '#f0fdf4', '#ecfdf5',
+  // Purple/Pink
+  '#faf5ff', '#fdf4ff', '#fce7f3', '#ffe4e6',
+  // Dark tones
+  '#1a1a2e', '#16213e', '#0f3460', '#1b1b2f',
 ]
-const timeWindow = ref('unlimited')
 
-// Keywords
-const newKeyword = ref('')
-const keywords = ref([])
+const gradientDirections = [
+  { value: 135, label: '左上到右下', rotate: 'rotate(45deg)' },
+  { value: 180, label: '上到下', transform: '' },
+  { value: 90, label: '左到右', transform: '' },
+  { value: 225, label: '右上到左下', transform: 'rotate(-45deg)' },
+]
 
-function addKeyword() {
-  const kw = newKeyword.value.trim()
-  if (kw && !keywords.value.includes(kw)) {
-    keywords.value.push(kw)
-    newKeyword.value = ''
+function isPresetActive(color) {
+  return primaryColor.value.toLowerCase() === color.toLowerCase()
+}
+
+function applyPreset(color) {
+  primaryColor.value = color
+}
+
+// Initialize from stored settings
+watch(() => props.visible, (val) => {
+  if (val && vipStore.savedCommentBg) {
+    initFromSaved(vipStore.savedCommentBg)
   }
+})
+
+function initFromSaved(saved) {
+  if (!saved) return
+  useGradient.value = !!saved.useGradient
+  primaryColor.value = saved.color || '#fff8e7'
+  secondaryColor.value = saved.gradientColor || '#fcb69f'
+  gradientDirection.value = saved.gradientDirection || 135
 }
 
-function removeKeyword(index) {
-  keywords.value.splice(index, 1)
-}
-
-// Qualification
-const qualOptions = [
-  { label: '所有人', value: 'all', desc: '任何注册用户都可以评论' },
-  { label: '仅关注者', value: 'followers', desc: '只有关注你的用户可以评论' },
-  { label: '仅VIP', value: 'vip', desc: '只有VIP会员可以评论' },
-]
-const qualLevel = ref('all')
-
-// Background
-const bgTypes = [
-  { label: '纯色', value: 'solid' },
-  { label: '渐变', value: 'gradient' },
-  { label: '贴图', value: 'sticker' },
-]
-const bgType = ref('solid')
-
-const solidColors = [
-  '#fff8e7', '#f0f9ff', '#fef2f2', '#f0fdf4', '#faf5ff',
-  '#1a1a2e', '#16213e', '#0f3460', '#1b1b2f', '#162447',
-]
-
-const gradients = [
-  { css: 'linear-gradient(135deg, #ffecd2, #fcb69f)' },
-  { css: 'linear-gradient(135deg, #a1c4fd, #c2e9fb)' },
-  { css: 'linear-gradient(135deg, #d4fc79, #96e6a1)' },
-  { css: 'linear-gradient(135deg, #fbc2eb, #a6c1ee)' },
-  { css: 'linear-gradient(135deg, #667eea, #764ba2)' },
-  { css: 'linear-gradient(135deg, #2c3e50, #4ca1af)' },
-]
-
-const stickers = [
-  { emoji: '🌟', name: '星光' },
-  { emoji: '🌙', name: '月夜' },
-  { emoji: '🌸', name: '花瓣' },
-  { emoji: '🌊', name: '海浪' },
-  { emoji: '🔥', name: '烈焰' },
-  { emoji: '❄️', name: '冰雪' },
-]
-
-const bgSolid = ref('#fff8e7')
-const bgGradient = ref(gradients[0].css)
-const bgSticker = ref('🌟')
-
+// Preview style computation
 const previewStyle = computed(() => {
-  if (bgType.value === 'solid') return { background: bgSolid.value }
-  if (bgType.value === 'gradient') return { background: bgGradient.value }
-  if (bgType.value === 'sticker') {
+  if (useGradient.value) {
     return {
-      background: `radial-gradient(circle at 20% 30%, rgba(255,215,0,0.1), transparent 40%),
-        radial-gradient(circle at 80% 70%, rgba(255,215,0,0.08), transparent 40%),
-        #1a1a2e`,
-      position: 'relative',
+      background: `linear-gradient(${gradientDirection.value}deg, ${primaryColor.value}, ${secondaryColor.value})`,
     }
   }
-  return {}
+  return {
+    background: primaryColor.value,
+  }
 })
 
 function handleClose() { emit('close') }
 
 function resetSettings() {
-  timeWindow.value = 'unlimited'
-  keywords.value = []
-  qualLevel.value = 'all'
-  bgType.value = 'solid'
-  bgSolid.value = '#fff8e7'
-  bgGradient.value = gradients[0].css
-  bgSticker.value = '🌟'
+  useGradient.value = false
+  primaryColor.value = '#fff8e7'
+  secondaryColor.value = '#fcb69f'
+  gradientDirection.value = 135
   vipStore.setCommentBg(null)
   showToast('设置已重置')
 }
 
-function saveSettings() {
-  const bgConfig = {
-    type: bgType.value,
-    solid: bgSolid.value,
-    gradient: bgGradient.value,
-    sticker: bgSticker.value,
+async function saveSettings() {
+  saving.value = true
+  try {
+    const bgConfig = {
+      type: useGradient.value ? 'gradient' : 'solid',
+      color: primaryColor.value,
+      gradientColor: secondaryColor.value,
+      useGradient: useGradient.value,
+      gradientDirection: gradientDirection.value,
+    }
+
+    // Save to localStorage immediately (local fallback)
+    vipStore.setCommentBg(bgConfig)
+
+    // Sync to backend if VIP
+    if (vipStore.isVipActive) {
+      await vipStore.syncCommentBg(bgConfig)
+    }
+
+    emit('saved', bgConfig)
+    showToast('评论背景已保存，其他用户将看到你的专属背景样式')
+    handleClose()
+  } catch (err) {
+    showToast('保存失败，请稍后重试')
+  } finally {
+    saving.value = false
   }
-  vipStore.setCommentBg(bgConfig)
-  emit('saved', { timeWindow: timeWindow.value, keywords: [...keywords.value], qualLevel: qualLevel.value, bg: bgConfig })
-  showToast('评论设置已保存')
-  handleClose()
 }
 </script>
 
@@ -378,228 +343,302 @@ function saveSettings() {
 /* --- VIP Gate --- */
 .cs-vip-gate {
   text-align: center;
-  padding: 32px 16px;
-  opacity: 0.8;
+  padding: 36px 16px;
+  opacity: 0.85;
 }
 
-.cs-vip-gate__icon { font-size: 40px; display: block; margin-bottom: 12px; }
+.cs-vip-gate__icon { font-size: 44px; display: block; margin-bottom: 12px; }
 
-.cs-vip-gate__title { font-size: 16px; font-weight: 700; margin: 0 0 6px; }
-.cs-vip-gate__desc { font-size: 13px; opacity: 0.6; margin: 0 0 16px; }
+.cs-vip-gate__title { font-size: 17px; font-weight: 700; margin: 0 0 8px; }
+
+.cs-vip-gate__desc { font-size: 13px; opacity: 0.55; margin: 0 0 6px; line-height: 1.6; }
 
 .cs-vip-gate__btn {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 10px 24px; border-radius: 999px; border: none;
+  padding: 11px 26px; border-radius: 999px; border: none;
   background: linear-gradient(135deg, #ffd700, #f5a623);
   color: #3d2e0a; font-size: 14px; font-weight: 700; cursor: pointer;
-  transition: all 0.22s ease;
+  transition: all 0.25s ease;
+  margin-top: 14px;
 }
-.cs-vip-gate__btn:hover { transform: translateY(-2px); }
+.cs-vip-gate__btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px -6px rgba(255, 215, 0, 0.45); }
+.cs-vip-gate__btn:disabled { opacity: 0.65; cursor: not-allowed; }
 
 .cs-vip-gate__error {
   margin-top: 8px;
   font-size: 12px;
   color: #c44;
-  opacity: 0.8;
+  opacity: 0.85;
+}
+
+/* --- Body Scroll Area --- */
+.cs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* --- Sections --- */
 .cs-section {
-  margin-bottom: 20px;
-  padding: 16px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(184, 135, 46, 0.08);
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(184, 135, 46, 0.09);
 }
 
 .comment-settings--dark .cs-section {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   border-color: rgba(143, 180, 255, 0.08);
 }
 
-.cs-section--vip {
-  border-color: rgba(255, 215, 0, 0.2);
+.cs-section--color {
   background: rgba(255, 215, 0, 0.04);
+  border-color: rgba(255, 215, 0, 0.15);
+}
+
+.comment-settings--dark .cs-section--color {
+  background: rgba(255, 215, 0, 0.03);
+  border-color: rgba(255, 215, 0, 0.1);
+}
+
+.cs-section--preview {
+  padding: 16px;
+  background: transparent;
+  border: none;
 }
 
 .cs-section__title {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 14px; font-weight: 700; margin: 0 0 4px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 700; margin: 0 0 6px;
 }
 
 .cs-section__desc {
-  font-size: 12px; opacity: 0.55; margin: 0 0 12px;
+  font-size: 12px; opacity: 0.5; margin: 0 0 14px;
 }
 
-.cs-vip-tag {
-  padding: 1px 6px; border-radius: 999px;
+/* --- Toggle Switch --- */
+.cs-toggle-wrap {
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer; user-select: none;
+}
+
+.cs-toggle-track {
+  position: relative;
+  width: 48px; height: 26px;
+  border-radius: 13px;
+  background: rgba(184, 135, 46, 0.2);
+  transition: all 0.28s ease;
+  border: 1px solid rgba(184, 135, 46, 0.15);
+}
+
+.cs-toggle-track--on {
   background: linear-gradient(135deg, #ffd700, #f5a623);
-  color: #3d2e0a; font-size: 9px; font-weight: 800;
+  border-color: rgba(255, 215, 0, 0.4);
 }
 
-/* Time window */
-.cs-time-options { display: flex; gap: 6px; flex-wrap: wrap; }
-
-.cs-time-btn {
-  padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(184, 135, 46, 0.2);
-  background: transparent; color: inherit; font-size: 12px; font-weight: 600;
-  cursor: pointer; transition: all 0.2s ease;
+.cs-toggle-thumb {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.cs-time-btn--active {
-  background: rgba(184, 135, 46, 0.15);
-  border-color: rgba(184, 135, 46, 0.4);
+.cs-toggle-track--on .cs-toggle-thumb {
+  left: 24px;
 }
 
-/* Keywords */
-.cs-keyword-input-wrap {
-  display: flex; gap: 6px;
+.cs-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
 }
 
-.cs-keyword-input {
-  flex: 1; padding: 8px 12px; border-radius: 10px;
-  border: 1px solid rgba(184, 135, 46, 0.2); background: rgba(255, 255, 255, 0.5);
-  color: inherit; font-size: 13px; outline: none;
+/* --- Color Picker Rows --- */
+.cs-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.cs-color-label {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 52px;
+  opacity: 0.75;
+}
+
+.cs-color-picker-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cs-color-input-native {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 40px; height: 40px;
+  border: none; border-radius: 10px;
+  cursor: pointer; background: transparent;
+  padding: 0;
+}
+
+.cs-color-input-native::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.cs-color-input-native::-webkit-color-swatch {
+  border: 2px solid rgba(184, 135, 46, 0.2);
+  border-radius: 10px;
+}
+
+.cs-color-input-native::-moz-color-swatch {
+  border: 2px solid rgba(184, 135, 46, 0.2);
+  border-radius: 10px;
+}
+
+.cs-color-swatch-large {
+  min-width: 90px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid rgba(184, 135, 46, 0.18);
+  padding: 0 10px;
   transition: border-color 0.2s ease;
 }
 
-.cs-keyword-input:focus { border-color: rgba(184, 135, 46, 0.5); }
+.cs-color-hex {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
 
-.cs-keyword-add-btn {
-  padding: 8px 14px; border-radius: 10px; border: none;
-  background: rgba(184, 135, 46, 0.15); color: inherit;
-  font-size: 12px; font-weight: 600; cursor: pointer;
+/* --- Preset Colors Grid --- */
+.cs-presets {
+  margin-top: 14px;
+}
+
+.cs-presets-label {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.5;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.cs-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+
+.cs-preset-btn {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
   transition: all 0.2s ease;
+  outline: none;
 }
 
-.cs-keyword-add-btn:hover { background: rgba(184, 135, 46, 0.25); }
-
-.cs-keyword-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-
-.cs-keyword-tag {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 10px; border-radius: 999px;
-  background: rgba(184, 135, 46, 0.1); font-size: 12px;
+.cs-preset-btn:hover {
+  transform: scale(1.12);
+  z-index: 1;
 }
 
-.cs-keyword-remove {
-  background: none; border: none; color: inherit; opacity: 0.5;
-  cursor: pointer; font-size: 14px; padding: 0; line-height: 1;
-}
-
-.cs-keyword-remove:hover { opacity: 1; }
-
-/* Qualification */
-.cs-qual-options { display: flex; flex-direction: column; gap: 8px; }
-
-.cs-qual-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px; border-radius: 10px;
-  background: rgba(255, 255, 255, 0.3); cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.cs-qual-item:hover { background: rgba(255, 255, 255, 0.5); }
-
-.cs-qual-radio { accent-color: #b8860b; }
-
-.cs-qual-label { font-size: 13px; font-weight: 600; }
-.cs-qual-desc { font-size: 11px; opacity: 0.5; margin-left: auto; }
-
-/* Background */
-.cs-bg-type-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
-
-.cs-bg-type-btn {
-  padding: 6px 14px; border-radius: 999px;
-  border: 1px solid rgba(184, 135, 46, 0.2);
-  background: transparent; color: inherit;
-  font-size: 12px; font-weight: 600; cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.cs-bg-type-btn--active {
-  background: rgba(255, 215, 0, 0.15);
-  border-color: rgba(255, 215, 0, 0.4);
-}
-
-.cs-bg-colors { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-
-.cs-bg-color-swatch {
-  width: 32px; height: 32px; border-radius: 10px;
-  border: 2px solid transparent; cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.cs-bg-color-swatch--active {
+.cs-preset-btn--active {
   border-color: #ffd700;
-  box-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+  box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.25), 0 2px 8px rgba(255, 215, 0, 0.3);
+  transform: scale(1.08);
 }
 
-.cs-bg-gradients { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-
-.cs-bg-gradient-swatch {
-  width: 48px; height: 32px; border-radius: 10px;
-  border: 2px solid transparent; cursor: pointer;
-  transition: all 0.2s ease;
+/* --- Gradient Direction --- */
+.cs-gradient-dir {
+  margin-top: 14px;
 }
 
-.cs-bg-gradient-swatch--active {
-  border-color: #ffd700;
-  box-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
-}
-
-.cs-bg-stickers { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-
-.cs-bg-sticker-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 8px 10px; border-radius: 10px; border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.3); cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.cs-bg-sticker-btn--active {
-  border-color: rgba(255, 215, 0, 0.4);
-  background: rgba(255, 215, 0, 0.1);
-}
-
-.cs-bg-sticker-emoji { font-size: 20px; }
-.cs-bg-sticker-name { font-size: 10px; opacity: 0.6; }
-
-/* Preview */
-.cs-bg-preview {
-  border-radius: 14px; padding: 14px; min-height: 60px;
-  border: 1px solid rgba(184, 135, 46, 0.1);
-}
-
-.cs-bg-preview-comment {
-  display: flex; gap: 10px; align-items: flex-start;
-}
-
-.cs-bg-preview-avatar {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: rgba(255, 255, 255, 0.5);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px;
-}
-
-.cs-bg-preview-bubble {
-  padding: 8px 12px; border-radius: 12px;
-  background: rgba(255, 255, 255, 0.6);
-}
-
-.cs-bg-preview-name { font-size: 12px; font-weight: 700; display: block; }
-.cs-bg-preview-text { font-size: 12px; opacity: 0.7; }
-
-/* Actions */
-.cs-actions {
-  display: flex; gap: 10px; justify-content: flex-end;
+.cs-dir-grid {
+  display: flex;
+  gap: 6px;
   margin-top: 8px;
 }
 
-.cs-action-btn {
-  padding: 8px 20px; border-radius: 999px; border: none;
-  font-size: 13px; font-weight: 600; cursor: pointer;
+.cs-dir-btn {
+  flex: 1;
+  height: 36px;
+  border-radius: 9px;
+  border: 1.5px solid rgba(184, 135, 46, 0.15);
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.2s ease;
+  font-size: 14px;
+  color: inherit;
+}
+
+.cs-dir-btn:hover { background: rgba(255, 255, 255, 0.5); }
+
+.cs-dir-btn--active {
+  border-color: rgba(255, 215, 0, 0.45);
+  background: rgba(255, 215, 0, 0.12);
+  color: #b8860b;
+}
+
+.cs-dir-arrow {
+  font-weight: 900;
+  font-size: 16px;
+  display: block;
+  transition: transform 0.2s ease;
+}
+
+/* --- Preview Area --- */
+.cs-preview-area {
+  border-radius: 16px; padding: 16px; min-height: 72px;
+  border: 1px solid rgba(184, 135, 46, 0.1);
+  transition: background 0.35s ease;
+}
+
+.cs-preview-comment {
+  display: flex; gap: 12px; align-items: flex-start;
+}
+
+.cs-preview-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.cs-preview-bubble {
+  padding: 10px 14px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-preview-name { font-size: 12px; font-weight: 800; display: block; margin-bottom: 3px; opacity: 0.85; }
+
+.cs-preview-text { font-size: 13px; opacity: 0.75; line-height: 1.6; word-break: break-word; }
+
+/* --- Actions --- */
+.cs-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(184, 135, 46, 0.08);
+}
+
+.cs-action-btn {
+  padding: 9px 22px; border-radius: 999px; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all 0.22s ease;
 }
 
 .cs-action-btn--secondary {
@@ -609,13 +648,29 @@ function saveSettings() {
 .cs-action-btn--primary {
   background: linear-gradient(135deg, #ffd700, #f5a623);
   color: #3d2e0a;
+  min-width: 88px;
 }
 
-.cs-action-btn:hover { transform: translateY(-1px); }
+.cs-action-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.cs-action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* --- Transition --- */
 .cs-fade-enter-active { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .cs-fade-leave-active { transition: all 0.22s ease; }
 .cs-fade-enter-from { opacity: 0; transform: translateX(20px) scale(0.96); }
 .cs-fade-leave-to { opacity: 0; transform: translateX(12px) scale(0.98); }
+
+/* Responsive */
+@media (max-width: 480px) {
+  .comment-settings {
+    top: 8px; right: 8px; left: 8px;
+    width: auto; max-width: none;
+    max-height: calc(100vh - 16px);
+    padding: 18px;
+    border-radius: 22px;
+  }
+  .cs-presets-grid {
+    grid-template-columns: repeat(8, 1fr);
+  }
+}
 </style>

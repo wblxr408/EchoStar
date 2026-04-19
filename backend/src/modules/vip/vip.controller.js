@@ -148,3 +148,31 @@ export const consumeEmotionCoinItem = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * 保存/更新VIP评论背景设置
+ */
+export const saveCommentBg = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { commentBg } = req.body;
+
+    if (!commentBg || typeof commentBg !== 'object') {
+      return res.status(400).json({ code: 40020, message: '评论背景设置格式无效' });
+    }
+
+    const allowedKeys = ['type', 'color', 'gradientColor', 'useGradient'];
+    const invalidKeys = Object.keys(commentBg).filter(k => !allowedKeys.includes(k));
+    if (invalidKeys.length > 0) {
+      return res.status(400).json({ code: 40021, message: `包含无效字段: ${invalidKeys.join(', ')}` });
+    }
+
+    const result = await VipService.saveCommentBg(userId, commentBg);
+    res.json({ code: 0, data: result, message: '评论背景已保存' });
+  } catch (error) {
+    if (error.message === '仅VIP用户可设置评论背景') {
+      return res.status(403).json({ code: 40301, message: error.message });
+    }
+    next(error);
+  }
+};

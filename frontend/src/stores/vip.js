@@ -88,6 +88,10 @@ export const useVipStore = defineStore('vip', () => {
       emotionCoins.value = data.emotionCoins || 0;
       lastCheckInAt.value = data.lastCheckInAt || null;
       checkInStreak.value = data.checkInStreak || 0;
+      if (data.commentBg) {
+        savedCommentBg.value = data.commentBg;
+        saveToStorage('vip_comment_bg', data.commentBg);
+      }
       syncUserCoins();
     } catch (err) {
       console.error('[VipStore] fetchStatus failed:', err);
@@ -120,6 +124,10 @@ export const useVipStore = defineStore('vip', () => {
       economy.value = data.economy || economy.value;
       ledger.value = data.ledger || [];
       inventory.value = data.inventory || [];
+      if (data.commentBg) {
+        savedCommentBg.value = data.commentBg;
+        saveToStorage('vip_comment_bg', data.commentBg);
+      }
       syncUserCoins();
       return data;
     } catch (err) {
@@ -386,6 +394,16 @@ export const useVipStore = defineStore('vip', () => {
     saveToStorage('vip_comment_bg', bg);
   }
 
+  async function syncCommentBg(bgConfig) {
+    try {
+      await vipApi.saveCommentBg(bgConfig);
+      return { success: true };
+    } catch (err) {
+      console.error('[VipStore] syncCommentBg failed:', err);
+      return { success: false, message: '同步到服务器失败' };
+    }
+  }
+
   function setProfileBg(bg) {
     savedProfileBg.value = bg;
     saveToStorage('vip_profile_bg', bg);
@@ -454,6 +472,7 @@ export const useVipStore = defineStore('vip', () => {
     VIP_COST,
     VIP_PLANS,
     setCommentBg,
+    syncCommentBg,
     setProfileBg,
     setEmotionStyles,
     resetCustomization,

@@ -119,6 +119,13 @@ export const User = sequelize.define('User', {
     allowNull: true,
     field: 'bio_font_effect',
     comment: '个性签名VIP字体特效'
+  },
+  commentBg: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: null,
+    field: 'comment_bg',
+    comment: 'VIP评论背景设置（{type, color, gradientColor, useGradient}）'
   }
 }, {
   tableName: 'users',
