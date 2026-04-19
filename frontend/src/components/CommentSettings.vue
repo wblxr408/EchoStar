@@ -92,6 +92,19 @@
             <!-- Preset Colors (quick pick) -->
             <div class="cs-presets">
               <span class="cs-presets-label">快捷选色</span>
+              <!-- Gradient mode: target switcher -->
+              <div v-if="useGradient" class="cs-preset-tabs">
+                <button
+                  class="cs-preset-tab"
+                  :class="{ 'cs-preset-tab--active': presetTarget === 'primary' }"
+                  @click="presetTarget = 'primary'"
+                >起始色</button>
+                <button
+                  class="cs-preset-tab"
+                  :class="{ 'cs-preset-tab--active': presetTarget === 'secondary' }"
+                  @click="presetTarget = 'secondary'"
+                >结束色</button>
+              </div>
               <div class="cs-presets-grid">
                 <button
                   v-for="(c, i) in presetColors"
@@ -196,6 +209,7 @@ const useGradient = ref(false)
 const primaryColor = ref('#fff8e7')
 const secondaryColor = ref('#fcb69f')
 const gradientDirection = ref(135)
+const presetTarget = ref('primary') // 'primary' | 'secondary'
 
 // Preset colors for quick selection
 const presetColors = [
@@ -211,17 +225,27 @@ const presetColors = [
 
 const gradientDirections = [
   { value: 135, label: '左上到右下', rotate: 'rotate(45deg)' },
-  { value: 180, label: '上到下', transform: '' },
-  { value: 90, label: '左到右', transform: '' },
-  { value: 225, label: '右上到左下', transform: 'rotate(-45deg)' },
+  { value: 180, label: '上到下', rotate: 'rotate(90deg)' },
+  { value: 90, label: '左到右', rotate: 'rotate(0deg)' },
+  { value: 225, label: '右上到左下', rotate: 'rotate(-45deg)' },
 ]
 
 function isPresetActive(color) {
+  if (useGradient.value) {
+    if (presetTarget.value === 'primary') {
+      return primaryColor.value.toLowerCase() === color.toLowerCase()
+    }
+    return secondaryColor.value.toLowerCase() === color.toLowerCase()
+  }
   return primaryColor.value.toLowerCase() === color.toLowerCase()
 }
 
 function applyPreset(color) {
-  primaryColor.value = color
+  if (useGradient.value && presetTarget.value === 'secondary') {
+    secondaryColor.value = color
+  } else {
+    primaryColor.value = color
+  }
 }
 
 // Initialize from stored settings
@@ -542,6 +566,36 @@ async function saveSettings() {
   opacity: 0.5;
   display: block;
   margin-bottom: 8px;
+}
+
+/* Preset target tabs (gradient mode) */
+.cs-preset-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.cs-preset-tab {
+  flex: 1;
+  height: 28px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(184, 135, 46, 0.15);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cs-preset-tab:hover {
+  background: rgba(255, 215, 0, 0.08);
+}
+
+.cs-preset-tab--active {
+  border-color: rgba(255, 215, 0, 0.45);
+  background: rgba(255, 215, 0, 0.12);
+  color: #b8860b;
 }
 
 .cs-presets-grid {
