@@ -47,6 +47,18 @@ export const Comment = sequelize.define('Comment', {
     defaultValue: 'active',
     field: 'status',
     comment: '评论状态（active/deleted）'
+  },
+  fontFamily: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    field: 'font_family',
+    comment: 'VIP个性字体'
+  },
+  fontEffect: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    field: 'font_effect',
+    comment: 'VIP字体特效（颜色/流光）'
   }
 }, {
   tableName: 'comments',

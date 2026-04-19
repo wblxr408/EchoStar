@@ -14,7 +14,7 @@ class CommentServiceClass {
    * 发送 MQ 消息异步写入数据库
    */
   async createComment(userId, data) {
-    const { storyId, content } = data;
+    const { storyId, content, fontFamily, fontEffect } = data;
 
     // 使用缓存查询验证故事是否存在
     const { StoryService } = await import('../story/story.service.js');
@@ -54,6 +54,8 @@ class CommentServiceClass {
       userId,
       storyId,
       content,
+      fontFamily: fontFamily || null,
+      fontEffect: fontEffect || null,
       lockKey
     };
 
@@ -74,6 +76,8 @@ class CommentServiceClass {
     return {
       id: commentId,
       content,
+      fontFamily: fontFamily || null,
+      fontEffect: fontEffect || null,
       createdAt: new Date().toISOString()
     };
   }
@@ -105,6 +109,8 @@ class CommentServiceClass {
         id: comment.id,
         content: comment.content,
         createdAt: comment.createdAt,
+        fontFamily: comment.fontFamily || null,
+        fontEffect: comment.fontEffect || null,
         user: {
           id: comment.userId,
           username: comment.user?.username || '匿名用户',
@@ -206,6 +212,8 @@ class CommentServiceClass {
         content: comment.content,
         createdAt: comment.createdAt,
         storyId: comment.storyId,
+        fontFamily: comment.fontFamily || null,
+        fontEffect: comment.fontEffect || null,
         user: {
           id: comment.userId,
           username: comment.user?.username || '匿名用户',

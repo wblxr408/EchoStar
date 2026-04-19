@@ -15,7 +15,7 @@
     </div>
 
     <div class="story-content">
-      <p>{{ story.content }}</p>
+      <p :style="storyFontStyle">{{ story.content }}</p>
     </div>
 
     <div v-if="story.images && story.images.length > 0" class="story-images">
@@ -47,7 +47,10 @@
 import { computed } from 'vue';
 import { formatRelativeTime } from '../utils/time';
 import { getEmotionEmoji, fromEmotionTag } from '../utils/emotion';
+import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
 import TimeCapsule from './TimeCapsule.vue';
+
+injectFontEffectAnimations();
 
 const props = defineProps({
   story: {
@@ -112,6 +115,13 @@ const storyAuthorVip = computed(() => {
     ? props.story.user
     : null;
   return Boolean(authorObject?.vip || userObject?.vip || props.story?.vip);
+});
+
+const storyFontStyle = computed(() => {
+  const ff = props.story?.fontFamily || '';
+  const fe = props.story?.fontEffect || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
 });
 
 function getInitial(name) {

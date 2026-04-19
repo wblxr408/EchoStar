@@ -149,7 +149,7 @@
               </div>
             </template>
             <template v-else>
-              <p class="story-card-content">{{ currentStory.content || currentStory.preview || '' }}</p>
+              <p class="story-card-content" :style="currentStoryFontStyle">{{ currentStory.content || currentStory.preview || '' }}</p>
               <div class="story-card-meta">
                 <span class="story-card-location">📍 {{ currentStory.location?.address || currentStory.locationName || '' }}</span>
                 <span class="story-card-time">{{ formatTime(currentStory.createdAt) }}</span>
@@ -173,6 +173,9 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { getEmotionEmoji, getEmotionColor, fromEmotionTag } from '../utils/emotion'
 import { storyApi } from '../api/story'
+import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect'
+
+injectFontEffectAnimations()
 import { useMapStore } from '../stores/map'
 import { showToast } from '../composables/useToast.js'
 
@@ -272,6 +275,14 @@ const isCurrentStoryLocked = computed(() => {
   const unlockAt = currentStory.value.unlockAt
   if (!unlockAt) return true
   return new Date(unlockAt) > new Date()
+})
+
+const currentStoryFontStyle = computed(() => {
+  if (!currentStory.value) return {}
+  const ff = currentStory.value.fontFamily || ''
+  const fe = currentStory.value.fontEffect || ''
+  if (!ff && !fe) return {}
+  return getFontStyle(ff, fe)
 })
 
 const lockCountdownText = computed(() => {

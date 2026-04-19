@@ -92,6 +92,18 @@ export const Story = sequelize.define('Story', {
     allowNull: true,
     field: 'polished_at',
     comment: '擦亮时间，24小时有效'
+  },
+  fontFamily: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    field: 'font_family',
+    comment: 'VIP个性字体'
+  },
+  fontEffect: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    field: 'font_effect',
+    comment: 'VIP字体特效（颜色/流光）'
   }
 }, {
   tableName: 'stories',

@@ -167,7 +167,7 @@ class StoryConsumer {
    * 处理创建故事
    */
   async handleCreate(payload) {
-    const { storyId, userId, content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility, visibilityStartTime, visibilityEndTime, lockKey } = payload;
+    const { storyId, userId, content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility, visibilityStartTime, visibilityEndTime, fontFamily, fontEffect, lockKey } = payload;
 
     const redis = redisClient.getClient();
 
@@ -187,7 +187,9 @@ class StoryConsumer {
         unlockAt: isTimeCapsule ? new Date(unlockAt) : null,
         visibility,
         visibilityStartTime: visibilityStartTime || null,
-        visibilityEndTime: visibilityEndTime || null
+        visibilityEndTime: visibilityEndTime || null,
+        fontFamily: fontFamily || null,
+        fontEffect: fontEffect || null
       });
 
       console.log(`✅ 故事创建成功 [storyId: ${storyId}]`);

@@ -13,7 +13,7 @@
         loading="lazy"
       />
       <div v-else class="swc-text-placeholder">
-        <p class="swc-text-content">{{ textContent }}</p>
+        <p class="swc-text-content" :style="wallFontStyle">{{ textContent }}</p>
       </div>
     </div>
 
@@ -51,7 +51,7 @@
         </div>
       </div>
 
-      <p v-if="displayImage && story.content" class="swc-content">{{ contentPreview }}</p>
+      <p v-if="displayImage && story.content" class="swc-content" :style="wallFontStyle">{{ contentPreview }}</p>
 
       <div class="swc-stats">
         <span>❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
@@ -63,6 +63,9 @@
 
 <script setup>
 import { computed } from 'vue';
+import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+
+injectFontEffectAnimations();
 
 const props = defineProps({
   story: { type: Object, required: true },
@@ -107,6 +110,13 @@ const contentPreview = computed(() => {
   const text = props.story.content || '';
   const maxLen = 40;
   return text.length > maxLen ? text.slice(0, maxLen) + '...' : text;
+});
+
+const wallFontStyle = computed(() => {
+  const ff = props.story?.fontFamily || '';
+  const fe = props.story?.fontEffect || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
 });
 
 const textContent = computed(() => {

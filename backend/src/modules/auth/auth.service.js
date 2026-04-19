@@ -421,6 +421,8 @@ const AuthServiceImpl = {
       username: rawData.username,
       avatar: rawData.avatarUrl,
       bio: rawData.bio,
+      bioFontFamily: rawData.bioFontFamily || null,
+      bioFontEffect: rawData.bioFontEffect || null,
       vip: rawData.vip,
       emotionCoins: rawData.emotionCoins || 0,
       stories: stories.map(story => ({
@@ -437,7 +439,7 @@ const AuthServiceImpl = {
   /**
    * 修改个人信息
    */
-  async updateProfile(userId, { username, avatarUrl, bio }) {
+  async updateProfile(userId, { username, avatarUrl, bio, bioFontFamily, bioFontEffect }) {
     const user = await User.findByPk(userId);
 
     if (!user) {
@@ -463,6 +465,8 @@ const AuthServiceImpl = {
     if (username !== undefined) updateData.username = username;
     if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
     if (bio !== undefined) updateData.bio = bio;
+    if (bioFontFamily !== undefined) updateData.bioFontFamily = bioFontFamily || null;
+    if (bioFontEffect !== undefined) updateData.bioFontEffect = bioFontEffect || null;
 
     await user.update(updateData);
 

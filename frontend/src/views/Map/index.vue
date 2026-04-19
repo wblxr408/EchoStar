@@ -865,16 +865,12 @@
             <div class="publish-modal-scroll">
               <PublishForm
                 :visible="showPublishSidebar"
+                :plane-position="planePosition"
                 :map-center="mapStore.center"
                 :user-location="mapStore.userLocation"
-                :suggested-locations="suggestedPublishLocations"
-                :picked-map-location="pickedPublishLocation"
-                :is-picking-location="isPickingPublishLocation"
                 :map-theme="effectiveMapTheme"
                 :prefill-query="publishPrefillQuery"
                 @submit="handlePublishSubmit"
-                @request-map-pick="startPublishMapPick"
-                @cancel-map-pick="cancelPublishMapPick"
                 @cancel="closePublishPanel"
               />
             </div>
@@ -5924,8 +5920,6 @@ function handlePaperPlanePublish() {
   reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
     if (!location) return;
     const displayName = pickLocationDisplayName(location, location.name || '当前位置');
-    suggestedPublishLocations.value = [];
-    pickedPublishLocation.value = location;
     isPickingPublishLocation.value = false;
     showPublishSidebar.value = true;
     nextTick(() => {
@@ -7346,6 +7340,8 @@ async function handlePublishSubmit(storyData) {
       visibility: storyData.visibility || "public",
       visibilityStartTime: storyData.visibilityStartTime || null,
       visibilityEndTime: storyData.visibilityEndTime || null,
+      fontFamily: storyData.fontFamily || null,
+      fontEffect: storyData.fontEffect || null,
     });
 
     const newStory = response.data || response;

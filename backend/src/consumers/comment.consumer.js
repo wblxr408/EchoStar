@@ -155,7 +155,7 @@ class CommentConsumer {
    * 处理创建评论
    */
   async handleCreate(payload) {
-    const { commentId, userId, storyId, content, lockKey } = payload;
+    const { commentId, userId, storyId, content, fontFamily, fontEffect, lockKey } = payload;
 
     const { redisClient } = await import('../common/utils/redis.js');
     const redis = redisClient.getClient();
@@ -165,7 +165,9 @@ class CommentConsumer {
         id: commentId,
         userId,
         storyId,
-        content
+        content,
+        fontFamily: fontFamily || null,
+        fontEffect: fontEffect || null
       });
 
       await commentCacheUtil.incrementCommentCount(storyId);

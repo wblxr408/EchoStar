@@ -8,11 +8,7 @@
       <div class="hero-content">
         <div>
           <h2>发布故事</h2>
-          <p>先挑一个地点，再把这一刻的情绪、画面与文字一起放进地图里。</p>
-        </div>
-        <div class="hero-status" :class="{ ready: Boolean(form.selectedLocation) }">
-          <span class="status-label">{{ form.selectedLocation ? '已选地点' : '待选地点' }}</span>
-          <strong>{{ form.selectedLocation?.name || '请选择一个地点后再发布' }}</strong>
+          <p>把这一刻的情绪、画面与文字一起放进地图里。</p>
         </div>
       </div>
     </section>
@@ -21,7 +17,7 @@
       <div class="section-heading">
         <span class="section-kicker">Place Search</span>
         <h3>选择故事落点</h3>
-        <p>不会默认使用当前位置，只有你手动选择后，这条故事才会落到地图上。</p>
+        <p>已经使用了纸飞机的位置，可以在下方文本框更正并选中你想要的地址<br/>不支持自定义地址哦，手动更改之后必须选择一个候选项~</p>
       </div>
 
       <div class="location-search">
@@ -31,39 +27,9 @@
           placeholder="搜索你想留下故事的地方"
           @keyup.enter="performPoiSearch"
         />
-        <button
-          type="button"
-          class="search-btn"
-          :disabled="searching || form.locationQuery.trim().length < 2"
-          @click="performPoiSearch"
-        >
-          {{ searching ? '搜索中...' : '搜索地点' }}
-        </button>
       </div>
 
-      <div class="location-quick-actions">
-        <button
-          v-if="userPresetLocation"
-          type="button"
-          class="quick-location-btn"
-          :disabled="resolvingCurrentLocation"
-          @click="handleUseCurrentLocation"
-        >
-          {{ resolvingCurrentLocation ? '解析附近地点...' : '使用当前位置' }}
-        </button>
-        <button
-          type="button"
-          class="quick-location-btn pick-map-btn"
-          :class="{ active: isPickingLocation }"
-          @click="toggleMapPick"
-        >
-          {{ isPickingLocation ? '取消地图选点' : '在地图上点选位置' }}
-        </button>
-      </div>
-
-      <p v-if="isPickingLocation" class="search-feedback">
-        地图点选模式已开启，直接在弹层外的地图上点击一个位置即可。
-      </p>
+      <p v-if="userEditedLocation && !form.selectedLocation" class="search-feedback warning">你修改了地点，请从下方搜索结果中选择一个地址</p>
 
       <p v-if="searchError" class="search-feedback error">{{ searchError }}</p>
       <p v-else-if="searching" class="search-feedback">正在查找相关地点...</p>
@@ -96,7 +62,7 @@
           <strong>{{ form.selectedLocation.name }}</strong>
           <p>{{ form.selectedLocation.address }}</p>
         </div>
-        <button type="button" class="clear-location-btn" @click="clearSelectedLocation">
+        <button type="button" class="clear-location-btn" @click="form.selectedLocation = null">
           重新选择
         </button>
       </div>
@@ -131,6 +97,22 @@
         <h3>选择情绪</h3>
       </div>
       <EmotionSelector v-model="form.emotion" />
+    </section>
+
+    <section v-if="vipStore.isVipActive" class="section-card font-card">
+      <div class="section-heading">
+        <span class="section-kicker">Typography</span>
+        <h3>个性字体样式</h3>
+        <p>为你的故事选择专属字体和文字效果</p>
+      </div>
+      <div class="font-actions">
+        <button type="button" class="font-action-btn" :class="{ 'font-active': form.fontFamily || form.fontEffect }" @click="showFontPicker = true">
+          {{ (form.fontFamily || form.fontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
+        </button>
+        <button v-if="form.fontFamily || form.fontEffect" type="button" class="font-clear-btn" @click="clearFontAndEffect">
+          清除
+        </button>
+      </div>
     </section>
 
     <section class="section-card split-card">
@@ -231,6 +213,17 @@
         发布故事
       </button>
     </footer>
+
+    <FontPicker
+      :visible="showFontPicker"
+      :is-dark="mapTheme === 'dark'"
+      target-type="story"
+      :selected-font="form.fontFamily"
+      :selected-effect="form.fontEffect"
+      @select="handleFontSelect"
+      @select-effect="handleEffectSelect"
+      @close="showFontPicker = false"
+    />
   </div>
 </template>
 
@@ -238,12 +231,19 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import ImageUploader from './ImageUploader.vue';
 import EmotionSelector from './EmotionSelector.vue';
+import FontPicker from './FontPicker.vue';
 import { searchPoisWithContext } from '../utils/poiSearch';
+import { useVipStore } from '../stores/vip';
+import { injectFontEffectAnimations } from '../composables/useFontEffect';
 
 const props = defineProps({
   visible: {
     type: Boolean,
     default: true
+  },
+  planePosition: {
+    type: Object,
+    default: null
   },
   mapCenter: {
     type: Object,
@@ -252,18 +252,6 @@ const props = defineProps({
   userLocation: {
     type: Object,
     default: null
-  },
-  suggestedLocations: {
-    type: Array,
-    default: () => []
-  },
-  pickedMapLocation: {
-    type: Object,
-    default: null
-  },
-  isPickingLocation: {
-    type: Boolean,
-    default: false
   },
   mapTheme: {
     type: String,
@@ -275,7 +263,13 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['submit', 'cancel', 'request-map-pick', 'cancel-map-pick']);
+const emit = defineEmits(['submit', 'cancel']);
+
+const vipStore = useVipStore();
+
+injectFontEffectAnimations();
+
+const showFontPicker = ref(false);
 
 const DEFAULT_FORM = () => ({
   content: '',
@@ -289,17 +283,33 @@ const DEFAULT_FORM = () => ({
   useTimeWindow: false,
   visibilityPreset: null,
   visibilityStartTime: '',
-  visibilityEndTime: ''
+  visibilityEndTime: '',
+  fontFamily: '',
+  fontEffect: ''
 });
 
 const form = ref(DEFAULT_FORM());
 const searchResults = ref([]);
 const searching = ref(false);
-const resolvingCurrentLocation = ref(false);
 const searchError = ref('');
 const hasSearched = ref(false);
 const timeWindowError = ref('');
 const themeClass = computed(() => `theme-${props.mapTheme === 'dark' ? 'dark' : 'light'}`);
+const userEditedLocation = ref(false);
+const originalPrefill = ref('');
+
+function handleFontSelect(family) {
+  form.value.fontFamily = family;
+}
+
+function handleEffectSelect(effect) {
+  form.value.fontEffect = effect;
+}
+
+function clearFontAndEffect() {
+  form.value.fontFamily = '';
+  form.value.fontEffect = '';
+}
 
 const TIME_PRESETS = {
   latenight: { start: '23:00', end: '05:00' }
@@ -363,9 +373,11 @@ let suppressLocationQueryWatch = false;
 
 const isValid = computed(() => {
   if (form.value.content.trim().length === 0) return false;
-  if (!form.value.selectedLocation) return false;
   if (!form.value.emotion) return false;
   if (form.value.isTimeCapsule && !form.value.unlockAt) return false;
+
+  // 如果用户修改了地点输入，必须从搜索结果中选中一项
+  if (userEditedLocation.value && !form.value.selectedLocation) return false;
 
   // 检查时间段验证
   if (form.value.visibility === 'public' && form.value.useTimeWindow) {
@@ -391,7 +403,7 @@ const userPresetLocation = computed(() => {
 });
 
 const poiSearchAnchor = computed(() => {
-  return normalizePresetLocation(props.pickedMapLocation, '已选地点')
+  return normalizePresetLocation(props.planePosition, '纸飞机位置')
     || normalizePresetLocation(props.mapCenter, '地图中心')
     || normalizePresetLocation(props.userLocation, '当前地理位置');
 });
@@ -418,33 +430,6 @@ watch(
   }
 );
 
-watch(
-  () => props.suggestedLocations,
-  (locations) => {
-    if (!Array.isArray(locations) || locations.length === 0) {
-      searchResults.value = [];
-      searchError.value = '';
-      hasSearched.value = false;
-      form.value.selectedLocation = null;
-      activeSearchToken += 1;
-      return;
-    }
-
-    const normalizedLocations = locations
-      .map((item) => normalizePresetLocation(item, item?.name || '已选地点'))
-      .filter(Boolean);
-    const nearestLocation = normalizedLocations[0] || null;
-
-    searchResults.value = normalizedLocations;
-    searchError.value = '';
-    hasSearched.value = true;
-    setLocationQuerySilently(nearestLocation?.name || '');
-    form.value.selectedLocation = nearestLocation ? { ...nearestLocation } : null;
-    activeSearchToken += 1;
-  },
-  { deep: true, immediate: true }
-);
-
 // 预填充地点查询文字（不自动选中，用户必须手动确认）
 watch(
   () => props.prefillQuery,
@@ -454,6 +439,8 @@ watch(
     searchError.value = '';
     hasSearched.value = false;
     form.value.selectedLocation = null;
+    userEditedLocation.value = false;
+    originalPrefill.value = query;
     setLocationQuerySilently(query);
     activeSearchToken += 1;
   }
@@ -471,21 +458,28 @@ watch(
       return;
     }
 
+    // 检测用户是否手动修改了地点
+    const currentQuery = query.trim();
+    if (originalPrefill.value && currentQuery !== originalPrefill.value.trim()) {
+      userEditedLocation.value = true;
+    } else if (!currentQuery && originalPrefill.value) {
+      userEditedLocation.value = true;
+    } else if (currentQuery === originalPrefill.value.trim() && originalPrefill.value) {
+      userEditedLocation.value = false;
+    }
+
+    // 用户修改后清空已选项（强制重新选择）
+    if (userEditedLocation.value && form.value.selectedLocation) {
+      form.value.selectedLocation = null;
+    }
+
     clearSearchTimer();
 
-    const keyword = query.trim();
-    if (!keyword) {
+    if (!currentQuery) {
       searchResults.value = [];
       searchError.value = '';
       hasSearched.value = false;
       activeSearchToken += 1;
-      return;
-    }
-
-    if (keyword.length < 2) {
-      searchResults.value = [];
-      searchError.value = '';
-      hasSearched.value = false;
       return;
     }
 
@@ -534,6 +528,8 @@ function resetForm() {
   searching.value = false;
   searchError.value = '';
   hasSearched.value = false;
+  userEditedLocation.value = false;
+  originalPrefill.value = '';
   form.value = DEFAULT_FORM();
 }
 
@@ -780,9 +776,9 @@ async function resolveNearestLocationFromCoords(sourceLocation) {
 
 async function performPoiSearch() {
   const keyword = form.value.locationQuery.trim();
-  if (keyword.length < 2) {
+  if (!keyword) {
     searchResults.value = [];
-    searchError.value = '至少输入 2 个字再搜索地点。';
+    searchError.value = '';
     hasSearched.value = false;
     return;
   }
@@ -836,49 +832,46 @@ function selectLocation(location) {
   activeSearchToken += 1;
 }
 
-async function handleUseCurrentLocation() {
-  if (!userPresetLocation.value || resolvingCurrentLocation.value) {
-    return;
-  }
-
-  resolvingCurrentLocation.value = true;
-  searchError.value = '';
-
-  try {
-    const nearestLocation = await resolveNearestLocationFromCoords(userPresetLocation.value);
-    if (!nearestLocation) {
-      searchError.value = '当前位置暂时不可用，请稍后再试';
-      return;
-    }
-
-    selectLocation(nearestLocation);
-  } catch (error) {
-    searchError.value = '当前位置解析失败，请稍后再试';
-  } finally {
-    resolvingCurrentLocation.value = false;
-  }
-}
-
-function clearSelectedLocation() {
-  form.value.selectedLocation = null;
-  setLocationQuerySilently('');
-  searchResults.value = [];
-  searchError.value = '';
-  hasSearched.value = false;
-  activeSearchToken += 1;
-}
-
-function toggleMapPick() {
-  if (props.isPickingLocation) {
-    emit('cancel-map-pick');
-    return;
-  }
-
-  emit('request-map-pick');
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function handleSubmit() {
   if (!isValid.value) {
+    return;
+  }
+
+  let location;
+
+  if (userEditedLocation.value && form.value.selectedLocation) {
+    // 用户修改了输入并选择了搜索结果
+    location = { ...form.value.selectedLocation };
+    // 如果选中位置距离纸飞机超过 500m，使用搜索结果的经纬度；否则用纸飞机经纬度
+    if (props.planePosition) {
+      const dist = haversineDistance(
+        props.planePosition.latitude, props.planePosition.longitude,
+        location.latitude, location.longitude
+      );
+      if (dist <= 500) {
+        location.latitude = props.planePosition.latitude;
+        location.longitude = props.planePosition.longitude;
+      }
+    }
+  } else if (!userEditedLocation.value && props.planePosition) {
+    // 用户未修改输入，使用纸飞机位置 + 解析出的地名
+    location = {
+      id: `plane-${props.planePosition.longitude}-${props.planePosition.latitude}`,
+      name: form.value.locationQuery.trim() || '纸飞机位置',
+      address: form.value.locationQuery.trim() || '纸飞机位置',
+      latitude: props.planePosition.latitude,
+      longitude: props.planePosition.longitude,
+    };
+  } else {
     return;
   }
 
@@ -889,7 +882,9 @@ function handleSubmit() {
     isTimeCapsule: form.value.isTimeCapsule,
     unlockAt: form.value.unlockAt,
     visibility: form.value.visibility,
-    location: form.value.selectedLocation
+    location,
+    fontFamily: form.value.fontFamily || undefined,
+    fontEffect: form.value.fontEffect || undefined
   };
 
   // 只在选择了公开可见且启用了时间窗口时才传递时间参数
@@ -1000,10 +995,6 @@ function handleSubmit() {
 .hero-content {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  gap: 20px;
-  align-items: end;
   margin-top: 18px;
 }
 
@@ -1028,31 +1019,6 @@ function handleSubmit() {
   color: var(--panel-muted);
 }
 
-.hero-status {
-  position: relative;
-  z-index: 1;
-  padding: 16px 18px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-}
-
-.hero-status.ready {
-  box-shadow: 0 16px 28px -24px var(--accent);
-  border-color: rgba(255, 255, 255, 0.24);
-}
-
-.status-label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.hero-status strong,
 .result-main strong,
 .selected-location-copy strong,
 .visibility-copy strong {
@@ -1080,9 +1046,6 @@ function handleSubmit() {
 .location-search {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
   margin-bottom: 12px;
 }
 
@@ -1113,7 +1076,6 @@ function handleSubmit() {
 }
 
 .search-btn,
-.quick-location-btn,
 .visibility-btn,
 .secondary-btn,
 .submit-btn,
@@ -1123,50 +1085,12 @@ function handleSubmit() {
   transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, opacity 0.22s ease;
 }
 
-.search-btn {
-  min-width: 112px;
-  padding: 0 18px;
-  border-radius: 18px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-  color: #fffdf8;
-  font-weight: 600;
-  box-shadow: 0 14px 26px -18px var(--accent);
-}
-
-.search-btn:disabled,
 .secondary-btn:disabled,
 .submit-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
-}
-
-.location-quick-actions {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.quick-location-btn {
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: var(--panel-soft);
-  color: var(--panel-strong);
-  font-weight: 600;
-}
-
-.pick-map-btn {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-  color: #fffdf8;
-  box-shadow: 0 14px 26px -18px var(--accent);
-}
-
-.pick-map-btn.active {
-  background: rgba(186, 62, 62, 0.9);
-  box-shadow: 0 14px 26px -18px rgba(186, 62, 62, 0.64);
 }
 
 .search-feedback {
@@ -1180,8 +1104,16 @@ function handleSubmit() {
   color: #b33c2f;
 }
 
+.search-feedback.warning {
+  color: #b8860b;
+}
+
 .theme-dark .search-feedback.error {
   color: #ffb0aa;
+}
+
+.theme-dark .search-feedback.warning {
+  color: #ffd27a;
 }
 
 .search-results {
@@ -1481,8 +1413,6 @@ function handleSubmit() {
   box-shadow: 0 18px 28px -18px var(--accent);
 }
 
-.search-btn:hover:not(:disabled),
-.quick-location-btn:hover,
 .visibility-btn:hover,
 .secondary-btn:hover,
 .submit-btn:hover,
@@ -1521,6 +1451,58 @@ function handleSubmit() {
 
 .emotion-card :deep(.emotion-btn.active .emotion-label) {
   color: var(--panel-strong);
+}
+
+.font-card .section-heading p {
+  margin: 0;
+  color: var(--panel-muted);
+  font-size: 12px;
+}
+
+.font-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.font-action-btn {
+  padding: 10px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--panel-soft);
+  color: var(--panel-strong);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-action-btn:hover {
+  border-color: var(--accent);
+  background: var(--panel-soft-strong);
+}
+
+.font-action-btn.font-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.font-clear-btn {
+  padding: 10px 14px;
+  border: 1px solid rgba(200, 100, 100, 0.3);
+  border-radius: 14px;
+  background: rgba(200, 100, 100, 0.08);
+  color: var(--panel-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-clear-btn:hover {
+  background: rgba(200, 100, 100, 0.18);
 }
 
 .media-card :deep(.upload-area) {

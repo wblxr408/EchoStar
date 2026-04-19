@@ -5,7 +5,7 @@ import { StoryService } from './story.service.js';
  */
 export const createStory = async (req, res, next) => {
   try {
-    const { content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility, visibilityStartTime, visibilityEndTime } = req.body;
+    const { content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility, visibilityStartTime, visibilityEndTime, fontFamily, fontEffect } = req.body;
     const userId = req.user.id;
 
     const story = await StoryService.createStory(userId, {
@@ -18,7 +18,9 @@ export const createStory = async (req, res, next) => {
       unlockAt,
       visibility,
       visibilityStartTime,
-      visibilityEndTime
+      visibilityEndTime,
+      fontFamily,
+      fontEffect
     });
 
     res.json({ code: 0, data: story });

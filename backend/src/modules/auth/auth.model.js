@@ -107,6 +107,18 @@ export const User = sequelize.define('User', {
     allowNull: true,
     field: 'bio',
     comment: '个性签名'
+  },
+  bioFontFamily: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    field: 'bio_font_family',
+    comment: '个性签名VIP字体'
+  },
+  bioFontEffect: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    field: 'bio_font_effect',
+    comment: '个性签名VIP字体特效'
   }
 }, {
   tableName: 'users',

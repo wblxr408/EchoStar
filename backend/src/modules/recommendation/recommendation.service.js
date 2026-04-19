@@ -651,6 +651,8 @@ function formatStoryForResponse(story, options = {}) {
     locationName: story.locationName,
     emotionTag: story.emotionTag,
     isRecommended: story.isRecommended,
+    fontFamily: story.fontFamily || null,
+    fontEffect: story.fontEffect || null,
     createdAt: story.createdAt
   };
 }

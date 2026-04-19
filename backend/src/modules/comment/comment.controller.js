@@ -5,12 +5,14 @@ import { CommentService } from './comment.service.js';
  */
 export const createComment = async (req, res, next) => {
   try {
-    const { storyId, content } = req.body;
+    const { storyId, content, fontFamily, fontEffect } = req.body;
     const userId = req.user.id;
 
     const comment = await CommentService.createComment(userId, {
       storyId,
-      content
+      content,
+      fontFamily,
+      fontEffect
     });
 
     res.json({ code: 0, data: comment });

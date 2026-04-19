@@ -108,12 +108,12 @@ const MapServiceUtil = {
       unlockAt: story.unlockAt || null,
       isUnlocked: !story.isTimeCapsule || (story.unlockAt && new Date(story.unlockAt) <= new Date()),
       isRecommended: story.isRecommended,
+      fontFamily: story.fontFamily || null,
+      fontEffect: story.fontEffect || null,
       createdAt: story.createdAt
     };
   }
 };
-
-// ===================== 核心地图服务 =====================
 export const MapService = {
   /**
    * 范围查询故事

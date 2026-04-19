@@ -136,8 +136,8 @@ export const getUserById = async (req, res, next) => {
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { username, avatarUrl, bio } = req.body;
-    const result = await AuthService.updateProfile(userId, { username, avatarUrl, bio });
+    const { username, avatarUrl, bio, bioFontFamily, bioFontEffect } = req.body;
+    const result = await AuthService.updateProfile(userId, { username, avatarUrl, bio, bioFontFamily, bioFontEffect });
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);

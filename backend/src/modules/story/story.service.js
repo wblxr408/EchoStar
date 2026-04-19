@@ -74,7 +74,7 @@ class StoryServiceClass {
    * 发送 MQ 消息异步写入数据库
    */
   async createStory(userId, data) {
-    const { content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility = 'public', visibilityStartTime, visibilityEndTime } = data;
+    const { content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility = 'public', visibilityStartTime, visibilityEndTime, fontFamily, fontEffect } = data;
 
     // 验证 visibility 只能是 public 或 shadowban
     if (!['public', 'shadowban'].includes(visibility)) {
@@ -137,6 +137,8 @@ class StoryServiceClass {
       visibility,
       visibilityStartTime,
       visibilityEndTime,
+      fontFamily: fontFamily || null,
+      fontEffect: fontEffect || null,
       lockKey
     };
 
@@ -159,6 +161,8 @@ class StoryServiceClass {
       id: normalizeStoryId(storyId),
       content,
       images: safeImages,
+      fontFamily: fontFamily || null,
+      fontEffect: fontEffect || null,
       createdAt: new Date().toISOString(),
       visibilityStartTime: finalStartTime,
       visibilityEndTime: finalEndTime
@@ -287,6 +291,8 @@ class StoryServiceClass {
       likeCount,  // ✅ 新增
       commentCount,  // ✅ 新增
       favoriteCount,
+      fontFamily: story.fontFamily || null,
+      fontEffect: story.fontEffect || null,
       createdAt: story.createdAt,
       visibilityStartTime: story.visibilityStartTime,
       visibilityEndTime: story.visibilityEndTime,
@@ -413,6 +419,8 @@ class StoryServiceClass {
         unlockAt: story.unlockAt || null,
         isUnlocked: computeIsUnlocked(story),
         polishedAt: story.polishedAt || null,
+        fontFamily: story.fontFamily || null,
+        fontEffect: story.fontEffect || null,
         author: {
           id: story.userId,
           username: story.author?.username || '匿名用户',
@@ -650,6 +658,8 @@ class StoryServiceClass {
         isTimeCapsule: story.isTimeCapsule,
         isRecommended: story.isRecommended,
         viewCount: realViewCounts[index],
+        fontFamily: story.fontFamily || null,
+        fontEffect: story.fontEffect || null,
         createdAt: story.createdAt,
         visibilityStartTime: story.visibilityStartTime,
         visibilityEndTime: story.visibilityEndTime,
@@ -722,6 +732,8 @@ class StoryServiceClass {
           emotionTag: story.emotionTag,
           isRecommended: true,
           likeCount: likeCounts[index] || 0,
+          fontFamily: story.fontFamily || null,
+          fontEffect: story.fontEffect || null,
           createdAt: story.createdAt
         };
       }),
@@ -825,6 +837,8 @@ class StoryServiceClass {
         images: safeParseJSONB(story.images, []),
         location: story.location ? parseStoryLocationValue(story.location) : null,
         userId: story.userId,
+        fontFamily: story.fontFamily || null,
+        fontEffect: story.fontEffect || null,
         author: {
           id: story.author?.id || story.userId,
           username: story.author?.username || '匿名用户',

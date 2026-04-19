@@ -39,7 +39,7 @@
 
           <div class="story-body">
             <div class="story-text-card">
-              <p class="story-text">{{ story.content }}</p>
+              <p class="story-text" :style="storyFontStyle">{{ story.content }}</p>
             </div>
 
             <div v-if="story.images && story.images.length > 0" class="story-images">
@@ -228,6 +228,9 @@ import { REPORT_TYPES } from '../utils/report';
 import { useUserStore } from '../stores/user';
 import { reportApi } from '../api/report';
 import { showToast } from '../composables/useToast.js';
+import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+
+injectFontEffectAnimations();
 
 const userStore = useUserStore();
 
@@ -259,6 +262,13 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile']);
+
+const storyFontStyle = computed(() => {
+  const ff = props.story?.fontFamily || '';
+  const fe = props.story?.fontEffect || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
+});
 
 const isLiked = ref(false);
 const likeCount = ref(0);
