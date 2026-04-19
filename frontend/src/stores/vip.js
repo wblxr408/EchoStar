@@ -3,6 +3,16 @@ import { computed, ref } from 'vue';
 import { vipApi } from '../api/vip';
 import { useUserStore } from './user';
 
+function createDefaultEconomy() {
+  return {
+    earnRules: {},
+    rechargePackages: [],
+    storeItems: [],
+    vipBenefits: [],
+    vipPackages: [],
+  };
+}
+
 export const useVipStore = defineStore('vip', () => {
   const isVip = ref(false);
   const expiresAt = ref(null);
@@ -13,7 +23,7 @@ export const useVipStore = defineStore('vip', () => {
   const emotionCoins = ref(0);
   const lastCheckInAt = ref(null);
   const checkInStreak = ref(0);
-  const economy = ref({ earnRules: {}, rechargePackages: [], storeItems: [], vipBenefits: [], vipPackages: [] });
+  const economy = ref(createDefaultEconomy());
   const ledger = ref([]);
   const inventory = ref([]);
 
@@ -78,6 +88,46 @@ export const useVipStore = defineStore('vip', () => {
     }
   }
 
+  function resetAccountState({ clearUserFields = false } = {}) {
+    isVip.value = false;
+    expiresAt.value = null;
+    loading.value = false;
+
+    orders.value = [];
+    pagination.value = { page: 1, limit: 10, total: 0, totalPages: 0 };
+
+    emotionCoins.value = 0;
+    lastCheckInAt.value = null;
+    checkInStreak.value = 0;
+    economy.value = createDefaultEconomy();
+    ledger.value = [];
+    inventory.value = [];
+
+    polishCount.value = { used: 0 };
+    polishedStories.value = new Map();
+
+    if (clearUserFields) {
+      syncUserCoins({ vip: 0, emotionCoins: 0 });
+    }
+  }
+
+  async function refreshAccountState() {
+    const userStore = useUserStore();
+    const hasAuth = Boolean(userStore.isLoggedIn && !userStore.isGuest && userStore.token);
+
+    resetAccountState({ clearUserFields: true });
+    if (!hasAuth) {
+      return;
+    }
+
+    await fetchStatus();
+    try {
+      await fetchEconomy();
+    } catch (_err) {
+      // fetchStatus has already provided a fallback state.
+    }
+  }
+
   async function fetchStatus() {
     loading.value = true;
     try {
@@ -88,10 +138,9 @@ export const useVipStore = defineStore('vip', () => {
       emotionCoins.value = data.emotionCoins || 0;
       lastCheckInAt.value = data.lastCheckInAt || null;
       checkInStreak.value = data.checkInStreak || 0;
-      if (data.commentBg) {
-        savedCommentBg.value = data.commentBg;
-        saveToStorage('vip_comment_bg', data.commentBg);
-      }
+      const commentBg = data.commentBg ?? null;
+      savedCommentBg.value = commentBg;
+      saveToStorage('vip_comment_bg', commentBg);
       syncUserCoins();
     } catch (err) {
       console.error('[VipStore] fetchStatus failed:', err);
@@ -124,10 +173,9 @@ export const useVipStore = defineStore('vip', () => {
       economy.value = data.economy || economy.value;
       ledger.value = data.ledger || [];
       inventory.value = data.inventory || [];
-      if (data.commentBg) {
-        savedCommentBg.value = data.commentBg;
-        saveToStorage('vip_comment_bg', data.commentBg);
-      }
+      const commentBg = data.commentBg ?? null;
+      savedCommentBg.value = commentBg;
+      saveToStorage('vip_comment_bg', commentBg);
       syncUserCoins();
       return data;
     } catch (err) {
@@ -447,6 +495,8 @@ export const useVipStore = defineStore('vip', () => {
     getInventoryItem,
     getInventoryQuantity,
     hasActiveItem,
+    resetAccountState,
+    refreshAccountState,
     fetchStatus,
     fetchHistory,
     fetchEconomy,
