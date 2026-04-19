@@ -127,7 +127,11 @@
             </div>
 
             <div class="comments-list">
-              <div v-for="comment in comments" :key="comment.id" class="comment-item" :class="{ 'is-vip-card': comment.vip }">
+              <div v-for="comment in comments" :key="comment.id"
+                class="comment-item"
+                :class="{ 'is-vip-card': comment.vip, 'has-custom-bg': !!getCommentBgStyle(comment) }"
+                :style="getCommentBgStyle(comment)"
+              >
                 <div class="comment-avatar clickable-avatar" @click.stop="handleViewCommentProfile(comment)">
                   <img v-if="comment.avatar" :src="comment.avatar" :alt="comment.author" />
                   <span v-else>{{ getInitial(comment.author) }}</span>
@@ -226,10 +230,12 @@ import { formatRelativeTime } from '../utils/time';
 import { getEmotionEmoji } from '../utils/emotion';
 import { REPORT_TYPES } from '../utils/report';
 import { useUserStore } from '../stores/user';
+import { useVipStore } from '../stores/vip';
 import { reportApi } from '../api/report';
 import { showToast } from '../composables/useToast.js';
 
 const userStore = useUserStore();
+const vipStore = useVipStore();
 
 const props = defineProps({
   story: {
@@ -358,6 +364,28 @@ watch(
 
 function getInitial(name) {
   return String(name || '匿').trim().slice(0, 1).toUpperCase() || '匿';
+}
+
+/**
+ * 根据评论者的 commentBg 配置计算背景样式
+ * 支持纯色和渐变两种模式
+ */
+function getCommentBgStyle(comment) {
+  const bg = comment?.commentBg;
+  if (!bg || typeof bg !== 'object') return null;
+
+  if (bg.useGradient && bg.gradientColor) {
+    const angle = bg.gradientDirection || 135;
+    return {
+      background: `linear-gradient(${angle}deg, ${bg.color}, ${bg.gradientColor})`,
+    };
+  }
+
+  if (bg.color) {
+    return { background: bg.color };
+  }
+
+  return null;
 }
 
 function previewImage(index) {
@@ -1065,6 +1093,12 @@ async function submitReport() {
   border-radius: 20px;
   border: 1px solid var(--story-detail-frame);
   background: var(--story-detail-panel-strong);
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.comment-item.has-custom-bg {
+  border-color: rgba(184, 135, 46, 0.2);
+  box-shadow: 0 2px 8px -3px rgba(120, 80, 10, 0.08);
 }
 
 .comment-avatar {

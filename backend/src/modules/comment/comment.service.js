@@ -93,7 +93,7 @@ class CommentServiceClass {
       include: [{
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'avatarUrl', 'vip']
+        attributes: ['id', 'username', 'avatarUrl', 'vip', 'commentBg']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -109,7 +109,8 @@ class CommentServiceClass {
           id: comment.userId,
           username: comment.user?.username || '匿名用户',
           avatar: comment.user?.avatarUrl || null,
-          vip: comment.user?.vip || 0
+          vip: comment.user?.vip || 0,
+          commentBg: comment.user?.commentBg || null
         }
       })),
       pagination: {
@@ -193,7 +194,7 @@ class CommentServiceClass {
       include: [{
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'avatarUrl', 'vip']
+        attributes: ['id', 'username', 'avatarUrl', 'vip', 'commentBg']
       }],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -210,7 +211,8 @@ class CommentServiceClass {
           id: comment.userId,
           username: comment.user?.username || '匿名用户',
           avatar: comment.user?.avatarUrl || null,
-          vip: comment.user?.vip || 0
+          vip: comment.user?.vip || 0,
+          commentBg: comment.user?.commentBg || null
         }
       })),
       pagination: {

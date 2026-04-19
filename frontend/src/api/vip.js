@@ -56,4 +56,13 @@ export const vipApi = {
   polishStory(storyId) {
     return api.post(`/stories/${storyId}/polish`);
   },
+
+  /**
+   * 保存/更新VIP评论背景设置
+   * PUT /v1/vip/comment-bg
+   * Body: { commentBg: { type, color, gradientColor, useGradient } }
+   */
+  saveCommentBg(commentBg) {
+    return api.put('/v1/vip/comment-bg', { commentBg });
+  },
 };
