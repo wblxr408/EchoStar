@@ -4,6 +4,7 @@
       <div
         v-if="visible"
         class="vip-center-shell"
+        :class="{ 'vip-center-shell--high': highZIndex }"
         @click.self="handleClose"
       >
         <div
@@ -181,6 +182,7 @@ import { useVipStore } from '../stores/vip'
 const props = defineProps({
   visible: { type: Boolean, default: false },
   isDark: { type: Boolean, default: false },
+  highZIndex: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['close', 'open-polish', 'open-comment-settings', 'open-visual', 'open-footprints', 'open-fonts'])
@@ -328,12 +330,10 @@ function formatDate(dateStr) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 36px 24px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 200, 60, 0.1) 0%, transparent 35%),
-    rgba(8, 11, 19, 0.5);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+}
+
+.vip-center-shell--high {
+  z-index: 12000;
 }
 
 .vip-center {

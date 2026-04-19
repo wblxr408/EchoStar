@@ -114,6 +114,14 @@
                 class="comment-textarea"
               ></textarea>
               <div class="comment-actions">
+                <button
+                  type="button"
+                  class="btn-comment-bg"
+                  :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
+                  @click="handleCommentBgClick"
+                >
+                  {{ vipStore.isVipActive ? '🎨 更改评论背景' : '🔒 更改评论背景' }}
+                </button>
                 <button type="button" class="btn-cancel" @click="showCommentInput = false">取消</button>
                 <button
                   type="button"
@@ -267,7 +275,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile']);
+const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile', 'open-comment-bg']);
 
 const storyFontStyle = computed(() => {
   const ff = props.story?.fontFamily || '';
@@ -457,6 +465,18 @@ function submitComment() {
 
   newComment.value = '';
   showCommentInput.value = false;
+}
+
+function handleCommentBgClick() {
+  if (!userStore.isLoggedIn || userStore.isGuest) {
+    showToast('请先登录后再使用', 'warning');
+    return;
+  }
+  if (vipStore.isVipActive) {
+    emit('open-comment-bg');
+  } else {
+    emit('open-vip-center');
+  }
 }
 
 function openReportModal() {
@@ -1059,8 +1079,43 @@ async function submitReport() {
 .report-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 10px;
   margin-top: 14px;
+}
+
+.btn-comment-bg {
+  margin-right: auto;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(184, 135, 46, 0.25);
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  color: #3d2e0a;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px -6px rgba(255, 215, 0, 0.4);
+}
+
+.btn-comment-bg:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px rgba(255, 215, 0, 0.5);
+}
+
+.btn-comment-bg--locked {
+  background: rgba(184, 135, 46, 0.08);
+  border-color: var(--story-detail-frame);
+  color: var(--story-detail-muted);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.btn-comment-bg--locked:hover {
+  background: rgba(184, 135, 46, 0.15);
+  transform: translateY(-1px);
 }
 
 .btn-cancel,
@@ -1561,6 +1616,23 @@ async function submitReport() {
 
 .paper-plane-overlay.dark .btn-cancel {
   border-color: rgba(80, 100, 140, 0.25);
+}
+
+.paper-plane-overlay.dark .btn-comment-bg {
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  border-color: rgba(255, 215, 0, 0.2);
+  color: #3d2e0a;
+}
+
+.paper-plane-overlay.dark .btn-comment-bg--locked {
+  background: rgba(143, 180, 255, 0.06);
+  border-color: rgba(143, 180, 255, 0.15);
+  color: rgba(180, 200, 255, 0.6);
+  box-shadow: none;
+}
+
+.paper-plane-overlay.dark .btn-comment-bg--locked:hover {
+  background: rgba(143, 180, 255, 0.12);
 }
 
 .paper-plane-overlay.dark .btn-submit {
