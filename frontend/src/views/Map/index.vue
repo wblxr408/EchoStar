@@ -366,19 +366,21 @@
     <VipCenter
       :visible="showVipCenter"
       :is-dark="effectiveMapTheme === 'dark'"
-      @close="showVipCenter = false; showCommentSettings = false; showFontPicker = false"
+      :high-z-index="vipCenterFromStory"
+      @close="showVipCenter = false; showCommentSettings = false; commentSettingsFromStory = false; vipCenterFromStory = false; fontPickerFromStory = false; showFontPicker = false"
       @open-polish="showToast('在我的故事中点击擦亮按钮即可使用')"
-      @open-comment-settings="showFontPicker = false; showCommentSettings = !showCommentSettings"
+      @open-comment-settings="showFontPicker = false; fontPickerFromStory = false; commentSettingsFromStory = vipCenterFromStory; showCommentSettings = !showCommentSettings"
       @open-visual="showVipCenter = false; showVisualCustomizer = true"
       @open-footprints="showVipCenter = false; showUserSidebar = false; handleFootprints()"
-      @open-fonts="showCommentSettings = false; showFontPicker = !showFontPicker"
+      @open-fonts="showCommentSettings = false; commentSettingsFromStory = false; fontPickerFromStory = vipCenterFromStory; showFontPicker = !showFontPicker"
     />
 
     <!-- Font Picker -->
     <FontPicker
       :visible="showFontPicker"
       :is-dark="effectiveMapTheme === 'dark'"
-      @close="showFontPicker = false"
+      :high-z-index="fontPickerFromStory"
+      @close="showFontPicker = false; fontPickerFromStory = false"
     />
 
     <!-- Coin Center -->
@@ -392,8 +394,9 @@
     <CommentSettings
       :visible="showCommentSettings"
       :is-dark="effectiveMapTheme === 'dark'"
-      @close="showCommentSettings = false"
-      @request-vip="showCommentSettings = false; showVipCenter = true"
+      :high-z-index="commentSettingsFromStory"
+      @close="handleCommentSettingsClose"
+      @request-vip="vipCenterFromStory = commentSettingsFromStory; showCommentSettings = false; commentSettingsFromStory = false; showVipCenter = true"
       @saved="handleCommentSettingsSaved"
     />
 
@@ -1231,11 +1234,10 @@
                   ></textarea>
                   <span class="bio-char-count">{{ bioDraft.length }}/200</span>
                   <div class="inline-font-row" @click.stop>
-                    <button type="button" class="font-action-btn"
-                      :class="{ 'font-active': bioFontFamily || bioFontEffect }"
-                      :style="{ color: isDarkMap ? '#e0e0e0' : '#333', borderColor: isDarkMap ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', background: isDarkMap ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }"
-                      @click.stop="vipStore.isVipActive ? (showBioFontPicker = true) : (showVipCenter = true)">
-                      {{ (bioFontFamily || bioFontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
+                    <button type="button" class="btn-comment-bg"
+                      :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
+                      @click.stop="vipStore.isVipActive ? (showBioFontPicker = !showBioFontPicker) : (showVipCenter = true)">
+                      {{ vipStore.isVipActive ? '🔤 个性字体' : '🔒 个性字体' }}
                     </button>
                     <button v-if="bioFontFamily || bioFontEffect" type="button" class="font-clear-btn"
                       :style="{ color: isDarkMap ? '#bbb' : '#888', borderColor: isDarkMap ? 'rgba(200,100,100,0.4)' : 'rgba(200,100,100,0.3)', background: isDarkMap ? 'rgba(200,100,100,0.12)' : 'rgba(200,100,100,0.08)' }"
@@ -1597,6 +1599,8 @@
       @report="handleStoryReport"
       @request-vip="showVipCenter = true"
       @view-user-profile="openUserDetail"
+      @open-comment-bg="handleOpenCommentBg"
+      @open-vip-center="vipCenterFromStory = true; showVipCenter = true"
     />
 
     <div class="msg-trigger-wrapper">
@@ -2225,6 +2229,9 @@ const showVipCenter = ref(false);
 const showFontPicker = ref(false);
 const showCoinCenter = ref(false);
 const showCommentSettings = ref(false);
+const commentSettingsFromStory = ref(false);
+const vipCenterFromStory = ref(false);
+const fontPickerFromStory = ref(false);
 const showVisualCustomizer = ref(false);
 const vipStore = useVipStore();
 const likesList = ref([]);
@@ -5621,6 +5628,7 @@ function isGenericLocationPlaceholder(value) {
     "Map Center",
     "Current Location",
     "Nearby Place",
+    "已选地点",
   ].includes(value.trim());
 }
 
@@ -5685,7 +5693,7 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
     overrides.name,
     overrides.address,
     district,
-    formatMapPickAddress(latitude, longitude),
+    "已选地点",
   );
   const address = buildLocationAddressLabel(
     {
@@ -6607,6 +6615,10 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         name: getNonPlaceholderLocationLabel(
           firstPoi?.name,
           regeocode.formattedAddress,
+          district,
+          city,
+          province,
+          "已选地点",
         ),
         address: pickLocationText([
           firstPoi?.address,
@@ -7166,6 +7178,30 @@ function handlePolishError({ type, message }) {
 
 function handleCommentSettingsSaved(settings) {
   console.log('[Map] Comment settings saved:', settings);
+  // 刷新当前故事评论中当前用户的 commentBg
+  if (selectedStory.value && settings) {
+    const currentUserId = String(userStore.user?.id);
+    if (currentUserId) {
+      storyComments.value = storyComments.value.map(c => {
+        if (String(c.userId) === currentUserId) {
+          return { ...c, commentBg: settings };
+        }
+        return c;
+      });
+      selectedStory.value = { ...selectedStory.value, comments: storyComments.value };
+    }
+  }
+}
+
+function handleOpenCommentBg() {
+  commentSettingsFromStory.value = true;
+  showCommentSettings.value = true;
+}
+
+function handleCommentSettingsClose() {
+  showCommentSettings.value = false;
+  commentSettingsFromStory.value = false;
+  vipCenterFromStory.value = false;
 }
 
 function handleVisualCustomizerSaved(settings) {
@@ -15705,26 +15741,37 @@ onUnmounted(() => {
   margin-top: 8px;
 }
 
-.font-action-btn {
-  padding: 6px 14px;
-  border: 1px solid var(--panel-border, rgba(255,255,255,0.15));
-  border-radius: 14px;
-  background: var(--panel-soft, rgba(255,255,255,0.06));
-  color: var(--panel-strong, #e0e0e0);
+.btn-comment-bg {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(184, 135, 46, 0.25);
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  color: #3d2e0a;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.18s ease;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px -6px rgba(255, 215, 0, 0.4);
 }
 
-.font-action-btn:hover {
-  border-color: var(--accent, #667eea);
-  background: var(--panel-soft-strong, rgba(255,255,255,0.1));
+.btn-comment-bg:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px rgba(255, 215, 0, 0.5);
 }
 
-.font-action-btn.font-active {
-  border-color: var(--accent, #667eea);
-  background: var(--accent-soft, rgba(102, 126, 234, 0.15));
+.btn-comment-bg--locked {
+  background: rgba(184, 135, 46, 0.08);
+  border-color: rgba(0,0,0,0.1);
+  color: #888;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.btn-comment-bg--locked:hover {
+  background: rgba(184, 135, 46, 0.15);
+  transform: translateY(-1px);
 }
 
 .font-clear-btn {

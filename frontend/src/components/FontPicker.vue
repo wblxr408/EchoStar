@@ -4,7 +4,7 @@
       <div
         v-if="visible"
         class="font-picker-panel"
-        :class="{ dark: isDark }"
+        :class="{ dark: isDark, 'font-picker-panel--high': highZIndex }"
         @click.stop
       >
         <div class="fp-header">
@@ -116,7 +116,8 @@ const props = defineProps({
   isDark: { type: Boolean, default: false },
   targetType: { type: String, default: 'global' },
   selectedFont: { type: String, default: '' },
-  selectedEffect: { type: String, default: '' }
+  selectedEffect: { type: String, default: '' },
+  highZIndex: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['close', 'select', 'selectEffect'])
@@ -286,13 +287,18 @@ function handleClear() {
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
-  padding: 24px;
-  background: linear-gradient(160deg, rgba(255, 250, 235, 0.97), rgba(255, 243, 210, 0.98));
-  backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 28px;
-  border: 1px solid rgba(184, 135, 46, 0.25);
-  box-shadow: 0 24px 48px -20px rgba(120, 80, 10, 0.15);
+  border-radius: 24px;
+  border: 1px solid rgba(184, 135, 46, 0.22);
+  background: linear-gradient(160deg, rgba(252, 248, 240, 0.98), rgba(245, 238, 225, 0.98));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 20px;
   color: #4d2f14;
+  box-sizing: border-box;
+}
+
+.font-picker-panel--high {
+  z-index: 12000;
 }
 
 .font-picker-panel.dark {

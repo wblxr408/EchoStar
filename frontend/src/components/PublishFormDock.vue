@@ -118,8 +118,10 @@
       </div>
       <!-- 个性字体 - 紧贴故事输入框下方 -->
       <div class="inline-font-row">
-        <button type="button" class="font-action-btn" :class="{ 'font-active': form.fontFamily || form.fontEffect }" @click="vipStore.isVipActive ? (showFontPicker = true) : emit('request-vip')">
-          {{ (form.fontFamily || form.fontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
+        <button type="button" class="btn-comment-bg"
+          :class="{ 'btn-comment-bg--locked': !vipStore.isVipActive }"
+          @click="vipStore.isVipActive ? (showFontPicker = !showFontPicker) : emit('request-vip')">
+          {{ vipStore.isVipActive ? '🔤 个性字体' : '🔒 个性字体' }}
         </button>
         <button v-if="form.fontFamily || form.fontEffect" type="button" class="font-clear-btn" @click="clearFontAndEffect">
           清除
@@ -1592,6 +1594,39 @@ function handleSubmit() {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+}
+
+.btn-comment-bg {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(184, 135, 46, 0.25);
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  color: #3d2e0a;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px -6px rgba(255, 215, 0, 0.4);
+}
+
+.btn-comment-bg:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px rgba(255, 215, 0, 0.5);
+}
+
+.btn-comment-bg--locked {
+  background: rgba(184, 135, 46, 0.08);
+  border-color: var(--panel-border, rgba(0,0,0,0.1));
+  color: var(--panel-muted, #888);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.btn-comment-bg--locked:hover {
+  background: rgba(184, 135, 46, 0.15);
+  transform: translateY(-1px);
 }
 
 .font-action-btn {

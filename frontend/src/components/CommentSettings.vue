@@ -4,6 +4,7 @@
       <div
         v-if="visible"
         class="comment-settings-shell"
+        :class="{ 'comment-settings-shell--high': highZIndex }"
         @click.self="handleClose"
       >
         <div class="comment-settings" :class="{ 'comment-settings--dark': isDark }" @click.stop>
@@ -176,6 +177,7 @@ import { showToast } from '../composables/useToast'
 const props = defineProps({
   visible: { type: Boolean, default: false },
   isDark: { type: Boolean, default: false },
+  highZIndex: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['close', 'request-vip', 'saved'])
@@ -324,7 +326,10 @@ async function saveSettings() {
   display: flex;
   justify-content: flex-end;
   padding: 16px;
-  background: transparent;
+}
+
+.comment-settings-shell--high {
+  z-index: 12000;
 }
 
 .comment-settings {
