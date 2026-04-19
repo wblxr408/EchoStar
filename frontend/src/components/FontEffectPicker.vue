@@ -254,14 +254,25 @@ function handleClear() {
   border-color: rgba(100, 130, 180, 0.25);
 }
 
-.effect-chip.active {
+.effect-chip.active:not([class*="preview-flow"]) {
   border-color: rgba(218, 180, 60, 0.5);
   background: rgba(255, 223, 120, 0.15);
 }
 
-.effect-chip.active.dark {
+.effect-chip.active.dark:not([class*="preview-flow"]) {
   border-color: rgba(123, 156, 224, 0.4);
   background: rgba(123, 156, 224, 0.1);
+}
+
+/* 流光选项选中时仅用边框和阴影标识，不覆盖渐变背景 */
+.effect-chip.active[class*="preview-flow"] {
+  border-color: rgba(218, 180, 60, 0.5);
+  box-shadow: 0 0 8px rgba(218, 180, 60, 0.3);
+}
+
+.effect-chip.active.dark[class*="preview-flow"] {
+  border-color: rgba(123, 156, 224, 0.4);
+  box-shadow: 0 0 8px rgba(123, 156, 224, 0.3);
 }
 
 .effect-dot {
