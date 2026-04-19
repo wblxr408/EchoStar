@@ -41,8 +41,8 @@ export const createCommentSchema = Joi.object({
       'string.empty': '评论内容不能为空',
       'string.max': '评论内容不能超过 500 字'
     }),
-  fontFamily: Joi.string().max(100).optional(),
-  fontEffect: Joi.string().max(50).optional()
+  fontFamily: Joi.string().max(100).optional().allow(null),
+  fontEffect: Joi.string().max(50).optional().allow(null)
 });
 
 export const validateCreateComment = (req, res, next) => {

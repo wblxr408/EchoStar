@@ -1,6 +1,12 @@
 <template>
-  <transition name="cs-fade">
-    <div v-if="visible" class="comment-settings" :class="{ 'comment-settings--dark': isDark }" @click.stop>
+  <Teleport to="body">
+    <transition name="cs-fade">
+      <div
+        v-if="visible"
+        class="comment-settings-shell"
+        @click.self="handleClose"
+      >
+        <div class="comment-settings" :class="{ 'comment-settings--dark': isDark }" @click.stop>
       <!-- Header -->
       <div class="cs-header">
         <div class="cs-header__left">
@@ -144,7 +150,9 @@
         </div>
       </template>
     </div>
+    </div>
   </transition>
+  </Teleport>
 </template>
 
 <script setup>
@@ -285,11 +293,17 @@ async function saveSettings() {
 </script>
 
 <style scoped>
-.comment-settings {
+.comment-settings-shell {
   position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 1101;
+  inset: 0;
+  z-index: 1102;
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px;
+  background: transparent;
+}
+
+.comment-settings {
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
@@ -600,7 +614,7 @@ async function saveSettings() {
 /* --- Preview Area --- */
 .cs-preview-area {
   border-radius: 16px; padding: 16px; min-height: 72px;
-  border: 1px solid rgba(184, 135, 46, 0.1);
+  overflow: hidden;
   transition: background 0.35s ease;
 }
 
@@ -662,9 +676,13 @@ async function saveSettings() {
 
 /* Responsive */
 @media (max-width: 480px) {
+  .comment-settings-shell {
+    padding: 8px;
+    align-items: flex-start;
+  }
   .comment-settings {
-    top: 8px; right: 8px; left: 8px;
-    width: auto; max-width: none;
+    width: auto;
+    max-width: none;
     max-height: calc(100vh - 16px);
     padding: 18px;
     border-radius: 22px;

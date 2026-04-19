@@ -13,7 +13,10 @@ export const commentApi = {
     if (commentApiProxy) {
       return commentApiProxy.create(normalizedStoryId, content, fontOptions);
     }
-    return api.post("/v1/comments", { storyId: normalizedStoryId, content, fontFamily: fontOptions.fontFamily || null, fontEffect: fontOptions.fontEffect || null });
+    const payload = { storyId: normalizedStoryId, content };
+    if (fontOptions.fontFamily) payload.fontFamily = fontOptions.fontFamily;
+    if (fontOptions.fontEffect) payload.fontEffect = fontOptions.fontEffect;
+    return api.post("/v1/comments", payload);
   },
 
   search(keyword, params = {}) {
