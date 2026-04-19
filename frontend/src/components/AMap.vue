@@ -1070,7 +1070,7 @@ function createMarker(story) {
   const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
   const isDark = isDarkMode.value;
 
-  content.className = "custom-marker" + (isLocked ? " is-time-capsule-locked" : "");
+  content.className = "custom-marker";
 
   // 双层设计：外圈发光底座 + 内核情绪色块 + 呼吸动画
   const glowOpacity = isDark ? "0.4" : "0.2";
@@ -1080,99 +1080,18 @@ function createMarker(story) {
     : `rgba(0, 0, 0, 0.25)`;
   const darkClass = isDark ? " marker-dark" : "";
 
-  // 时光胶囊漂流瓶 SVG
   const emotionEmoji = getEmotionEmoji(story.emotionTag || story.emotion);
-  // 漂流瓶固定色：浅蓝水 + 深蓝光晕
-  const waterColor = isDark ? "#5ba8d9" : "#7ec8e3";
-  const waterColorDeep = isDark ? "#3a7cb8" : "#5aa9d5";
-  const glowColor = isDark ? "#1a3a6e" : "#1e3f73";
-  const glowRgb = isDark ? "26,58,110" : "30,63,115";
-
-  const markerInner = isLocked
-    ? `<div class="capsule-glow"></div>
-       <div class="capsule-pulse"></div>
-       <div class="capsule-bottle">
-         <svg class="bottle-svg" viewBox="-2 0 56 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-           <defs>
-             <clipPath id="bottleClip-${story.id || 'c'}">
-               <rect x="13" y="18" width="26" height="36" rx="5"/>
-             </clipPath>
-             <linearGradient id="waterG-${story.id || 'c'}" x1="0" y1="0" x2="0" y2="1">
-               <stop offset="0%" stop-color="${waterColor}" stop-opacity="0.75"/>
-               <stop offset="100%" stop-color="${waterColorDeep}" stop-opacity="0.95"/>
-             </linearGradient>
-             <linearGradient id="glassG-${story.id || 'c'}" x1="0" y1="0" x2="1" y2="1">
-               <stop offset="0%" stop-color="rgba(255,255,255,0.28)"/>
-               <stop offset="100%" stop-color="rgba(255,255,255,0.08)"/>
-             </linearGradient>
-             <linearGradient id="corkG-${story.id || 'c'}" x1="0" y1="0" x2="0" y2="1">
-               <stop offset="0%" stop-color="#d4a76a"/>
-               <stop offset="40%" stop-color="#c49058"/>
-               <stop offset="100%" stop-color="#a07040"/>
-             </linearGradient>
-             <linearGradient id="paperG-${story.id || 'c'}" x1="0" y1="0" x2="0.3" y2="1">
-               <stop offset="0%" stop-color="#fef9ef"/>
-               <stop offset="100%" stop-color="#f5e6c8"/>
-             </linearGradient>
-           </defs>
-
-           <!-- 瓶颈 -->
-           <rect x="20" y="8" width="12" height="12" rx="2" fill="url(#glassG-${story.id || 'c'})" stroke="rgba(255,255,255,0.45)" stroke-width="0.8"/>
-
-           <!-- 瓶身（圆柱形圆角矩形） -->
-           <rect x="13" y="18" width="26" height="36" rx="5" fill="url(#glassG-${story.id || 'c'})" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
-
-           <!-- 水（半满，从 y=32 开始） -->
-           <g clip-path="url(#bottleClip-${story.id || 'c'})">
-             <g class="bottle-water">
-               <rect x="11" y="33" width="30" height="23" fill="url(#waterG-${story.id || 'c'})"/>
-               <path class="wave1" d="M11 33 Q18 30 26 33 Q34 36 41 33 L41 37 Q34 40 26 37 Q18 34 11 37 Z" fill="${waterColor}" opacity="0.5"/>
-               <path class="wave2" d="M11 33 Q19 36 26 33 Q33 30 41 33 L41 39 Q33 36 26 39 Q19 42 11 39 Z" fill="${waterColorDeep}" opacity="0.3"/>
-             </g>
-           </g>
-
-           <!-- 瓶身左侧高光 -->
-           <rect x="15" y="20" width="4" height="30" rx="2" fill="rgba(255,255,255,0.32)" opacity="0.7"/>
-           <rect x="16.5" y="22" width="1.8" height="18" rx="0.9" fill="rgba(255,255,255,0.5)"/>
-
-           <!-- 气泡 -->
-           <circle cx="22" cy="44" r="1.1" fill="rgba(255,255,255,0.28)" class="bubble b1"/>
-           <circle cx="30" cy="46" r="0.7" fill="rgba(255,255,255,0.22)" class="bubble b2"/>
-           <circle cx="26" cy="41" r="0.9" fill="rgba(255,255,255,0.2)" class="bubble b3"/>
-
-           <!-- 木塞（瓶口上方） -->
-           <rect x="19" y="2" width="14" height="8" rx="2" fill="url(#corkG-${story.id || 'c'})" stroke="#9a6e3a" stroke-width="0.6"/>
-           <line x1="21" y1="4" x2="21" y2="8" stroke="#b8895a" stroke-width="0.5" opacity="0.5"/>
-           <line x1="24" y1="3" x2="24" y2="9" stroke="#b8895a" stroke-width="0.4" opacity="0.4"/>
-           <line x1="28" y1="4" x2="28" y2="8" stroke="#b8895a" stroke-width="0.5" opacity="0.5"/>
-           <line x1="31" y1="3.5" x2="31" y2="8.5" stroke="#b8895a" stroke-width="0.4" opacity="0.3"/>
-
-           <!-- 绑线（绕瓶颈一圈后延伸到左侧纸条） -->
-           <ellipse cx="26" cy="10" rx="7.5" ry="1.3" stroke="#8b6b4a" stroke-width="0.65" fill="none"/>
-           <!-- 线从左侧引出到纸条 -->
-           <path d="M18.5 10 Q16 10 15 11.5" stroke="#8b6b4a" stroke-width="0.6" fill="none" stroke-linecap="round"/>
-
-           <!-- 纸条（贴在瓶口左侧，微微飘起） -->
-           <g class="paper-note">
-             <rect x="3" y="7" width="10" height="14" rx="1" fill="url(#paperG-${story.id || 'c'})" stroke="#d4b896" stroke-width="0.4" transform="rotate(-8 8 14)"/>
-             <line x1="5.5" y1="10.5" x2="10.5" y2="10" stroke="#c4a882" stroke-width="0.4" transform="rotate(-8 8 14)"/>
-             <line x1="5.5" y1="13.5" x2="10" y2="13" stroke="#c4a882" stroke-width="0.4" transform="rotate(-8 8 14)"/>
-             <line x1="6" y1="16.5" x2="9.5" y2="16" stroke="#c4a882" stroke-width="0.4" transform="rotate(-8 8 14)"/>
-           </g>
-         </svg>
-       </div>`
-    : `<div class="marker-glow"></div>
+  const resolvedMarkerInner = `<div class="marker-glow"></div>
        <div class="marker-pulse"></div>
-       <div class="marker-emotion">${emotionEmoji}</div>`;
+       <div class="marker-emotion">${isLocked ? "🔒" : emotionEmoji}</div>`;
   content.innerHTML = `
     <div class="marker-wrapper${darkClass}"
-         style="--marker-color: ${isLocked ? glowColor : color};
-                --marker-glow-rgb: ${isLocked ? glowRgb : hexToRgb(color)};
-                --glow-opacity: ${isLocked ? (isDark ? '0.55' : '0.4') : glowOpacity};
-                --hover-shadow: ${isLocked ? `rgba(${glowRgb}, 0.5)` : hoverShadowColor};
-                background: ${isLocked ? 'transparent' : color};
-                ${isLocked ? 'border: none; box-shadow: none;' : ''}">
-      ${markerInner}
+         style="--marker-color: ${color};
+                --marker-glow-rgb: ${hexToRgb(color)};
+                --glow-opacity: ${glowOpacity};
+                --hover-shadow: ${hoverShadowColor};
+                background: ${color};">
+      ${resolvedMarkerInner}
     </div>
   `;
 
