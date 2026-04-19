@@ -623,17 +623,19 @@ function formatDateTime(dateStr) {
 .coin-package-card {
   padding: 18px 16px;
   border-radius: 16px;
-  border: 1px solid rgba(184, 135, 46, 0.1);
-  background: rgba(255, 255, 255, 0.55);
+  border: none;
+  background: linear-gradient(135deg, #ffd700, #f5a623);
   text-align: left;
   cursor: pointer;
   font-family: inherit;
+  color: #3d2e0a;
   transition: all 0.2s ease;
+  box-shadow: 0 4px 14px -6px rgba(255, 215, 0, 0.45);
 }
 
 .coin-package-card:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 16px -8px rgba(184, 135, 46, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -8px rgba(255, 215, 0, 0.55);
 }
 
 .coin-package-card:disabled {
@@ -642,26 +644,26 @@ function formatDateTime(dateStr) {
 }
 
 .coin-package-card.dark {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(143, 180, 255, 0.09);
+  background: linear-gradient(135deg, #ffd700, #f5a623);
+  color: #3d2e0a;
 }
 
 .coin-package-card__price {
   display: block;
   margin-bottom: 6px;
   font-size: 12px;
-  opacity: 0.58;
+  opacity: 0.7;
 }
 
 .coin-package-card__hint {
   display: block;
   margin-top: 8px;
   font-size: 12px;
-  color: #8e6c1a;
+  color: #6b4a0a;
 }
 
 .coin-center.dark .coin-package-card__hint {
-  color: #9fc0ff;
+  color: #6b4a0a;
 }
 
 .coin-empty {
