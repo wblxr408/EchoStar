@@ -290,6 +290,12 @@ function resetSettings() {
 async function saveSettings() {
   saving.value = true
   try {
+    // 🔧 修复：非VIP用户无法保存评论背景
+    if (!vipStore.isVipActive) {
+      showToast('开通 VIP 后即可自定义评论背景', 'warning')
+      return
+    }
+
     const bgConfig = {
       type: useGradient.value ? 'gradient' : 'solid',
       color: primaryColor.value,
@@ -298,19 +304,15 @@ async function saveSettings() {
       gradientDirection: gradientDirection.value,
     }
 
-    // Save to localStorage immediately (local fallback)
+    // ✅ 优化：先同步到后端，成功后再保存到localStorage
+    await vipStore.syncCommentBg(bgConfig)
     vipStore.setCommentBg(bgConfig)
-
-    // Sync to backend if VIP
-    if (vipStore.isVipActive) {
-      await vipStore.syncCommentBg(bgConfig)
-    }
 
     emit('saved', bgConfig)
     showToast('评论背景已保存，其他用户将看到你的专属背景样式')
     handleClose()
   } catch (err) {
-    showToast('保存失败，请稍后重试')
+    showToast('保存失败，请稍后重试', 'error')
   } finally {
     saving.value = false
   }

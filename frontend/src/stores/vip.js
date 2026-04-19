@@ -309,7 +309,16 @@ export const useVipStore = defineStore('vip', () => {
       return { success: false, type: 'purchase_failed', message: purchaseResult.message };
     }
 
-    return { success: true, isVip: false, cost: BUBBLE_DECOR_COST };
+    // ✅ 修复：购买成功后立即验证库存更新
+    // fetchEconomy会同步inventory状态
+    await fetchEconomy();
+
+    return {
+      success: true,
+      isVip: false,
+      cost: BUBBLE_DECOR_COST,
+      hasItem: hasActiveItem('bubble_decor_7d')
+    };
   }
 
   async function useThemeSkin() {
@@ -334,7 +343,15 @@ export const useVipStore = defineStore('vip', () => {
       return { success: false, type: 'purchase_failed', message: purchaseResult.message };
     }
 
-    return { success: true, isVip: false, cost: THEME_SKIN_COST };
+    // ✅ 修复：购买成功后立即验证库存更新
+    await fetchEconomy();
+
+    return {
+      success: true,
+      isVip: false,
+      cost: THEME_SKIN_COST,
+      hasItem: hasActiveItem('theme_skin')
+    };
   }
 
   function canPolish(storyId) {
@@ -445,10 +462,12 @@ export const useVipStore = defineStore('vip', () => {
   async function syncCommentBg(bgConfig) {
     try {
       await vipApi.saveCommentBg(bgConfig);
+      savedCommentBg.value = bgConfig;
+      saveToStorage('vip_comment_bg', bgConfig);
       return { success: true };
     } catch (err) {
       console.error('[VipStore] syncCommentBg failed:', err);
-      return { success: false, message: '同步到服务器失败' };
+      return { success: false, message: err?.response?.data?.message || '同步到服务器失败' };
     }
   }
 
@@ -457,9 +476,44 @@ export const useVipStore = defineStore('vip', () => {
     saveToStorage('vip_profile_bg', bg);
   }
 
+  async function syncProfileBg(bgConfig) {
+    try {
+      await vipApi.saveProfileBg(bgConfig);
+      savedProfileBg.value = bgConfig;
+      saveToStorage('vip_profile_bg', bgConfig);
+      return { success: true };
+    } catch (err) {
+      console.error('[VipStore] syncProfileBg failed:', err);
+      return { success: false, message: err?.response?.data?.message || '同步到服务器失败' };
+    }
+  }
+
   function setEmotionStyles(styles) {
     savedEmotionStyles.value = styles;
     saveToStorage('vip_emotion_styles', styles);
+  }
+
+  async function loadCustomization() {
+    try {
+      // 并行加载所有自定义设置
+      const [commentBgRes, profileBgRes, fontRes] = await Promise.all([
+        vipApi.saveCommentBg ? vipApi.saveCommentBg({}) : Promise.resolve({ data: { commentBg: null } }),
+        vipApi.getProfileBg?.() || Promise.resolve({ data: { profileBg: null } }),
+        vipApi.getFontSettings?.() || Promise.resolve({ data: { fontFamily: '', fontEffect: '' } })
+      ]).catch(() => []);
+
+      if (commentBgRes?.data?.commentBg) {
+        savedCommentBg.value = commentBgRes.data.commentBg;
+        saveToStorage('vip_comment_bg', commentBgRes.data.commentBg);
+      }
+
+      if (profileBgRes?.data?.profileBg) {
+        savedProfileBg.value = profileBgRes.data.profileBg;
+        saveToStorage('vip_profile_bg', profileBgRes.data.profileBg);
+      }
+    } catch (err) {
+      console.warn('[VipStore] loadCustomization failed:', err);
+    }
   }
 
   function resetCustomization() {
@@ -524,7 +578,9 @@ export const useVipStore = defineStore('vip', () => {
     setCommentBg,
     syncCommentBg,
     setProfileBg,
+    syncProfileBg,
     setEmotionStyles,
+    loadCustomization,
     resetCustomization,
   };
 });
