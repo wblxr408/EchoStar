@@ -303,8 +303,8 @@
         :center="mapStore.center"
         :zoom="mapStore.zoom"
         :theme="effectiveMapTheme"
-        :point-pick-mode="isPickingPublishLocation"
-        :temp-picked-location="pickedPublishLocation"
+        :point-pick-mode="isMapPointPickMode"
+        :temp-picked-location="activeTempPickedLocation"
         :paper-plane-position="planePosition"
         @marker-click="handleMarkerClick"
         @map-click="handlePublishMapClick"
@@ -990,10 +990,15 @@
     <!-- 调整纸飞机位置模式 - 底部提示栏 -->
     <transition name="adjust-overlay-fade">
       <div v-if="isAdjustingPlanePosition" class="adjust-plane-overlay">
-        <div class="adjust-plane-overlay-content">
+        <button
+          type="button"
+          class="publish-pick-dock adjust-plane-dock"
+          @click="restorePublishPanelFromAdjustPlane"
+        >
+          <span class="pick-dock-handle"></span>
           <strong>点击地图上的某个位置来更新纸飞机位置</strong>
-          <span>更新完成后将自动重新打开发布窗口</span>
-        </div>
+          <span>或者点击这里回到发布页面</span>
+        </button>
       </div>
     </transition>
 
@@ -1785,9 +1790,14 @@ const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
 const publishPrefillQuery = ref('');
 const adjustPlaneSavedPrefill = ref('');
+const adjustPlaneSavedPosition = ref(null);
 const isAdjustingPlanePosition = ref(false);
 const isAdjustingWaitingForPlane = ref(false);
+const isPublishWaitingForPlane = ref(false);
 const isDockPublishWaitingForPlane = ref(false);
+const shouldAutoConfirmPublishPick = ref(false);
+const shouldAutoConfirmAdjustPlanePick = ref(false);
+const shouldAutoConfirmDockPublishPick = ref(false);
 const dockPublishClickScreenPos = ref(null);
 const adjustPlaneClickScreenPos = ref(null);
 const showLoginModal = ref(false);
@@ -1803,6 +1813,23 @@ const nearbySearchResults = ref([]);
 const nearbySearching = ref(false);
 const nearbySearchError = ref("");
 const nearbyHasSearched = ref(false);
+const isMapPointPickMode = computed(
+  () =>
+    isPickingPublishLocation.value
+    || isPickingDockPublishLocation.value
+    || isAdjustingPlanePosition.value,
+);
+const activeTempPickedLocation = computed(() => {
+  if (isPickingDockPublishLocation.value) {
+    return dockPublishPickedLocation.value;
+  }
+
+  if (isPickingPublishLocation.value || isAdjustingPlanePosition.value) {
+    return pickedPublishLocation.value;
+  }
+
+  return null;
+});
 const nearbyCenterLabel = ref("");
 const nearbyPinnedCenterLabel = ref(null);
 const currentUserLocationLabel = ref("");
@@ -5039,8 +5066,12 @@ function closePublishPanel() {
   isPickingPublishLocation.value = false;
   isAdjustingPlanePosition.value = false;
   isAdjustingWaitingForPlane.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
   adjustPlaneClickScreenPos.value = null;
-  adjustPlaneClickScreenPos.value = null;
+  adjustPlaneSavedPrefill.value = '';
+  adjustPlaneSavedPosition.value = null;
   suggestedPublishLocations.value = [];
   publishPickPrompt.value = null;
   publishPrefillQuery.value = '';
@@ -5050,6 +5081,16 @@ function closePublishPanel() {
 
 function handleAdjustPlanePosition() {
   adjustPlaneSavedPrefill.value = publishPrefillQuery.value;
+  adjustPlaneSavedPosition.value =
+    extractCoordinates(planePosition.value)
+    || extractCoordinates(mapStore.userLocation)
+    || extractCoordinates(mapStore.center);
+  shouldAutoConfirmPublishPick.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  publishPickPrompt.value = null;
+  suggestedPublishLocations.value = [];
+  pickedPublishLocation.value = null;
+  adjustPlaneClickScreenPos.value = null;
   showPublishSidebar.value = false;
   isPickingPublishLocation.value = false;
   isAdjustingPlanePosition.value = true;
@@ -5060,6 +5101,8 @@ function startPublishMapPick() {
   publishPickPrompt.value = null;
   pickedPublishLocation.value = null;
   isDockExpanded.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
   isPickingPublishLocation.value = true;
 }
 
@@ -5068,6 +5111,8 @@ function cancelPublishMapPick() {
   suggestedPublishLocations.value = [];
   pickedPublishLocation.value = null;
   isDockExpanded.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
   isPickingPublishLocation.value = false;
 }
 
@@ -5076,19 +5121,33 @@ function restorePublishPanelFromPick() {
   suggestedPublishLocations.value = [];
   pickedPublishLocation.value = null;
   isDockExpanded.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
   isPickingPublishLocation.value = false;
+}
+
+function restorePublishPanelFromAdjustPlane() {
+  publishPickPrompt.value = null;
+  suggestedPublishLocations.value = [];
+  pickedPublishLocation.value = null;
+  adjustPlaneClickScreenPos.value = null;
+  if (adjustPlaneSavedPosition.value) {
+    planePosition.value = { ...adjustPlaneSavedPosition.value };
+  }
+  isAdjustingPlanePosition.value = false;
+  isAdjustingWaitingForPlane.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  showPublishSidebar.value = true;
+  nextTick(() => {
+    publishPrefillQuery.value = adjustPlaneSavedPrefill.value;
+  });
+  adjustPlaneSavedPosition.value = null;
 }
 
 function handleDocumentKeydown(e) {
   if (e.key === "Escape" && isAdjustingPlanePosition.value) {
-    publishPickPrompt.value = null;
-    adjustPlaneClickScreenPos.value = null;
-    isAdjustingPlanePosition.value = false;
-    isAdjustingWaitingForPlane.value = false;
-    showPublishSidebar.value = true;
-    nextTick(() => {
-      publishPrefillQuery.value = adjustPlaneSavedPrefill.value;
-    });
+    restorePublishPanelFromAdjustPlane();
     return;
   }
   if (e.key === "Escape" && isPickingPublishLocation.value) {
@@ -5118,6 +5177,8 @@ function handlePublishClick() {
   isPickingDockPublishLocation.value = false;
   isAdjustingPlanePosition.value = false;
   isAdjustingWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
   adjustPlaneClickScreenPos.value = null;
   isDockExpanded.value = false;
   setTimeout(() => {
@@ -5127,6 +5188,9 @@ function handlePublishClick() {
 
 function closeDockPublishPanel() {
   isPickingDockPublishLocation.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  dockPublishClickScreenPos.value = null;
   showDockPublishSidebar.value = false;
 }
 
@@ -5134,6 +5198,8 @@ function startDockPublishMapPick() {
   isDockPublishPickPrompt.value = null;
   dockPublishPickedLocation.value = null;
   isDockExpanded.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
   isPickingDockPublishLocation.value = true;
 }
 
@@ -5141,6 +5207,8 @@ function cancelDockPublishMapPick() {
   isDockPublishPickPrompt.value = null;
   dockPublishPickedLocation.value = null;
   isDockExpanded.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
   isPickingDockPublishLocation.value = false;
 }
 
@@ -5148,6 +5216,8 @@ function restoreDockPublishPanelFromPick() {
   isDockPublishPickPrompt.value = null;
   dockPublishPickedLocation.value = null;
   isDockExpanded.value = false;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
   isPickingDockPublishLocation.value = false;
 }
 
@@ -5286,9 +5356,24 @@ function buildLocationDistrictLabel(source) {
   return district || city || province || "";
 }
 
+function getNonPlaceholderLocationLabel(...values) {
+  for (const value of values.flat()) {
+    if (typeof value !== "string" || !value.trim()) {
+      continue;
+    }
+
+    const normalized = value.trim();
+    if (!isGenericLocationPlaceholder(normalized)) {
+      return normalized;
+    }
+  }
+
+  return "";
+}
+
 function buildLocationAddressLabel(source, latitude, longitude) {
   const districtLabel = buildLocationDistrictLabel(source);
-  const rawAddress = firstNonEmptyString(
+  const rawAddress = getNonPlaceholderLocationLabel(
     source?.address,
     source?.formattedAddress,
     source?.name,
@@ -5467,6 +5552,26 @@ function isGenericLocationPlaceholder(value) {
   ].includes(value.trim());
 }
 
+function sanitizeLocationLabel(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (
+    isGenericLocationPlaceholder(normalized)
+    || isCoordinateOnlyLocationLabel(normalized)
+  ) {
+    return "";
+  }
+
+  return normalized;
+}
+
 function getStoryLocationText(story, fallback = "未知位置") {
   const label = pickLocationText([
     story?.location?.address,
@@ -5504,11 +5609,12 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
     province: firstNonEmptyString(overrides.province),
   });
   const province = firstNonEmptyString(overrides.province);
-  const name = pickLocationText([
+  const name = getNonPlaceholderLocationLabel(
     overrides.name,
     overrides.address,
-    "Map Pick",
-  ]);
+    district,
+    formatMapPickAddress(latitude, longitude),
+  );
   const address = buildLocationAddressLabel(
     {
       ...overrides,
@@ -5538,16 +5644,18 @@ function buildFallbackLocation(latitude, longitude, overrides = {}) {
 
 function pickLocationDisplayName(location, fallback = "") {
   if (!location || typeof location !== "object") {
-    return fallback;
+    return sanitizeLocationLabel(fallback);
   }
 
   const candidates = [
     location.name,
     location.district,
     location.address,
-  ].filter((value) => !isGenericLocationPlaceholder(value));
+  ]
+    .map((value) => sanitizeLocationLabel(value))
+    .filter(Boolean);
 
-  return pickLocationText(candidates, false) || fallback;
+  return pickLocationText(candidates, false) || sanitizeLocationLabel(fallback);
 }
 
 function coordinatesRoughlyEqual(left, right) {
@@ -6263,13 +6371,23 @@ function handlePaperPlanePublish() {
   if (showDockPublishSidebar.value) closeDockPublishPanel();
   isAdjustingPlanePosition.value = false;
   isAdjustingWaitingForPlane.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
   adjustPlaneClickScreenPos.value = null;
-  adjustPlaneClickScreenPos.value = null;
+  adjustPlaneSavedPosition.value = null;
   // 逆地理编码纸飞机位置
-  const coords = { latitude: planePosition.value.latitude, longitude: planePosition.value.longitude };
+  const coords =
+    extractCoordinates(planePosition.value)
+    || extractCoordinates(mapStore.userLocation)
+    || extractCoordinates(mapStore.center);
+  if (!coords) {
+    showToast('æµ£å¶‡ç–†ç‘™ï½†ç€½æ¾¶è¾«è§¦é”›å²ƒî‡¬é–²å¶ˆç˜¯', 'warning');
+    return;
+  }
   reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
     if (!location) return;
-    const displayName = pickLocationDisplayName(location, location.name || '当前位置');
+    const displayName = pickPublishLocationSearchText(location, "当前位置");
     isPickingPublishLocation.value = false;
     showPublishSidebar.value = true;
     nextTick(() => {
@@ -6284,17 +6402,33 @@ async function handlePaperPlaneMove(point) {
     planePosition.value = { latitude: point.latitude, longitude: point.longitude };
   }
 
+  // 发布故事地图选点 - 纸飞机已飞到选点位置，更新询问弹窗
+  if (isPublishWaitingForPlane.value) {
+    const pickedLocation = await reverseGeocodePickedLocation(
+      point.latitude,
+      point.longitude,
+    );
+    isPublishWaitingForPlane.value = false;
+    if (pickedLocation) {
+      if (shouldAutoConfirmPublishPick.value) {
+        finalizePublishPickSelection(pickedLocation);
+        return;
+      }
+      setPublishPickSelection(pickedLocation, publishPickPrompt.value);
+    }
+    return;
+  }
+
   // 调整纸飞机位置 - 纸飞机已到达新位置，弹窗确认
   if (isAdjustingWaitingForPlane.value) {
-    isAdjustingWaitingForPlane.value = false;
     const pickedLocation = await reverseGeocodePickedLocation(point.latitude, point.longitude);
+    isAdjustingWaitingForPlane.value = false;
     if (pickedLocation) {
-      publishPickPrompt.value = {
-        location: pickedLocation,
-        screenX: adjustPlaneClickScreenPos.value?.screenX,
-        screenY: adjustPlaneClickScreenPos.value?.screenY,
-      };
-      pickedPublishLocation.value = pickedLocation;
+      if (shouldAutoConfirmAdjustPlanePick.value) {
+        finalizeAdjustPlanePickSelection(pickedLocation);
+        return;
+      }
+      setPublishPickSelection(pickedLocation, adjustPlaneClickScreenPos.value);
     }
     adjustPlaneClickScreenPos.value = null;
     return;
@@ -6302,15 +6436,15 @@ async function handlePaperPlaneMove(point) {
 
   // 功能卡组发布 - 纸飞机已飞到选点位置，弹窗确认
   if (isDockPublishWaitingForPlane.value) {
-    isDockPublishWaitingForPlane.value = false;
     const pickedLocation = await reverseGeocodePickedLocation(point.latitude, point.longitude);
+    isDockPublishWaitingForPlane.value = false;
     if (pickedLocation) {
-      isDockPublishPickPrompt.value = {
-        location: pickedLocation,
-        screenX: dockPublishClickScreenPos.value?.screenX,
-        screenY: dockPublishClickScreenPos.value?.screenY,
-      };
-      dockPublishPickedLocation.value = pickedLocation;
+      if (shouldAutoConfirmDockPublishPick.value) {
+        finalizeDockPublishPickSelection(pickedLocation);
+        dockPublishClickScreenPos.value = null;
+        return;
+      }
+      setDockPublishPickSelection(pickedLocation, dockPublishClickScreenPos.value);
     }
     dockPublishClickScreenPos.value = null;
     return;
@@ -6398,11 +6532,10 @@ async function reverseGeocodeLocationDetail(latitude, longitude) {
         : null;
       const resolvedLocation = buildFallbackLocation(latitude, longitude, {
         id: `map-pick-${longitude}-${latitude}`,
-        name: pickLocationText([
+        name: getNonPlaceholderLocationLabel(
           firstPoi?.name,
           regeocode.formattedAddress,
-          "Map Pick",
-        ]),
+        ),
         address: pickLocationText([
           firstPoi?.address,
           regeocode.formattedAddress,
@@ -6521,6 +6654,134 @@ function buildSuggestedLocations(rawLocation, nearbyPois = []) {
     : [];
 }
 
+function pickPublishLocationSearchText(location, fallback = "") {
+  const safeFallback = sanitizeLocationLabel(fallback);
+  if (!location || typeof location !== "object") {
+    return safeFallback || "当前位置";
+  }
+
+  const suggestedLocation = buildSuggestedLocations(
+    location,
+    location.nearbyPois || [],
+  )[0];
+  const candidates = [
+    suggestedLocation?.name,
+    suggestedLocation?.address,
+    location.name,
+    location.address,
+    location.formattedAddress,
+    location.district,
+    location.city,
+    safeFallback,
+  ]
+    .map((value) => sanitizeLocationLabel(value))
+    .filter(Boolean);
+
+  return pickLocationText(candidates, false) || safeFallback || "当前位置";
+}
+
+function resolveSuggestedLocationSelection(location) {
+  const suggestedLocations = buildSuggestedLocations(
+    location,
+    location?.nearbyPois || [],
+  );
+  return {
+    suggestedLocations,
+    nextLocation: suggestedLocations[0] || location,
+  };
+}
+
+function finalizePublishPickSelection(location) {
+  const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
+  const displayName = pickPublishLocationSearchText(
+    nextLocation,
+    publishPrefillQuery.value || "当前位置",
+  );
+
+  suggestedPublishLocations.value = suggestedLocations;
+  pickedPublishLocation.value = nextLocation;
+  publishPrefillQuery.value = displayName;
+  publishPickPrompt.value = null;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmPublishPick.value = false;
+  isPickingPublishLocation.value = false;
+}
+
+function finalizeAdjustPlanePickSelection(location) {
+  const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
+  const displayName = pickPublishLocationSearchText(
+    nextLocation,
+    adjustPlaneSavedPrefill.value || publishPrefillQuery.value || "当前位置",
+  );
+
+  suggestedPublishLocations.value = suggestedLocations;
+  pickedPublishLocation.value = nextLocation;
+  publishPickPrompt.value = null;
+  adjustPlaneClickScreenPos.value = null;
+  isAdjustingPlanePosition.value = false;
+  isPickingPublishLocation.value = false;
+  isAdjustingWaitingForPlane.value = false;
+  isPublishWaitingForPlane.value = false;
+  shouldAutoConfirmAdjustPlanePick.value = false;
+  showPublishSidebar.value = true;
+  nextTick(() => {
+    publishPrefillQuery.value = displayName;
+  });
+  adjustPlaneSavedPosition.value = null;
+}
+
+function finalizeDockPublishPickSelection(location) {
+  const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
+
+  dockPublishSuggestedLocations.value = suggestedLocations;
+  dockPublishPickedLocation.value = nextLocation;
+  isDockPublishPickPrompt.value = null;
+  isDockPublishWaitingForPlane.value = false;
+  shouldAutoConfirmDockPublishPick.value = false;
+  dockPublishClickScreenPos.value = null;
+  isPickingDockPublishLocation.value = false;
+}
+
+function setPublishPickSelection(location, screenPos = null) {
+  if (!location) {
+    return;
+  }
+
+  const nextScreenX =
+    toFiniteNumber(screenPos?.screenX)
+    ?? toFiniteNumber(publishPickPrompt.value?.screenX);
+  const nextScreenY =
+    toFiniteNumber(screenPos?.screenY)
+    ?? toFiniteNumber(publishPickPrompt.value?.screenY);
+
+  pickedPublishLocation.value = location;
+  publishPickPrompt.value = {
+    location,
+    screenX: nextScreenX,
+    screenY: nextScreenY,
+  };
+}
+
+function setDockPublishPickSelection(location, screenPos = null) {
+  if (!location) {
+    return;
+  }
+
+  const nextScreenX =
+    toFiniteNumber(screenPos?.screenX)
+    ?? toFiniteNumber(isDockPublishPickPrompt.value?.screenX);
+  const nextScreenY =
+    toFiniteNumber(screenPos?.screenY)
+    ?? toFiniteNumber(isDockPublishPickPrompt.value?.screenY);
+
+  dockPublishPickedLocation.value = location;
+  isDockPublishPickPrompt.value = {
+    location,
+    screenX: nextScreenX,
+    screenY: nextScreenY,
+  };
+}
+
 function getPublishPickPromptStyle(prompt) {
   const promptWidth = 220;
   const viewportWidth = window.innerWidth || 0;
@@ -6549,29 +6810,24 @@ function confirmPublishNearbySearch() {
     return;
   }
 
-  // 调整纸飞机位置模式 - 确认后打开发布面板
   if (isAdjustingPlanePosition.value) {
-    const suggestedLocations = buildSuggestedLocations(
-      prompt.location,
-      prompt.location.nearbyPois || [],
-    );
-    suggestedPublishLocations.value = suggestedLocations;
-    pickedPublishLocation.value = suggestedLocations[0] || prompt.location;
-    publishPickPrompt.value = null;
-    isAdjustingPlanePosition.value = false;
-    isPickingPublishLocation.value = false;
-    showPublishSidebar.value = true;
+    if (isAdjustingWaitingForPlane.value) {
+      shouldAutoConfirmAdjustPlanePick.value = true;
+      publishPickPrompt.value = null;
+      return;
+    }
+
+    finalizeAdjustPlanePickSelection(prompt.location);
     return;
   }
 
-  const suggestedLocations = buildSuggestedLocations(
-    prompt.location,
-    prompt.location.nearbyPois || [],
-  );
-  suggestedPublishLocations.value = suggestedLocations;
-  pickedPublishLocation.value = suggestedLocations[0] || prompt.location;
-  publishPickPrompt.value = null;
-  isPickingPublishLocation.value = false;
+  if (isPublishWaitingForPlane.value) {
+    shouldAutoConfirmPublishPick.value = true;
+    publishPickPrompt.value = null;
+    return;
+  }
+
+  finalizePublishPickSelection(prompt.location);
 }
 
 function rejectPublishNearbySearch() {
@@ -6580,8 +6836,12 @@ function rejectPublishNearbySearch() {
   pickedPublishLocation.value = null;
   // 调整纸飞机位置模式 - 拒绝后继续调整模式，可重新点击地图
   if (isAdjustingPlanePosition.value) {
+    shouldAutoConfirmAdjustPlanePick.value = false;
+    isAdjustingWaitingForPlane.value = false;
     return;
   }
+  shouldAutoConfirmPublishPick.value = false;
+  isPublishWaitingForPlane.value = false;
   isPickingPublishLocation.value = true;
 }
 
@@ -6591,20 +6851,22 @@ function confirmDockPublishNearbySearch() {
     isDockPublishPickPrompt.value = null;
     return;
   }
-  const suggestedLocations = buildSuggestedLocations(
-    prompt.location,
-    prompt.location.nearbyPois || [],
-  );
-  dockPublishSuggestedLocations.value = suggestedLocations;
-  dockPublishPickedLocation.value = suggestedLocations[0] || prompt.location;
-  isDockPublishPickPrompt.value = null;
-  isPickingDockPublishLocation.value = false;
+
+  if (isDockPublishWaitingForPlane.value) {
+    shouldAutoConfirmDockPublishPick.value = true;
+    isDockPublishPickPrompt.value = null;
+    return;
+  }
+
+  finalizeDockPublishPickSelection(prompt.location);
 }
 
 function rejectDockPublishNearbySearch() {
   isDockPublishPickPrompt.value = null;
   dockPublishSuggestedLocations.value = [];
   dockPublishPickedLocation.value = null;
+  shouldAutoConfirmDockPublishPick.value = false;
+  isDockPublishWaitingForPlane.value = false;
   isPickingDockPublishLocation.value = true;
 }
 
@@ -6626,6 +6888,22 @@ async function handlePublishMapClick(point) {
     if (!coords) return;
     isAdjustingWaitingForPlane.value = true;
     adjustPlaneClickScreenPos.value = { screenX: point?.screenX, screenY: point?.screenY };
+    setPublishPickSelection(
+      buildFallbackLocation(coords.latitude, coords.longitude),
+      adjustPlaneClickScreenPos.value,
+    );
+    if (coordinatesRoughlyEqual(planePosition.value, coords)) {
+      isAdjustingWaitingForPlane.value = false;
+      const pickedLocation = await reverseGeocodePickedLocation(
+        coords.latitude,
+        coords.longitude,
+      );
+      if (pickedLocation) {
+        setPublishPickSelection(pickedLocation, adjustPlaneClickScreenPos.value);
+      }
+      adjustPlaneClickScreenPos.value = null;
+      return;
+    }
     planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
     return;
   }
@@ -6636,6 +6914,22 @@ async function handlePublishMapClick(point) {
     if (!coords) return;
     isDockPublishWaitingForPlane.value = true;
     dockPublishClickScreenPos.value = { screenX: point?.screenX, screenY: point?.screenY };
+    setDockPublishPickSelection(
+      buildFallbackLocation(coords.latitude, coords.longitude),
+      dockPublishClickScreenPos.value,
+    );
+    if (coordinatesRoughlyEqual(planePosition.value, coords)) {
+      isDockPublishWaitingForPlane.value = false;
+      const pickedLocation = await reverseGeocodePickedLocation(
+        coords.latitude,
+        coords.longitude,
+      );
+      if (pickedLocation) {
+        setDockPublishPickSelection(pickedLocation, dockPublishClickScreenPos.value);
+      }
+      dockPublishClickScreenPos.value = null;
+      return;
+    }
     planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
     return;
   }
@@ -6655,16 +6949,23 @@ async function handlePublishMapClick(point) {
   }
 
   suggestedPublishLocations.value = [];
-  const pickedLocation = await reverseGeocodePickedLocation(
-    coords.latitude,
-    coords.longitude,
+  isPublishWaitingForPlane.value = true;
+  setPublishPickSelection(
+    buildFallbackLocation(coords.latitude, coords.longitude),
+    { screenX: point?.screenX, screenY: point?.screenY },
   );
-  pickedPublishLocation.value = pickedLocation;
-  publishPickPrompt.value = {
-    location: pickedLocation,
-    screenX: point?.screenX,
-    screenY: point?.screenY,
-  };
+  if (coordinatesRoughlyEqual(planePosition.value, coords)) {
+    isPublishWaitingForPlane.value = false;
+    const pickedLocation = await reverseGeocodePickedLocation(
+      coords.latitude,
+      coords.longitude,
+    );
+    if (pickedLocation) {
+      setPublishPickSelection(pickedLocation, publishPickPrompt.value);
+    }
+    return;
+  }
+  planePosition.value = { latitude: coords.latitude, longitude: coords.longitude };
 }
 
 function handleUserClick() {
@@ -11322,6 +11623,7 @@ onUnmounted(() => {
 .publish-modal-shell.pick-mode {
   pointer-events: none;
   align-items: flex-end;
+  padding: 0;
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -11347,7 +11649,7 @@ onUnmounted(() => {
 }
 
 .publish-modal-shell.pick-mode .publish-modal {
-  width: min(420px, calc(100vw - 28px));
+  width: 100%;
   height: auto;
   max-height: none;
   pointer-events: none;
@@ -11467,64 +11769,61 @@ onUnmounted(() => {
 .publish-pick-dock {
   pointer-events: auto;
   width: 100%;
-  padding: 16px 18px 18px;
-  border: 1px solid rgba(255, 245, 228, 0.22);
-  border-radius: 24px 24px 0 0;
+  padding: 20px 32px;
+  border: none;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
-  background: linear-gradient(
-    160deg,
-    rgba(36, 23, 9, 0.94) 0%,
-    rgba(67, 42, 18, 0.96) 100%
-  );
-  color: #fff8ef;
-  box-shadow:
-    0 -10px 36px -18px rgba(0, 0, 0, 0.62),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.78);
+  color: #ffffff;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
   cursor: pointer;
   transition:
     transform 0.22s ease,
-    background 0.22s ease;
+    background 0.22s ease,
+    opacity 0.22s ease;
 }
 
 .publish-pick-dock:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
+  background: rgba(0, 0, 0, 0.84);
 }
 
 .publish-modal.dark .publish-pick-dock {
-  border-color: rgba(198, 219, 255, 0.18);
-  background: linear-gradient(
-    160deg,
-    rgba(10, 17, 33, 0.94) 0%,
-    rgba(17, 30, 58, 0.96) 100%
-  );
-  color: #eef4ff;
+  background: rgba(0, 0, 0, 0.78);
+  color: #ffffff;
 }
 
 .pick-dock-handle {
-  width: 62px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.46);
-  align-self: center;
-  margin-bottom: 4px;
+  display: none;
 }
 
 .publish-pick-dock strong {
   font-size: 16px;
+  font-weight: 700;
   letter-spacing: 0.02em;
+  text-align: center;
 }
 
 .publish-pick-dock span:last-child {
   font-size: 13px;
   line-height: 1.6;
-  color: rgba(255, 248, 239, 0.76);
+  color: rgba(255, 255, 255, 0.65);
+  text-align: center;
 }
 
 .publish-modal.dark .publish-pick-dock span:last-child {
-  color: rgba(238, 244, 255, 0.74);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+@media (max-width: 640px) {
+  .publish-pick-dock {
+    padding: 18px 24px calc(18px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .publish-pick-confirm {
@@ -12431,32 +12730,20 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   z-index: 1100;
-  padding: 20px 32px;
-  background: rgba(0, 0, 0, 0.78);
-  backdrop-filter: blur(16px);
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   display: flex;
   justify-content: center;
   align-items: center;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
 }
 
-.adjust-plane-overlay-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  color: #fff;
-}
-
-.adjust-plane-overlay-content strong {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.adjust-plane-overlay-content span {
-  font-size: 13px;
-  opacity: 0.65;
+.adjust-plane-dock {
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: center;
 }
 
 .adjust-overlay-fade-enter-active {

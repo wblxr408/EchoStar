@@ -329,7 +329,11 @@ function formatDate(dateStr) {
   align-items: center;
   justify-content: center;
   padding: 36px 24px;
-  background: transparent;
+  background:
+    radial-gradient(circle at top right, rgba(255, 200, 60, 0.1) 0%, transparent 35%),
+    rgba(8, 11, 19, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .vip-center {

@@ -102,6 +102,7 @@ let paperPlaneMarker = null;
 let paperPlaneTooltipEl = null;
 let paperPlaneTooltipTimer = null;
 let paperPlaneInitialized = false;
+let paperPlaneAnimationToken = 0;
 let moveAnimationReady = true; // 改为默认 true，因为插件将通过 URL 同步加载
 const isDarkMode = ref(props.theme === "dark");
 const isSidebarHidden = ref(false);
@@ -853,6 +854,7 @@ function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
   const start = paperPlaneMarker.getPosition();
   const moveDuration = 800;
   const rotateDuration = 300;
+  const animationToken = ++paperPlaneAnimationToken;
 
   // 计算移动方位角（0=正北/上方，顺时针为正）
   const bearing = Math.atan2(target.getLng() - start.getLng(), target.getLat() - start.getLat()) * (180 / Math.PI);
@@ -862,6 +864,10 @@ function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
   const animStart = Date.now();
 
   function step() {
+    if (animationToken !== paperPlaneAnimationToken) {
+      return;
+    }
+
     const elapsed = Date.now() - animStart;
 
     // 平移进度
@@ -884,6 +890,10 @@ function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
     if (moveProgress < 1) {
       requestAnimationFrame(step);
     } else {
+      if (animationToken !== paperPlaneAnimationToken) {
+        return;
+      }
+
       // 到达目标，保持当前朝向不回转
       if (showTip) {
         showPaperPlaneTooltip();
