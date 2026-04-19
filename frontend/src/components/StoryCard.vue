@@ -261,7 +261,6 @@ function handleSelect() {
   color: #2d3436;
   white-space: pre-wrap;
   word-wrap: break-word;
-  font-family: var(--story-font, inherit);
 }
 
 .story-images {

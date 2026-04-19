@@ -1491,7 +1491,6 @@ onUnmounted(() => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-family: var(--story-font, inherit);
 }
 
 .story-card-meta {

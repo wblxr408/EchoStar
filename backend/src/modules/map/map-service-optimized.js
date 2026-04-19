@@ -173,6 +173,8 @@ class QueryBuilder {
       'isTimeCapsule',
       'unlockAt',
       'isRecommended',
+      'fontFamily',
+      'fontEffect',
       'createdAt'
     ];
 
@@ -384,7 +386,7 @@ class HighPerformanceMapService {
           neLng: northEast.lng,
           neLat: northEast.lat
         },
-        attributes: ['id', 'location', 'emotionTag'],
+        attributes: ['id', 'location', 'emotionTag', 'fontFamily', 'fontEffect'],
         limit: CONSTANTS.MAX_CLUSTER_LIMIT
       });
 
@@ -395,7 +397,9 @@ class HighPerformanceMapService {
           id: LocationParser.normalizeStoryId(s.id),
           latitude: lat,
           longitude: lng,
-          emotionTag: s.emotionTag
+          emotionTag: s.emotionTag,
+          fontFamily: s.fontFamily || null,
+          fontEffect: s.fontEffect || null
         };
       });
 

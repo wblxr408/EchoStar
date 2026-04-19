@@ -848,7 +848,6 @@ async function submitReport() {
   color: var(--story-detail-text);
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: var(--story-font, 'Georgia', 'Times New Roman', serif);
 }
 
 .story-images {

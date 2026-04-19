@@ -76,7 +76,7 @@
                   <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ item.data.locationName || '' }}</span>
                 </div>
               </div>
-              <p class="item-content">{{ item.data.content }}</p>
+              <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
               <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
               <div class="item-footer">
                 <span class="item-likes">👁 {{ item.data.viewCount ?? 0 }}</span>
@@ -180,7 +180,7 @@
                       <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                     </div>
                   </div>
-                  <p class="item-content">{{ item.data.content }}</p>
+                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
                   <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                   <div class="item-footer">
                     <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -262,7 +262,7 @@
                         <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                       </div>
                     </div>
-                    <p class="item-content">{{ item.data.content }}</p>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -583,9 +583,10 @@
         { 'dock-vip-theme': isVipTheme, 'poker-mode': usePokerTheme },
         {
           'show-publish-sidebar': showPublishSidebar,
+          'show-dock-publish-sidebar': showDockPublishSidebar,
           'show-user-sidebar': showUserSidebar,
           expanded: isDockExpanded,
-          locked: isPickingPublishLocation,
+          locked: isPickingPublishLocation || isPickingDockPublishLocation,
         },
       ]"
       @click.stop
@@ -904,6 +905,87 @@
       </div>
       </transition>
 
+    <!-- 功能卡组发布故事面板（旧版独立） -->
+    <transition name="publish-modal">
+      <div
+        v-if="showDockPublishSidebar"
+        class="publish-modal-shell"
+        :class="{ 'pick-mode': isPickingDockPublishLocation }"
+        @click.self="closeDockPublishPanel"
+      >
+        <div
+          class="publish-modal"
+          :class="{
+            dark: effectiveMapTheme === 'dark',
+            collapsed: isPickingDockPublishLocation,
+          }"
+          @click.stop
+        >
+          <button
+            v-if="isPickingDockPublishLocation"
+            type="button"
+            class="publish-pick-dock"
+            @click="restoreDockPublishPanelFromPick"
+          >
+            <span class="pick-dock-handle"></span>
+            <strong>地图选点中</strong>
+            <span>点击这里恢复发布卡，并默认取消选点</span>
+          </button>
+
+          <template v-else>
+            <button
+              class="publish-modal-close"
+              type="button"
+              @click="closeDockPublishPanel"
+            >
+              <span class="close-icon">×</span>
+              <span class="close-text">关闭</span>
+            </button>
+            <div class="publish-modal-scroll">
+              <PublishFormDock
+                :visible="showDockPublishSidebar"
+                :map-center="mapStore.center"
+                :user-location="mapStore.userLocation"
+                :suggested-locations="dockPublishSuggestedLocations"
+                :picked-map-location="dockPublishPickedLocation"
+                :is-picking-location="isPickingDockPublishLocation"
+                :map-theme="effectiveMapTheme"
+                @submit="handleDockPublishSubmit"
+                @cancel="closeDockPublishPanel"
+                @request-map-pick="startDockPublishMapPick"
+                @cancel-map-pick="cancelDockPublishMapPick"
+              />
+            </div>
+          </template>
+        </div>
+
+        <div
+          v-if="isDockPublishPickPrompt"
+          class="publish-pick-confirm"
+          :style="getDockPublishPickPromptStyle(isDockPublishPickPrompt)"
+          @click.stop
+        >
+          <p>是否在这附近搜索？</p>
+          <div class="publish-pick-confirm-actions">
+            <button
+              type="button"
+              class="confirm-btn"
+              @click="confirmDockPublishNearbySearch"
+            >
+              是
+            </button>
+            <button
+              type="button"
+              class="cancel-btn"
+              @click="rejectDockPublishNearbySearch"
+            >
+              否
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <transition name="publish-modal">
       <div v-if="showUserSidebar" class="user-modal-shell" :class="{ 'has-profile-search': myProfileSearchActive }">
         <!-- 左侧搜索结果面板 -->
@@ -935,7 +1017,7 @@
                       <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                     </div>
                   </div>
-                  <p class="item-content">{{ item.data.content }}</p>
+                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
                   <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                   <div class="item-footer">
                     <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1187,7 +1269,7 @@
                       </div>
                     </template>
                     <template v-else>
-                    <p class="item-content">{{ item.data.content }}</p>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     </template>
                     <div class="item-footer">
@@ -1228,7 +1310,7 @@
                       </div>
                       <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(item.data)"><span>❌</span></button>
                     </div>
-                    <p class="item-content">{{ item.data.content }}</p>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1273,7 +1355,7 @@
                         @click.stop="handleToggleFavoriteFromList(item.data)"
                       ><span>{{ item.data.isFavorited !== false ? "❌" : "✨" }}</span></button>
                     </div>
-                    <p class="item-content">{{ item.data.content }}</p>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1605,6 +1687,7 @@ import { likeApi } from "../../api/like";
 import { commentApi } from "../../api/comment";
 import { storyApi } from "../../api/story";
 import { favoriteApi } from "../../api/favorite";
+import { getFontStyle, injectFontEffectAnimations } from "../../composables/useFontEffect";
 import { authApi } from "../../api/auth";
 import { reportApi } from "../../api/report";
 import { notificationApi } from "../../api/notification";
@@ -1618,10 +1701,21 @@ import MyFootprints from "../../components/MyFootprints.vue";
 import VipCenter from "../../components/VipCenter.vue";
 import FontPicker from "../../components/FontPicker.vue";
 import CoinCenter from "../../components/CoinCenter.vue";
+
+injectFontEffectAnimations();
+
+function getItemContentStyle(storyData) {
+  if (!storyData) return {};
+  const ff = storyData.fontFamily || '';
+  const fe = storyData.fontEffect || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
+}
 import CommentSettings from "../../components/CommentSettings.vue";
 import VisualCustomizer from "../../components/VisualCustomizer.vue";
 import PolishStory from "../../components/PolishStory.vue";
 import PublishForm from "../../components/PublishForm.vue";
+import PublishFormDock from "../../components/PublishFormDock.vue";
 import LoginModal from "../Home/components/LoginModal.vue";
 import { useVipStore } from "../../stores/vip";
 import { formatRelativeTime } from "../../utils/time";
@@ -1645,8 +1739,10 @@ const lightboxInitialIndex = ref(0);
 
 const showSidebar = ref(false);
 const showPublishSidebar = ref(false);
+const showDockPublishSidebar = ref(false);
 const showUserSidebar = ref(false);
 const isPickingPublishLocation = ref(false);
+const isPickingDockPublishLocation = ref(false);
 const pickedPublishLocation = ref(null);
 const suggestedPublishLocations = ref([]);
 const publishPickPrompt = ref(null);
@@ -1724,7 +1820,7 @@ const nearbyCenterSummary = computed(() => {
   return `当前显示的是 ${nearbyCenterLabel.value} 附近的故事。`;
 });
 const anyPanelOpen = computed(() => {
-  return showSidebar.value || showPlaneNearby.value || showUserSidebar.value || showPublishSidebar.value
+  return showSidebar.value || showPlaneNearby.value || showUserSidebar.value || showPublishSidebar.value || showDockPublishSidebar.value
     || showSwitchAccountModal.value || showLoginModal.value || showNotificationPanel.value
     || showEditProfileModal.value || isDockExpanded.value;
 });
@@ -3564,7 +3660,7 @@ const dockActions = computed(() => [
     accent: "#ff7a59",
     accentSoft: "rgba(255, 122, 89, 0.24)",
     ink: isDarkMap.value ? "#eef3ff" : "#432013",
-    visible: !showPublishSidebar.value,
+    visible: !showPublishSidebar.value && !showDockPublishSidebar.value,
     disabled: false,
     handler: handlePublishClick,
   },
@@ -4930,6 +5026,9 @@ function handleDocumentKeydown(e) {
   if (e.key === "Escape" && isPickingPublishLocation.value) {
     restorePublishPanelFromPick();
   }
+  if (e.key === "Escape" && isPickingDockPublishLocation.value) {
+    restoreDockPublishPanelFromPick();
+  }
 }
 
 function handlePublishClick() {
@@ -4945,15 +5044,139 @@ function handlePublishClick() {
   if (showUserSidebar.value) {
     closeUserPanel();
   }
-  suggestedPublishLocations.value = [];
-  publishPickPrompt.value = null;
-  publishPrefillQuery.value = '';
-  pickedPublishLocation.value = null;
-  isPickingPublishLocation.value = false;
+  if (showPublishSidebar.value) {
+    closePublishPanel();
+  }
+  isPickingDockPublishLocation.value = false;
   isDockExpanded.value = false;
   setTimeout(() => {
-    showPublishSidebar.value = true;
+    showDockPublishSidebar.value = true;
   }, 100);
+}
+
+function closeDockPublishPanel() {
+  isPickingDockPublishLocation.value = false;
+  showDockPublishSidebar.value = false;
+}
+
+function startDockPublishMapPick() {
+  isDockPublishPickPrompt.value = null;
+  dockPublishPickedLocation.value = null;
+  isDockExpanded.value = false;
+  isPickingDockPublishLocation.value = true;
+}
+
+function cancelDockPublishMapPick() {
+  isDockPublishPickPrompt.value = null;
+  dockPublishPickedLocation.value = null;
+  isDockExpanded.value = false;
+  isPickingDockPublishLocation.value = false;
+}
+
+function restoreDockPublishPanelFromPick() {
+  isDockPublishPickPrompt.value = null;
+  dockPublishPickedLocation.value = null;
+  isDockExpanded.value = false;
+  isPickingDockPublishLocation.value = false;
+}
+
+const isDockPublishPickPrompt = ref(null);
+const dockPublishPickedLocation = ref(null);
+const dockPublishSuggestedLocations = ref([]);
+
+async function handleDockPublishSubmit(storyData) {
+  try {
+    const selectedLocation = extractCoordinates(storyData.location);
+    if (!selectedLocation) {
+      showToast("请先选择一个地点后再发布故事", "warning");
+      return;
+    }
+
+    if (!storyData.emotion) {
+      showToast("请先选择一个情绪标签", "warning");
+      return;
+    }
+
+    if (storyData.isTimeCapsule && !storyData.unlockAt) {
+      showToast("请为时光胶囊选择解锁时间", "warning");
+      return;
+    }
+
+    const location = {
+      latitude: selectedLocation.latitude,
+      longitude: selectedLocation.longitude,
+      address:
+        storyData.location?.address || storyData.location?.name || "已选地点",
+      name:
+        storyData.location?.name || storyData.location?.address || "已选地点",
+    };
+
+    const finalEmotionTag = storyData.emotion;
+    const { storyApi } = await import("../../api/story");
+    const { uploadImages, validateImage } = await import("../../utils/upload");
+    let imageUrls = [];
+    if (storyData.images && storyData.images.length > 0) {
+      for (const file of storyData.images) {
+        const validation = validateImage(file);
+        if (!validation.valid) {
+          console.warn("图片验证失败:", validation.error);
+          continue;
+        }
+      }
+      try {
+        imageUrls = await uploadImages(storyData.images);
+        console.log("图片上传成功:", imageUrls);
+      } catch (error) {
+        console.error("图片上传失败:", error);
+      }
+    }
+
+    const response = await storyApi.createStory({
+      content: storyData.content,
+      images: imageUrls,
+      location: {
+        lng: location.longitude,
+        lat: location.latitude,
+      },
+      locationName: location.name,
+      emotionTag: finalEmotionTag,
+      isTimeCapsule: storyData.isTimeCapsule,
+      unlockAt: storyData.unlockAt || null,
+      visibility: storyData.visibility || "public",
+      visibilityStartTime: storyData.visibilityStartTime || null,
+      visibilityEndTime: storyData.visibilityEndTime || null,
+    });
+
+    const newStory = response.data || response;
+    const normalizedNewStory = normalizeStoryForMap(newStory, location);
+
+    console.log("发布故事成功:", newStory);
+
+    if (normalizedNewStory && amapRef.value) {
+      amapRef.value.addNewStoryMarker(normalizedNewStory);
+    }
+
+    if (normalizedNewStory) {
+      mapStore.updateStories([...mapStore.stories, normalizedNewStory]);
+      void hydrateStoryLocations([normalizedNewStory]);
+    } else {
+      console.warn(
+        "[Map] Created story is missing valid coordinates:",
+        newStory,
+      );
+      await loadStories();
+    }
+    updateUserPanelTotalCount(postsTotalCount, 1);
+
+    mapStore.updateCenter(location.latitude, location.longitude);
+    mapStore.updateZoom(15);
+
+    showToast("发布成功！", "success");
+    closeDockPublishPanel();
+  } catch (error) {
+    console.error("发布失败:", error);
+    showToast("发布失败，请重试", "error");
+  }
 }
 
 function formatMapPickAddress(latitude, longitude) {
@@ -5915,6 +6138,7 @@ function handlePaperPlanePublish() {
   if (showUserSidebar.value) closeUserPanel();
   if (showPlaneNearby.value) showPlaneNearby.value = false;
   if (showVipCenter.value) showVipCenter = false;
+  if (showDockPublishSidebar.value) closeDockPublishPanel();
   // 逆地理编码纸飞机位置
   const coords = { latitude: planePosition.value.latitude, longitude: planePosition.value.longitude };
   reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
@@ -6183,15 +6407,56 @@ function rejectPublishNearbySearch() {
   isPickingPublishLocation.value = true;
 }
 
+function confirmDockPublishNearbySearch() {
+  const prompt = isDockPublishPickPrompt.value;
+  if (!prompt?.location) {
+    isDockPublishPickPrompt.value = null;
+    return;
+  }
+  const suggestedLocations = buildSuggestedLocations(
+    prompt.location,
+    prompt.location.nearbyPois || [],
+  );
+  dockPublishSuggestedLocations.value = suggestedLocations;
+  dockPublishPickedLocation.value = suggestedLocations[0] || prompt.location;
+  isDockPublishPickPrompt.value = null;
+  isPickingDockPublishLocation.value = false;
+}
+
+function rejectDockPublishNearbySearch() {
+  isDockPublishPickPrompt.value = null;
+  dockPublishSuggestedLocations.value = [];
+  dockPublishPickedLocation.value = null;
+  isPickingDockPublishLocation.value = true;
+}
+
+function getDockPublishPickPromptStyle(prompt) {
+  return getPublishPickPromptStyle(prompt);
+}
+
 function reverseGeocodePickedLocation(latitude, longitude) {
   return reverseGeocodeLocationDetail(latitude, longitude);
 }
 
 async function handlePublishMapClick(point) {
-  console.log('[Map] handlePublishMapClick called:', { point, showPublishSidebar: showPublishSidebar.value, isPickingPublishLocation: isPickingPublishLocation.value });
+  console.log('[Map] handlePublishMapClick called:', { point, showPublishSidebar: showPublishSidebar.value, isPickingPublishLocation: isPickingPublishLocation.value, showDockPublishSidebar: showDockPublishSidebar.value, isPickingDockPublishLocation: isPickingDockPublishLocation.value });
   hidePlaneMenu();
   searchFocused.value = false;
-  // 非发布选点模式下，移动纸飞机
+  // 功能卡组发布 - 地图选点模式
+  if (showDockPublishSidebar.value && isPickingDockPublishLocation.value) {
+    const coords = extractCoordinates(point);
+    if (!coords) return;
+    dockPublishSuggestedLocations.value = [];
+    const pickedLocation = await reverseGeocodePickedLocation(coords.latitude, coords.longitude);
+    dockPublishPickedLocation.value = pickedLocation;
+    isDockPublishPickPrompt.value = {
+      location: pickedLocation,
+      screenX: point?.screenX,
+      screenY: point?.screenY,
+    };
+    return;
+  }
+  // 纸飞机发布 - 地图选点模式
   if (!showPublishSidebar.value || !isPickingPublishLocation.value) {
     const coords = extractCoordinates(point);
     console.log('[Map] Moving paper plane to:', coords);
@@ -6222,6 +6487,9 @@ async function handlePublishMapClick(point) {
 function handleUserClick() {
   if (showPublishSidebar.value) {
     closePublishPanel();
+  }
+  if (showDockPublishSidebar.value) {
+    closeDockPublishPanel();
   }
   if (showSidebar.value) {
     closeStoryPanel();
@@ -9699,6 +9967,10 @@ onUnmounted(() => {
   right: 96px;
 }
 
+.dock-container.show-dock-publish-sidebar {
+  right: 96px;
+}
+
 .dock-container.locked {
   opacity: 0.72;
 }
@@ -12336,7 +12608,6 @@ onUnmounted(() => {
   line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-family: var(--story-font, inherit);
 }
 
 .item-images {
@@ -14776,7 +15047,6 @@ onUnmounted(() => {
 .vip-bio .bio-text {
   font-size: 15px;
   font-weight: 600;
-  font-family: var(--story-font, 'ZCOOL KuaiLe', 'STKaiti', 'KaiTi', cursive, sans-serif);
   background: linear-gradient(90deg, #ff4444, #ff8888, #ff5555, #ff3333, #ff7777, #ff4444);
   background-size: 200% 100%;
   -webkit-background-clip: text;

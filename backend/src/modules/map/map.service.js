@@ -56,6 +56,8 @@ const MapServiceUtil = {
     'isTimeCapsule',
     'unlockAt',
     'isRecommended',
+    'fontFamily',
+    'fontEffect',
     'createdAt'
   ],
 
@@ -277,7 +279,7 @@ export const MapService = {
         neLng: northEast.lng,
         neLat: northEast.lat
       },
-      attributes: ['id', 'location', 'emotionTag', 'isTimeCapsule', 'unlockAt']
+      attributes: ['id', 'location', 'emotionTag', 'isTimeCapsule', 'unlockAt', 'fontFamily', 'fontEffect']
     });
 
     // 🔥 传入动态计算的网格大小（根据 zoom 级别）
@@ -293,7 +295,9 @@ export const MapService = {
         isTimeCapsule: !!s.isTimeCapsule,
         unlockAt: s.unlockAt || null,
         isUnlocked: !s.isTimeCapsule || (s.unlockAt && new Date(s.unlockAt) <= new Date()),
-        isLocked
+        isLocked,
+        fontFamily: s.fontFamily || null,
+        fontEffect: s.fontEffect || null
       };
     });
 
