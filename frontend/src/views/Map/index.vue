@@ -221,7 +221,7 @@
               <!-- 签名 -->
               <div class="user-bio-area search-user-bio" :class="{ 'vip-bio': searchedUser.vip }">
                 <div class="bio-content">
-                  <span class="bio-text">{{ searchedUser.bio || '这个人很懒，什么都没有写~' }}</span>
+                  <span class="bio-text" :style="getBioFontStyle(searchedUser.bioFontFamily, searchedUser.bioFontEffect)">{{ searchedUser.bio || '这个人很懒，什么都没有写~' }}</span>
                 </div>
               </div>
 
@@ -877,6 +877,7 @@
                 @submit="handlePublishSubmit"
                 @cancel="closePublishPanel"
                 @adjust-plane-position="handleAdjustPlanePosition"
+                @request-vip="showVipCenter = true"
               />
             </div>
           </template>
@@ -954,6 +955,7 @@
                 :map-theme="effectiveMapTheme"
                 @submit="handleDockPublishSubmit"
                 @cancel="closeDockPublishPanel"
+                @request-vip="showVipCenter = true"
                 @request-map-pick="startDockPublishMapPick"
                 @cancel-map-pick="cancelDockPublishMapPick"
               />
@@ -1225,15 +1227,40 @@
                     @keyup.esc="cancelEditBio"
                     @keydown.enter.exact.prevent="saveBioInline"
                     @blur="saveBioInline"
+                    :style="getBioFontStyle(bioFontFamily || readBioFontFromCookie(), bioFontEffect || readBioFontEffectFromCookie())"
                   ></textarea>
                   <span class="bio-char-count">{{ bioDraft.length }}/200</span>
+                  <div class="inline-font-row" @click.stop>
+                    <button type="button" class="font-action-btn"
+                      :class="{ 'font-active': bioFontFamily || bioFontEffect }"
+                      :style="{ color: isDarkMap ? '#e0e0e0' : '#333', borderColor: isDarkMap ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', background: isDarkMap ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }"
+                      @click.stop="vipStore.isVipActive ? (showBioFontPicker = true) : (showVipCenter = true)">
+                      {{ (bioFontFamily || bioFontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
+                    </button>
+                    <button v-if="bioFontFamily || bioFontEffect" type="button" class="font-clear-btn"
+                      :style="{ color: isDarkMap ? '#bbb' : '#888', borderColor: isDarkMap ? 'rgba(200,100,100,0.4)' : 'rgba(200,100,100,0.3)', background: isDarkMap ? 'rgba(200,100,100,0.12)' : 'rgba(200,100,100,0.08)' }"
+                      @click.stop="bioFontFamily = ''; bioFontEffect = ''">
+                      清除
+                    </button>
+                  </div>
                 </span>
-                <span v-else class="bio-text">{{ userStore.user?.bio || '这个人很懒，什么都没有写~' }}</span>
+                <span v-else class="bio-text" :style="getBioFontStyle(userStore.user?.bioFontFamily, userStore.user?.bioFontEffect)">{{ userStore.user?.bio || '这个人很懒，什么都没有写~' }}</span>
               </div>
               <div class="bio-edit-icon">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </div>
             </div>
+
+            <FontPicker
+              :visible="showBioFontPicker"
+              :is-dark="isDarkMap"
+              target-type="bio"
+              :selected-font="bioFontFamily"
+              :selected-effect="bioFontEffect"
+              @select="bioFontFamily = $event"
+              @select-effect="bioFontEffect = $event"
+              @close="showBioFontPicker = false"
+            />
 
             <!-- 搜索框 -->
             <div class="profile-search-input-wrapper">
@@ -1568,6 +1595,7 @@
       @comment="handleStoryComment"
       @submit-comment="handleSubmitCommentFromStory"
       @report="handleStoryReport"
+      @request-vip="showVipCenter = true"
       @view-user-profile="openUserDetail"
     />
 
@@ -1722,7 +1750,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from "vue";
 import { useMapStore } from "../../stores/map";
-import { useUserStore } from "../../stores/user";
+import { useUserStore, saveDockThemeForUser } from "../../stores/user";
 import PaperPlaneStory from "../../components/PaperPlaneStory.vue";
 import { mapApi } from "../../api/map";
 import { likeApi } from "../../api/like";
@@ -1903,11 +1931,12 @@ const dockMenuRef = ref(null);
 const dockCardStackRef = ref(null);
 const ripplingDockCard = ref("");
 const dockActionPending = ref(false);
-const usePokerTheme = ref(localStorage.getItem("pokerTheme") !== "false");
 const VIP_THEME_KEYS = new Set(["poker"]); // VIP 专属主题集合，后续新增主题直接往这里加
 const DEFAULT_THEME_KEY = "tarot"; // 非 VIP 用户的兜底主题
+const activeDockTheme = ref(localStorage.getItem("dockTheme") || DEFAULT_THEME_KEY);
+const usePokerTheme = ref(activeDockTheme.value === "poker");
 function getActiveThemeKey() {
-  return usePokerTheme.value ? "poker" : "tarot";
+  return activeDockTheme.value;
 }
 const isDarkMap = computed(() => effectiveMapTheme.value === "dark");
 const isVipTheme = computed(() => selectedThemeChoice.value === "vip");
@@ -2099,6 +2128,24 @@ const editingBioInline = ref(false);
 const bioDraft = ref('');
 const bioInputRef = ref(null);
 const bioChanged = ref(false);
+const showBioFontPicker = ref(false);
+const bioFontFamily = ref('');
+const bioFontEffect = ref('');
+
+function readBioFontFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+function readBioFontEffectFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font_effect=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+function getBioFontStyle(bioFF, bioFE) {
+  const ff = bioFF || '';
+  const fe = bioFE || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
+}
 
 // 编辑资料弹窗
 const showEditProfileModal = ref(false);
@@ -3029,6 +3076,8 @@ function normalizeStoryComment(comment) {
     content: firstNonEmptyString(comment.content),
     createdAt: comment.createdAt || new Date().toISOString(),
     commentBg: commentUser?.commentBg ?? comment.commentBg ?? null,
+    fontFamily: comment.fontFamily || '',
+    fontEffect: comment.fontEffect || '',
   };
 }
 
@@ -3618,11 +3667,22 @@ async function submitStoryComment() {
 
   storyCommentSubmitting.value = true;
   try {
-    const response = await commentApi.create(storyId, content);
+    let fontFamily = '';
+    let fontEffect = '';
+    const fontMatch = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);
+    if (fontMatch) fontFamily = decodeURIComponent(fontMatch[1]);
+    const effectMatch = document.cookie.match(/(?:^|;\s*)vip_default_font_effect=([^;]*)/);
+    if (effectMatch) fontEffect = decodeURIComponent(effectMatch[1]);
+    const fontOptions = {};
+    if (fontFamily) fontOptions.fontFamily = fontFamily;
+    if (fontEffect) fontOptions.fontEffect = fontEffect;
+    const response = await commentApi.create(storyId, content, fontOptions);
     const data = response?.data ?? response;
     const newComment = normalizeStoryComment({
       ...(data?.data ?? data),
       content,
+      fontFamily,
+      fontEffect,
       user: {
         username: userStore.user?.username,
         avatar: userStore.user?.avatar,
@@ -3646,7 +3706,7 @@ async function submitStoryComment() {
   }
 }
 
-async function handleSubmitCommentFromStory({ storyId, content }) {
+async function handleSubmitCommentFromStory({ storyId, content, fontFamily, fontEffect }) {
   if (!storyId || !content) {
     return;
   }
@@ -3662,11 +3722,16 @@ async function handleSubmitCommentFromStory({ storyId, content }) {
 
   storyCommentSubmitting.value = true;
   try {
-    const response = await commentApi.create(storyId, content);
+    const fontOptions = {};
+    if (fontFamily) fontOptions.fontFamily = fontFamily;
+    if (fontEffect) fontOptions.fontEffect = fontEffect;
+    const response = await commentApi.create(storyId, content, fontOptions);
     const data = response?.data ?? response;
     const newComment = normalizeStoryComment({
       ...(data?.data ?? data),
       content,
+      fontFamily,
+      fontEffect,
       user: {
         username: userStore.user?.username,
         avatar: userStore.user?.avatar,
@@ -4352,11 +4417,13 @@ function handleThemeOptionClick(option) {
       return;
     }
     if (option.key === "tarot") {
+      activeDockTheme.value = "tarot";
       usePokerTheme.value = false;
-    } else if (option.key === "poker") {
-      usePokerTheme.value = true;
+    } else if (VIP_THEME_KEYS.has(option.key)) {
+      activeDockTheme.value = option.key;
+      usePokerTheme.value = (option.key === "poker");
     }
-    localStorage.setItem("pokerTheme", String(usePokerTheme.value));
+    saveDockThemeForUser(userStore.user?.id, activeDockTheme.value);
     return;
   }
 }
@@ -4751,6 +4818,8 @@ function startEditBio() {
   if (editingBioInline.value) return;
   editingBioInline.value = true;
   bioDraft.value = userStore.user?.bio || '';
+  bioFontFamily.value = userStore.user?.bioFontFamily || readBioFontFromCookie();
+  bioFontEffect.value = userStore.user?.bioFontEffect || readBioFontEffectFromCookie();
   bioChanged.value = false;
   nextTick(() => {
     bioInputRef.value?.focus();
@@ -4760,6 +4829,8 @@ function startEditBio() {
 function cancelEditBio() {
   editingBioInline.value = false;
   bioDraft.value = '';
+  bioFontFamily.value = '';
+  bioFontEffect.value = '';
   bioChanged.value = false;
 }
 
@@ -4771,18 +4842,22 @@ function saveBioInline() {
   _bioSaving = true;
   editingBioInline.value = false;
   const newBio = bioDraft.value.trim();
+  const fontFamily = bioFontFamily.value || readBioFontFromCookie();
+  const fontEffect = bioFontEffect.value || readBioFontEffectFromCookie();
   const oldBio = userStore.user?.bio || '';
-  if (newBio === oldBio) {
+  if (newBio === oldBio && fontFamily === (userStore.user?.bioFontFamily || '') && fontEffect === (userStore.user?.bioFontEffect || '')) {
     bioChanged.value = false;
     _bioSaving = false;
     return;
   }
   // 直接提交保存
   bioChanged.value = false;
-  authApi.updateProfile({ bio: newBio }).then((response) => {
-    const updatedUser = response?.data ?? response;
-    userStore.updateUser({ bio: newBio });
-    syncCurrentUserProfileAcrossStories({ ...(userStore.user || {}), bio: newBio });
+  const profileData = { bio: newBio };
+  if (fontFamily) profileData.bioFontFamily = fontFamily;
+  if (fontEffect) profileData.bioFontEffect = fontEffect;
+  authApi.updateProfile(profileData).then((response) => {
+    userStore.updateUser({ bio: newBio, bioFontFamily: fontFamily, bioFontEffect: fontEffect });
+    syncCurrentUserProfileAcrossStories({ ...(userStore.user || {}), bio: newBio, bioFontFamily: fontFamily, bioFontEffect: fontEffect });
     showToast('签名已保存', 'success');
     _bioSaving = false;
   }).catch((error) => {
@@ -4925,10 +5000,7 @@ function handleSwitchToAccount(acc) {
     saveAccountToStorage({ id: userStore.user.id, username: userStore.user.username, email: userStore.user.email, avatar: userStore.user.avatar, token: userStore.token });
   }
   userStore.setAuth(acc.token, { id: acc.id, username: acc.username, email: acc.email || '', avatar: acc.avatar || '' });
-  showToast(`已切换到账号: ${acc.username}`, 'success');
-  // 保持在"我的信息"页面并刷新所有内容
-  showUserSidebar.value = true;
-  refreshUserPanel();
+  window.location.reload();
 }
 
 function handleAddAccount() {
@@ -9175,10 +9247,15 @@ async function prefetchUnreadCount() {
 }
 
 onMounted(() => {
-  const savedFont = localStorage.getItem('storyFont');
+  const uid = userStore.user?.id;
+  const savedFont = uid ? (localStorage.getItem(`vip_font_${uid}`) || localStorage.getItem('storyFont')) : localStorage.getItem('storyFont');
   if (savedFont) {
     document.documentElement.style.setProperty('--story-font', `'${savedFont}', cursive, sans-serif`);
     document.cookie = `vip_default_font=${encodeURIComponent(savedFont)};path=/;max-age=${365 * 86400};SameSite=Lax`;
+  }
+  if (uid) {
+    const savedEffect = localStorage.getItem(`vip_font_effect_${uid}`) || '';
+    document.cookie = `vip_default_font_effect=${encodeURIComponent(savedEffect)};path=/;max-age=${365 * 86400};SameSite=Lax`;
   }
   getUserLocation();
   loadStories();
@@ -9198,11 +9275,19 @@ onMounted(() => {
     showWelcomeOverlay.value = false;
   }, 1100);
 
-  if (userStore.isLoggedIn && !userStore.isGuest) {
+  if (userStore.isGuest) {
+    // 游客强制回退到默认主题
+    if (VIP_THEME_KEYS.has(getActiveThemeKey())) {
+      activeDockTheme.value = DEFAULT_THEME_KEY;
+      usePokerTheme.value = false;
+      saveDockThemeForUser(userStore.user?.id, DEFAULT_THEME_KEY);
+    }
+  } else if (userStore.isLoggedIn) {
     vipStore.fetchStatus().then(() => {
       if (!vipStore.isVipActive && VIP_THEME_KEYS.has(getActiveThemeKey())) {
+        activeDockTheme.value = DEFAULT_THEME_KEY;
         usePokerTheme.value = false;
-        localStorage.setItem("pokerTheme", "false");
+        saveDockThemeForUser(userStore.user?.id, DEFAULT_THEME_KEY);
       }
     }).catch(() => {});
     const loadTasks = [loadNotifications(), loadAnnouncements()];
@@ -15611,6 +15696,51 @@ onUnmounted(() => {
   font-size: 11px;
   color: #bbb;
   text-align: right;
+}
+
+.inline-font-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.font-action-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--panel-border, rgba(255,255,255,0.15));
+  border-radius: 14px;
+  background: var(--panel-soft, rgba(255,255,255,0.06));
+  color: var(--panel-strong, #e0e0e0);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-action-btn:hover {
+  border-color: var(--accent, #667eea);
+  background: var(--panel-soft-strong, rgba(255,255,255,0.1));
+}
+
+.font-action-btn.font-active {
+  border-color: var(--accent, #667eea);
+  background: var(--accent-soft, rgba(102, 126, 234, 0.15));
+}
+
+.font-clear-btn {
+  padding: 6px 12px;
+  border: 1px solid rgba(200, 100, 100, 0.3);
+  border-radius: 14px;
+  background: rgba(200, 100, 100, 0.08);
+  color: var(--panel-muted, #bbb);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-clear-btn:hover {
+  background: rgba(200, 100, 100, 0.18);
 }
 
 .bio-edit-icon {

@@ -112,7 +112,19 @@
                 placeholder="写下你的评论..."
                 rows="2"
                 class="comment-textarea"
+                :style="getCommentFontStyle({ fontFamily: commentFontFamily || readDefaultFontFromCookie(), fontEffect: commentFontEffect || readDefaultFontEffectFromCookie() })"
               ></textarea>
+              <div class="inline-font-row">
+                <button type="button" class="font-action-btn"
+                  :class="{ 'font-active': commentFontFamily || commentFontEffect }"
+                  @click="vipStore.isVipActive ? (showCommentFontPicker = true) : emit('request-vip')">
+                  {{ (commentFontFamily || commentFontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
+                </button>
+                <button v-if="commentFontFamily || commentFontEffect" type="button" class="font-clear-btn"
+                  @click="commentFontFamily = ''; commentFontEffect = ''">
+                  清除
+                </button>
+              </div>
               <div class="comment-actions">
                 <button type="button" class="btn-cancel" @click="showCommentInput = false">取消</button>
                 <button
@@ -141,7 +153,7 @@
                     <span class="vip-name-row" @click.stop="handleViewCommentProfile(comment)" style="cursor:pointer"><span class="comment-author vip-username" :class="{ 'has-vip': comment.vip }">{{ comment.author }}</span><span class="vip-text-badge-sm" v-if="comment.vip">VIP</span></span>
                     <span class="comment-time">{{ formatRelativeTime(comment.createdAt) }}</span>
                   </div>
-                  <p class="comment-text">{{ comment.content }}</p>
+                  <p class="comment-text" :style="getCommentFontStyle(comment)">{{ comment.content }}</p>
                 </div>
               </div>
               <div v-if="comments.length === 0" class="no-comments">
@@ -221,6 +233,17 @@
         </div>
       </div>
     </Teleport>
+
+    <FontPicker
+      :visible="showCommentFontPicker"
+      :is-dark="isDark"
+      target-type="comment"
+      :selected-font="commentFontFamily"
+      :selected-effect="commentFontEffect"
+      @select="commentFontFamily = $event"
+      @select-effect="commentFontEffect = $event"
+      @close="showCommentFontPicker = false"
+    />
   </Teleport>
 </template>
 
@@ -234,6 +257,7 @@ import { useVipStore } from '../stores/vip';
 import { reportApi } from '../api/report';
 import { showToast } from '../composables/useToast.js';
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+import FontPicker from './FontPicker.vue';
 
 injectFontEffectAnimations();
 
@@ -267,7 +291,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile']);
+const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile', 'request-vip']);
 
 const storyFontStyle = computed(() => {
   const ff = props.story?.fontFamily || '';
@@ -284,6 +308,26 @@ const commentCount = ref(0);
 const showCommentInput = ref(false);
 const newComment = ref('');
 const comments = ref([]);
+
+const showCommentFontPicker = ref(false);
+const commentFontFamily = ref('');
+const commentFontEffect = ref('');
+
+function readDefaultFontFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+function readDefaultFontEffectFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)vip_default_font_effect=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function getCommentFontStyle(comment) {
+  const ff = comment?.fontFamily || '';
+  const fe = comment?.fontEffect || '';
+  if (!ff && !fe) return {};
+  return getFontStyle(ff, fe);
+}
 
 const showReportModal = ref(false);
 const selectedReportReason = ref('');
@@ -451,11 +495,15 @@ function submitComment() {
     return;
   }
 
-  const payload = { storyId: props.story.id, content };
+  const fontFamily = commentFontFamily.value || readDefaultFontFromCookie();
+  const fontEffect = commentFontEffect.value || readDefaultFontEffectFromCookie();
+  const payload = { storyId: props.story.id, content, fontFamily, fontEffect };
   emit('submit-comment', payload);
   emit('submitComment', payload);
 
   newComment.value = '';
+  commentFontFamily.value = '';
+  commentFontEffect.value = '';
   showCommentInput.value = false;
 }
 
@@ -1027,6 +1075,52 @@ async function submitReport() {
 
 .comment-input-area {
   margin-bottom: 16px;
+}
+
+.inline-font-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.font-action-btn {
+  padding: 4px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--story-detail-frame);
+  background: var(--story-detail-panel-strong);
+  color: var(--story-detail-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-action-btn:hover {
+  border-color: var(--story-detail-accent);
+  color: var(--story-detail-accent);
+}
+
+.font-action-btn.font-active {
+  border-color: var(--story-detail-accent);
+  background: var(--story-detail-accent-soft);
+  color: var(--story-detail-accent);
+}
+
+.font-clear-btn {
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--story-detail-frame);
+  background: transparent;
+  color: var(--story-detail-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.font-clear-btn:hover {
+  border-color: rgba(179, 52, 43, 0.4);
+  color: #b3342b;
 }
 
 .comment-textarea,

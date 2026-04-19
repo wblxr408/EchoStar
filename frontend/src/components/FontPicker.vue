@@ -107,6 +107,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useVipStore } from '../stores/vip'
+import { useUserStore } from '../stores/user'
 import { showToast } from '../composables/useToast'
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect'
 
@@ -202,8 +203,8 @@ const fontList = reactive(DEFAULT_FONTS.map(f => ({ ...f })))
 watch(() => props.visible, (v) => {
   if (v) {
     fontList.splice(0, fontList.length, ...DEFAULT_FONTS.map(f => ({ ...f })))
-    currentFont.value = props.selectedFont || (props.targetType === 'global' ? (localStorage.getItem('storyFont') || '') : '')
-    currentEffect.value = props.selectedEffect || (props.targetType === 'global' ? readCookie('vip_default_font_effect') : '')
+    currentFont.value = props.selectedFont || readCookie('vip_default_font') || ''
+    currentEffect.value = props.selectedEffect || readCookie('vip_default_font_effect') || ''
     previewText.value = '当前字体样式预览'
   }
 })
@@ -224,7 +225,9 @@ function handleApplyFont(family) {
   currentFont.value = family
 
   if (props.targetType === 'global') {
+    const uid = useUserStore().user?.id
     localStorage.setItem('storyFont', family)
+    if (uid) localStorage.setItem(`vip_font_${uid}`, family)
     document.documentElement.style.setProperty('--story-font', `'${family}', cursive, sans-serif`)
     document.cookie = `vip_default_font=${encodeURIComponent(family)};path=/;max-age=${365 * 86400};SameSite=Lax`
   }
@@ -242,6 +245,8 @@ function handleApplyEffect(key) {
   currentEffect.value = key
 
   if (props.targetType === 'global') {
+    const uid = useUserStore().user?.id
+    if (uid) localStorage.setItem(`vip_font_effect_${uid}`, key)
     document.cookie = `vip_default_font_effect=${encodeURIComponent(key)};path=/;max-age=${365 * 86400};SameSite=Lax`
   }
 
@@ -255,7 +260,12 @@ function handleClear() {
   currentEffect.value = ''
 
   if (props.targetType === 'global') {
+    const uid = useUserStore().user?.id
     localStorage.removeItem('storyFont')
+    if (uid) {
+      localStorage.removeItem(`vip_font_${uid}`)
+      localStorage.removeItem(`vip_font_effect_${uid}`)
+    }
     document.documentElement.style.removeProperty('--story-font')
     document.cookie = 'vip_default_font=;path=/;max-age=0'
     document.cookie = 'vip_default_font_effect=;path=/;max-age=0'
@@ -272,7 +282,7 @@ function handleClear() {
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 1101;
+  z-index: 10000;
   width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;

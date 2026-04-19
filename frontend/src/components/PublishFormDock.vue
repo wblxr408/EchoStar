@@ -112,12 +112,13 @@
           v-model="form.content"
           placeholder="这一刻发生了什么？"
           maxlength="500"
+          :style="getFontStyle(form.fontFamily || readDefaultFontFromCookie(), form.fontEffect || readDefaultFontEffectFromCookie())"
         ></textarea>
         <span class="char-count">{{ form.content.length }}/500</span>
       </div>
       <!-- 个性字体 - 紧贴故事输入框下方 -->
-      <div v-if="vipStore.isVipActive" class="inline-font-row">
-        <button type="button" class="font-action-btn" :class="{ 'font-active': form.fontFamily || form.fontEffect }" @click="showFontPicker = true">
+      <div class="inline-font-row">
+        <button type="button" class="font-action-btn" :class="{ 'font-active': form.fontFamily || form.fontEffect }" @click="vipStore.isVipActive ? (showFontPicker = true) : emit('request-vip')">
           {{ (form.fontFamily || form.fontEffect) ? '🔤 字体样式已设置' : '🔤 字体样式' }}
         </button>
         <button v-if="form.fontFamily || form.fontEffect" type="button" class="font-clear-btn" @click="clearFontAndEffect">
@@ -261,7 +262,7 @@ import EmotionSelector from './EmotionSelector.vue';
 import FontPicker from './FontPicker.vue';
 import { searchPoisWithContext } from '../utils/poiSearch';
 import { useVipStore } from '../stores/vip';
-import { injectFontEffectAnimations } from '../composables/useFontEffect';
+import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
 
 const props = defineProps({
   visible: {
@@ -294,7 +295,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['submit', 'cancel', 'request-map-pick', 'cancel-map-pick']);
+const emit = defineEmits(['submit', 'cancel', 'request-map-pick', 'cancel-map-pick', 'request-vip']);
 
 const vipStore = useVipStore();
 

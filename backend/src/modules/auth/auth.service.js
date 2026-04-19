@@ -287,7 +287,7 @@ const AuthServiceImpl = {
    */
   async fetchUserRaw(userId) {
     const user = await User.findByPk(userId, {
-      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'status', 'createdAt', 'vip', 'emotionCoins', 'lastCheckInAt', 'checkInStreak']
+      attributes: ['id', 'email', 'username', 'avatarUrl', 'role', 'bio', 'bioFontFamily', 'bioFontEffect', 'status', 'createdAt', 'vip', 'emotionCoins', 'lastCheckInAt', 'checkInStreak']
     });
 
     if (!user) return null;
@@ -299,6 +299,8 @@ const AuthServiceImpl = {
       avatarUrl: user.avatarUrl,
       role: user.role,
       bio: user.bio,
+      bioFontFamily: user.bioFontFamily || null,
+      bioFontEffect: user.bioFontEffect || null,
       status: user.status,
       vip: user.vip,
       emotionCoins: user.emotionCoins || 0,
@@ -333,6 +335,8 @@ const AuthServiceImpl = {
       username: rawData.username,
       avatar: rawData.avatarUrl,
       bio: rawData.bio,
+      bioFontFamily: rawData.bioFontFamily || null,
+      bioFontEffect: rawData.bioFontEffect || null,
       role: rawData.role,
       status: rawData.status,
       vip: rawData.vip,

@@ -324,7 +324,7 @@ function formatDate(dateStr) {
 .vip-center-shell {
   position: fixed;
   inset: 0;
-  z-index: 1100;
+  z-index: 99999;
   display: flex;
   align-items: center;
   justify-content: center;
