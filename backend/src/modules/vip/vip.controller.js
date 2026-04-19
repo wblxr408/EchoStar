@@ -161,7 +161,7 @@ export const saveCommentBg = async (req, res, next) => {
       return res.status(400).json({ code: 40020, message: '评论背景设置格式无效' });
     }
 
-    const allowedKeys = ['type', 'color', 'gradientColor', 'useGradient'];
+    const allowedKeys = ['type', 'color', 'gradientColor', 'useGradient', 'gradientDirection'];
     const invalidKeys = Object.keys(commentBg).filter(k => !allowedKeys.includes(k));
     if (invalidKeys.length > 0) {
       return res.status(400).json({ code: 40021, message: `包含无效字段: ${invalidKeys.join(', ')}` });

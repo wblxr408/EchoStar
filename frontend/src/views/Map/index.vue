@@ -2958,6 +2958,7 @@ function normalizeStoryComment(comment) {
     vip: Boolean(commentUser?.vip ?? false),
     content: firstNonEmptyString(comment.content),
     createdAt: comment.createdAt || new Date().toISOString(),
+    commentBg: commentUser?.commentBg ?? comment.commentBg ?? null,
   };
 }
 
@@ -3556,6 +3557,7 @@ async function submitStoryComment() {
         username: userStore.user?.username,
         avatar: userStore.user?.avatar,
         vip: userStore.user?.vip || 0,
+        commentBg: vipStore.savedCommentBg ?? null,
       },
     });
 
@@ -3599,6 +3601,7 @@ async function handleSubmitCommentFromStory({ storyId, content }) {
         username: userStore.user?.username,
         avatar: userStore.user?.avatar,
         vip: userStore.user?.vip || 0,
+        commentBg: vipStore.savedCommentBg ?? null,
       },
     });
 

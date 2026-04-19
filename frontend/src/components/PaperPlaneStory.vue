@@ -381,7 +381,15 @@ function getInitial(name) {
  * 支持纯色和渐变两种模式
  */
 function getCommentBgStyle(comment) {
-  const bg = comment?.commentBg;
+  let bg = comment?.commentBg;
+  // 兜底：如果是当前用户自己的评论，且服务端未返回 commentBg（可能数据库尚未同步），
+  // 则使用本地 vipStore 的设置
+  if ((!bg || typeof bg !== 'object') && userStore.isLoggedIn && comment?.userId && String(comment.userId) === String(userStore.user?.id)) {
+    const fallbackBg = vipStore.savedCommentBg;
+    if (fallbackBg && typeof fallbackBg === 'object') {
+      bg = fallbackBg;
+    }
+  }
   if (!bg || typeof bg !== 'object') return null;
 
   if (bg.useGradient && bg.gradientColor) {
@@ -1100,14 +1108,14 @@ async function submitReport() {
   align-items: start;
   padding: 14px;
   border-radius: 20px;
-  border: 1px solid var(--story-detail-frame);
   background: var(--story-detail-panel-strong);
-  transition: background 0.3s ease, border-color 0.3s ease;
+  box-shadow: inset 0 0 0 1px var(--story-detail-frame);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
 .comment-item.has-custom-bg {
-  border-color: rgba(184, 135, 46, 0.2);
-  box-shadow: 0 2px 8px -3px rgba(120, 80, 10, 0.08);
+  box-shadow: none;
+  overflow: hidden;
 }
 
 .comment-avatar {
