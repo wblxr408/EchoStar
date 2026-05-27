@@ -2,12 +2,48 @@ import { MapService } from './map.service.js';
 import { RecommendationService } from '../recommendation/recommendation.service.js';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
 
+function parseMapQueryFilters(query = {}) {
+  const filters = {};
+  const normalizedEmotionTag = String(query.emotionTag || '').trim();
+
+  if (normalizedEmotionTag) {
+    filters.emotionTag = normalizedEmotionTag;
+  }
+
+  if (query.createdAfter) {
+    const createdAfter = new Date(query.createdAfter);
+    if (Number.isNaN(createdAfter.getTime())) {
+      return { error: 'createdAfter 参数格式无效' };
+    }
+    filters.createdAfter = createdAfter.toISOString();
+  }
+
+  if (query.createdBefore) {
+    const createdBefore = new Date(query.createdBefore);
+    if (Number.isNaN(createdBefore.getTime())) {
+      return { error: 'createdBefore 参数格式无效' };
+    }
+    filters.createdBefore = createdBefore.toISOString();
+  }
+
+  if (
+    filters.createdAfter &&
+    filters.createdBefore &&
+    new Date(filters.createdAfter) > new Date(filters.createdBefore)
+  ) {
+    return { error: '时间区间无效，开始时间不能晚于结束时间' };
+  }
+
+  return { filters };
+}
+
 /**
  * 范围查询故事
  */
 export const exploreStories = async (req, res, next) => {
   try {
     const { lat, lng, radius = 1000, page, limit, summary } = req.query;
+    const { filters, error: filterError } = parseMapQueryFilters(req.query);
 
     if (!lat || !lng) {
       return res.status(400).json({
@@ -43,8 +79,15 @@ export const exploreStories = async (req, res, next) => {
     }
 
     // 解析可选参数
+    if (filterError) {
+      return res.status(400).json({
+        code: 4000,
+        message: filterError
+      });
+    }
+
     const isSummary = summary === '1' || summary === 'true';
-    const opts = { summary: isSummary };
+    const opts = { summary: isSummary, ...filters };
     if (page != null) opts.page = parseInt(page);
     if (limit != null) opts.limit = parseInt(limit);
     const usePagination = opts.page != null || opts.limit != null;
@@ -188,6 +231,7 @@ export const getLocationWall = async (req, res, next) => {
 export const getClusterData = async (req, res, next) => {
   try {
     const { northEast, southWest, zoom } = req.query;
+    const { filters, error: filterError } = parseMapQueryFilters(req.query);
 
     if (!northEast || !southWest) {
       return res.status(400).json({
@@ -256,9 +300,19 @@ export const getClusterData = async (req, res, next) => {
     }
 
     // 解析 zoom 参数
+    if (filterError) {
+      return res.status(400).json({
+        code: 4000,
+        message: filterError
+      });
+    }
+
     const zoomNum = zoom ? parseInt(zoom, 10) : 10;
 
-    const clusters = await MapService.getClusterData(bounds, zoomNum);
+    const clusters = await MapService.getClusterData(
+      { ...bounds, ...filters },
+      zoomNum,
+    );
     res.json({ code: 0, data: clusters });
   } catch (error) {
     next(error);

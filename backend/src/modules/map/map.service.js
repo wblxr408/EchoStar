@@ -9,7 +9,7 @@ import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
 // ===================== 常量配置 =====================
 const CONSTANTS = {
   DEFAULT_RADIUS: 50,
-  MAX_EXPLORE_LIMIT: 50,
+  MAX_EXPLORE_LIMIT: 500,
   MAX_WALL_LIMIT: 50,
   PUBLIC_VISIBILITY: 'public'
 };
@@ -116,6 +116,30 @@ const MapServiceUtil = {
     };
   }
 };
+
+function buildStoryFilterWhere(options = {}) {
+  const where = {};
+  const normalizedEmotionTag = String(options.emotionTag || '').trim();
+
+  if (normalizedEmotionTag) {
+    where.emotionTag = normalizedEmotionTag;
+  }
+
+  if (options.createdAfter || options.createdBefore) {
+    where.createdAt = {};
+
+    if (options.createdAfter) {
+      where.createdAt[Op.gte] = new Date(options.createdAfter);
+    }
+
+    if (options.createdBefore) {
+      where.createdAt[Op.lte] = new Date(options.createdBefore);
+    }
+  }
+
+  return where;
+}
+
 export const MapService = {
   /**
    * 范围查询故事
@@ -132,11 +156,13 @@ export const MapService = {
     const usePagination = page != null || limit != null;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(parseInt(limit) || CONSTANTS.MAX_EXPLORE_LIMIT, 1), CONSTANTS.MAX_EXPLORE_LIMIT);
+    const optionalWhere = buildStoryFilterWhere(options);
 
     const queryOpts = {
       where: {
         visibility: CONSTANTS.PUBLIC_VISIBILITY,
         location: { [Op.not]: null },
+        ...optionalWhere,
         [Op.and]: [
           MapServiceUtil.getDWithinCondition(),
           getVisibilityTimeCondition(),
@@ -257,10 +283,12 @@ export const MapService = {
 
   async getClusterData(bounds, zoom) {
     const { northEast, southWest } = bounds;
+    const optionalWhere = buildStoryFilterWhere(bounds);
     const stories = await Story.findAll({
       where: {
         visibility: CONSTANTS.PUBLIC_VISIBILITY,
         location: { [Op.not]: null },
+        ...optionalWhere,
         [Op.and]: [
           MapServiceUtil.getBoundsCondition(),
           getVisibilityTimeCondition()

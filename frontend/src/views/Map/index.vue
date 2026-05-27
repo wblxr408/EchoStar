@@ -37,6 +37,91 @@
     </div>
 
     <!-- 搜索结果面板 -->
+    <div
+      v-show="!isAdjustingPlanePosition && showMapFilterPanel"
+      class="map-filter-bar"
+      :class="{ dark: effectiveMapTheme === 'dark' }"
+      @click.stop
+    >
+      <div class="map-filter-bar__row">
+        <div class="map-filter-group">
+          <span class="map-filter-label">按心情</span>
+          <div class="map-filter-chip-list">
+            <button
+              class="map-filter-chip"
+              :class="{ active: activeEmotionFilter === 'all' }"
+              @click="setEmotionFilter('all')"
+            >
+              全部
+            </button>
+            <button
+              v-for="emotion in emotionFilterOptions"
+              :key="emotion.value"
+              class="map-filter-chip"
+              :class="{ active: activeEmotionFilter === emotion.value }"
+              @click="setEmotionFilter(emotion.value)"
+            >
+              {{ emotion.icon }} {{ emotion.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-filter-bar__row map-filter-bar__row--secondary">
+        <div class="map-filter-group">
+          <span class="map-filter-label">按时间</span>
+          <div class="map-filter-chip-list">
+            <button
+              v-for="preset in timeFilterOptions"
+              :key="preset.key"
+              class="map-filter-chip"
+              :class="{ active: activeTimePreset === preset.key }"
+              @click="applyTimePreset(preset.key)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="map-filter-date-range">
+          <input
+            v-model="mapFilterStartDate"
+            class="map-filter-date-input"
+            type="date"
+            @change="handleMapFilterDateChange"
+          />
+          <span class="map-filter-date-sep">至</span>
+          <input
+            v-model="mapFilterEndDate"
+            class="map-filter-date-input"
+            type="date"
+            @change="handleMapFilterDateChange"
+          />
+        </div>
+
+        <button
+          v-if="isUserMapFilterActive"
+          class="map-filter-reset"
+          @click="clearMapFilters"
+        >
+          清空筛选
+        </button>
+      </div>
+
+      <div
+        v-if="mapFilterStatusText || isSystemDisplayLimitEnabled"
+        class="map-filter-status"
+      >
+        <span v-if="mapFilterStatusText">{{ mapFilterStatusText }}</span>
+        <span
+          v-if="isSystemDisplayLimitEnabled"
+          class="map-filter-status__badge"
+        >
+          当前缩放最多显示 {{ defaultMapVisibleEntityLimit }} 个点位
+        </span>
+      </div>
+    </div>
+
     <transition name="search-panel-fade">
       <div
         v-if="showSearchPanel"
@@ -299,6 +384,8 @@
         ref="amapRef"
         :stories="mapStore.stories"
         :clusters="clusters"
+        :system-limit-enabled="isSystemDisplayLimitEnabled"
+        :max-visible-entities="defaultMapVisibleEntityLimit"
         :user-location="mapStore.userLocation"
         :center="mapStore.center"
         :zoom="mapStore.zoom"
@@ -581,6 +668,21 @@
         </div>
       </div>
     </transition>
+
+    <button
+      v-show="!isAdjustingPlanePosition"
+      class="map-filter-toggle"
+      :class="{ dark: effectiveMapTheme === 'dark', active: showMapFilterPanel }"
+      type="button"
+      title="地图筛选"
+      aria-label="地图筛选"
+      @click.stop="toggleMapFilterPanel"
+    >
+      <span class="map-filter-toggle__icon">⌘</span>
+      <span class="map-filter-toggle__text">
+        {{ showMapFilterPanel ? "收起筛选" : "地图筛选" }}
+      </span>
+    </button>
 
     <div
       v-show="!isAdjustingPlanePosition"
@@ -1789,7 +1891,7 @@ import PublishFormDock from "../../components/PublishFormDock.vue";
 import LoginModal from "../Home/components/LoginModal.vue";
 import { useVipStore } from "../../stores/vip";
 import { formatRelativeTime } from "../../utils/time";
-import { getEmotionEmoji } from "../../utils/emotion";
+import { EMOTIONS, getEmotionEmoji } from "../../utils/emotion";
 import { getAnnouncementTypeIcon } from "../../utils/announcement";
 import { searchPoisWithContext } from "../../utils/poiSearch";
 import { REPORT_TYPES } from "../../utils/report";
@@ -1837,6 +1939,20 @@ const notificationsLoading = ref(false);
 const notificationUnreadCount = ref(0);
 const announcementsLoading = ref(false);
 const loading = ref(false);
+const defaultMapExploreLimit = 200;
+const filteredMapExploreLimit = 500;
+const emotionFilterOptions = EMOTIONS;
+const timeFilterOptions = [
+  { key: "all", label: "全部时间" },
+  { key: "24h", label: "24小时" },
+  { key: "7d", label: "7天内" },
+  { key: "30d", label: "30天内" },
+];
+const activeEmotionFilter = ref("all");
+const activeTimePreset = ref("all");
+const mapFilterStartDate = ref("");
+const mapFilterEndDate = ref("");
+const showMapFilterPanel = ref(false);
 const nearbySearchQuery = ref("");
 const nearbySearchResults = ref([]);
 const nearbySearching = ref(false);
@@ -1910,6 +2026,113 @@ const effectiveMapTheme = computed(() => {
   }
 
   return selectedThemeChoice.value;
+});
+const isUserMapFilterActive = computed(
+  () =>
+    activeEmotionFilter.value !== "all" ||
+    Boolean(mapFilterStartDate.value) ||
+    Boolean(mapFilterEndDate.value),
+);
+const isSystemDisplayLimitEnabled = computed(
+  () => !isUserMapFilterActive.value,
+);
+function getZoomAdaptiveVisibleEntityLimit(zoom) {
+  const normalizedZoom = Number(zoom);
+
+  if (!Number.isFinite(normalizedZoom)) {
+    return 96;
+  }
+
+  if (normalizedZoom <= 5) {
+    return 24;
+  }
+
+  if (normalizedZoom <= 7) {
+    return 36;
+  }
+
+  if (normalizedZoom <= 9) {
+    return 54;
+  }
+
+  if (normalizedZoom <= 11) {
+    return 72;
+  }
+
+  if (normalizedZoom <= 13) {
+    return 96;
+  }
+
+  if (normalizedZoom <= 15) {
+    return 132;
+  }
+
+  if (normalizedZoom <= 17) {
+    return 180;
+  }
+
+  return 240;
+}
+const defaultMapVisibleEntityLimit = computed(() =>
+  getZoomAdaptiveVisibleEntityLimit(mapStore.zoom),
+);
+const mapExploreFetchLimit = computed(() =>
+  isUserMapFilterActive.value
+    ? filteredMapExploreLimit
+    : defaultMapExploreLimit,
+);
+const mapFilterQuery = computed(() => {
+  const result = {};
+
+  if (activeEmotionFilter.value !== "all") {
+    result.emotionTag = activeEmotionFilter.value;
+  }
+
+  if (activeTimePreset.value === "24h") {
+    result.createdAfter = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    result.createdBefore = new Date().toISOString();
+    return result;
+  }
+
+  if (activeTimePreset.value === "7d") {
+    result.createdAfter = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    result.createdBefore = new Date().toISOString();
+    return result;
+  }
+
+  if (activeTimePreset.value === "30d") {
+    result.createdAfter = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    result.createdBefore = new Date().toISOString();
+    return result;
+  }
+
+  if (mapFilterStartDate.value) {
+    result.createdAfter = new Date(`${mapFilterStartDate.value}T00:00:00`).toISOString();
+  }
+
+  if (mapFilterEndDate.value) {
+    result.createdBefore = new Date(`${mapFilterEndDate.value}T23:59:59.999`).toISOString();
+  }
+
+  return result;
+});
+const mapFilterStatusText = computed(() => {
+  if (!isUserMapFilterActive.value) {
+    return "";
+  }
+
+  const segments = [];
+  if (activeEmotionFilter.value !== "all") {
+    segments.push(`心情：${activeEmotionFilter.value}`);
+  }
+
+  if (mapFilterStartDate.value || mapFilterEndDate.value) {
+    const startText = mapFilterStartDate.value || "最早";
+    const endText = mapFilterEndDate.value || "现在";
+    segments.push(`时间：${startText} 至 ${endText}`);
+  }
+
+  return `筛选中：${segments.join("｜")}。系统显示上限已关闭。`;
 });
 const nearbyCenterSummary = computed(() => {
   if (!nearbyCenterLabel.value) {
@@ -8287,6 +8510,7 @@ function toggleDock() {
     return;
   }
 
+  showMapFilterPanel.value = false;
   isDockExpanded.value = !isDockExpanded.value;
 }
 
@@ -8334,6 +8558,8 @@ function handlePageClick(event) {
   const postsPanel = document.querySelector(".posts-panel");
   const favoritesPanel = document.querySelector(".favorites-panel");
   const dockContainer = document.querySelector(".dock-container");
+  const mapFilterPanel = document.querySelector(".map-filter-bar");
+  const mapFilterToggle = document.querySelector(".map-filter-toggle");
   const userDetail = document.querySelector(".search-user-modal-shell");
 
   if (
@@ -8359,11 +8585,14 @@ function handlePageClick(event) {
     storySidebar?.contains(target) ||
     storyTarotShell?.contains(target) ||
     publishModal?.contains(target) ||
-    dockContainer?.contains(target)
+    dockContainer?.contains(target) ||
+    mapFilterPanel?.contains(target) ||
+    mapFilterToggle?.contains(target)
   ) {
     return;
   }
 
+  showMapFilterPanel.value = false;
   closeStoryPanel();
   closePublishPanel();
   searchFocused.value = false;
@@ -8371,6 +8600,94 @@ function handlePageClick(event) {
 }
 
 const stories = computed(() => mapStore.stories);
+
+function formatDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function scheduleMapDataReload(delay = 220) {
+  clearTimeout(loadTimer);
+  showClusterPopover.value = false;
+  clusterPopoverStories.value = [];
+  loadTimer = setTimeout(() => {
+    loadStories();
+    loadClusterData();
+  }, delay);
+}
+
+function toggleMapFilterPanel() {
+  showMapFilterPanel.value = !showMapFilterPanel.value;
+  if (showMapFilterPanel.value) {
+    isDockExpanded.value = false;
+  }
+}
+
+function setEmotionFilter(value) {
+  if (activeEmotionFilter.value === value) {
+    return;
+  }
+
+  activeEmotionFilter.value = value;
+  scheduleMapDataReload();
+}
+
+function applyTimePreset(presetKey) {
+  if (activeTimePreset.value === presetKey && presetKey !== "all") {
+    return;
+  }
+
+  activeTimePreset.value = presetKey;
+
+  if (presetKey === "all") {
+    mapFilterStartDate.value = "";
+    mapFilterEndDate.value = "";
+    scheduleMapDataReload();
+    return;
+  }
+
+  const now = new Date();
+  const endDate = formatDateInputValue(now);
+  const startDate = new Date(now);
+
+  if (presetKey === "24h") {
+    startDate.setDate(startDate.getDate() - 1);
+  } else if (presetKey === "7d") {
+    startDate.setDate(startDate.getDate() - 7);
+  } else if (presetKey === "30d") {
+    startDate.setDate(startDate.getDate() - 30);
+  }
+
+  mapFilterStartDate.value = formatDateInputValue(startDate);
+  mapFilterEndDate.value = endDate;
+  scheduleMapDataReload();
+}
+
+function handleMapFilterDateChange() {
+  if (
+    mapFilterStartDate.value &&
+    mapFilterEndDate.value &&
+    mapFilterStartDate.value > mapFilterEndDate.value
+  ) {
+    const start = mapFilterStartDate.value;
+    mapFilterStartDate.value = mapFilterEndDate.value;
+    mapFilterEndDate.value = start;
+  }
+
+  activeTimePreset.value =
+    mapFilterStartDate.value || mapFilterEndDate.value ? "custom" : "all";
+  scheduleMapDataReload();
+}
+
+function clearMapFilters() {
+  activeEmotionFilter.value = "all";
+  activeTimePreset.value = "all";
+  mapFilterStartDate.value = "";
+  mapFilterEndDate.value = "";
+  scheduleMapDataReload();
+}
 
 async function loadStories() {
   loading.value = true;
@@ -8385,11 +8702,10 @@ async function loadStories() {
       return;
     }
 
-    const response = await mapApi.exploreStories(
-      center.latitude,
-      center.longitude,
-      5000,
-    );
+    const response = await mapApi.exploreStories(center.latitude, center.longitude, 5000, {
+      limit: mapExploreFetchLimit.value,
+      ...mapFilterQuery.value,
+    });
     console.log("[Map] exploreStories response:", response);
 
     const stories = extractStoriesFromResponse(response);
@@ -8490,6 +8806,7 @@ async function loadClusterData() {
         defaultBounds.northEast,
         defaultBounds.southWest,
         currentZoom,
+        mapFilterQuery.value,
       );
 
       const data = response?.data ?? response;
@@ -8509,6 +8826,7 @@ async function loadClusterData() {
         bounds.northEast,
         bounds.southWest,
         currentZoom,
+        mapFilterQuery.value,
       );
 
       const data = response?.data ?? response;
@@ -8529,6 +8847,7 @@ async function loadClusterData() {
       paddedBounds.northEast,
       paddedBounds.southWest,
       currentZoom,
+      mapFilterQuery.value,
     );
 
     const data = response?.data ?? response;
@@ -8758,11 +9077,7 @@ function handleMapMove(event) {
     }
   }
 
-  clearTimeout(loadTimer);
-  loadTimer = setTimeout(() => {
-    loadStories();
-    loadClusterData();
-  }, 500);
+  scheduleMapDataReload(500);
 }
 
 let loadTimer = null;
@@ -16506,9 +16821,251 @@ onUnmounted(() => {
 .map-search-bar.dark .map-search-clear:hover { background: rgba(255, 255, 255, 0.15); }
 
 /* ===== 搜索结果面板 ===== */
+.map-filter-bar {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: 268px;
+  bottom: 122px;
+  transform: none;
+  z-index: 200;
+  width: min(440px, calc(100vw - 48px));
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 24px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(196, 142, 48, 0.26);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.92) 0%,
+    rgba(240, 223, 191, 0.93) 52%,
+    rgba(229, 206, 166, 0.92) 100%
+  );
+  box-shadow:
+    0 14px 36px rgba(7, 11, 22, 0.14),
+    0 0 0 1px rgba(255, 248, 232, 0.38);
+}
+
+.map-filter-bar.dark {
+  border-color: rgba(143, 180, 255, 0.18);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 24, 39, 0.92) 0%,
+    rgba(25, 37, 61, 0.94) 52%,
+    rgba(20, 31, 53, 0.94) 100%
+  );
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(190, 214, 255, 0.08);
+}
+
+.map-filter-bar__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.map-filter-bar__row + .map-filter-bar__row {
+  margin-top: 10px;
+}
+
+.map-filter-bar__row--secondary {
+  align-items: flex-start;
+}
+
+.map-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.map-filter-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b4c1d;
+}
+
+.map-filter-bar.dark .map-filter-label {
+  color: #b7c8e8;
+}
+
+.map-filter-chip-list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-filter-chip {
+  border: 1px solid rgba(145, 107, 38, 0.22);
+  background: rgba(255, 250, 242, 0.78);
+  color: #5a3a14;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.map-filter-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(145, 107, 38, 0.38);
+  box-shadow: 0 8px 18px rgba(84, 55, 18, 0.14);
+}
+
+.map-filter-chip.active {
+  background: linear-gradient(135deg, #ffe4aa 0%, #f7c86a 100%);
+  border-color: rgba(145, 107, 38, 0.44);
+  box-shadow: 0 10px 20px rgba(145, 107, 38, 0.18);
+}
+
+.map-filter-bar.dark .map-filter-chip {
+  border-color: rgba(143, 180, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5eefb;
+}
+
+.map-filter-bar.dark .map-filter-chip:hover {
+  border-color: rgba(143, 180, 255, 0.28);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.map-filter-bar.dark .map-filter-chip.active {
+  background: linear-gradient(135deg, rgba(143, 180, 255, 0.34), rgba(94, 138, 230, 0.44));
+  border-color: rgba(143, 180, 255, 0.42);
+}
+
+.map-filter-date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-filter-date-input {
+  min-width: 138px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(145, 107, 38, 0.22);
+  background: rgba(255, 252, 245, 0.84);
+  color: #3c2910;
+  font-size: 13px;
+  outline: none;
+}
+
+.map-filter-date-input:focus {
+  border-color: rgba(145, 107, 38, 0.42);
+  box-shadow: 0 0 0 4px rgba(145, 107, 38, 0.1);
+}
+
+.map-filter-bar.dark .map-filter-date-input {
+  border-color: rgba(143, 180, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef4ff;
+}
+
+.map-filter-bar.dark .map-filter-date-input:focus {
+  border-color: rgba(143, 180, 255, 0.38);
+  box-shadow: 0 0 0 4px rgba(143, 180, 255, 0.12);
+}
+
+.map-filter-date-sep {
+  font-size: 12px;
+  color: rgba(90, 58, 20, 0.7);
+}
+
+.map-filter-bar.dark .map-filter-date-sep {
+  color: rgba(208, 224, 255, 0.72);
+}
+
+.map-filter-reset {
+  height: 38px;
+  border: none;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: rgba(60, 26, 0, 0.82);
+  color: #fff7ed;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.map-filter-reset:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+.map-filter-bar.dark .map-filter-reset {
+  background: rgba(143, 180, 255, 0.18);
+  color: #eff5ff;
+}
+
+.map-filter-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: rgba(73, 48, 16, 0.82);
+  flex-wrap: wrap;
+}
+
+.map-filter-bar.dark .map-filter-status {
+  color: rgba(225, 236, 255, 0.82);
+}
+
+.map-filter-status__badge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(196, 142, 48, 0.16);
+  color: #6b4c1d;
+  font-weight: 600;
+}
+
+.map-filter-bar.dark .map-filter-status__badge {
+  background: rgba(143, 180, 255, 0.16);
+  color: #dfeaff;
+}
+
+@media (max-width: 760px) {
+  .map-filter-bar {
+    right: 14px;
+    bottom: 200px;
+    width: calc(100vw - 28px);
+    max-height: calc(100vh - 248px);
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .map-filter-date-input {
+    min-width: 0;
+    width: calc(50vw - 42px);
+  }
+
+  .map-search-results {
+    top: 212px;
+    max-height: calc(100vh - 240px);
+  }
+}
+
 .map-search-results {
   position: fixed;
-  top: 72px;
+  top: 178px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 49;
@@ -17843,5 +18400,103 @@ onUnmounted(() => {
 .plane-menu-item svg {
   flex-shrink: 0;
   opacity: 0.85;
+}
+
+/* 地图筛选入口改为右下角展开 */
+.map-filter-toggle {
+  position: fixed;
+  right: 268px;
+  bottom: 32px;
+  z-index: 201;
+  min-width: 154px;
+  height: 76px;
+  padding: 0 20px 0 16px;
+  border: 1px solid rgba(255, 248, 231, 0.34);
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(255, 255, 255, 0.22) 0%,
+      transparent 44%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(183, 108, 58, 0.94) 0%,
+      rgba(204, 137, 77, 0.97) 48%,
+      rgba(118, 78, 45, 0.94) 100%
+    );
+  box-shadow: 0 18px 40px rgba(72, 41, 15, 0.28);
+  color: #fffaf1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+.map-filter-toggle:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 44px rgba(72, 41, 15, 0.34);
+}
+
+.map-filter-toggle.active {
+  border-color: rgba(255, 242, 208, 0.72);
+  box-shadow: 0 24px 52px rgba(72, 41, 15, 0.38);
+}
+
+.map-filter-toggle.dark {
+  border-color: rgba(194, 214, 255, 0.18);
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(255, 255, 255, 0.16) 0%,
+      transparent 44%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(28, 34, 63, 0.96) 0%,
+      rgba(40, 56, 96, 0.96) 48%,
+      rgba(16, 22, 44, 0.98) 100%
+    );
+  box-shadow: 0 18px 40px rgba(5, 8, 20, 0.42);
+}
+
+.map-filter-toggle.dark:hover {
+  box-shadow: 0 22px 44px rgba(5, 8, 20, 0.48);
+}
+
+.map-filter-toggle.dark.active {
+  border-color: rgba(226, 238, 255, 0.56);
+  box-shadow: 0 24px 52px rgba(5, 8, 20, 0.54);
+}
+
+.map-filter-toggle__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.map-filter-toggle__text {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .map-filter-toggle {
+    right: 14px;
+    bottom: 116px;
+    min-width: 148px;
+  }
 }
 </style>
