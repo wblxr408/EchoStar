@@ -370,6 +370,13 @@ async function testClusterData() {
     console.log(`[INFO] cluster类型: ${clusterItems.length} 个, point类型: ${pointItems.length} 个`);
     if (clusterItems.length > 0) {
       console.log(`[INFO] 聚合成功！cluster包含 ${clusterItems[0].count} 个故事`);
+      assert(typeof clusterItems[0].geohash === 'string', 'cluster 返回 geohash');
+      assert(Array.isArray(clusterItems[0].pointIds), 'cluster 返回 pointIds');
+      assert(clusterItems[0].pointIds.length >= 2, 'cluster.pointIds 至少包含 2 个故事');
+    }
+    if (pointItems.length > 0) {
+      assert(typeof pointItems[0].geohash === 'string', 'point 返回 geohash');
+      assert(Array.isArray(pointItems[0].pointIds), 'point 返回 pointIds');
     }
   }
 

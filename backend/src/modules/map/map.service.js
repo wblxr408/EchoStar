@@ -3,7 +3,7 @@ import { User } from '../auth/auth.model.js';
 import { sequelize } from '../../config/database.js';
 import { Op } from 'sequelize';
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
-import { clusterPoints } from './cluster.util.js';
+import { clusterPoints, getGeohashPrecision } from './cluster.util.js';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
 
 // ===================== 常量配置 =====================
@@ -250,16 +250,9 @@ export const MapService = {
     return stories.map(MapServiceUtil.formatStory).filter(Boolean);
   },
 
-   // ===================== 优化：根据 zoom 动态计算聚合网格大小 =====================
-  getDynamicGridSize(zoom) {
-    const z = zoom ?? 10;
-    if (z <= 5) return 15000;
-    if (z <= 7) return 8000;
-    if (z <= 9) return 3000;
-    if (z <= 11) return 1500;
-    if (z <= 13) return 800;
-    if (z <= 14) return 300;
-    return 150;
+   // ===================== 优化：根据 zoom 动态计算 GEOhash 精度 =====================
+  getGeohashPrecision(zoom) {
+    return getGeohashPrecision(zoom);
   },
 
   async getClusterData(bounds, zoom) {
@@ -282,8 +275,7 @@ export const MapService = {
       attributes: ['id', 'location', 'emotionTag', 'isTimeCapsule', 'unlockAt', 'fontFamily', 'fontEffect']
     });
 
-    // 🔥 传入动态计算的网格大小（根据 zoom 级别）
-    const gridSize = this.getDynamicGridSize(zoom);
+    const precision = this.getGeohashPrecision(zoom);
     const points = stories.map(s => {
       const { lat, lng } = parsePoint(s.location);
       const isLocked = s.isTimeCapsule && (!s.unlockAt || new Date(s.unlockAt) > new Date());
@@ -301,8 +293,8 @@ export const MapService = {
       };
     });
 
-    console.log(`[Cluster] zoom=${zoom}, gridSize=${gridSize}m, points=${points.length}`);
-    return clusterPoints(points, gridSize);
+    console.log(`[Cluster] zoom=${zoom}, geohashPrecision=${precision}, points=${points.length}`);
+    return clusterPoints(points, { zoom, precision });
   },
 
   formatStory: MapServiceUtil.formatStory

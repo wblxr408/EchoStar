@@ -17,22 +17,48 @@ const RECOMMENDATION = {
   RECENT_LOCAL_LIMIT: 140,
   PREFERENCE_RECALL_LIMIT: 120,
   AUTHOR_RECALL_LIMIT: 60,
+  COLLABORATIVE_RECALL_LIMIT: 90,
+  UNDEREXPOSED_RECALL_LIMIT: 100,
   TRENDING_RECALL_LIMIT: 120,
   ADMIN_RECALL_LIMIT: 50,
   FALLBACK_RECALL_LIMIT: 120,
   TEMPORAL_HALF_LIFE_DAYS: 6,
+  TRENDING_TIME_WINDOW_DAYS: 7,
   SPATIAL_DECAY_KM: 35,
   MAX_RERANK_SCAN: 80,
+  CURATED_LIMIT_TOP10: 2,
+  CURATED_LIMIT_TOP20: 4,
+  MMR_LAMBDA: 0.74,
+  BANDIT_EPSILON: 0.12,
   WEIGHTS: {
-    spatial: 0.22,
-    emotion: 0.22,
-    engagement: 0.18,
-    freshness: 0.14,
-    author: 0.08,
-    novelty: 0.06,
-    exploration: 0.06,
-    curation: 0.04
+    spatial: 0.28,
+    emotion: 0.18,
+    engagement: 0.10,
+    freshness: 0.18,
+    author: 0.06,
+    novelty: 0.10,
+    exploration: 0.07,
+    curation: 0.03
   }
+};
+
+const RECALL_BUCKETS = {
+  LOCAL_FRESH: 'local_fresh',
+  PREFERENCE_MATCH: 'preference_match',
+  COLLABORATIVE_FILTERING: 'preference_match',
+  UNDEREXPOSED_QUALITY: 'underexposed_quality',
+  TRENDING: 'trending',
+  ADMIN_CURATED: 'admin_curated',
+  FALLBACK: 'fallback'
+};
+
+const REASON_TAG_META = {
+  nearby_fresh: { label: '附近新鲜', tone: 'blue' },
+  emotion_match: { label: '情绪匹配', tone: 'amber' },
+  low_exposure: { label: '低曝光发现', tone: 'green' },
+  trending_now: { label: '正在热门', tone: 'red' },
+  admin_pick: { label: '人工精选', tone: 'gold' },
+  exploration_pick: { label: '探索推荐', tone: 'green' }
 };
 
 const STORY_ATTRIBUTES = [
@@ -108,6 +134,140 @@ function buildGridKey(story) {
   return `${Math.round(lat * 30)}_${Math.round(lng * 30)}`;
 }
 
+function formatReasonTag(code) {
+  const meta = REASON_TAG_META[code];
+  if (!meta) return null;
+  return {
+    code,
+    label: meta.label,
+    tone: meta.tone
+  };
+}
+
+function buildReasonTags(item) {
+  const tags = [];
+  const seen = new Set();
+
+  const pushTag = (code) => {
+    if (!code || seen.has(code)) return;
+    const formatted = formatReasonTag(code);
+    if (!formatted) return;
+    seen.add(code);
+    tags.push(formatted);
+  };
+
+  switch (item.bucket) {
+    case RECALL_BUCKETS.LOCAL_FRESH:
+      pushTag('nearby_fresh');
+      break;
+    case RECALL_BUCKETS.PREFERENCE_MATCH:
+      pushTag('emotion_match');
+      break;
+    case RECALL_BUCKETS.UNDEREXPOSED_QUALITY:
+      pushTag('low_exposure');
+      break;
+    case RECALL_BUCKETS.TRENDING:
+      pushTag('trending_now');
+      break;
+    case RECALL_BUCKETS.ADMIN_CURATED:
+      pushTag('admin_pick');
+      break;
+    default:
+      break;
+  }
+
+  if (item.bucket !== RECALL_BUCKETS.LOCAL_FRESH && item.spatial >= 0.75) {
+    pushTag('nearby_fresh');
+  }
+  if (item.bucket !== RECALL_BUCKETS.PREFERENCE_MATCH && item.emotion >= 0.78) {
+    pushTag('emotion_match');
+  }
+  if (item.bucket !== RECALL_BUCKETS.UNDEREXPOSED_QUALITY && item.exploration >= 0.7) {
+    pushTag('low_exposure');
+  }
+  if (item.bucket !== RECALL_BUCKETS.TRENDING && item.engagement >= 0.72) {
+    pushTag('trending_now');
+  }
+  if (item.story.isRecommended && item.bucket !== RECALL_BUCKETS.ADMIN_CURATED) {
+    pushTag('admin_pick');
+  }
+  if (item.banditExplored) {
+    pushTag('exploration_pick');
+  }
+
+  if (tags.length === 0) {
+    const fallbackCode = item.spatial >= item.engagement
+      ? 'nearby_fresh'
+      : 'trending_now';
+    pushTag(fallbackCode);
+  }
+
+  return tags.slice(0, 3);
+}
+
+function buildPrimaryReason(item) {
+  switch (item.bucket) {
+    case RECALL_BUCKETS.LOCAL_FRESH:
+      return item.distanceMeters != null
+        ? `你附近 ${Math.round(item.distanceMeters)} 米内的新鲜内容`
+        : '你附近刚发布的新鲜内容';
+    case RECALL_BUCKETS.PREFERENCE_MATCH:
+      return '与你近期偏好的情绪内容更匹配';
+    case RECALL_BUCKETS.UNDEREXPOSED_QUALITY:
+      return '低曝光但值得被发现的优质内容';
+    case RECALL_BUCKETS.TRENDING:
+      return '近期互动热度较高的热门内容';
+    case RECALL_BUCKETS.ADMIN_CURATED:
+      return '管理员精选的优质内容';
+    default:
+      return '为你综合排序的推荐内容';
+  }
+}
+
+function buildTimeWindow(item) {
+  if (item.bucket !== RECALL_BUCKETS.TRENDING) {
+    return null;
+  }
+
+  return {
+    unit: 'day',
+    value: RECOMMENDATION.TRENDING_TIME_WINDOW_DAYS
+  };
+}
+
+function computeItemSimilarity(left, right) {
+  if (!left || !right) return 0;
+  let similarity = 0;
+
+  if (left.story.userId && right.story.userId && String(left.story.userId) === String(right.story.userId)) {
+    similarity += 0.35;
+  }
+  if (left.story.emotionTag && right.story.emotionTag && left.story.emotionTag === right.story.emotionTag) {
+    similarity += 0.3;
+  }
+  if (left.gridKey && right.gridKey && left.gridKey === right.gridKey) {
+    similarity += 0.2;
+  }
+
+  const textA = String(left.story.content || '');
+  const textB = String(right.story.content || '');
+  if (textA && textB && (textA.includes(textB.slice(0, 12)) || textB.includes(textA.slice(0, 12)))) {
+    similarity += 0.15;
+  }
+
+  return Math.min(1, similarity);
+}
+
+function applyBanditExploration(item, options = {}) {
+  const epsilon = options.epsilon ?? RECOMMENDATION.BANDIT_EPSILON;
+  const shouldExplore = Math.random() < epsilon;
+  const exploreBoost = shouldExplore ? (0.06 + item.exploration * 0.08) : 0;
+  return {
+    shouldExplore,
+    banditBoost: exploreBoost
+  };
+}
+
 async function getUserInteractionProfile(userId, limit = 80) {
   if (!userId) {
     return {
@@ -173,6 +333,102 @@ async function getUserInteractionProfile(userId, limit = 80) {
     totalEmotionInteractions: Object.values(emotionCounts).reduce((sum, value) => sum + value, 0),
     totalAuthorInteractions: Object.values(authorCounts).reduce((sum, value) => sum + value, 0)
   };
+}
+
+async function fetchCollaborativeStories(options = {}) {
+  const { userId, moodFilter, limit = RECOMMENDATION.COLLABORATIVE_RECALL_LIMIT } = options;
+  if (!userId) {
+    return [];
+  }
+
+  const likedRows = await Like.findAll({
+    where: { userId },
+    attributes: [['story_id', 'storyId']],
+    raw: true,
+    limit: 100
+  });
+
+  const baseStoryIds = likedRows
+    .map((row) => normalizeStoryId(row.storyId))
+    .filter(Boolean);
+
+  if (baseStoryIds.length === 0) {
+    return [];
+  }
+
+  const peerLikes = await Like.findAll({
+    where: {
+      userId: { [Op.ne]: userId },
+      story_id: { [Op.in]: baseStoryIds }
+    },
+    attributes: ['userId'],
+    raw: true
+  });
+
+  const peerUserIds = [...new Set(peerLikes.map((row) => row.userId).filter(Boolean))];
+  if (peerUserIds.length === 0) {
+    return [];
+  }
+
+  const peerStoryLikes = await Like.findAll({
+    where: {
+      userId: { [Op.in]: peerUserIds },
+      story_id: { [Op.notIn]: baseStoryIds }
+    },
+    attributes: [
+      ['story_id', 'storyId'],
+      [sequelize.fn('COUNT', sequelize.col('story_id')), 'score']
+    ],
+    group: ['story_id'],
+    order: [[sequelize.literal('score'), 'DESC']],
+    raw: true,
+    limit
+  });
+
+  const candidateStoryIds = peerStoryLikes
+    .map((row) => normalizeStoryId(row.storyId))
+    .filter(Boolean);
+
+  if (candidateStoryIds.length === 0) {
+    return [];
+  }
+
+  const where = {
+    id: { [Op.in]: candidateStoryIds },
+    visibility: 'public',
+    location: { [Op.not]: null },
+    [Op.and]: [getVisibilityTimeCondition(), UNLOCKED_CONDITION]
+  };
+
+  if (moodFilter) {
+    where.emotionTag = moodFilter;
+  }
+
+  const stories = await Story.findAll({
+    where,
+    attributes: STORY_ATTRIBUTES,
+    include: [{
+      model: User,
+      as: 'author',
+      attributes: ['id', 'username', 'avatarUrl', 'vip', 'status']
+    }]
+  });
+
+  const scoreMap = peerStoryLikes.reduce((acc, row) => {
+    acc[normalizeStoryId(row.storyId)] = Number(row.score || 0);
+    return acc;
+  }, {});
+
+  return stories
+    .map((story) => {
+      const plain = story.get({ plain: true });
+      plain.id = normalizeStoryId(plain.id);
+      plain._coords = parsePoint(story.location);
+      plain._collabScore = scoreMap[plain.id] || 0;
+      return plain;
+    })
+    .sort((a, b) => (b._collabScore || 0) - (a._collabScore || 0))
+    .slice(0, limit);
 }
 
 function buildBaseWhere(options = {}) {
@@ -277,6 +533,47 @@ async function fetchStoriesByRecall(options = {}) {
   });
 }
 
+async function fetchUnderexposedStories(options = {}) {
+  const {
+    lat,
+    lng,
+    moodFilter,
+    excludeStoryIds,
+    limit = RECOMMENDATION.UNDEREXPOSED_RECALL_LIMIT
+  } = options;
+
+  const { where, replacements } = buildBaseWhere({
+    lat,
+    lng,
+    radius: Number.isFinite(lat) && Number.isFinite(lng) ? RECOMMENDATION.LOCAL_RECALL_RADIUS : undefined,
+    moodFilter,
+    excludeStoryIds
+  });
+
+  const stories = await Story.findAll({
+    where,
+    replacements,
+    attributes: STORY_ATTRIBUTES,
+    include: [{
+      model: User,
+      as: 'author',
+      attributes: ['id', 'username', 'avatarUrl', 'vip', 'status']
+    }],
+    order: [
+      ['createdAt', 'DESC'],
+      ['viewCount', 'ASC']
+    ],
+    limit
+  });
+
+  return stories.map((story) => {
+    const plain = story.get({ plain: true });
+    plain.id = normalizeStoryId(plain.id);
+    plain._coords = parsePoint(story.location);
+    return plain;
+  });
+}
+
 function mergeCandidateStories(candidateGroups = []) {
   const merged = [];
   const seen = new Set();
@@ -294,6 +591,13 @@ function mergeCandidateStories(candidateGroups = []) {
   }
 
   return merged;
+}
+
+function assignBucketToStory(story, bucket) {
+  return {
+    ...story,
+    _bucket: story._bucket || bucket
+  };
 }
 
 async function recallCandidateStories(options = {}) {
@@ -315,19 +619,19 @@ async function recallCandidateStories(options = {}) {
           moodFilter,
           limit: RECOMMENDATION.RECENT_LOCAL_LIMIT,
           order: [['createdAt', 'DESC']]
-        })
+        }).then((stories) => stories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.LOCAL_FRESH)))
       : fetchStoriesByRecall({
           moodFilter,
           limit: RECOMMENDATION.RECENT_LOCAL_LIMIT,
           order: [['createdAt', 'DESC']]
-        }),
+        }).then((stories) => stories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.LOCAL_FRESH))),
     moodFilter || preferredEmotionTags.length > 0
       ? fetchStoriesByRecall({
           moodFilter,
           emotionTags: preferredEmotionTags,
           limit: RECOMMENDATION.PREFERENCE_RECALL_LIMIT,
           order: [['createdAt', 'DESC']]
-        })
+        }).then((stories) => stories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.PREFERENCE_MATCH)))
       : Promise.resolve([]),
     preferredAuthorIds.length > 0
       ? fetchStoriesByRecall({
@@ -335,8 +639,19 @@ async function recallCandidateStories(options = {}) {
           authorIds: preferredAuthorIds,
           limit: RECOMMENDATION.AUTHOR_RECALL_LIMIT,
           order: [['createdAt', 'DESC']]
-        })
+        }).then((stories) => stories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.PREFERENCE_MATCH)))
       : Promise.resolve([]),
+    fetchCollaborativeStories({
+      userId,
+      moodFilter,
+      limit: RECOMMENDATION.COLLABORATIVE_RECALL_LIMIT
+    }).then((stories) => stories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.COLLABORATIVE_FILTERING))),
+    fetchUnderexposedStories({
+      lat,
+      lng,
+      moodFilter,
+      limit: RECOMMENDATION.UNDEREXPOSED_RECALL_LIMIT
+    }).then((stories) => stories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.UNDEREXPOSED_QUALITY))),
     fetchStoriesByRecall({
       moodFilter,
       limit: RECOMMENDATION.TRENDING_RECALL_LIMIT,
@@ -345,13 +660,13 @@ async function recallCandidateStories(options = {}) {
         ['viewCount', 'DESC'],
         ['createdAt', 'DESC']
       ]
-    }),
+    }).then((stories) => stories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.TRENDING))),
     fetchStoriesByRecall({
       moodFilter,
       adminOnly: true,
       limit: RECOMMENDATION.ADMIN_RECALL_LIMIT,
       order: [['createdAt', 'DESC']]
-    })
+    }).then((stories) => stories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.ADMIN_CURATED)))
   ];
 
   const candidateGroups = await Promise.all(recallTasks);
@@ -365,7 +680,8 @@ async function recallCandidateStories(options = {}) {
       order: [['createdAt', 'DESC']]
     });
 
-    candidates = mergeCandidateStories([...candidateGroups, fallbackStories]);
+    const fallbackTagged = fallbackStories.map((story) => assignBucketToStory(story, RECALL_BUCKETS.FALLBACK));
+    candidates = mergeCandidateStories([...candidateGroups, fallbackTagged]);
   }
 
   return { candidates, profile };
@@ -438,6 +754,15 @@ function computeSpatialScore(story, userLat, userLng) {
   const { lat, lng } = story._coords || parsePoint(story.location);
   const distKm = haversineKm(userLat, userLng, lat, lng);
   return Math.exp(-distKm / RECOMMENDATION.SPATIAL_DECAY_KM);
+}
+
+function computeDistanceMeters(story, userLat, userLng) {
+  if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+    return null;
+  }
+
+  const { lat, lng } = story._coords || parsePoint(story.location);
+  return Math.round(haversineKm(userLat, userLng, lat, lng) * 1000);
 }
 
 function computeFreshnessScore(story) {
@@ -564,6 +889,9 @@ function scoreCandidates(stories, options = {}) {
       novelty,
       exploration,
       curation,
+      bucket: story._bucket || RECALL_BUCKETS.FALLBACK,
+      distanceMeters: computeDistanceMeters(story, userLat, userLng),
+      metrics: engagementInputs,
       gridKey: buildGridKey(story)
     };
   }).sort((a, b) => b.total - a.total);
@@ -576,6 +904,7 @@ function rerankStories(scoredStories, options = {}) {
   const authorCounts = {};
   const emotionCounts = {};
   const gridCounts = {};
+  let curatedCount = 0;
 
   while (remaining.length > 0) {
     const scanLimit = Math.min(remaining.length, RECOMMENDATION.MAX_RERANK_SCAN);
@@ -589,12 +918,24 @@ function rerankStories(scoredStories, options = {}) {
       const authorPenalty = (authorCounts[authorId] || 0) * 0.1;
       const emotionPenalty = moodFilter ? 0 : (emotionCounts[emotionTag] || 0) * 0.05;
       const gridPenalty = (gridCounts[item.gridKey] || 0) * 0.07;
+      const diversityPenalty = selected.length === 0
+        ? 0
+        : Math.max(...selected.map((picked) => computeItemSimilarity(item, picked))) * (1 - RECOMMENDATION.MMR_LAMBDA);
       const explorationBonus = selected.length < 6 ? item.exploration * 0.04 : 0;
-      const rerankScore = item.total - authorPenalty - emotionPenalty - gridPenalty + explorationBonus;
+      const bandit = applyBanditExploration(item);
+      const curatedOverTop10 = selected.length < 10 && curatedCount >= RECOMMENDATION.CURATED_LIMIT_TOP10;
+      const curatedOverTop20 = selected.length < 20 && curatedCount >= RECOMMENDATION.CURATED_LIMIT_TOP20;
+      const curatedPenalty = item.bucket === RECALL_BUCKETS.ADMIN_CURATED && (curatedOverTop10 || curatedOverTop20)
+        ? 100
+        : 0;
+      const rerankScore = item.total - authorPenalty - emotionPenalty - gridPenalty - curatedPenalty - diversityPenalty + explorationBonus + bandit.banditBoost;
 
       if (rerankScore > bestScore) {
         bestScore = rerankScore;
         bestIndex = i;
+        item.banditExplored = bandit.shouldExplore;
+        item.banditBoost = bandit.banditBoost;
+        item.mmrPenalty = diversityPenalty;
       }
     }
 
@@ -607,6 +948,9 @@ function rerankStories(scoredStories, options = {}) {
     authorCounts[authorId] = (authorCounts[authorId] || 0) + 1;
     emotionCounts[emotionTag] = (emotionCounts[emotionTag] || 0) + 1;
     gridCounts[picked.gridKey] = (gridCounts[picked.gridKey] || 0) + 1;
+    if (picked.bucket === RECALL_BUCKETS.ADMIN_CURATED) {
+      curatedCount += 1;
+    }
   }
 
   return selected;
@@ -632,6 +976,32 @@ function weightedRandomPick(items) {
 function formatStoryForResponse(story, options = {}) {
   const { lat, lng } = story._coords || parsePoint(story.location);
   const rawImages = safeParseJSONB(story.images, []);
+  const item = options.rankedItem || null;
+  const metrics = item?.metrics || {};
+  const recommendation = item ? {
+    bucket: item.bucket,
+    reasonTags: buildReasonTags(item),
+    primaryReason: buildPrimaryReason(item),
+    sortModeApplied: options.sortModeApplied || 'recommend',
+    distanceMeters: item.distanceMeters ?? null,
+    isCurated: item.bucket === RECALL_BUCKETS.ADMIN_CURATED || !!story.isRecommended,
+    timeWindow: buildTimeWindow(item),
+    rankTrace: options.includeRankTrace ? {
+      total: Number(item.total.toFixed(4)),
+      rerankScore: Number((item.rerankScore ?? item.total).toFixed(4)),
+      mmrPenalty: Number((item.mmrPenalty ?? 0).toFixed(4)),
+      banditBoost: Number((item.banditBoost ?? 0).toFixed(4)),
+      banditExplored: !!item.banditExplored,
+      spatial: Number(item.spatial.toFixed(4)),
+      emotion: Number(item.emotion.toFixed(4)),
+      engagement: Number(item.engagement.toFixed(4)),
+      freshness: Number(item.freshness.toFixed(4)),
+      author: Number(item.author.toFixed(4)),
+      novelty: Number(item.novelty.toFixed(4)),
+      exploration: Number(item.exploration.toFixed(4)),
+      curation: Number(item.curation.toFixed(4))
+    } : undefined
+  } : null;
 
   return {
     id: normalizeStoryId(story.id),
@@ -651,9 +1021,14 @@ function formatStoryForResponse(story, options = {}) {
     locationName: story.locationName,
     emotionTag: story.emotionTag,
     isRecommended: story.isRecommended,
+    likeCount: metrics.likeCount || 0,
+    favoriteCount: metrics.favoriteCount || 0,
+    commentCount: metrics.commentCount || 0,
+    viewCount: metrics.viewCount || Number(story.viewCount || 0),
     fontFamily: story.fontFamily || null,
     fontEffect: story.fontEffect || null,
-    createdAt: story.createdAt
+    createdAt: story.createdAt,
+    recommendation
   };
 }
 
@@ -694,9 +1069,11 @@ export const RecommendationService = {
     return {
       location: { latitude: storyLat, longitude: storyLng },
       story: formatStoryForResponse(story, {
+        rankedItem: picked,
         lat: Number.isFinite(lat) ? lat : undefined,
         lng: Number.isFinite(lng) ? lng : undefined,
-        moodFilter
+        moodFilter,
+        sortModeApplied: 'recommend'
       })
     };
   },
@@ -713,9 +1090,13 @@ export const RecommendationService = {
     const pageItems = rankedStories.slice(offset, offset + limit);
 
     return {
-      stories: pageItems.map(({ story }) => ({
-        ...formatStoryForResponse(story, { summary }),
-        content: story.content?.length > 100 ? `${story.content.substring(0, 100)}...` : story.content
+      stories: pageItems.map((item) => ({
+        ...formatStoryForResponse(item.story, {
+          summary,
+          rankedItem: item,
+          sortModeApplied: 'recommend'
+        }),
+        content: item.story.content?.length > 100 ? `${item.story.content.substring(0, 100)}...` : item.story.content
       })),
       pagination: {
         total: rankedStories.length,
