@@ -55,8 +55,6 @@
       <section class="hero-section">
         <div class="hero-wrapper">
           <div class="hero">
-            <p class="hero-kicker">Emotions on the map</p>
-
             <h1 ref="logoRef" class="logo">
               <span class="logo-layer logo-layer--base artistic-text" :style="logoBaseStyle">
                 EchoStar
@@ -94,24 +92,42 @@
               <p class="card-copy">
                 EchoStar 是一个把地图、故事和情绪结合在一起的表达空间。用户可以在地点上记录自己的心情、上传图像或文字，让回忆与空间形成连接。
               </p>
-              <ul class="card-list">
-                <li>用地理位置组织情绪内容，让表达更具体。</li>
-                <li>支持图文故事沉淀，适合回忆、分享与发现。</li>
-                <li>首页延续“白昼情绪世界 + 夜空探照”视觉语言，形成品牌记忆。</li>
-              </ul>
+              <div class="card-subitems">
+                <div class="card-subitem">
+                  <h4 class="card-subtitle">地图情绪记录</h4>
+                  <p class="card-subcopy">大家可以选择地点，发布故事、分享情绪，让每一次表达都对应真实发生的场景。</p>
+                </div>
+                <div class="card-subitem">
+                  <h4 class="card-subtitle">附近内容发现</h4>
+                  <p class="card-subcopy">用户可以沿着地图浏览周边内容，发现不同地点留下的故事、照片和即时心情。</p>
+                </div>
+                <div class="card-subitem">
+                  <h4 class="card-subtitle">个人记忆沉淀</h4>
+                  <p class="card-subcopy">把零散的片刻记录成一张可回看的情绪地图，让日常足迹慢慢变成长期记忆。</p>
+                </div>
+              </div>
             </article>
 
             <article class="info-card info-card--accent">
               <p class="card-eyebrow">About Us</p>
               <h3 class="card-title">关于我们</h3>
               <p class="card-copy">
-                我们希望把冷冰冰的地图，变成可以承载情绪、故事和共鸣的公共空间。相比传统的信息定位，EchoStar 更关注地点背后的人和当下的感受。
+                我们是来自东南大学的学生团队。我们希望把冷冰冰的地图变成可以承载情绪、故事和共鸣的公共空间。
               </p>
-              <ul class="card-list">
-                <li>强调真实、轻量、有温度的记录方式。</li>
-                <li>鼓励围绕地点建立更柔和的社区连接。</li>
-                <li>底部 Footer 已为用户协议、隐私政策、联系方式预留展示区域。</li>
-              </ul>
+              <div class="card-subitems">
+                <div class="card-subitem">
+                  <h4 class="card-subtitle">联系我们</h4>
+                  <p class="card-subcopy">如果您有任何问题或者想讨论的，欢迎加入 QQ 群：1063424500</p>
+                </div>
+                <div class="card-subitem">
+                  <h4 class="card-subtitle">问题反馈</h4>
+                  <p class="card-subcopy">您可以在 QQ 群内进行反馈，也可以联系 3226872780@qq.com</p>
+                </div>
+                <div class="card-subitem">
+                  <h4 class="card-subtitle">最后想说</h4>
+                  <p class="card-subcopy">感谢您的使用与支持喵！</p>
+                </div>
+              </div>
             </article>
           </div>
         </div>
@@ -121,7 +137,7 @@
         <div class="footer-shell">
           <div class="footer-brand">
             <span class="footer-logo">EchoStar</span>
-            <p class="footer-copy">让地图不仅记录你去过哪里，也记录你当时的心情。</p>
+            <p class="footer-copy">让地图记录你的轨迹、你的心情。</p>
           </div>
 
           <div class="footer-links">
@@ -241,13 +257,13 @@ function buildMaskedLogoStyle(maskImage, opacity = 1) {
   };
 }
 
-function getLogoMasks() {
-  if (!lensVisible.value || !logoBounds.value) {
+function getElementMasks(bounds) {
+  if (!lensVisible.value || !bounds) {
     return null;
   }
 
-  const localX = lensX.value - logoBounds.value.left;
-  const localY = lensY.value - logoBounds.value.top;
+  const localX = lensX.value - bounds.left;
+  const localY = lensY.value - bounds.top;
   const revealMask = `radial-gradient(ellipse ${lensRadiusX.value}px ${lensRadiusY.value}px at ${localX}px ${localY}px, black 0, black ${lensInnerStop}%, transparent ${lensOuterStop}%)`;
   const hideMask = `radial-gradient(ellipse ${lensRadiusX.value}px ${lensRadiusY.value}px at ${localX}px ${localY}px, transparent 0, transparent ${lensInnerStop}%, black ${lensOuterStop}%)`;
 
@@ -258,7 +274,7 @@ function getLogoMasks() {
 }
 
 const logoBaseStyle = computed(() => {
-  const masks = getLogoMasks();
+  const masks = getElementMasks(logoBounds.value);
 
   if (!masks) {
     return {
@@ -272,7 +288,7 @@ const logoBaseStyle = computed(() => {
 });
 
 const logoInverseStyle = computed(() => {
-  const masks = getLogoMasks();
+  const masks = getElementMasks(logoBounds.value);
 
   if (!masks) {
     return {
@@ -285,18 +301,22 @@ const logoInverseStyle = computed(() => {
   return buildMaskedLogoStyle(masks.revealMask, 1);
 });
 
-function updateLogoBounds() {
-  if (!logoRef.value) {
+function updateElementBounds(elementRef, boundsRef) {
+  if (!elementRef.value) {
     return;
   }
 
-  const rect = logoRef.value.getBoundingClientRect();
-  logoBounds.value = {
+  const rect = elementRef.value.getBoundingClientRect();
+  boundsRef.value = {
     left: rect.left,
     top: rect.top,
     width: rect.width,
     height: rect.height,
   };
+}
+
+function updateLogoBounds() {
+  updateElementBounds(logoRef, logoBounds);
 }
 
 function seedPointer(event) {
@@ -633,7 +653,6 @@ onBeforeUnmount(() => {
   gap: 0;
 }
 
-.hero-kicker,
 .section-eyebrow,
 .card-eyebrow {
   margin: 0;
@@ -641,11 +660,6 @@ onBeforeUnmount(() => {
   font-weight: 700;
   letter-spacing: 0.24em;
   text-transform: uppercase;
-}
-
-.hero-kicker {
-  color: rgba(255, 247, 229, 0.92);
-  margin-bottom: 20px;
 }
 
 .logo {
@@ -725,7 +739,6 @@ onBeforeUnmount(() => {
 
 .btn-primary {
   background: rgba(255, 255, 255, 0.16);
-  color: #ffffff;
   border: 2px solid rgba(255, 255, 255, 0.42);
 }
 
@@ -755,7 +768,6 @@ onBeforeUnmount(() => {
   margin: 28px 0 0;
   font-size: 14px;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.72);
 }
 
 .section-shell {
@@ -804,12 +816,36 @@ onBeforeUnmount(() => {
   -webkit-backdrop-filter: blur(18px);
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 24px 40px rgba(3, 7, 16, 0.24);
+  transition:
+    transform 0.24s ease,
+    box-shadow 0.24s ease,
+    border-color 0.24s ease,
+    background 0.24s ease,
+    filter 0.24s ease;
 }
 
 .info-card--accent {
   background:
     linear-gradient(180deg, rgba(255, 244, 216, 0.18), rgba(255, 255, 255, 0.07)),
     rgba(13, 20, 40, 0.34);
+}
+
+.info-card:hover,
+.info-card:focus-within {
+  transform: none;
+  filter: none;
+  border-color: rgba(117, 73, 20, 0.3);
+  background:
+    linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(245, 230, 205, 0.94)),
+    rgba(248, 239, 223, 0.96);
+  box-shadow: 0 30px 54px rgba(84, 55, 18, 0.24);
+}
+
+.info-card--accent:hover,
+.info-card--accent:focus-within {
+  background:
+    linear-gradient(180deg, rgba(255, 247, 230, 0.98), rgba(239, 219, 186, 0.95)),
+    rgba(244, 230, 204, 0.96);
 }
 
 .card-title {
@@ -820,15 +856,99 @@ onBeforeUnmount(() => {
 
 .card-copy {
   margin: 0 0 22px;
+  min-height: 5.4em;
   font-size: 16px;
   color: rgba(255, 255, 255, 0.88);
+  transition: color 0.24s ease;
 }
 
-.card-list {
+.card-section-label {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 239, 205, 0.82);
+}
+
+.card-subitems {
+  display: grid;
+  gap: 12px;
+}
+
+.card-subitem {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  transition:
+    background 0.24s ease,
+    border-color 0.24s ease,
+    box-shadow 0.24s ease;
+}
+
+.info-card:hover .card-subitem,
+.info-card:focus-within .card-subitem {
+  background: rgba(92, 57, 17, 0.08);
+  border-color: rgba(117, 73, 20, 0.18);
+  box-shadow: 0 10px 18px rgba(84, 55, 18, 0.12);
+}
+
+.card-subtitle {
   margin: 0;
-  padding-left: 20px;
-  color: rgba(255, 255, 255, 0.8);
-  line-height: 1.8;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff6e2;
+  transition: color 0.24s ease;
+}
+
+.card-subcopy {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.76);
+  line-height: 1.65;
+  transition: color 0.24s ease;
+}
+
+.info-card:hover .card-title,
+.info-card:hover .card-eyebrow,
+.info-card:hover .card-section-label,
+.info-card:hover .card-subtitle,
+.info-card:focus-within .card-title,
+.info-card:focus-within .card-eyebrow,
+.info-card:focus-within .card-section-label,
+.info-card:focus-within .card-subtitle {
+  color: #3c240d;
+}
+
+.info-card:hover .card-copy,
+.info-card:hover .card-subcopy,
+.info-card:focus-within .card-copy,
+.info-card:focus-within .card-subcopy {
+  color: rgba(52, 31, 10, 0.88);
+}
+
+.info-card:hover .card-section-label--ghost,
+.info-card:focus-within .card-section-label--ghost {
+  visibility: hidden;
+}
+
+.card-placeholder {
+  display: grid;
+  gap: 12px;
+}
+
+.card-placeholder--legacy {
+  display: none;
+}
+
+.card-placeholder-line {
+  margin: 0;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.58);
+  line-height: 1.5;
 }
 
 .page-footer {
@@ -935,6 +1055,10 @@ onBeforeUnmount(() => {
     font-size: 16px;
   }
 
+  .card-copy {
+    min-height: auto;
+  }
+
   .info-grid {
     grid-template-columns: 1fr;
   }
@@ -980,7 +1104,8 @@ onBeforeUnmount(() => {
   .hero-description,
   .hero-hint,
   .card-copy,
-  .card-list,
+  .card-subcopy,
+  .card-placeholder-line,
   .footer-copy {
     font-size: 15px;
   }

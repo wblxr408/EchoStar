@@ -1,5 +1,6 @@
 <template>
-  <div class="app-toast-layer">
+  <Teleport to="body">
+    <div class="app-toast-layer">
     <TransitionGroup name="toast-pop">
       <div
         v-for="toast in toasts"
@@ -71,7 +72,8 @@
         </div>
       </div>
     </Transition>
-  </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -183,7 +185,7 @@ const iconMap = {
   right: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 99999;
+  z-index: 130000;
   display: flex;
   flex-direction: column;
   align-items: center;
