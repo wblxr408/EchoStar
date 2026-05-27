@@ -129,8 +129,6 @@ export function clusterPoints(points, options = {}) {
         ...(p.isTimeCapsule !== undefined && { isTimeCapsule: p.isTimeCapsule }),
         ...(p.unlockAt !== undefined && { unlockAt: p.unlockAt }),
         ...(p.isUnlocked !== undefined && { isUnlocked: p.isUnlocked }),
-        ...(p.fontFamily !== undefined && { fontFamily: p.fontFamily }),
-        ...(p.fontEffect !== undefined && { fontEffect: p.fontEffect })
       });
       return;
     }

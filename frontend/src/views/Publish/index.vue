@@ -12,6 +12,15 @@
 
     <div class="publish-form">
       <div class="form-section">
+        <input
+          v-model="form.title"
+          type="text"
+          placeholder="给故事起个标题吧"
+          maxlength="20"
+          class="title-input"
+          @keydown.enter.prevent
+        />
+        <span class="char-count char-count--title">{{ form.title.length }}/20</span>
         <textarea
           v-model="form.content"
           placeholder="写下此刻的故事..."
@@ -51,6 +60,7 @@ import ImageUploader from "../../components/ImageUploader.vue";
 import EmotionSelector from "../../components/EmotionSelector.vue";
 import { uploadImages, validateImage } from "../../utils/upload";
 import { showToast } from "../../composables/useToast.js";
+import { encodeStoryContent } from "../../utils/storyTitle";
 
 const router = useRouter();
 const storyStore = useStoryStore();
@@ -63,6 +73,7 @@ onMounted(() => {
 });
 
 const form = ref({
+  title: "",
   content: "",
   images: [],
   emotion: null,
@@ -71,7 +82,7 @@ const form = ref({
 });
 
 const isValid = computed(() => {
-  return form.value.content.trim().length > 0;
+  return form.value.title.trim().length > 0 && form.value.content.trim().length > 0;
 });
 
 function handleBack(event) {
@@ -111,7 +122,7 @@ async function handleSubmit() {
     }
 
     await storyStore.createStory({
-      content: form.value.content,
+      content: encodeStoryContent(form.value.title, form.value.content),
       images: imageUrls,
       location: {
         lat: mapStore.userLocation.latitude,
@@ -240,6 +251,38 @@ textarea {
   background: rgba(255, 255, 255, 0.05);
   color: #ffffff;
   transition: all 0.3s ease;
+}
+
+.title-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  margin-bottom: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  transition: all 0.3s ease;
+}
+
+.title-input:focus {
+  outline: none;
+  border-color: #667eea;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.title-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 400;
+}
+
+.char-count--title {
+  margin-top: 0;
+  margin-bottom: 4px;
+  font-size: 11px;
 }
 
 textarea:focus {

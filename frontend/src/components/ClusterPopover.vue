@@ -57,7 +57,7 @@
                       </p>
                     </template>
                     <template v-else>
-                      <p class="item-title">{{ story.content || story.preview || '无标题' }}</p>
+                      <p class="item-title">{{ extractTitle(story.content || story.preview || '') || story.preview || '无标题' }}</p>
                     </template>
                     <span class="item-meta">
                       {{ formatTime(story.createdAt) }}
@@ -79,6 +79,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { storyApi } from "@/api/story";
+import { extractTitle, decodeStoryContent } from "@/utils/storyTitle";
 
 const props = defineProps({
   visible: {

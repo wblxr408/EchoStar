@@ -76,7 +76,8 @@
                   <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ item.data.locationName || '' }}</span>
                 </div>
               </div>
-              <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+              <h4 v-if="getItemContentTitle(item.data.content)" class="item-content-title" :style="getItemContentStyle(item.data)">{{ getItemContentTitle(item.data.content) }}</h4>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ getItemContentBody(item.data.content) }}</p>
               <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
               <div class="item-footer">
                 <span class="item-likes">👁 {{ item.data.viewCount ?? 0 }}</span>
@@ -180,7 +181,8 @@
                       <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                     </div>
                   </div>
-                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                  <h4 v-if="getItemContentTitle(item.data.content)" class="item-content-title" :style="getItemContentStyle(item.data)">{{ getItemContentTitle(item.data.content) }}</h4>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ getItemContentBody(item.data.content) }}</p>
                   <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                   <div class="item-footer">
                     <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -262,7 +264,8 @@
                         <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                       </div>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <h4 v-if="getItemContentTitle(item.data.content)" class="item-content-title" :style="getItemContentStyle(item.data)">{{ getItemContentTitle(item.data.content) }}</h4>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ getItemContentBody(item.data.content) }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1064,7 +1067,8 @@
                       <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                     </div>
                   </div>
-                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                  <h4 v-if="getItemContentTitle(item.data.content)" class="item-content-title" :style="getItemContentStyle(item.data)">{{ getItemContentTitle(item.data.content) }}</h4>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ getItemContentBody(item.data.content) }}</p>
                   <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                   <div class="item-footer">
                     <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1336,7 +1340,8 @@
                       </div>
                     </template>
                     <template v-else>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <h4 v-if="getItemContentTitle(item.data.content)" class="item-content-title" :style="getItemContentStyle(item.data)">{{ getItemContentTitle(item.data.content) }}</h4>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ getItemContentBody(item.data.content) }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     </template>
                     <div class="item-footer">
@@ -1377,7 +1382,8 @@
                       </div>
                       <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(item.data)"><span>❌</span></button>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <h4 v-if="getItemContentTitle(item.data.content)" class="item-content-title" :style="getItemContentStyle(item.data)">{{ getItemContentTitle(item.data.content) }}</h4>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ getItemContentBody(item.data.content) }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1422,7 +1428,8 @@
                         @click.stop="handleToggleFavoriteFromList(item.data)"
                       ><span>{{ item.data.isFavorited !== false ? "❌" : "✨" }}</span></button>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <h4 v-if="getItemContentTitle(item.data.content)" class="item-content-title" :style="getItemContentStyle(item.data)">{{ getItemContentTitle(item.data.content) }}</h4>
+                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ getItemContentBody(item.data.content) }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1784,6 +1791,15 @@ function getItemContentStyle(storyData) {
   if (!ff && !fe) return {};
   return getFontStyle(ff, fe);
 }
+
+function getItemContentTitle(content) {
+  const decoded = decodeStoryContent(content);
+  return decoded.title || '';
+}
+
+function getItemContentBody(content) {
+  return decodeStoryContent(content).body;
+}
 import CommentSettings from "../../components/CommentSettings.vue";
 import VisualCustomizer from "../../components/VisualCustomizer.vue";
 import PolishStory from "../../components/PolishStory.vue";
@@ -1793,6 +1809,7 @@ import LoginModal from "../Home/components/LoginModal.vue";
 import { useVipStore } from "../../stores/vip";
 import { formatRelativeTime } from "../../utils/time";
 import { getEmotionEmoji } from "../../utils/emotion";
+import { decodeStoryContent } from '../../utils/storyTitle';
 import { getAnnouncementTypeIcon } from "../../utils/announcement";
 import { searchPoisWithContext } from "../../utils/poiSearch";
 import { REPORT_TYPES } from "../../utils/report";
@@ -2383,6 +2400,17 @@ const WALL_INITIAL_LIMIT = 18; // 初始加载量（6行×3列）
 const WALL_PAGE_SIZE = 12; // 每次加载更多
 const WALL_MAX_CACHE = 500; // 单标签最大缓存条数
 
+/** 对故事列表按 id 去重，保留首次出现的条目 */
+function dedupeStories(stories) {
+  const seen = new Set();
+  return stories.filter((s) => {
+    if (!s?.id) return false;
+    if (seen.has(s.id)) return false;
+    seen.add(s.id);
+    return true;
+  });
+}
+
 function createWallTabState() {
   return {
     items: [], // 缓存的 story 列表
@@ -2441,9 +2469,11 @@ async function loadWallFeatured() {
       summary: true,
     });
     const data = res?.data ?? res;
-    const stories = (data?.stories ?? [])
-      .map((s) => normalizeStoryForMap(s))
-      .filter(Boolean);
+    const stories = dedupeStories(
+      (data?.stories ?? [])
+        .map((s) => normalizeStoryForMap(s))
+        .filter(Boolean),
+    );
     tab.items = stories;
     tab.page = 1;
     tab.totalPages = data?.pagination?.totalPages ?? 1;
@@ -2475,9 +2505,11 @@ async function loadWallRecommend(lat, lng) {
     console.log('[wall-recommend] 解析data:', JSON.stringify(data).substring(0, 500));
     const rawList = data?.stories ?? [];
     console.log('[wall-recommend] stories数量:', rawList.length);
-    const stories = rawList
-      .map((s) => normalizeStoryForMap(s))
-      .filter(Boolean);
+    const stories = dedupeStories(
+      rawList
+        .map((s) => normalizeStoryForMap(s))
+        .filter(Boolean),
+    );
     console.log('[wall-recommend] normalize后数量:', stories.length);
     tab.items = stories;
     tab.page = 1;
@@ -2534,7 +2566,7 @@ async function loadWallMore(tabName) {
     }
 
     if (stories.length > 0) {
-      tab.items = [...tab.items, ...stories];
+      tab.items = dedupeStories([...tab.items, ...stories]);
       tab.page = nextPage;
       tab.hasMore = nextPage < tab.totalPages;
     } else {
@@ -13346,6 +13378,14 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
+.item-content-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.4;
+  margin: 0 0 4px 0;
+}
+
 .item-content {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.85);
@@ -14354,6 +14394,7 @@ onUnmounted(() => {
 .user-sub-sidebar:not(.dark) .panel-empty,
 .user-sub-sidebar:not(.dark) .panel-loading-more,
 .user-sub-sidebar:not(.dark) .panel-no-more,
+.user-sub-sidebar:not(.dark) .item-content-title,
 .user-sub-sidebar:not(.dark) .item-content,
 .user-sub-sidebar:not(.dark) .item-footer,
 .user-sub-sidebar:not(.dark) .item-author,
@@ -14482,6 +14523,7 @@ onUnmounted(() => {
 }
 
 .user-sidebar .user-content-list .item-author,
+.user-sidebar .user-content-list .item-content-title,
 .user-sidebar .user-content-list .item-content {
   color: var(--profile-story-card-text);
 }
@@ -14519,6 +14561,7 @@ onUnmounted(() => {
 .user-sub-sidebar.dark .panel-empty,
 .user-sub-sidebar.dark .panel-loading-more,
 .user-sub-sidebar.dark .panel-no-more,
+.user-sub-sidebar.dark .item-content-title,
 .user-sub-sidebar.dark .item-content,
 .user-sub-sidebar.dark .item-footer,
 .user-sub-sidebar.dark .item-author,

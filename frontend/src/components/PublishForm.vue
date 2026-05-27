@@ -79,6 +79,17 @@
         <h3>写下此刻</h3>
       </div>
       <div class="text-editor">
+        <div class="title-input-row">
+          <input
+            v-model="form.title"
+            type="text"
+            placeholder="给故事起个标题吧"
+            maxlength="20"
+            class="title-input"
+            @keydown.enter.prevent
+          />
+          <span class="char-count char-count--title">{{ form.title.length }}/20</span>
+        </div>
         <textarea
           v-model="form.content"
           placeholder="这一刻发生了什么？"
@@ -234,6 +245,7 @@ import FontPicker from './FontPicker.vue';
 import { searchPoisWithContext } from '../utils/poiSearch';
 import { useVipStore } from '../stores/vip';
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+import { encodeStoryContent } from '../utils/storyTitle';
 
 const props = defineProps({
   visible: {
@@ -283,6 +295,7 @@ function readDefaultFontEffectFromCookie() {
 }
 
 const DEFAULT_FORM = () => ({
+  title: '',
   content: '',
   images: [],
   emotion: null,
@@ -947,7 +960,7 @@ function handleSubmit() {
   }
 
   const payload = {
-    content: form.value.content,
+    content: encodeStoryContent(form.value.title, form.value.content),
     images: form.value.images,
     emotion: form.value.emotion,
     isTimeCapsule: form.value.isTimeCapsule,
@@ -1267,6 +1280,43 @@ function handleSubmit() {
 .text-editor {
   position: relative;
   z-index: 1;
+}
+
+.title-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.title-input {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--panel-input);
+  color: var(--panel-strong);
+  font-size: 15px;
+  font-weight: 600;
+  transition: border-color 0.24s ease, box-shadow 0.24s ease, transform 0.24s ease;
+}
+
+.title-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.title-input::placeholder {
+  color: color-mix(in srgb, var(--panel-muted) 76%, transparent);
+  font-weight: 400;
+}
+
+.char-count--title {
+  margin-top: 0;
+  flex-shrink: 0;
+  font-size: 11px;
 }
 
 .text-editor textarea {

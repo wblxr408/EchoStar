@@ -167,7 +167,8 @@ watch(() => props.visible, async (visible) => {
 
   historyLoading.value = true
   try {
-    await vipStore.fetchStatus()
+    // ✅ fetchEconomy 已包含所有数据（VIP状态、情绪币、签到信息等）
+    // 🔧 移除重复调用，只调用一次 fetchEconomy
     await vipStore.fetchEconomy()
   } finally {
     historyLoading.value = false

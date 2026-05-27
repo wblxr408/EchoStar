@@ -65,4 +65,38 @@ export const vipApi = {
   saveCommentBg(commentBg) {
     return api.put('/v1/vip/comment-bg', { commentBg });
   },
+
+  /**
+   * 获取用户字体设置
+   * GET /v1/vip/fonts
+   */
+  getFontSettings() {
+    return api.get('/v1/vip/fonts');
+  },
+
+  /**
+   * 保存/更新用户字体设置
+   * PUT /v1/vip/fonts
+   * Body: { fontFamily: string, fontEffect: string }
+   */
+  saveFontSettings(fontFamily, fontEffect) {
+    return api.put('/v1/vip/fonts', { fontFamily, fontEffect });
+  },
+
+  /**
+   * 获取个人资料背景设置
+   * GET /v1/vip/profile-bg
+   */
+  getProfileBg() {
+    return api.get('/v1/vip/profile-bg');
+  },
+
+  /**
+   * 保存/更新个人资料背景设置
+   * PUT /v1/vip/profile-bg
+   * Body: { profileBg: object }
+   */
+  saveProfileBg(profileBg) {
+    return api.put('/v1/vip/profile-bg', { profileBg });
+  },
 };
