@@ -51,7 +51,7 @@
         </div>
       </div>
 
-      <p v-if="displayImage && story.content" class="swc-content" :style="wallFontStyle">{{ contentPreview }}</p>
+      <p v-if="decoded.title" class="swc-content" :style="wallFontStyle">{{ contentPreview }}</p>
 
       <div class="swc-stats">
         <span>❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
@@ -64,6 +64,7 @@
 <script setup>
 import { computed } from 'vue';
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+import { decodeStoryContent } from '../utils/storyTitle';
 
 injectFontEffectAnimations();
 
@@ -106,8 +107,10 @@ const locationName = computed(
   () => props.story.locationName || props.story.location?.address || '',
 );
 
+const decoded = computed(() => decodeStoryContent(props.story.content || ''));
+
 const contentPreview = computed(() => {
-  const text = props.story.content || '';
+  const text = decoded.value.title || '';
   const maxLen = 40;
   return text.length > maxLen ? text.slice(0, maxLen) + '...' : text;
 });
@@ -120,7 +123,7 @@ const wallFontStyle = computed(() => {
 });
 
 const textContent = computed(() => {
-  const text = props.story.content || '';
+  const text = decoded.value.body || '';
   const maxLen = 80;
   return text.length > maxLen ? text.slice(0, maxLen) + '...' : text;
 });

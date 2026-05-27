@@ -473,6 +473,17 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', updateLogoBounds);
   restorePageScrollLock();
 });
+import { watch } from 'vue';
+
+watch(
+  () => userStore.isLoggedIn,
+  (val) => {
+    if (val) {
+      router.push('/map');
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <style scoped>

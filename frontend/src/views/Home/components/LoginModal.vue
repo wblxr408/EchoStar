@@ -559,7 +559,6 @@ async function handleSubmit() {
 
       setTimeout(() => {
         emit("close");
-        router.push("/map");
       }, 500);
     }
   } catch (error) {

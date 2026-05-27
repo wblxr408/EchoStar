@@ -38,8 +38,9 @@
           </div>
 
           <div class="story-body">
+            <h3 v-if="decodedTitle" class="story-title" :style="storyFontStyle">{{ decodedTitle }}</h3>
             <div class="story-text-card">
-              <p class="story-text" :style="storyFontStyle">{{ story.content }}</p>
+              <p class="story-text" :style="storyFontStyle">{{ decodedBody || story.content }}</p>
             </div>
 
             <div v-if="story.images && story.images.length > 0" class="story-images">
@@ -263,6 +264,7 @@ import { useVipStore } from '../stores/vip';
 import { reportApi } from '../api/report';
 import { showToast } from '../composables/useToast.js';
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+import { decodeStoryContent } from '../utils/storyTitle';
 import FontPicker from './FontPicker.vue';
 
 injectFontEffectAnimations();
@@ -305,6 +307,10 @@ const storyFontStyle = computed(() => {
   if (!ff && !fe) return {};
   return getFontStyle(ff, fe);
 });
+
+const storyDecoded = computed(() => decodeStoryContent(props.story.content || ''));
+const decodedTitle = computed(() => storyDecoded.value.title);
+const decodedBody = computed(() => storyDecoded.value.body);
 
 const isLiked = ref(false);
 const likeCount = ref(0);
@@ -906,6 +912,14 @@ async function submitReport() {
 
 .story-body {
   margin-bottom: 16px;
+}
+
+.story-title {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--story-detail-text);
 }
 
 .story-text-card {

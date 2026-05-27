@@ -119,7 +119,8 @@
                 <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
               </div>
               <div class="story-content">
-                <p class="story-text" :title="story.content">{{ story.content }}</p>
+                <h4 v-if="getItemContentTitle(story.content)" class="story-title">{{ getItemContentTitle(story.content) }}</h4>
+                <p class="story-text">{{ getItemContentBody(story.content) }}</p>
                 <div class="story-meta">
                   <div class="story-tags">
                     <span class="emotion-tag">{{ story.emotionTag || story.emotion }}</span>
@@ -451,7 +452,10 @@
 
           <!-- 故事正文 -->
           <div class="detail-text">
-            <p v-if="storyDetail.content">{{ storyDetail.content }}</p>
+            <template v-if="storyDetail.content">
+              <h4 v-if="getItemContentTitle(storyDetail.content)" class="detail-story-title">{{ getItemContentTitle(storyDetail.content) }}</h4>
+              <p class="detail-story-body">{{ getItemContentBody(storyDetail.content) }}</p>
+            </template>
             <p v-else class="text-locked">🔒 时光胶囊尚未解锁，内容暂不可见</p>
           </div>
 
@@ -659,6 +663,7 @@ import { reportApi } from '@/api/report';
 import { storyApi } from '@/api/story';
 import { mapApi } from '@/api/map';
 import { formatShortTime } from '@/utils/time';
+import { decodeStoryContent } from '@/utils/storyTitle';
 import { showToast, showConfirm, showPrompt } from '../../composables/useToast.js';
 
 const router = useRouter();
@@ -839,6 +844,15 @@ function formatLocation(loc) {
   if (loc?.address) return loc.address;
   if (loc?.lng && loc?.lat) return `${Number(loc.lng).toFixed(4)}, ${Number(loc.lat).toFixed(4)}`;
   return '未知位置';
+}
+
+function getItemContentTitle(content) {
+  const decoded = decodeStoryContent(content);
+  return decoded.title || '';
+}
+
+function getItemContentBody(content) {
+  return decodeStoryContent(content).body;
 }
 
 async function handleRecommendFromDetail(storyId) {
@@ -2069,6 +2083,14 @@ function handleLogout() {
   flex: 1;
 }
 
+.story-title {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #222;
+  line-height: 1.4;
+}
+
 .story-text {
   margin: 0 0 8px 0;
   font-size: 14px;
@@ -2444,6 +2466,19 @@ function handleLogout() {
   border-radius: 10px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.detail-story-title {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #222;
+  line-height: 1.4;
+  text-indent: 1em;
+}
+
+.detail-story-body {
+  margin: 0;
 }
 
 .text-locked {
