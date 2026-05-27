@@ -21,6 +21,7 @@
 import { ref, onMounted, onUnmounted, watch } from "vue";
 import AMapLoader from "@amap/amap-jsapi-loader";
 import { fromEmotionTag, getEmotionEmoji } from "../utils/emotion";
+import { extractTitle } from "../utils/storyTitle";
 
 const props = defineProps({
   stories: {
@@ -1156,7 +1157,7 @@ function createMarker(story) {
       -STORY_MARKER_SIZE / 2,
       -STORY_MARKER_SIZE / 2,
     ),
-    title: (story.content || story.preview || "").substring(0, 50) + "...",
+    title: (extractTitle(story.content || "") || story.preview || "").substring(0, 50) + "...",
     zIndex: story.isTimeCapsule ? 10 : 100,
   });
 

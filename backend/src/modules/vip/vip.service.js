@@ -663,14 +663,21 @@ export const VipService = {
         cost: effectiveCost,
         vipFree: isVipFree
       });
-    }).then(async () => {
-      await clearUserCache(userId);
+
       return {
         itemKey,
         itemName: item.name,
         cost: effectiveCost,
         vipFree: isVipFree
       };
+    }).then(async (result) => {
+      // ✅ 修复：在transaction成功后清除缓存
+      await clearUserCache(userId);
+      return result;
+    }).catch(async (err) => {
+      // ✅ 修复：确保错误时也清除缓存
+      await clearUserCache(userId);
+      throw err;
     });
   },
 
@@ -755,14 +762,106 @@ export const VipService = {
     if (!user) {
       throw new Error('用户不存在');
     }
-    if (!user.vip) {
+
+    // ✅ 修复：同时检查VIP状态和有效期
+    const vipStatus = await this.checkUserVipStatus(userId);
+    if (!vipStatus.isVip) {
       throw new Error('仅VIP用户可设置评论背景');
     }
 
     await user.update({ commentBg });
 
+    await clearUserCache(userId);
+
     return {
       commentBg: user.commentBg
+    };
+  },
+
+  /**
+   * 获取用户字体设置
+   */
+  async getUserFontSettings(userId) {
+    const user = await User.findByPk(userId, {
+      attributes: ['id', 'bioFontFamily', 'bioFontEffect']
+    });
+
+    if (!user) {
+      throw new Error('用户不存在');
+    }
+
+    return {
+      fontFamily: user.bioFontFamily || '',
+      fontEffect: user.bioFontEffect || ''
+    };
+  },
+
+  /**
+   * 保存/更新用户字体设置（仅VIP）
+   */
+  async saveFontSettings(userId, { fontFamily, fontEffect }) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new Error('用户不存在');
+    }
+
+    // ✅ 修复：同时检查VIP状态和有效期
+    const vipStatus = await this.checkUserVipStatus(userId);
+    if (!vipStatus.isVip) {
+      throw new Error('仅VIP用户可设置字体');
+    }
+
+    await user.update({
+      bioFontFamily: fontFamily,
+      bioFontEffect: fontEffect || ''
+    });
+
+    await clearUserCache(userId);
+
+    return {
+      fontFamily: user.bioFontFamily,
+      fontEffect: user.bioFontEffect
+    };
+  },
+
+  /**
+   * 获取个人资料背景设置
+   */
+  async getUserProfileBg(userId) {
+    const user = await User.findByPk(userId, {
+      attributes: ['id', 'profileBg']
+    });
+
+    if (!user) {
+      throw new Error('用户不存在');
+    }
+
+    return {
+      profileBg: user.profileBg || null
+    };
+  },
+
+  /**
+   * 保存/更新个人资料背景设置（仅VIP）
+   */
+  async saveProfileBg(userId, profileBg) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new Error('用户不存在');
+    }
+
+    // ✅ 修复：同时检查VIP状态和有效期
+    const vipStatus = await this.checkUserVipStatus(userId);
+    if (!vipStatus.isVip) {
+      throw new Error('仅VIP用户可设置个人资料背景');
+    }
+
+    await user.update({ profileBg });
+
+    await clearUserCache(userId);
+
+    return {
+      profileBg: user.profileBg
     };
   },
 
