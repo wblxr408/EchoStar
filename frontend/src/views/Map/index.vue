@@ -1586,6 +1586,8 @@
       :start-position="storyStartPosition"
       :direct-open="storyDirectOpen"
       :is-dark="effectiveMapTheme === 'dark'"
+      :next-stop="nextStop"
+      :next-stop-loading="nextStopLoading"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
       @like="toggleStoryLike"
@@ -1597,6 +1599,7 @@
       @view-user-profile="openUserDetail"
       @open-comment-bg="handleOpenCommentBg"
       @open-vip-center="vipCenterFromStory = true; showVipCenter = true"
+      @go-next-stop="goToNextStop"
     />
 
     <div class="msg-trigger-wrapper">
@@ -1872,6 +1875,8 @@ const feedHasMore = computed(
   () => feedPage.value < feedPagination.value.totalPages,
 );
 const randomWalking = ref(false);
+const nextStop = ref(null);
+const nextStopLoading = ref(false);
 const selectedStory = ref(null);
 const storyStartPosition = ref({
   x: window.innerWidth / 2,
@@ -8738,6 +8743,7 @@ function closeStoryModal() {
   storyOpenTimer = null;
   closeStoryReportPanel();
   selectedStory.value = null;
+  nextStop.value = null;
 }
 
 function handleMapMove(event) {
@@ -8965,8 +8971,47 @@ function normalizeRandomWalkResponse(response) {
   return null;
 }
 
+function buildNextStopPreview(story, coords) {
+  if (!story) return null;
+  return {
+    story,
+    coords,
+    locationName: story.locationName || '未知地点',
+    emotionTag: story.emotionTag || '',
+    authorName: story.username || story.author?.username || '匿名用户',
+    authorAvatar: story.avatar || story.author?.avatar || null,
+    thumbnail: Array.isArray(story.images) && story.images.length > 0 ? story.images[0] : null,
+    contentPreview: story.content
+      ? (story.content.length > 60 ? story.content.substring(0, 60) + '...' : story.content)
+      : '',
+    recommendation: story.recommendation || null,
+  };
+}
+
+async function prefetchNextStop() {
+  nextStopLoading.value = true;
+  try {
+    const center =
+      extractCoordinates(mapStore.center) ||
+      extractCoordinates(mapStore.userLocation);
+    const lat = center?.latitude ?? 39.9;
+    const lng = center?.longitude ?? 116.4;
+    const response = await mapApi.randomWalk(lat, lng);
+    const normalized = normalizeRandomWalkResponse(response);
+    if (normalized) {
+      nextStop.value = buildNextStopPreview(normalized.story, normalized.coords);
+    }
+  } catch (error) {
+    console.error("预加载下一站失败:", error);
+    nextStop.value = null;
+  } finally {
+    nextStopLoading.value = false;
+  }
+}
+
 async function handleRandomWalk() {
   randomWalking.value = true;
+  nextStop.value = null;
   try {
     const center =
       extractCoordinates(mapStore.center) ||
@@ -9000,16 +9045,13 @@ async function handleRandomWalk() {
       return;
     }
 
-    const location = {
-      latitude: nextLatitude,
-      longitude: nextLongitude,
-    };
-
     mapStore.updateCenter(nextLatitude, nextLongitude);
     mapStore.updateZoom(15);
     setTimeout(() => {
       openStoryModal(story);
     }, 800);
+
+    void prefetchNextStop();
   } catch (error) {
     console.error("随机漫步失败:", error);
     showToast("随机漫步失败，请重试", "error");
@@ -9017,6 +9059,38 @@ async function handleRandomWalk() {
     randomWalking.value = false;
   }
   isDockExpanded.value = false;
+}
+
+async function goToNextStop() {
+  if (!nextStop.value) return;
+  const ns = nextStop.value;
+  nextStop.value = null;
+  randomWalking.value = true;
+
+  try {
+    const { coords, story } = ns;
+    const nextLatitude = coords.latitude;
+    const nextLongitude = coords.longitude;
+
+    if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
+      showToast("下一站位置信息无效", "error");
+      return;
+    }
+
+    selectedStory.value = null;
+    mapStore.updateCenter(nextLatitude, nextLongitude);
+    mapStore.updateZoom(15);
+    setTimeout(() => {
+      openStoryModal(story);
+    }, 800);
+
+    void prefetchNextStop();
+  } catch (error) {
+    console.error("跳转下一站失败:", error);
+    showToast("跳转下一站失败，请重试", "error");
+  } finally {
+    randomWalking.value = false;
+  }
 }
 
 function handlePreviewImage({ index, images }) {
