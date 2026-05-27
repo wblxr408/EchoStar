@@ -189,16 +189,22 @@
               </div>
               <div class="next-stop-peek__info">
                 <span class="next-stop-peek__label">✦ 下一站</span>
-                <span class="next-stop-peek__author">{{ nextStop.authorName }}</span>
-                <span class="next-stop-peek__location">📍 {{ nextStop.locationName }}</span>
-                <p class="next-stop-peek__text">{{ nextStop.contentPreview }}</p>
+                <div class="next-stop-peek__author-row">
+                  <img v-if="nextStop.authorAvatar" :src="nextStop.authorAvatar" class="next-stop-peek__avatar" />
+                  <span v-else class="next-stop-peek__avatar-fallback">{{ getInitial(nextStop.authorName) }}</span>
+                  <span class="next-stop-peek__author">{{ nextStop.authorName }}</span>
+                </div>
+                <span class="next-stop-peek__location">
+                  📍 {{ nextStop.locationName }}
+                  <span v-if="nextStop.recommendation?.distanceMeters" class="next-stop-peek__distance"> · 距你 {{ Math.round(nextStop.recommendation.distanceMeters) }} 米</span>
+                </span>
+                <p class="next-stop-peek__text">{{ extractTitle(nextStop.story?.content || '') || (extractBody(nextStop.story?.content || '')?.slice(0, 20) || nextStop.contentPreview) }}</p>
               </div>
             </div>
             <div v-if="nextStop.recommendation" class="next-stop-peek__reason">
               <div v-if="nextStop.recommendation.reasonTags && nextStop.recommendation.reasonTags.length > 0" class="next-stop-peek__tags">
                 <span v-for="tag in nextStop.recommendation.reasonTags.slice(0, 3)" :key="tag.code" class="peek-tag" :class="'peek-tag--' + (tag.tone || 'default')">{{ tag.label }}</span>
               </div>
-              <span v-if="nextStop.recommendation.distanceMeters" class="next-stop-peek__distance">📍 距你 {{ Math.round(nextStop.recommendation.distanceMeters) }} 米</span>
             </div>
           </div>
         </Transition>
@@ -297,7 +303,7 @@ import { useVipStore } from '../stores/vip';
 import { reportApi } from '../api/report';
 import { showToast } from '../composables/useToast.js';
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
-import { decodeStoryContent } from '../utils/storyTitle';
+import { decodeStoryContent, extractTitle, extractBody } from '../utils/storyTitle';
 import FontPicker from './FontPicker.vue';
 
 injectFontEffectAnimations();
@@ -1931,7 +1937,9 @@ async function submitReport() {
   position: absolute;
   top: 12px;
   right: -133px;
-  width: 200px;
+  min-width: 180px;
+  max-width: 260px;
+  width: fit-content;
   transform: rotate(-10deg);
   translate: 0 0;
   transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -1958,7 +1966,7 @@ async function submitReport() {
 /* 鼠标右移离开故事卡片 → 下一站卡片沿倾斜方向平移滑出 */
 .peek-trigger:hover ~ .next-stop-peek {
   transform: rotate(-10deg);
-  translate: 34% -22%;
+  translate: calc(133px + 12%) -22%;
   box-shadow:
     0 30px 64px -20px rgba(4, 8, 18, 0.72),
     0 0 0 1px rgba(255, 255, 255, 0.14),
@@ -2030,6 +2038,36 @@ async function submitReport() {
   letter-spacing: 0.5px;
 }
 
+.next-stop-peek__author-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-stop-peek__avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.next-stop-peek__avatar-fallback {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--story-detail-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
 .next-stop-peek__author {
   font-size: 12px;
   font-weight: 600;
@@ -2047,16 +2085,19 @@ async function submitReport() {
   white-space: nowrap;
 }
 
+.next-stop-peek__distance {
+  color: var(--story-detail-muted);
+}
+
 .next-stop-peek__text {
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
   color: var(--story-detail-text);
-  opacity: 0.82;
   margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .next-stop-peek__reason {
@@ -2072,11 +2113,6 @@ async function submitReport() {
   display: flex;
   gap: 5px;
   flex-wrap: wrap;
-}
-
-.next-stop-peek__distance {
-  font-size: 11px;
-  color: var(--story-detail-muted);
 }
 
 .peek-tag {
