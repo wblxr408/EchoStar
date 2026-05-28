@@ -8703,9 +8703,7 @@ async function loadStories() {
     }
 
     const currentBounds = getMapBounds();
-    const shouldUseViewportRadius =
-      isUserMapFilterActive.value ||
-      Number(mapStore.zoom) < CLUSTER_ZOOM_THRESHOLD;
+    const shouldUseViewportRadius = isUserMapFilterActive.value;
     const fetchRadius = shouldUseViewportRadius
       ? getStoryFetchRadiusMeters(center, currentBounds)
       : 5000;
@@ -8807,7 +8805,7 @@ function getStoryFetchRadiusMeters(center, bounds) {
     return 5000;
   }
 
-  return Math.min(Math.max(Math.ceil(Math.max(...distances) * 1.1), 5000), 200000);
+  return Math.min(Math.max(Math.ceil(Math.max(...distances) * 1.1), 5000), 50000);
 }
 
 function padBounds(bounds, paddingRatio = 0.08) {

@@ -42,6 +42,7 @@ function parseMapQueryFilters(query = {}) {
  */
 export const exploreStories = async (req, res, next) => {
   try {
+    const MAX_EXPLORE_RADIUS = 50000;
     const { lat, lng, radius = 1000, page, limit, summary } = req.query;
     const { filters, error: filterError } = parseMapQueryFilters(req.query);
 
@@ -71,10 +72,10 @@ export const exploreStories = async (req, res, next) => {
       });
     }
 
-    if (isNaN(radiusNum) || radiusNum < 10 || radiusNum > 5000) {
+    if (isNaN(radiusNum) || radiusNum < 10 || radiusNum > MAX_EXPLORE_RADIUS) {
       return res.status(400).json({
         code: 4000,
-        message: '半径参数无效，范围应为 10 到 5000 米'
+        message: `半径参数无效，范围应为 10 到 ${MAX_EXPLORE_RADIUS} 米`
       });
     }
 
