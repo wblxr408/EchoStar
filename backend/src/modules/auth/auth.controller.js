@@ -214,6 +214,20 @@ export const getAllUsers = async (req, res, next) => {
 };
 
 /**
+ * 根据用户名模糊搜索用户
+ */
+export const searchUsersByUsername = async (req, res, next) => {
+  try {
+    const { keyword } = req.query;
+    const { page = 1, limit = 20 } = req.query;
+    const result = await AuthService.searchUsersByUsername(keyword, { page: parseInt(page), limit: parseInt(limit) });
+    res.json({ code: 0, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * 获取头像上传凭证
  */
 export const getAvatarUploadToken = async (req, res, next) => {
