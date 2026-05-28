@@ -9,6 +9,7 @@ import { Op } from 'sequelize';
 import { likeCacheUtil } from '../../common/utils/like-cache.util.js';
 import { favoriteCacheUtil } from '../../common/utils/favorite-cache.util.js';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
+import { calculateDistance } from '../../common/utils/geo.js';
 
 function parseStoryLocationValue(locationValue) {
   if (!locationValue) {
@@ -224,7 +225,7 @@ class StoryServiceClass {
    * 查看故事详情（需判断可见性）
    * 职责：调用缓存适配器 + 动态业务逻辑处理 + 数据格式化
    */
-  async getStoryById(storyId, userId) {
+  async getStoryById(storyId, userId, options = {}) {
     // 调用带缓存的纯查询函数
     const rawData = await this.fetchStoryRaw(storyId);
 
@@ -277,6 +278,14 @@ class StoryServiceClass {
     ]);
     const totalViewCount = (story.viewCount || 0) + viewDelta - 1;
 
+    // ======================
+    // 推荐理由标签计算
+    // ======================
+    const recommendationTags = await this._computeRecommendationTags({
+      story, userId, location, likeCount, commentCount,
+      userLng: options.userLng, userLat: options.userLat
+    });
+
     // 格式化返回数据
     return {
       id: normalizeStoryId(story.id),
@@ -297,6 +306,7 @@ class StoryServiceClass {
       visibilityStartTime: story.visibilityStartTime,
       visibilityEndTime: story.visibilityEndTime,
       polishedAt: story.polishedAt || null,
+      recommendationTags,
       author: {
         id: story.userId,
         username: author?.username || '匿名用户',
@@ -304,6 +314,63 @@ class StoryServiceClass {
         vip: author?.vip || 0
       }
     };
+  }
+
+  /**
+   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
+   * 仅供 getStoryById 调用，不对外暴露
+   */
+  async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
+    // 查看自己的故事不展示推荐标签
+    if (userId && userId === story.userId) {
+      return [];
+    }
+
+    const tags = [];
+
+    // 1. 编辑精选
+    if (story.isRecommended) {
+      tags.push({ tag: '编辑精选', type: 'editor_pick' });
+    }
+
+    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
+    if (userId && story.emotionTag) {
+      const recentStories = await Story.findAll({
+        where: { userId, visibility: 'public' },
+        attributes: ['emotionTag'],
+        order: [['createdAt', 'DESC']],
+        limit: 20
+      });
+
+      if (recentStories.length > 0) {
+        const emotionCounts = {};
+        for (const s of recentStories) {
+          if (s.emotionTag) {
+            emotionCounts[s.emotionTag] = (emotionCounts[s.emotionTag] || 0) + 1;
+          }
+        }
+        const topEmotion = Object.entries(emotionCounts)
+          .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+        if (topEmotion === story.emotionTag) {
+          tags.push({ tag: '此刻共鸣', type: 'mood_resonance' });
+        }
+      }
+    }
+
+    // 3. 附近热议：用户在附近 + 故事近期互动热度高
+    if (location && userLng != null && userLat != null) {
+      const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
+      const isNearby = distanceMeters <= 150000; // 150km 内
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isHot = (likeCount + commentCount) >= 5;
+
+      if (isNearby && isRecent && isHot) {
+        tags.push({ tag: '附近热议', type: 'trending_nearby' });
+      }
+    }
+
+    return tags.slice(0, 3);
   }
 
   /**
@@ -435,6 +502,63 @@ class StoryServiceClass {
         totalPages
       }
     };
+  }
+
+  /**
+   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
+   * 仅供 getStoryById 调用，不对外暴露
+   */
+  async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
+    // 查看自己的故事不展示推荐标签
+    if (userId && userId === story.userId) {
+      return [];
+    }
+
+    const tags = [];
+
+    // 1. 编辑精选
+    if (story.isRecommended) {
+      tags.push({ tag: '编辑精选', type: 'editor_pick' });
+    }
+
+    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
+    if (userId && story.emotionTag) {
+      const recentStories = await Story.findAll({
+        where: { userId, visibility: 'public' },
+        attributes: ['emotionTag'],
+        order: [['createdAt', 'DESC']],
+        limit: 20
+      });
+
+      if (recentStories.length > 0) {
+        const emotionCounts = {};
+        for (const s of recentStories) {
+          if (s.emotionTag) {
+            emotionCounts[s.emotionTag] = (emotionCounts[s.emotionTag] || 0) + 1;
+          }
+        }
+        const topEmotion = Object.entries(emotionCounts)
+          .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+        if (topEmotion === story.emotionTag) {
+          tags.push({ tag: '此刻共鸣', type: 'mood_resonance' });
+        }
+      }
+    }
+
+    // 3. 附近热议：用户在附近 + 故事近期互动热度高
+    if (location && userLng != null && userLat != null) {
+      const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
+      const isNearby = distanceMeters <= 150000; // 150km 内
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isHot = (likeCount + commentCount) >= 5;
+
+      if (isNearby && isRecent && isHot) {
+        tags.push({ tag: '附近热议', type: 'trending_nearby' });
+      }
+    }
+
+    return tags.slice(0, 3);
   }
 
   /**
@@ -684,6 +808,63 @@ class StoryServiceClass {
   }
 
   /**
+   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
+   * 仅供 getStoryById 调用，不对外暴露
+   */
+  async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
+    // 查看自己的故事不展示推荐标签
+    if (userId && userId === story.userId) {
+      return [];
+    }
+
+    const tags = [];
+
+    // 1. 编辑精选
+    if (story.isRecommended) {
+      tags.push({ tag: '编辑精选', type: 'editor_pick' });
+    }
+
+    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
+    if (userId && story.emotionTag) {
+      const recentStories = await Story.findAll({
+        where: { userId, visibility: 'public' },
+        attributes: ['emotionTag'],
+        order: [['createdAt', 'DESC']],
+        limit: 20
+      });
+
+      if (recentStories.length > 0) {
+        const emotionCounts = {};
+        for (const s of recentStories) {
+          if (s.emotionTag) {
+            emotionCounts[s.emotionTag] = (emotionCounts[s.emotionTag] || 0) + 1;
+          }
+        }
+        const topEmotion = Object.entries(emotionCounts)
+          .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+        if (topEmotion === story.emotionTag) {
+          tags.push({ tag: '此刻共鸣', type: 'mood_resonance' });
+        }
+      }
+    }
+
+    // 3. 附近热议：用户在附近 + 故事近期互动热度高
+    if (location && userLng != null && userLat != null) {
+      const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
+      const isNearby = distanceMeters <= 150000; // 150km 内
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isHot = (likeCount + commentCount) >= 5;
+
+      if (isNearby && isRecent && isHot) {
+        tags.push({ tag: '附近热议', type: 'trending_nearby' });
+      }
+    }
+
+    return tags.slice(0, 3);
+  }
+
+  /**
    * 获取精选推荐故事（公开接口）
    */
   async getFeaturedStories({ page = 1, limit = 20, summary } = {}) {
@@ -744,6 +925,63 @@ class StoryServiceClass {
         totalPages: Math.ceil(count / limit)
       }
     };
+  }
+
+  /**
+   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
+   * 仅供 getStoryById 调用，不对外暴露
+   */
+  async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
+    // 查看自己的故事不展示推荐标签
+    if (userId && userId === story.userId) {
+      return [];
+    }
+
+    const tags = [];
+
+    // 1. 编辑精选
+    if (story.isRecommended) {
+      tags.push({ tag: '编辑精选', type: 'editor_pick' });
+    }
+
+    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
+    if (userId && story.emotionTag) {
+      const recentStories = await Story.findAll({
+        where: { userId, visibility: 'public' },
+        attributes: ['emotionTag'],
+        order: [['createdAt', 'DESC']],
+        limit: 20
+      });
+
+      if (recentStories.length > 0) {
+        const emotionCounts = {};
+        for (const s of recentStories) {
+          if (s.emotionTag) {
+            emotionCounts[s.emotionTag] = (emotionCounts[s.emotionTag] || 0) + 1;
+          }
+        }
+        const topEmotion = Object.entries(emotionCounts)
+          .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+        if (topEmotion === story.emotionTag) {
+          tags.push({ tag: '此刻共鸣', type: 'mood_resonance' });
+        }
+      }
+    }
+
+    // 3. 附近热议：用户在附近 + 故事近期互动热度高
+    if (location && userLng != null && userLat != null) {
+      const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
+      const isNearby = distanceMeters <= 150000; // 150km 内
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isHot = (likeCount + commentCount) >= 5;
+
+      if (isNearby && isRecent && isHot) {
+        tags.push({ tag: '附近热议', type: 'trending_nearby' });
+      }
+    }
+
+    return tags.slice(0, 3);
   }
 
   /**
@@ -853,6 +1091,63 @@ class StoryServiceClass {
         totalPages
       }
     };
+  }
+
+  /**
+   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
+   * 仅供 getStoryById 调用，不对外暴露
+   */
+  async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
+    // 查看自己的故事不展示推荐标签
+    if (userId && userId === story.userId) {
+      return [];
+    }
+
+    const tags = [];
+
+    // 1. 编辑精选
+    if (story.isRecommended) {
+      tags.push({ tag: '编辑精选', type: 'editor_pick' });
+    }
+
+    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
+    if (userId && story.emotionTag) {
+      const recentStories = await Story.findAll({
+        where: { userId, visibility: 'public' },
+        attributes: ['emotionTag'],
+        order: [['createdAt', 'DESC']],
+        limit: 20
+      });
+
+      if (recentStories.length > 0) {
+        const emotionCounts = {};
+        for (const s of recentStories) {
+          if (s.emotionTag) {
+            emotionCounts[s.emotionTag] = (emotionCounts[s.emotionTag] || 0) + 1;
+          }
+        }
+        const topEmotion = Object.entries(emotionCounts)
+          .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+        if (topEmotion === story.emotionTag) {
+          tags.push({ tag: '此刻共鸣', type: 'mood_resonance' });
+        }
+      }
+    }
+
+    // 3. 附近热议：用户在附近 + 故事近期互动热度高
+    if (location && userLng != null && userLat != null) {
+      const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
+      const isNearby = distanceMeters <= 150000; // 150km 内
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isHot = (likeCount + commentCount) >= 5;
+
+      if (isNearby && isRecent && isHot) {
+        tags.push({ tag: '附近热议', type: 'trending_nearby' });
+      }
+    }
+
+    return tags.slice(0, 3);
   }
 
   /**

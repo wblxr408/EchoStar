@@ -434,12 +434,48 @@ export const mockStoryApi = {
  * Mock Map API
  */
 export const mockMapApi = {
-  async exploreStories(lat, lng, radius = 1000) {
+  async exploreStories(
+    lat,
+    lng,
+    radius = 1000,
+    { limit, emotionTag, createdAfter, createdBefore } = {},
+  ) {
     await delay();
+    let visibleStories = [...mockStories];
+
+    if (emotionTag) {
+      visibleStories = visibleStories.filter(
+        (story) => story.emotionTag === emotionTag || story.emotion === emotionTag,
+      );
+    }
+
+    if (createdAfter) {
+      const createdAfterTime = new Date(createdAfter).getTime();
+      if (Number.isFinite(createdAfterTime)) {
+        visibleStories = visibleStories.filter(
+          (story) => new Date(story.createdAt).getTime() >= createdAfterTime,
+        );
+      }
+    }
+
+    if (createdBefore) {
+      const createdBeforeTime = new Date(createdBefore).getTime();
+      if (Number.isFinite(createdBeforeTime)) {
+        visibleStories = visibleStories.filter(
+          (story) => new Date(story.createdAt).getTime() <= createdBeforeTime,
+        );
+      }
+    }
+
+    const normalizedLimit = Number(limit);
+    if (Number.isFinite(normalizedLimit) && normalizedLimit > 0) {
+      visibleStories = visibleStories.slice(0, normalizedLimit);
+    }
+
     return {
       code: 0,
       data: {
-        stories: mockStories.map(s => ({
+        stories: visibleStories.map(s => ({
           id: s.id,
           content: s.content,
           images: s.images || [],
@@ -517,8 +553,39 @@ export const mockMapApi = {
     };
   },
 
-  async getClusterData(northEast, southWest, zoom) {
+  async getClusterData(
+    northEast,
+    southWest,
+    zoom,
+    { emotionTag, createdAfter, createdBefore } = {},
+  ) {
     await delay();
+
+    let visibleStories = [...mockStories];
+
+    if (emotionTag) {
+      visibleStories = visibleStories.filter(
+        (story) => story.emotionTag === emotionTag || story.emotion === emotionTag,
+      );
+    }
+
+    if (createdAfter) {
+      const createdAfterTime = new Date(createdAfter).getTime();
+      if (Number.isFinite(createdAfterTime)) {
+        visibleStories = visibleStories.filter(
+          (story) => new Date(story.createdAt).getTime() >= createdAfterTime,
+        );
+      }
+    }
+
+    if (createdBefore) {
+      const createdBeforeTime = new Date(createdBefore).getTime();
+      if (Number.isFinite(createdBeforeTime)) {
+        visibleStories = visibleStories.filter(
+          (story) => new Date(story.createdAt).getTime() <= createdBeforeTime,
+        );
+      }
+    }
 
     // 根据 zoom 级别模拟不同的聚合效果
     const z = zoom ?? 10;
@@ -533,22 +600,30 @@ export const mockMapApi = {
 
     return {
       code: 0,
-      data: [
-        {
-          type: 'cluster',
-          latitude: 39.9042,
-          longitude: 116.4074,
-          count: baseCount,
-          pointIds: ['1', '2', '3', '4', '5'].slice(0, baseCount)
-        },
-        {
-          type: 'cluster',
-          latitude: 39.9142,
-          longitude: 116.4174,
-          count: 2,
-          pointIds: ['4', '5']
-        }
-      ]
+      data: visibleStories.length === 0
+        ? []
+        : [
+            {
+              type: 'cluster',
+              latitude: 39.9042,
+              longitude: 116.4074,
+              count: Math.min(baseCount, visibleStories.length),
+              pointIds: visibleStories
+                .slice(0, Math.min(baseCount, visibleStories.length))
+                .map((story) => String(story.id))
+            },
+            ...(visibleStories.length >= 2
+              ? [{
+                  type: 'cluster',
+                  latitude: 39.9142,
+                  longitude: 116.4174,
+                  count: Math.min(2, visibleStories.length),
+                  pointIds: visibleStories
+                    .slice(Math.max(0, visibleStories.length - 2))
+                    .map((story) => String(story.id))
+                }]
+              : [])
+          ]
     };
   },
 

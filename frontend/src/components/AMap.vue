@@ -20,7 +20,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from "vue";
 import AMapLoader from "@amap/amap-jsapi-loader";
-import { fromEmotionTag, getEmotionEmoji } from "../utils/emotion";
+import {
+  getEmotionEmoji,
+  getEmotionColor,
+  normalizeEmotionValue,
+} from "../utils/emotion";
 import { extractTitle } from "../utils/storyTitle";
 
 const props = defineProps({
@@ -31,6 +35,14 @@ const props = defineProps({
   clusters: {
     type: Array,
     default: () => [],
+  },
+  systemLimitEnabled: {
+    type: Boolean,
+    default: true,
+  },
+  maxVisibleEntities: {
+    type: Number,
+    default: 90,
   },
   userLocation: {
     type: Object,
@@ -1107,8 +1119,8 @@ function createMarker(story) {
   const content = document.createElement("div");
 
   const colors = isDarkMode.value ? emotionColorsDark : emotionColors;
-  const emotion = fromEmotionTag(story.emotionTag) || story.emotion;
-  const color = colors[emotion] || "#667eea";
+  const emotion = normalizeEmotionValue(story.emotionTag || story.emotion);
+  const color = colors[emotion] || getEmotionColor(story.emotionTag || story.emotion) || "#667eea";
   const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
   const isDark = isDarkMode.value;
 
@@ -1196,6 +1208,105 @@ const STORY_MARKER_SIZE = 50;
 const FORCED_STORY_CLUSTER_OVERLAP_RATIO = 0.25;
 const CLUSTER_RENDER_ZOOM_THRESHOLD = 16;
 const CLUSTER_CLUSTER_OVERLAP_THRESHOLD = 0.3;
+const SYSTEM_LIMIT_BUCKET_SIZE = 96;
+const SYSTEM_LIMIT_CLUSTER_BUCKET_SIZE = 112;
+const SYSTEM_LIMIT_MARKERS_PER_BUCKET = 2;
+const SYSTEM_LIMIT_CLUSTERS_PER_BUCKET = 1;
+
+function getVisibleEntityLimit() {
+  const normalized = Number(props.maxVisibleEntities);
+  if (!Number.isFinite(normalized) || normalized < 1) {
+    return 90;
+  }
+
+  return Math.round(normalized);
+}
+
+function getStoryRecencyScore(story) {
+  const createdTime = new Date(story?.createdAt || 0).getTime();
+  return Number.isFinite(createdTime) ? createdTime : 0;
+}
+
+function limitStoriesByDensity(stories = []) {
+  if (!props.systemLimitEnabled) {
+    return stories;
+  }
+
+  const maxVisible = getVisibleEntityLimit();
+  if (stories.length <= maxVisible || !map) {
+    return stories;
+  }
+
+  const ranked = stories
+    .map(createStoryPixelState)
+    .filter(Boolean)
+    .sort((a, b) => getStoryRecencyScore(b.story) - getStoryRecencyScore(a.story));
+
+  const bucketCounts = new Map();
+  const selected = [];
+  const overflow = [];
+
+  ranked.forEach((item) => {
+    const bucketKey = `${Math.floor(item.px / SYSTEM_LIMIT_BUCKET_SIZE)}:${Math.floor(item.py / SYSTEM_LIMIT_BUCKET_SIZE)}`;
+    const count = bucketCounts.get(bucketKey) || 0;
+
+    if (count < SYSTEM_LIMIT_MARKERS_PER_BUCKET && selected.length < maxVisible) {
+      bucketCounts.set(bucketKey, count + 1);
+      selected.push(item.story);
+      return;
+    }
+
+    overflow.push(item.story);
+  });
+
+  if (selected.length < maxVisible) {
+    selected.push(...overflow.slice(0, maxVisible - selected.length));
+  }
+
+  return selected;
+}
+
+function limitClustersByDensity(clusters = []) {
+  if (!props.systemLimitEnabled) {
+    return clusters;
+  }
+
+  const maxVisible = Math.max(18, Math.floor(getVisibleEntityLimit() * 0.8));
+  if (clusters.length <= maxVisible || !map) {
+    return clusters;
+  }
+
+  const ranked = clusters
+    .map((cluster) => {
+      const pixelState = createPixelClusterState(cluster);
+      return pixelState ? { cluster, pixelState } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.pixelState.count - a.pixelState.count);
+
+  const bucketCounts = new Map();
+  const selected = [];
+  const overflow = [];
+
+  ranked.forEach(({ cluster, pixelState }) => {
+    const bucketKey = `${Math.floor(pixelState.px / SYSTEM_LIMIT_CLUSTER_BUCKET_SIZE)}:${Math.floor(pixelState.py / SYSTEM_LIMIT_CLUSTER_BUCKET_SIZE)}`;
+    const count = bucketCounts.get(bucketKey) || 0;
+
+    if (count < SYSTEM_LIMIT_CLUSTERS_PER_BUCKET && selected.length < maxVisible) {
+      bucketCounts.set(bucketKey, count + 1);
+      selected.push(cluster);
+      return;
+    }
+
+    overflow.push(cluster);
+  });
+
+  if (selected.length < maxVisible) {
+    selected.push(...overflow.slice(0, maxVisible - selected.length));
+  }
+
+  return selected;
+}
 
 function createStoryPixelState(story) {
   if (!map) {
@@ -1788,7 +1899,7 @@ function updateClusterMarkers() {
       clusterEntries,
       props.stories,
     );
-    const mergedClusters = lowZoomRenderData.clusters;
+    const mergedClusters = limitClustersByDensity(lowZoomRenderData.clusters);
 
     mergedClusters.forEach((cluster) => {
       const marker = createClusterMarker(cluster);
@@ -1853,7 +1964,7 @@ function updateClusterMarkers() {
     absorbedStoryIds.add(id);
   });
 
-  merged.forEach((cluster) => {
+  limitClustersByDensity(merged).forEach((cluster) => {
     const marker = createClusterMarker(cluster);
     if (marker) {
       newClusterMarkers.push(marker);
@@ -1969,8 +2080,10 @@ function updateMarkers() {
     const renderableStories =
       Number.isFinite(currentZoom) &&
       currentZoom < CLUSTER_RENDER_ZOOM_THRESHOLD
-        ? buildLowZoomRenderableData(clusterEntries, storyEntries).points
-        : dedupeStories(storyEntries);
+        ? limitStoriesByDensity(
+            buildLowZoomRenderableData(clusterEntries, storyEntries).points,
+          )
+        : limitStoriesByDensity(dedupeStories(storyEntries));
 
     // 高缩放（zoom >= CLUSTER_RENDER_ZOOM_THRESHOLD）时，
     // 对极近故事点做像素重叠检测，重叠组重新聚合成星
@@ -2045,7 +2158,7 @@ function updateMarkers() {
         }
 
         // 渲染孤立 dot
-        isolatedStories.forEach((story) => {
+        limitStoriesByDensity(isolatedStories).forEach((story) => {
           const marker = createMarker(story);
           if (marker) {
             newMarkers.push(marker);
@@ -2303,6 +2416,14 @@ watch(
     updateMarkers();
   },
   { deep: true, flush: "post" },
+);
+
+watch(
+  [() => props.systemLimitEnabled, () => props.maxVisibleEntities],
+  () => {
+    updateClusterMarkers();
+    updateMarkers();
+  },
 );
 
 watch(

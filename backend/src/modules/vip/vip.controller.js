@@ -212,37 +212,3 @@ export const saveFontSettings = async (req, res, next) => {
   }
 };
 
-/**
- * 获取个人资料背景设置
- */
-export const getUserProfileBg = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const result = await VipService.getUserProfileBg(userId);
-    res.json({ code: 0, data: result });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * 保存/更新个人资料背景设置
- */
-export const saveProfileBg = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const { profileBg } = req.body;
-
-    if (!profileBg || typeof profileBg !== 'object') {
-      return res.status(400).json({ code: 40023, message: '个人资料背景设置格式无效' });
-    }
-
-    const result = await VipService.saveProfileBg(userId, profileBg);
-    res.json({ code: 0, data: result, message: '个人资料背景已保存' });
-  } catch (error) {
-    if (error.message === '仅VIP用户可设置个人资料背景') {
-      return res.status(403).json({ code: 40303, message: error.message });
-    }
-    next(error);
-  }
-};

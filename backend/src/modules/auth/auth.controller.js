@@ -2,6 +2,10 @@ import { AuthService } from './auth.service.js';
 import { redisClient } from '../../common/utils/redis.js';
 import { generateAvatarUploadToken } from '../../common/utils/oss.js';
 
+function isDatabaseError(error) {
+  return error?.name?.startsWith('Sequelize') || error?.message?.includes('column "');
+}
+
 /**
  * 发送验证码
  */
@@ -87,6 +91,9 @@ export const adminLogin = async (req, res, next) => {
     const result = await AuthService.adminLogin(email, password);
     res.json({ code: 0, data: result });
   } catch (error) {
+    if (isDatabaseError(error)) {
+      return next(error);
+    }
     return res.status(401).json({ code: 1, message: error.message });
   }
 };
@@ -100,6 +107,9 @@ export const login = async (req, res, next) => {
     const result = await AuthService.login(email, password);
     res.json({ code: 0, data: result });
   } catch (error) {
+    if (isDatabaseError(error)) {
+      return next(error);
+    }
     return res.status(401).json({ code: 1, message: error.message });
   }
 };
@@ -208,8 +218,9 @@ export const getAllUsers = async (req, res, next) => {
  */
 export const searchUsersByUsername = async (req, res, next) => {
   try {
-    const { keyword, page, limit } = req.query;
-    const result = await AuthService.searchUsersByUsername(keyword, { page, limit });
+    const { keyword } = req.query;
+    const { page = 1, limit = 20 } = req.query;
+    const result = await AuthService.searchUsersByUsername(keyword, { page: parseInt(page), limit: parseInt(limit) });
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);

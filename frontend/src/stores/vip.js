@@ -40,7 +40,6 @@ export const useVipStore = defineStore('vip', () => {
   ];
 
   const savedCommentBg = ref(loadFromStorage('vip_comment_bg', null));
-  const savedProfileBg = ref(loadFromStorage('vip_profile_bg', null));
   const savedEmotionStyles = ref(loadFromStorage('vip_emotion_styles', []));
 
   const isVipActive = computed(() => {
@@ -471,23 +470,6 @@ export const useVipStore = defineStore('vip', () => {
     }
   }
 
-  function setProfileBg(bg) {
-    savedProfileBg.value = bg;
-    saveToStorage('vip_profile_bg', bg);
-  }
-
-  async function syncProfileBg(bgConfig) {
-    try {
-      await vipApi.saveProfileBg(bgConfig);
-      savedProfileBg.value = bgConfig;
-      saveToStorage('vip_profile_bg', bgConfig);
-      return { success: true };
-    } catch (err) {
-      console.error('[VipStore] syncProfileBg failed:', err);
-      return { success: false, message: err?.response?.data?.message || '同步到服务器失败' };
-    }
-  }
-
   function setEmotionStyles(styles) {
     savedEmotionStyles.value = styles;
     saveToStorage('vip_emotion_styles', styles);
@@ -496,9 +478,8 @@ export const useVipStore = defineStore('vip', () => {
   async function loadCustomization() {
     try {
       // 并行加载所有自定义设置
-      const [commentBgRes, profileBgRes, fontRes] = await Promise.all([
+      const [commentBgRes, fontRes] = await Promise.all([
         vipApi.saveCommentBg ? vipApi.saveCommentBg({}) : Promise.resolve({ data: { commentBg: null } }),
-        vipApi.getProfileBg?.() || Promise.resolve({ data: { profileBg: null } }),
         vipApi.getFontSettings?.() || Promise.resolve({ data: { fontFamily: '', fontEffect: '' } })
       ]).catch(() => []);
 
@@ -507,10 +488,6 @@ export const useVipStore = defineStore('vip', () => {
         saveToStorage('vip_comment_bg', commentBgRes.data.commentBg);
       }
 
-      if (profileBgRes?.data?.profileBg) {
-        savedProfileBg.value = profileBgRes.data.profileBg;
-        saveToStorage('vip_profile_bg', profileBgRes.data.profileBg);
-      }
     } catch (err) {
       console.warn('[VipStore] loadCustomization failed:', err);
     }
@@ -518,10 +495,8 @@ export const useVipStore = defineStore('vip', () => {
 
   function resetCustomization() {
     savedCommentBg.value = null;
-    savedProfileBg.value = null;
     savedEmotionStyles.value = [];
     localStorage.removeItem('vip_comment_bg');
-    localStorage.removeItem('vip_profile_bg');
     localStorage.removeItem('vip_emotion_styles');
   }
 
@@ -540,7 +515,6 @@ export const useVipStore = defineStore('vip', () => {
     polishCount,
     polishedStories,
     savedCommentBg,
-    savedProfileBg,
     savedEmotionStyles,
     isVipActive,
     remainingDays,
@@ -577,8 +551,6 @@ export const useVipStore = defineStore('vip', () => {
     VIP_PLANS,
     setCommentBg,
     syncCommentBg,
-    setProfileBg,
-    syncProfileBg,
     setEmotionStyles,
     loadCustomization,
     resetCustomization,
