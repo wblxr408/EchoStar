@@ -401,7 +401,10 @@
     <div v-if="showStoryDetail" class="modal-overlay" @click.self="showStoryDetail = false">
       <div class="story-detail-modal">
         <!-- 关闭按钮 -->
-        <button class="detail-close" @click="showStoryDetail = false">&times;</button>
+        <button class="detail-close" @click="showStoryDetail = false">
+          <span class="close-icon">×</span>
+          <span class="close-text">关闭</span>
+        </button>
 
         <!-- 加载中 -->
         <div v-if="!storyDetail" class="detail-loading">
@@ -2262,18 +2265,47 @@ function handleLogout() {
   position: absolute;
   top: 12px;
   right: 16px;
+  height: 42px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 248, 231, 0.34);
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
   font-size: 28px;
-  color: #999;
-  background: none;
-  border: none;
   cursor: pointer;
   z-index: 10;
   line-height: 1;
-  transition: color 0.2s;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .detail-close:hover {
-  color: #333;
+  transform: translateY(-1px);
+  background: rgba(53, 34, 13, 0.92);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.detail-close .close-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.detail-close .close-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 /* 加载中 */

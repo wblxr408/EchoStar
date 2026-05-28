@@ -527,8 +527,9 @@
                 为你推荐
               </button>
             </div>
-            <button class="close-btn" @click.stop="closeStoryPanel">
-              <span>×</span>
+            <button class="story-detail-close" type="button" @click.stop="closeStoryPanel">
+              <span class="close-icon">×</span>
+              <span class="close-text">关闭</span>
             </button>
           </div>
 
@@ -620,8 +621,9 @@
             <div class="plane-nearby-header__left">
               <h3>附近故事</h3>
             </div>
-            <button class="close-btn" @click.stop="closePlaneNearby">
-              <span>×</span>
+            <button class="story-detail-close" type="button" @click.stop="closePlaneNearby">
+              <span class="close-icon">×</span>
+              <span class="close-text">关闭</span>
             </button>
           </div>
           <div ref="planeNearbyContentRef" class="plane-nearby-content" @scroll="handlePlaneNearbyScroll($event)">
@@ -672,7 +674,11 @@
     <button
       v-show="!isAdjustingPlanePosition"
       class="map-filter-toggle"
-      :class="{ dark: effectiveMapTheme === 'dark', active: showMapFilterPanel }"
+      :class="{
+        dark: effectiveMapTheme === 'dark',
+        active: showMapFilterPanel,
+        'dock-covered': isDockExpanded,
+      }"
       type="button"
       title="地图筛选"
       aria-label="地图筛选"
@@ -5579,7 +5585,10 @@ const dockPublishSuggestedLocations = ref([]);
 
 async function handleDockPublishSubmit(storyData) {
   try {
-    const selectedLocation = extractCoordinates(storyData.location);
+    const resolvedStoryLocation =
+      await ensureLocationResolvedForSubmit(storyData.location)
+      || storyData.location;
+    const selectedLocation = extractCoordinates(resolvedStoryLocation);
     if (!selectedLocation) {
       showToast("请先选择一个地点后再发布故事", "warning");
       return;
@@ -5599,9 +5608,9 @@ async function handleDockPublishSubmit(storyData) {
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
       address:
-        storyData.location?.address || storyData.location?.name || "已选地点",
+        resolvedStoryLocation?.address || resolvedStoryLocation?.name || "已选地点",
       name:
-        storyData.location?.name || storyData.location?.address || "已选地点",
+        resolvedStoryLocation?.name || resolvedStoryLocation?.address || "已选地点",
     };
 
     const finalEmotionTag = storyData.emotion;
@@ -7093,6 +7102,112 @@ function hasResolvedLocationDetails(location) {
   );
 }
 
+function buildStorySubmitLocation(location) {
+  const coords = extractCoordinates(location);
+  if (!coords) {
+    return null;
+  }
+
+  const name = pickLocationText(
+    [
+      sanitizeLocationLabelSafe(location?.name),
+      sanitizeLocationLabelSafe(location?.address),
+      sanitizeLocationLabelSafe(location?.formattedAddress),
+      sanitizeLocationLabelSafe(location?.district),
+      sanitizeLocationLabelSafe(location?.city),
+      sanitizeLocationLabelSafe(location?.province),
+    ],
+    false,
+  );
+  const address = pickLocationText([
+    sanitizeLocationLabelSafe(location?.address),
+    sanitizeLocationLabelSafe(location?.formattedAddress),
+    sanitizeLocationLabelSafe(location?.name),
+    sanitizeLocationLabelSafe(location?.district),
+    sanitizeLocationLabelSafe(location?.city),
+    sanitizeLocationLabelSafe(location?.province),
+    formatMapPickAddressSafe(coords.latitude, coords.longitude),
+  ]);
+
+  return {
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    name: name || address,
+    address,
+  };
+}
+
+async function ensureLocationResolvedForSubmit(location) {
+  const coords = extractCoordinates(location);
+  if (!coords) {
+    return null;
+  }
+
+  const fallbackLocation = buildFallbackLocation(
+    coords.latitude,
+    coords.longitude,
+    location || {},
+  );
+  const submitLocation = buildStorySubmitLocation(fallbackLocation);
+  if (submitLocation?.name && !isCoordinateOnlyLocationLabelSafe(submitLocation.name)) {
+    return {
+      ...fallbackLocation,
+      ...submitLocation,
+    };
+  }
+
+  const resolvedLocation = await reverseGeocodeLocationDetailSafe(
+    coords.latitude,
+    coords.longitude,
+  ).catch(() => null);
+  if (!resolvedLocation) {
+    return {
+      ...fallbackLocation,
+      ...submitLocation,
+    };
+  }
+
+  const mergedLocation = buildFallbackLocation(coords.latitude, coords.longitude, {
+    ...location,
+    ...resolvedLocation,
+    name: pickLocationText(
+      [
+        sanitizeLocationLabelSafe(resolvedLocation?.name),
+        sanitizeLocationLabelSafe(resolvedLocation?.address),
+        sanitizeLocationLabelSafe(resolvedLocation?.formattedAddress),
+        sanitizeLocationLabelSafe(location?.name),
+        sanitizeLocationLabelSafe(location?.address),
+        sanitizeLocationLabelSafe(resolvedLocation?.district),
+        sanitizeLocationLabelSafe(resolvedLocation?.city),
+      ],
+      false,
+    ),
+    address: pickLocationText([
+      sanitizeLocationLabelSafe(resolvedLocation?.address),
+      sanitizeLocationLabelSafe(resolvedLocation?.formattedAddress),
+      sanitizeLocationLabelSafe(resolvedLocation?.name),
+      sanitizeLocationLabelSafe(location?.address),
+      sanitizeLocationLabelSafe(location?.formattedAddress),
+      sanitizeLocationLabelSafe(location?.name),
+      formatMapPickAddressSafe(coords.latitude, coords.longitude),
+    ]),
+    city: firstNonEmptyString(resolvedLocation?.city, location?.city),
+    district: firstNonEmptyString(resolvedLocation?.district, location?.district),
+    adcode: firstNonEmptyString(resolvedLocation?.adcode, location?.adcode),
+    province: firstNonEmptyString(resolvedLocation?.province, location?.province),
+    type: firstNonEmptyString(location?.type, resolvedLocation?.type, "map-click"),
+    nearbyPois: [
+      ...(Array.isArray(resolvedLocation?.nearbyPois) ? resolvedLocation.nearbyPois : []),
+      ...(Array.isArray(location?.nearbyPois) ? location.nearbyPois : []),
+    ],
+  });
+
+  return {
+    ...mergedLocation,
+    ...buildStorySubmitLocation(mergedLocation),
+  };
+}
+
 async function resolveLocationFromNearbyPlaceSearch(
   latitude,
   longitude,
@@ -7405,7 +7520,7 @@ function getPublishPickPromptStyle(prompt) {
   };
 }
 
-function confirmPublishNearbySearch() {
+async function confirmPublishNearbySearch() {
   const prompt = publishPickPrompt.value;
   if (!prompt?.location) {
     publishPickPrompt.value = null;
@@ -7419,7 +7534,9 @@ function confirmPublishNearbySearch() {
       return;
     }
 
-    finalizeAdjustPlanePickSelection(prompt.location);
+    const resolvedLocation =
+      await ensureLocationResolvedForSubmit(prompt.location) || prompt.location;
+    finalizeAdjustPlanePickSelection(resolvedLocation);
     return;
   }
 
@@ -7429,7 +7546,9 @@ function confirmPublishNearbySearch() {
     return;
   }
 
-  finalizePublishPickSelection(prompt.location);
+  const resolvedLocation =
+    await ensureLocationResolvedForSubmit(prompt.location) || prompt.location;
+  finalizePublishPickSelection(resolvedLocation);
 }
 
 function rejectPublishNearbySearch() {
@@ -7447,7 +7566,7 @@ function rejectPublishNearbySearch() {
   isPickingPublishLocation.value = true;
 }
 
-function confirmDockPublishNearbySearch() {
+async function confirmDockPublishNearbySearch() {
   const prompt = isDockPublishPickPrompt.value;
   if (!prompt?.location) {
     isDockPublishPickPrompt.value = null;
@@ -7460,7 +7579,9 @@ function confirmDockPublishNearbySearch() {
     return;
   }
 
-  finalizeDockPublishPickSelection(prompt.location);
+  const resolvedLocation =
+    await ensureLocationResolvedForSubmit(prompt.location) || prompt.location;
+  finalizeDockPublishPickSelection(resolvedLocation);
 }
 
 function rejectDockPublishNearbySearch() {
@@ -7500,7 +7621,7 @@ async function handlePublishMapClick(point) {
         coords.latitude,
         coords.longitude,
       );
-      if (pickedLocation) {
+      if (pickedLocation && publishPickPrompt.value) {
         setPublishPickSelection(pickedLocation, adjustPlaneClickScreenPos.value);
       }
       adjustPlaneClickScreenPos.value = null;
@@ -7526,7 +7647,7 @@ async function handlePublishMapClick(point) {
         coords.latitude,
         coords.longitude,
       );
-      if (pickedLocation) {
+      if (pickedLocation && isDockPublishPickPrompt.value) {
         setDockPublishPickSelection(pickedLocation, dockPublishClickScreenPos.value);
       }
       dockPublishClickScreenPos.value = null;
@@ -7562,7 +7683,7 @@ async function handlePublishMapClick(point) {
       coords.latitude,
       coords.longitude,
     );
-    if (pickedLocation) {
+    if (pickedLocation && publishPickPrompt.value) {
       setPublishPickSelection(pickedLocation, publishPickPrompt.value);
     }
     return;
@@ -8659,7 +8780,10 @@ function handleLocate() {
 
 async function handlePublishSubmit(storyData) {
   try {
-    const selectedLocation = extractCoordinates(storyData.location);
+    const resolvedStoryLocation =
+      await ensureLocationResolvedForSubmit(storyData.location)
+      || storyData.location;
+    const selectedLocation = extractCoordinates(resolvedStoryLocation);
     if (!selectedLocation) {
       showToast("请先选择一个地点后再发布故事", "warning");
       return;
@@ -8679,9 +8803,9 @@ async function handlePublishSubmit(storyData) {
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
       address:
-        storyData.location?.address || storyData.location?.name || "已选地点",
+        resolvedStoryLocation?.address || resolvedStoryLocation?.name || "已选地点",
       name:
-        storyData.location?.name || storyData.location?.address || "已选地点",
+        resolvedStoryLocation?.name || resolvedStoryLocation?.address || "已选地点",
     };
 
     const finalEmotionTag = storyData.emotion;
@@ -10339,6 +10463,17 @@ onUnmounted(() => {
 }
 
 .map-page {
+  --map-floating-right: 96px;
+  --map-floating-base-bottom: 32px;
+  --map-floating-button-height: 76px;
+  --map-floating-gap: 18px;
+  --map-filter-panel-gap: 14px;
+  --map-filter-toggle-bottom: calc(
+    var(--map-floating-base-bottom) + var(--map-floating-button-height) + var(--map-floating-gap)
+  );
+  --map-filter-panel-bottom: calc(
+    var(--map-filter-toggle-bottom) + var(--map-floating-button-height) + var(--map-filter-panel-gap)
+  );
   width: 100%;
   height: 100%;
   position: relative;
@@ -10510,42 +10645,66 @@ onUnmounted(() => {
   color: #ffffff;
 }
 
-.story-sidebar .close-btn {
+.story-detail-close {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.story-detail-close .close-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.story-detail-close .close-text {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.story-sidebar .story-detail-close {
   position: absolute;
   top: 18px;
   right: 18px;
   z-index: 2;
-  min-width: 82px;
-  height: 42px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
-  background: rgba(13, 19, 34, 0.82);
-  color: #fff;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow:
-    0 18px 26px -20px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-.story-sidebar .close-btn span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  height: 100%;
-  width: 100%;
-  transform: translate(-0.25px, -1.25px);
+.story-sidebar:not(.dark) .story-detail-close,
+.plane-nearby-sidebar:not(.dark) .story-detail-close {
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+  border-color: rgba(255, 248, 231, 0.34);
 }
 
-.story-sidebar .close-btn:hover {
+.story-sidebar.dark .story-detail-close,
+.plane-nearby-sidebar.dark .story-detail-close {
+  background: rgba(10, 17, 33, 0.82);
+  border-color: rgba(198, 219, 255, 0.22);
+  color: #eef4ff;
+}
+
+.story-sidebar .story-detail-close:hover,
+.plane-nearby-sidebar .story-detail-close:hover {
   background: rgba(26, 35, 58, 0.96);
   border-color: rgba(255, 255, 255, 0.36);
+  transform: translateY(-1px);
 }
 
 .sidebar-content {
@@ -11172,8 +11331,8 @@ onUnmounted(() => {
   --dock-submenu-option-border: rgba(255, 255, 255, 0.08);
   --dock-submenu-option-hover: rgba(255, 255, 255, 0.14);
   position: fixed;
-  bottom: 32px;
-  right: 96px;
+  bottom: var(--map-floating-base-bottom);
+  right: var(--map-floating-right);
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-end;
@@ -11321,11 +11480,11 @@ onUnmounted(() => {
 }
 
 .dock-container.show-user-sidebar {
-  right: 96px;
+  right: var(--map-floating-right);
 }
 
 .dock-container.show-dock-publish-sidebar {
-  right: 96px;
+  right: var(--map-floating-right);
 }
 
 .dock-container.locked {
@@ -17228,8 +17387,8 @@ onUnmounted(() => {
   position: fixed;
   top: auto;
   left: auto;
-  right: 268px;
-  bottom: 122px;
+  right: var(--map-floating-right);
+  bottom: var(--map-filter-panel-bottom);
   transform: none;
   z-index: 200;
   width: min(440px, calc(100vw - 48px));
@@ -17446,11 +17605,15 @@ onUnmounted(() => {
 }
 
 @media (max-width: 760px) {
+  .map-page {
+    --map-filter-panel-gap: 12px;
+  }
+
   .map-filter-bar {
-    right: 14px;
-    bottom: 200px;
-    width: calc(100vw - 28px);
-    max-height: calc(100vh - 248px);
+    right: var(--map-floating-right);
+    bottom: var(--map-filter-panel-bottom);
+    width: min(320px, calc(100vw - 110px));
+    max-height: calc(100vh - 264px);
     padding: 14px;
     border-radius: 20px;
   }
@@ -18652,29 +18815,8 @@ onUnmounted(() => {
 .plane-nearby-sidebar.dark .plane-nearby-header h3 { color: #edf3ff; }
 .plane-nearby-sidebar:not(.dark) .plane-nearby-header h3 { color: #3c2910; }
 
-.plane-nearby-sidebar .close-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ccc;
-  font-size: 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-.plane-nearby-sidebar:not(.dark) .close-btn {
-  background: rgba(196, 142, 48, 0.15);
-  color: #5c3a13;
-}
-.plane-nearby-sidebar .close-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
-}
-.plane-nearby-sidebar:not(.dark) .close-btn:hover {
-  background: rgba(196, 142, 48, 0.28);
+.plane-nearby-sidebar .story-detail-close {
+  flex-shrink: 0;
 }
 
 .plane-nearby-content {
@@ -18808,8 +18950,8 @@ onUnmounted(() => {
 /* 地图筛选入口改为右下角展开 */
 .map-filter-toggle {
   position: fixed;
-  right: 268px;
-  bottom: 32px;
+  right: var(--map-floating-right);
+  bottom: var(--map-filter-toggle-bottom);
   z-index: 201;
   min-width: 154px;
   height: 76px;
@@ -18876,6 +19018,11 @@ onUnmounted(() => {
   box-shadow: 0 24px 52px rgba(5, 8, 20, 0.54);
 }
 
+.map-filter-toggle.dock-covered {
+  z-index: 190;
+  pointer-events: none;
+}
+
 .map-filter-toggle__icon {
   width: 42px;
   height: 42px;
@@ -18897,8 +19044,6 @@ onUnmounted(() => {
 
 @media (max-width: 760px) {
   .map-filter-toggle {
-    right: 14px;
-    bottom: 116px;
     min-width: 148px;
   }
 }

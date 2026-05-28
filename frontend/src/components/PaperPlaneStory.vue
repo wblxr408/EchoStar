@@ -9,13 +9,14 @@
           <span class="tarot-corner corner-top-right"></span>
           <span class="tarot-corner corner-bottom-left"></span>
 
-          <button
+        <button
           type="button"
-          class="close-btn"
+          class="story-detail-close"
           aria-label="关闭故事详情"
           @click="handleClose"
         >
-          <span>×</span>
+          <span class="close-icon">×</span>
+          <span class="close-text">关闭</span>
         </button>
 
         <div v-if="story.isFeatured || story.isPinned" class="story-badges">
@@ -767,13 +768,13 @@ async function submitReport() {
   border-bottom-left-radius: 16px;
 }
 
-.close-btn {
+.story-detail-close {
   position: absolute;
   top: 16px;
   right: 16px;
   z-index: 3;
-  width: 46px;
   height: 46px;
+  padding: 0 16px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(53, 34, 13, 0.84);
@@ -781,19 +782,29 @@ async function submitReport() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
-.close-btn:hover {
+.story-detail-close:hover {
   transform: translateY(-2px);
   background: rgba(76, 49, 17, 0.96);
   border-color: rgba(255, 255, 255, 0.4);
 }
 
-.close-btn span {
-  font-size: 24px;
+.story-detail-close .close-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
   line-height: 1;
+}
+
+.story-detail-close .close-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 .story-badges {
@@ -1751,13 +1762,13 @@ async function submitReport() {
   opacity: 0.6;
 }
 
-.paper-plane-overlay.dark .close-btn {
+.paper-plane-overlay.dark .story-detail-close {
   background: rgba(20, 28, 50, 0.9);
   border-color: rgba(100, 130, 180, 0.2);
   color: #c8d8f0;
 }
 
-.paper-plane-overlay.dark .close-btn:hover {
+.paper-plane-overlay.dark .story-detail-close:hover {
   background: rgba(30, 40, 65, 0.96);
   border-color: rgba(120, 150, 200, 0.35);
 }
@@ -1934,22 +1945,31 @@ async function submitReport() {
 }
 
 .next-stop-peek {
+  --next-stop-peek-base-x: 10px;
+  --next-stop-peek-base-y: 16px;
+  --next-stop-peek-base-rotate: 6deg;
+  --next-stop-peek-hover-x: 135px;
+  --next-stop-peek-hover-y: 30px;
+  --next-stop-peek-hover-rotate: 14deg;
   position: absolute;
-  top: 12px;
-  right: -133px;
+  top: 18px;
+  right: -124px;
+  z-index: 2;
   min-width: 180px;
-  max-width: 260px;
+  max-width: 248px;
   width: fit-content;
-  transform: rotate(-10deg);
-  translate: 0 0;
-  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
-              translate 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
-              box-shadow 0.35s ease;
+  transform-origin: left top;
+  transform:
+    translate(var(--next-stop-peek-base-x), var(--next-stop-peek-base-y))
+    rotate(var(--next-stop-peek-base-rotate));
+  transition:
+    transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.35s ease;
   border-radius: 20px;
   border: 1px solid var(--story-detail-border);
   background: var(--story-detail-surface);
   box-shadow:
-    0 20px 50px -20px rgba(4, 8, 18, 0.55),
+    0 16px 42px -22px rgba(4, 8, 18, 0.42),
     0 0 0 1px rgba(255, 255, 255, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
   color: var(--story-detail-text);
@@ -1963,12 +1983,14 @@ async function submitReport() {
   display: none;
 }
 
-/* 鼠标右移离开故事卡片 → 下一站卡片沿倾斜方向平移滑出 */
-.peek-trigger:hover ~ .next-stop-peek {
-  transform: rotate(-10deg);
-  translate: calc(133px + 12%) -22%;
+/* 指针选中时，卡片像扇形继续向右下展开 */
+.peek-trigger:hover ~ .next-stop-peek,
+.next-stop-peek:hover {
+  transform:
+    translate(var(--next-stop-peek-hover-x), var(--next-stop-peek-hover-y))
+    rotate(var(--next-stop-peek-hover-rotate));
   box-shadow:
-    0 30px 64px -20px rgba(4, 8, 18, 0.72),
+    0 24px 52px -22px rgba(4, 8, 18, 0.58),
     0 0 0 1px rgba(255, 255, 255, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.26);
 }
@@ -2032,10 +2054,14 @@ async function submitReport() {
 }
 
 .next-stop-peek__label {
+  display: block;
+  align-self: flex-end;
+  width: 100%;
   font-size: 12px;
   font-weight: 700;
   color: var(--story-detail-accent);
   letter-spacing: 0.5px;
+  text-align: right;
 }
 
 .next-stop-peek__author-row {
@@ -2168,11 +2194,10 @@ async function submitReport() {
 }
 .next-stop-peek-enter-from {
   opacity: 0;
-  transform: rotate(18deg);
-  translate: 60% -20%;
+  transform: translate(76px, 10px) rotate(20deg) scale(0.94);
 }
 .next-stop-peek-leave-to {
   opacity: 0;
-  transform: rotate(16deg) scale(0.92);
+  transform: translate(70px, 26px) rotate(22deg) scale(0.9);
 }
 </style>
