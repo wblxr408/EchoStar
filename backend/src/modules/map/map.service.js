@@ -118,10 +118,10 @@ const MapServiceUtil = {
 };
 
 const MAP_EMOTION_ALIASES = {
-  happy: ['happy', '\u5f00\u5fc3'],
-  sad: ['sad', '\u96be\u8fc7'],
-  peaceful: ['peaceful', 'neutral', '\u6cbb\u6108', '\u5e73\u9759'],
-  excited: ['excited', '\u6253\u5361'],
+  happy: ['happy', '\u5f00\u5fc3', '寮€蹇?'],
+  sad: ['sad', '\u96be\u8fc7', '闅捐繃'],
+  peaceful: ['peaceful', 'neutral', '\u6cbb\u6108', '\u5e73\u9759', '娌绘剤'],
+  excited: ['excited', '\u6253\u5361', '鎵撳崱'],
 };
 
 const MAP_EMOTION_TAG_BY_KEY = {
@@ -131,20 +131,36 @@ const MAP_EMOTION_TAG_BY_KEY = {
   excited: '\u6253\u5361',
 };
 
+const CLEAN_MAP_EMOTION_ALIASES = {
+  happy: ["happy", "\u5f00\u5fc3"],
+  sad: ["sad", "\u96be\u8fc7"],
+  peaceful: ["peaceful", "\u6cbb\u6108"],
+  neutral: ["neutral", "\u5e73\u9759"],
+  excited: ["excited", "\u6253\u5361"],
+};
+
+const CLEAN_MAP_EMOTION_TAG_BY_KEY = {
+  happy: "\u5f00\u5fc3",
+  sad: "\u96be\u8fc7",
+  peaceful: "\u6cbb\u6108",
+  neutral: "\u5e73\u9759",
+  excited: "\u6253\u5361",
+};
+
 function normalizeMapEmotionKey(value) {
   const normalizedValue = String(value || '').trim();
   if (!normalizedValue) {
     return '';
   }
 
-  return Object.entries(MAP_EMOTION_ALIASES).find(([, aliases]) =>
+  return Object.entries(CLEAN_MAP_EMOTION_ALIASES).find(([, aliases]) =>
     aliases.includes(normalizedValue)
   )?.[0] || normalizedValue;
 }
 
 function normalizeMapEmotionTag(value) {
   const normalizedKey = normalizeMapEmotionKey(value);
-  return MAP_EMOTION_TAG_BY_KEY[normalizedKey] || String(value || '').trim();
+  return CLEAN_MAP_EMOTION_TAG_BY_KEY[normalizedKey] || String(value || '').trim();
 }
 
 function buildStoryFilterWhere(options = {}) {
@@ -163,7 +179,9 @@ function buildStoryFilterWhere(options = {}) {
   };
 
   if (normalizedEmotionTag) {
-    const aliases = MAP_EMOTION_ALIASES[normalizeMapEmotionKey(normalizedEmotionTag)] || emotionAliases[normalizedEmotionTag] || [normalizedEmotionTag];
+    const aliases =
+      CLEAN_MAP_EMOTION_ALIASES[normalizeMapEmotionKey(normalizedEmotionTag)] ||
+      [normalizedEmotionTag];
     where.emotionTag = aliases.length === 1 ? aliases[0] : { [Op.in]: aliases };
   }
 

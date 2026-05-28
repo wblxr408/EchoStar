@@ -30,9 +30,9 @@ const EMOTION_DEFINITIONS = {
   neutral: {
     key: "neutral",
     tag: "\u6cbb\u6108",
-    icon: "\ud83d\ude42",
-    label: "\u6cbb\u6108",
-    color: "#10b981",
+    icon: "\ud83d\ude10",
+    label: "\u5e73\u9759",
+    color: "#9ca3af",
   },
 };
 
@@ -43,8 +43,8 @@ const EMOTION_ALIASES = {
   "\u96be\u8fc7": "sad",
   peaceful: "peaceful",
   "\u6cbb\u6108": "peaceful",
-  neutral: "peaceful",
-  "\u5e73\u9759": "peaceful",
+  neutral: "neutral",
+  "\u5e73\u9759": "neutral",
   excited: "excited",
   "\u6253\u5361": "excited",
 };
@@ -99,7 +99,17 @@ export function getEmotionColor(value) {
 }
 
 export function getEmotionInfo(value) {
-  return resolveEmotionInfo(value);
+  const info = resolveEmotionInfo(value);
+  if (!info) {
+    return null;
+  }
+
+  return {
+    value: info.key,
+    icon: info.icon,
+    label: info.label,
+    color: info.color,
+  };
 }
 
 export function toEmotionTag(value) {
