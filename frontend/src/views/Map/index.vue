@@ -997,6 +997,7 @@
         <div
           v-if="publishPickPrompt"
           class="publish-pick-confirm"
+          :class="{ dark: effectiveMapTheme === 'dark' }"
           :style="getPublishPickPromptStyle(publishPickPrompt)"
           @click.stop
         >
@@ -1077,6 +1078,7 @@
         <div
           v-if="isDockPublishPickPrompt"
           class="publish-pick-confirm"
+          :class="{ dark: effectiveMapTheme === 'dark' }"
           :style="getDockPublishPickPromptStyle(isDockPublishPickPrompt)"
           @click.stop
         >
@@ -1119,6 +1121,7 @@
     <div
       v-if="publishPickPrompt && isAdjustingPlanePosition"
       class="publish-pick-confirm"
+      :class="{ dark: effectiveMapTheme === 'dark' }"
       :style="getPublishPickPromptStyle(publishPickPrompt)"
       @click.stop
     >
@@ -6666,8 +6669,15 @@ function showPlaneMenu(clientX, clientY) {
     scheduleHidePlaneMenu();
   }, { passive: true });
 
-  // 定位菜单在纸飞机位置上方
+  // 禁用自身及所有子元素的过渡，防止入场时子元素 background 等属性从默认值过渡到目标值造成闪烁
+  planeMenuEl.classList.add('paper-plane-menu--no-transition');
+  planeMenuEl.style.opacity = '0';
+  planeMenuEl.style.transform = 'translateY(8px)';
   document.body.appendChild(planeMenuEl);
+  // 强制布局，确保初始样式完全生效
+  void planeMenuEl.offsetHeight;
+
+  // 定位菜单在纸飞机位置上方
   const menuW = planeMenuEl.offsetWidth;
   const menuH = planeMenuEl.offsetHeight;
   let left = clientX - menuW / 2;
@@ -6679,8 +6689,9 @@ function showPlaneMenu(clientX, clientY) {
   planeMenuEl.style.top = top + 'px';
   planeMenuEl.classList.toggle('dark', effectiveMapTheme.value === 'dark');
 
-  // 触发弹出动画
+  // 触发弹出动画（移除 no-transition 类恢复子元素过渡，同时设置目标样式）
   requestAnimationFrame(() => {
+    planeMenuEl.classList.remove('paper-plane-menu--no-transition');
     planeMenuEl.style.opacity = '1';
     planeMenuEl.style.transform = 'translateY(0)';
   });
@@ -12917,6 +12928,34 @@ onUnmounted(() => {
   background: rgba(255, 249, 240, 0.96);
 }
 
+.publish-pick-confirm.dark {
+  border-color: rgba(117, 147, 214, 0.28);
+  background: linear-gradient(
+    160deg,
+    rgba(22, 29, 44, 0.96) 0%,
+    rgba(33, 43, 65, 0.96) 100%
+  );
+  box-shadow:
+    0 22px 44px -28px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(161, 189, 245, 0.08);
+}
+
+.publish-pick-confirm.dark p {
+  color: #e8eef9;
+}
+
+.publish-pick-confirm.dark .confirm-btn {
+  color: #eef4ff;
+  background: linear-gradient(135deg, #365992 0%, #5e8fe0 100%);
+  box-shadow: 0 12px 22px -16px rgba(64, 104, 182, 0.72);
+}
+
+.publish-pick-confirm.dark .cancel-btn {
+  color: #dce5f7;
+  border-color: rgba(130, 157, 209, 0.24);
+  background: rgba(245, 248, 255, 0.08);
+}
+
 @media (max-width: 768px) {
   .publish-modal-shell {
     padding: 16px;
@@ -18881,70 +18920,112 @@ onUnmounted(() => {
 </style>
 
 <style>
+.paper-plane-menu--no-transition,
+.paper-plane-menu--no-transition * {
+  transition: none !important;
+}
 .paper-plane-menu {
   position: fixed;
   z-index: 1200;
-  background: #ffffff;
-  border-radius: 14px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
-  padding: 6px;
+  width: 220px;
+  padding: 14px 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(199, 151, 60, 0.3);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 100%
+  );
+  box-shadow:
+    0 18px 40px -24px rgba(6, 10, 20, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.32);
   opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: auto;
-  min-width: 120px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .paper-plane-menu.dark {
-  background: #000000;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  border-color: rgba(117, 147, 214, 0.28);
+  background: linear-gradient(
+    160deg,
+    rgba(22, 29, 44, 0.96) 0%,
+    rgba(33, 43, 65, 0.96) 100%
+  );
+  box-shadow:
+    0 22px 44px -28px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(161, 189, 245, 0.08);
 }
 .paper-plane-menu::after {
   content: '';
   position: absolute;
-  bottom: -6px;
+  bottom: -5px;
   left: 50%;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   background: inherit;
+  border-right: 1px solid rgba(199, 151, 60, 0.3);
+  border-bottom: 1px solid rgba(199, 151, 60, 0.3);
   border-radius: 2px;
   transform: translateX(-50%) rotate(45deg);
+}
+.paper-plane-menu.dark::after {
+  border-right-color: rgba(117, 147, 214, 0.28);
+  border-bottom-color: rgba(117, 147, 214, 0.28);
 }
 .plane-menu-item {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 10px 14px;
-  border-radius: 10px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
-  color: #000;
-  transition: background 0.15s;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
   user-select: none;
 }
 .paper-plane-menu.dark .plane-menu-item {
-  color: #fff;
+  color: #eef4ff;
 }
 .plane-menu-item[data-action="nearby"] {
-  background: #FF6B6B;
-  border-radius: 10px;
-  color: #fff;
+  color: #fff8ef;
+  background: linear-gradient(135deg, #8c5c22 0%, #c68e30 100%);
+  box-shadow: 0 10px 20px -14px rgba(140, 92, 34, 0.76);
 }
 .plane-menu-item[data-action="publish"] {
-  background: #FF9E9E;
-  border-radius: 10px;
-  color: #fff;
+  margin-top: 10px;
+  color: #6b4d2d;
+  border-color: rgba(165, 122, 44, 0.28);
+  background: rgba(255, 249, 240, 0.96);
 }
 .paper-plane-menu.dark .plane-menu-item[data-action="nearby"],
 .paper-plane-menu.dark .plane-menu-item[data-action="publish"] {
-  color: #fff;
+  color: #eef4ff;
+}
+.paper-plane-menu.dark .plane-menu-item[data-action="nearby"] {
+  background: linear-gradient(135deg, #365992 0%, #5e8fe0 100%);
+  box-shadow: 0 12px 22px -16px rgba(64, 104, 182, 0.72);
+}
+.paper-plane-menu.dark .plane-menu-item[data-action="publish"] {
+  border-color: rgba(130, 157, 209, 0.24);
+  background: rgba(245, 248, 255, 0.08);
 }
 .plane-menu-item:hover {
-  filter: brightness(1.1);
+  transform: translateY(-1px);
 }
 .plane-menu-item svg {
   flex-shrink: 0;
-  opacity: 0.85;
+  opacity: 0.88;
 }
 
 /* 地图筛选入口改为右下角展开 */
