@@ -80,6 +80,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { storyApi } from "@/api/story";
 import { extractTitle, decodeStoryContent } from "@/utils/storyTitle";
+import { getEmotionColor } from "@/utils/emotion";
 
 const props = defineProps({
   visible: {
@@ -152,22 +153,8 @@ watch(
   { immediate: true }
 );
 
-const emotionColors = {
-  joy: "#FFB347",
-  sadness: "#6C8EBF",
-  anger: "#E06666",
-  fear: "#9370DB",
-  surprise: "#FFD700",
-  love: "#FF69B4",
-  calm: "#66CDAA",
-  nostalgia: "#CD853F",
-  hope: "#87CEEB",
-  gratitude: "#DDA0DD",
-};
-
 function emotionBarStyle(story) {
-  const emotion = story.emotionTag || story.emotion;
-  const color = emotionColors[emotion];
+  const color = getEmotionColor(story.emotionTag || story.emotion);
   if (!color) return {};
   return {
     background: `linear-gradient(180deg, ${color}, ${color}88)`,

@@ -20,7 +20,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from "vue";
 import AMapLoader from "@amap/amap-jsapi-loader";
-import { fromEmotionTag, getEmotionEmoji } from "../utils/emotion";
+import {
+  getEmotionEmoji,
+  getEmotionColor,
+  normalizeEmotionValue,
+} from "../utils/emotion";
 import { extractTitle } from "../utils/storyTitle";
 
 const props = defineProps({
@@ -1115,8 +1119,8 @@ function createMarker(story) {
   const content = document.createElement("div");
 
   const colors = isDarkMode.value ? emotionColorsDark : emotionColors;
-  const emotion = fromEmotionTag(story.emotionTag) || story.emotion;
-  const color = colors[emotion] || "#667eea";
+  const emotion = normalizeEmotionValue(story.emotionTag || story.emotion);
+  const color = colors[emotion] || getEmotionColor(story.emotionTag || story.emotion) || "#667eea";
   const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
   const isDark = isDarkMode.value;
 

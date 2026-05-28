@@ -1894,7 +1894,12 @@ import PublishFormDock from "../../components/PublishFormDock.vue";
 import LoginModal from "../Home/components/LoginModal.vue";
 import { useVipStore } from "../../stores/vip";
 import { formatRelativeTime } from "../../utils/time";
-import { EMOTIONS, getEmotionEmoji } from "../../utils/emotion";
+import {
+  EMOTIONS,
+  getEmotionEmoji,
+  normalizeEmotionTag,
+  normalizeEmotionValue,
+} from "../../utils/emotion";
 import { getAnnouncementTypeIcon } from "../../utils/announcement";
 import { searchPoisWithContext } from "../../utils/poiSearch";
 import { REPORT_TYPES } from "../../utils/report";
@@ -9442,6 +9447,8 @@ function normalizeStoryForMap(story, fallbackLocation = null) {
     ...story,
     id: normalizedStoryId,
     images: Array.isArray(story.images) ? story.images : [],
+    emotionTag: normalizeEmotionTag(story.emotionTag || story.emotion),
+    emotion: normalizeEmotionValue(story.emotionTag || story.emotion),
     likes: normalizedLikeCount,
     likeCount: normalizedLikeCount,
     username: author.username,
@@ -9496,6 +9503,12 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
   return {
     ...nextBaseStory,
     id: normalizedStoryId,
+    emotionTag: normalizeEmotionTag(
+      nextBaseStory.emotionTag || nextBaseStory.emotion,
+    ),
+    emotion: normalizeEmotionValue(
+      nextBaseStory.emotionTag || nextBaseStory.emotion,
+    ),
     createdAt: nextBaseStory.createdAt || item.createdAt,
     images: Array.isArray(nextBaseStory.images) ? nextBaseStory.images : [],
     likes: nextNormalizedLikeCount,
