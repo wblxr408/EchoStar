@@ -8,9 +8,21 @@ export const createStorySchema = Joi.object({
     .min(1)
     .max(1000)
     .required()
+    .custom((value, helpers) => {
+      // 解码标题部分，禁止标题为全空白
+      const sepIdx = value.indexOf('\x1E');
+      if (sepIdx !== -1 && sepIdx <= 20) {
+        const title = value.slice(0, sepIdx);
+        if (title.length > 0 && title.trim().length === 0) {
+          return helpers.error('content.titleWhitespace');
+        }
+      }
+      return value;
+    })
     .messages({
       'string.empty': '故事内容不能为空',
-      'string.max': '故事内容不能超过 1000 字'
+      'string.max': '故事内容不能超过 1000 字',
+      'content.titleWhitespace': '标题不能为全空白字符'
     }),
 
   images: Joi.array()
