@@ -146,7 +146,6 @@ class StoryConsumer {
         await this.consumer.ack(message);
         return;
       }
-      processedMessages.add(dedupKey);
 
       logger.info(`📨 处理消息: ${module}:${operation}`, { shardKey, msgId });
 
@@ -168,6 +167,7 @@ class StoryConsumer {
             console.warn(`⚠️  未知操作类型: ${operation}`);
         }
 
+        processedMessages.add(dedupKey);
         logger.info(`✅ 消息处理成功: ${module}:${operation}`, { shardKey });
         await this.consumer.ack(message);
       } catch (error) {
