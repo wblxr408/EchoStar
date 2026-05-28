@@ -126,13 +126,6 @@ export const User = sequelize.define('User', {
     defaultValue: null,
     field: 'comment_bg',
     comment: 'VIP评论背景设置（{type, color, gradientColor, useGradient}）'
-  },
-  profileBg: {
-    type: DataTypes.JSONB,
-    allowNull: true,
-    defaultValue: null,
-    field: 'profile_bg',
-    comment: 'VIP个人资料背景设置'
   }
 }, {
   tableName: 'users',

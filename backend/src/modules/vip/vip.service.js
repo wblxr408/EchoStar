@@ -824,45 +824,5 @@ export const VipService = {
     };
   },
 
-  /**
-   * 获取个人资料背景设置
-   */
-  async getUserProfileBg(userId) {
-    const user = await User.findByPk(userId, {
-      attributes: ['id', 'profileBg']
-    });
-
-    if (!user) {
-      throw new Error('用户不存在');
-    }
-
-    return {
-      profileBg: user.profileBg || null
-    };
-  },
-
-  /**
-   * 保存/更新个人资料背景设置（仅VIP）
-   */
-  async saveProfileBg(userId, profileBg) {
-    const user = await User.findByPk(userId);
-    if (!user) {
-      throw new Error('用户不存在');
-    }
-
-    // ✅ 修复：同时检查VIP状态和有效期
-    const vipStatus = await this.checkUserVipStatus(userId);
-    if (!vipStatus.isVip) {
-      throw new Error('仅VIP用户可设置个人资料背景');
-    }
-
-    await user.update({ profileBg });
-
-    await clearUserCache(userId);
-
-    return {
-      profileBg: user.profileBg
-    };
-  },
 
 };

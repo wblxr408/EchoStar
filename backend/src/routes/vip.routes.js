@@ -67,14 +67,4 @@ router.get('/fonts', vipController.getUserFontSettings);
  */
 router.put('/fonts', vipController.saveFontSettings);
 
-/**
- * GET /api/v1/vip/profile-bg - 获取个人资料背景设置
- */
-router.get('/profile-bg', vipController.getUserProfileBg);
-
-/**
- * PUT /api/v1/vip/profile-bg - 保存/更新个人资料背景设置
- */
-router.put('/profile-bg', vipController.saveProfileBg);
-
 export default router;
