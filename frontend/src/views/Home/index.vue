@@ -141,15 +141,127 @@
           </div>
 
           <div class="footer-links">
-            <span class="footer-link">用户协议</span>
-            <span class="footer-link">隐私政策</span>
-            <span class="footer-link">联系我们</span>
+            <button class="footer-link" @click="activePolicy = 'terms'">用户协议</button>
+            <button class="footer-link" @click="activePolicy = 'privacy'">隐私政策</button>
           </div>
         </div>
       </footer>
     </main>
 
-    <LoginModal v-if="showLogin" @close="showLogin = false" />
+    <LoginModal
+      v-if="showLogin"
+      @close="showLogin = false"
+      @open-terms="activePolicy = 'terms'"
+      @open-privacy="activePolicy = 'privacy'"
+    />
+
+    <Transition name="policy-modal">
+      <div v-if="activePolicy" class="policy-overlay" @click.self="activePolicy = null" @wheel.self.prevent>
+        <div class="policy-dialog">
+          <button class="policy-dialog__close" @click="activePolicy = null" aria-label="关闭">✕</button>
+          <template v-if="activePolicy === 'terms'">
+            <h2 class="policy-dialog__title">用户协议</h2>
+            <div class="policy-dialog__body">
+              <p>更新日期：2026 年 5 月 28 日</p>
+              <p>欢迎使用 EchoStar（以下简称"本平台"）。在注册或使用本平台服务前，请您仔细阅读以下协议条款。一旦您开始使用本平台，即表示您已充分理解并同意本协议的全部内容。</p>
+
+              <h4>一、服务说明</h4>
+              <p>EchoStar 是一款基于地图的情绪记录与故事分享平台。用户可以在真实地理位置发布故事、心情、图片等内容（以下简称"用户内容"），并浏览附近其他用户分享的内容。</p>
+
+              <h4>二、用户注册与账号管理</h4>
+              <p>1. 您注册时提供的邮箱等信息应当真实、准确。因信息不实导致的问题由您自行承担。</p>
+              <p>2. 每个邮箱仅允许注册一个账号，禁止批量注册或使用虚假邮箱。</p>
+              <p>3. 您对账号下的所有行为负责，请妥善保管密码。如发现账号被盗用，请及时联系管理员。</p>
+              <p>4. 本平台保留在不违反法律的前提下，对长期不活跃或存在违规行为的账号采取限制措施的权利。</p>
+
+              <h4>三、用户内容规范</h4>
+              <p>您在平台上发布的内容应当遵守法律法规和公序良俗。禁止发布以下内容：</p>
+              <p>1. 违反中国法律法规的内容，包括但不限于危害国家安全、破坏民族团结、宣扬邪教和封建迷信等。</p>
+              <p>2. 侵犯他人合法权益的内容，包括但不限于隐私权、肖像权、知识产权等。</p>
+              <p>3. 含有淫秽、色情、暴力、恐怖、赌博、毒品等不良信息的内容。</p>
+              <p>4. 骚扰、侮辱、诽谤、歧视他人的内容。</p>
+              <p>5. 垃圾广告、恶意链接、欺诈信息等。</p>
+              <p>6. 与实际地理位置无关或故意标注错误位置以误导他人的内容。</p>
+              <p>如发现违规内容，平台有权采取删除内容、限制功能、封禁账号等措施，并保留向有关部门报告的权利。</p>
+
+              <h4>四、地理位置信息</h4>
+              <p>1. EchoStar 的核心功能依赖于您的地理位置信息。您发布的每条故事均会关联一个地理位置坐标。</p>
+              <p>2. 我们不会公开您的精确坐标，而是以附近知名地点（如"玄武湖公园"）的形式展示大致位置。</p>
+              <p>3. 您可以在发布时选择不同的地点，但请保持内容与地点基本相关。</p>
+
+              <h4>五、知识产权</h4>
+              <p>1. 您在平台上发布的原创内容（文字、图片等），您保留相应的著作权。</p>
+              <p>2. 您授予本平台一项全球范围内、免费、非独占的使用权，以在平台内展示、传播您发布的内容。</p>
+              <p>3. 本平台的名称、Logo、界面设计、源代码等知识产权归平台所有，未经许可不得使用。</p>
+
+              <h4>六、免责声明</h4>
+              <p>1. 本平台作为信息存储空间服务提供者，不对用户发布的内容承担事前审查义务，但会根据举报和巡查及时处理违规内容。</p>
+              <p>2. 因不可抗力、系统维护、网络故障等原因导致的服务中断，平台不承担责任，但会尽可能提前通知并尽快恢复。</p>
+              <p>3. 您与其他用户之间的互动和线下见面行为，由您自行承担风险。</p>
+
+              <h4>七、协议修改</h4>
+              <p>本平台有权根据法律法规变化或运营需要修改本协议，修改后的协议将在平台上公布。继续使用本平台即表示您同意修改后的协议。</p>
+
+              <h4>八、联系方式</h4>
+              <p>如对本协议有任何疑问，请加入 QQ 群：1063424500 联系管理员。</p>
+            </div>
+          </template>
+
+          <template v-if="activePolicy === 'privacy'">
+            <h2 class="policy-dialog__title">隐私政策</h2>
+            <div class="policy-dialog__body">
+              <p>更新日期：2026 年 5 月 28 日</p>
+              <p>EchoStar（以下简称"我们"）深知个人信息对您的重要性。我们致力于保护您的隐私，并遵守适用的个人信息保护法律法规。本隐私政策将说明我们如何收集、使用、存储和保护您的个人信息。</p>
+
+              <h4>一、我们收集的信息</h4>
+              <p>1. <strong>注册信息</strong>：当您注册账号时，我们需要您提供邮箱地址和用户名。</p>
+              <p>2. <strong>地理位置信息</strong>：当您发布故事时，您选择的地理位置（经纬度坐标、地点名称）会与故事内容关联保存。当您使用地图浏览功能时，我们会获取您当前的粗略位置以展示附近内容。</p>
+              <p>3. <strong>用户内容</strong>：您在平台上发布的文字、图片、情绪标签等内容，以及您设置的昵称、头像、签名等个人资料。</p>
+              <p>4. <strong>互动数据</strong>：您对内容的点赞、收藏、评论等互动行为记录。</p>
+              <p>5. <strong>设备信息</strong>：为保障服务安全，我们会收集基本的设备信息（如操作系统版本、浏览器类型）和日志信息。</p>
+
+              <h4>二、信息使用方式</h4>
+              <p>1. 为您提供基于地理位置的内容展示和推荐服务（例如：展示附近的精选故事、随机漫游功能）。</p>
+              <p>2. 根据您的情绪偏好推荐个性化内容，改善使用体验。</p>
+              <p>3. 检测和处理违规内容，维护平台安全。</p>
+              <p>4. 进行匿名化的数据分析，优化平台功能。</p>
+              <p>5. 未经您的明确同意，我们不会将您的个人信息用于上述目的之外的用途。</p>
+
+              <h4>三、信息共享与披露</h4>
+              <p>1. 您在平台上公开发布的内容（故事文字、图片、情绪标签、地点名称）将向其他用户展示。您的精确坐标不会被公开。</p>
+              <p>2. 未经您的同意，我们不会将您的个人信息（邮箱、精确位置等）提供给第三方，但以下情况除外：</p>
+              <p>&emsp;- 法律法规要求或政府机关依法提出的要求；</p>
+              <p>&emsp;- 为保护我们或公众的生命、财产、安全等重大利益所必需。</p>
+              <p>3. 我们使用阿里云等第三方云服务来存储数据和图片，这些服务商已通过相关安全认证。</p>
+
+              <h4>四、信息存储与安全</h4>
+              <p>1. 您的个人信息存储在位于中国境内的服务器上。</p>
+              <p>2. 我们采用加密传输（HTTPS）、数据库加密、访问控制等措施保护您的信息。</p>
+              <p>3. 您的密码经过哈希加密存储，任何人都无法逆向获取您的明文密码。</p>
+              <p>4. 我们会定期审查安全措施，但请注意互联网环境不存在绝对的安全保障。</p>
+
+              <h4>五、您的权利</h4>
+              <p>1. 您可以在个人设置中查看、修改您的个人信息（昵称、头像、签名等）。</p>
+              <p>2. 您可以删除自己发布的任意故事和评论。</p>
+              <p>3. 您可以随时在设置中注销账号，注销后您的个人信息将被永久删除或匿名化处理。</p>
+              <p>4. 您有权要求我们导出您在本平台的数据副本，请在 QQ 群联系管理员。</p>
+
+              <h4>六、Cookie 与追踪技术</h4>
+              <p>我们使用必要的 Cookie 和本地存储来维持您的登录状态和用户偏好，不用于追踪您的跨站行为或投放定向广告。</p>
+
+              <h4>七、未成年人保护</h4>
+              <p>本平台主要面向年满 14 周岁的用户。如果您是未成年人，请在监护人的指导和同意下使用本平台。我们不会故意收集未成年人的个人信息。</p>
+
+              <h4>八、政策更新</h4>
+              <p>我们可能会根据法律变化或业务需求更新本隐私政策，更新后的版本将在平台上发布。重大变更时，我们会通过适当方式通知您。</p>
+
+              <h4>九、联系我们</h4>
+              <p>如对本隐私政策或个人信息的处理有任何疑问，请加入 QQ 群：1063424500 联系我们。</p>
+            </div>
+          </template>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -162,6 +274,7 @@ import LoginModal from './components/LoginModal.vue';
 const router = useRouter();
 const userStore = useUserStore();
 const showLogin = ref(false);
+const activePolicy = ref(null); // 'terms' | 'privacy' | null
 const logoRef = ref(null);
 const introSectionRef = ref(null);
 const pageLockSnapshot = {
@@ -1012,7 +1125,15 @@ watch(
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 14px;
+  font-family: inherit;
   color: rgba(255, 255, 255, 0.86);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.footer-link:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.26);
 }
 
 @keyframes floatUp {
@@ -1143,6 +1264,126 @@ watch(
   .emotion-world__emoji-field span:nth-child(n + 49) {
     display: none;
   }
+}
+
+/* ===== 用户协议 / 隐私政策弹窗 ===== */
+.policy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 11, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 24px;
+}
+
+.policy-dialog {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: 82vh;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08)),
+    rgba(7, 12, 28, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 24px;
+  box-shadow: 0 32px 64px rgba(3, 7, 16, 0.48);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.policy-dialog__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s;
+  z-index: 1;
+}
+
+.policy-dialog__close:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+.policy-dialog__title {
+  margin: 0;
+  padding: 28px 32px 16px;
+  font-size: 26px;
+  font-weight: 700;
+  font-family: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+  color: #f3d59b;
+  letter-spacing: 0.06em;
+}
+
+.policy-dialog__body {
+  padding: 0 32px 32px;
+  overflow-y: auto;
+  flex: 1;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.policy-dialog__body h4 {
+  margin: 22px 0 10px;
+  font-size: 17px;
+  color: #ffe8ab;
+}
+
+.policy-dialog__body p {
+  margin: 0 0 8px;
+}
+
+/* 隐藏滚动条 + 阻止滚动链穿透到背景 */
+.policy-dialog__body {
+  scrollbar-width: none; /* Firefox */
+  overscroll-behavior: contain;
+}
+
+.policy-dialog__body::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+/* transition */
+.policy-modal-enter-active,
+.policy-modal-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.policy-modal-enter-active .policy-dialog,
+.policy-modal-leave-active .policy-dialog {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.policy-modal-enter-from,
+.policy-modal-leave-to {
+  opacity: 0;
+}
+
+.policy-modal-enter-from .policy-dialog {
+  transform: scale(0.94) translateY(16px);
+  opacity: 0;
+}
+
+.policy-modal-leave-to .policy-dialog {
+  transform: scale(0.96) translateY(8px);
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
