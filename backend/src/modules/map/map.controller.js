@@ -310,8 +310,9 @@ export const getClusterData = async (req, res, next) => {
     const zoomNum = zoom ? parseInt(zoom, 10) : 10;
 
     const clusters = await MapService.getClusterData(
-      { ...bounds, ...filters },
+      bounds,
       zoomNum,
+      filters,
     );
     res.json({ code: 0, data: clusters });
   } catch (error) {

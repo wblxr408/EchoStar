@@ -8635,7 +8635,7 @@ function setEmotionFilter(value) {
 }
 
 function applyTimePreset(presetKey) {
-  if (activeTimePreset.value === presetKey && presetKey !== "all") {
+  if (activeTimePreset.value === presetKey) {
     return;
   }
 
@@ -8702,11 +8702,19 @@ async function loadStories() {
       return;
     }
 
-    const response = await mapApi.exploreStories(center.latitude, center.longitude, 5000, {
+    const currentBounds = getMapBounds();
+    const shouldUseViewportRadius =
+      isUserMapFilterActive.value ||
+      Number(mapStore.zoom) < CLUSTER_ZOOM_THRESHOLD;
+    const fetchRadius = shouldUseViewportRadius
+      ? getStoryFetchRadiusMeters(center, currentBounds)
+      : 5000;
+
+    const response = await mapApi.exploreStories(center.latitude, center.longitude, fetchRadius, {
       limit: mapExploreFetchLimit.value,
       ...mapFilterQuery.value,
     });
-    console.log("[Map] exploreStories response:", response);
+    console.log("[Map] exploreStories response:", response, "radius:", fetchRadius);
 
     const stories = extractStoriesFromResponse(response);
     if (!stories) {
@@ -8734,6 +8742,73 @@ async function loadStories() {
 }
 
 const CLUSTER_ZOOM_THRESHOLD = 16;
+
+function toRadians(value) {
+  return (Number(value) * Math.PI) / 180;
+}
+
+function calculateDistanceMeters(from, to) {
+  const fromLat = Number(from?.latitude ?? from?.lat);
+  const fromLng = Number(from?.longitude ?? from?.lng);
+  const toLat = Number(to?.latitude ?? to?.lat);
+  const toLng = Number(to?.longitude ?? to?.lng);
+
+  if (![fromLat, fromLng, toLat, toLng].every(Number.isFinite)) {
+    return null;
+  }
+
+  const earthRadiusMeters = 6371000;
+  const latDelta = toRadians(toLat - fromLat);
+  const lngDelta = toRadians(toLng - fromLng);
+  const fromLatRad = toRadians(fromLat);
+  const toLatRad = toRadians(toLat);
+
+  const haversine =
+    Math.sin(latDelta / 2) * Math.sin(latDelta / 2) +
+    Math.cos(fromLatRad) *
+      Math.cos(toLatRad) *
+      Math.sin(lngDelta / 2) *
+      Math.sin(lngDelta / 2);
+  const arc = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+  return earthRadiusMeters * arc;
+}
+
+function getStoryFetchRadiusMeters(center, bounds) {
+  const paddedBounds = padBounds(bounds, 0.12) || bounds;
+  if (!center || !paddedBounds?.northEast || !paddedBounds?.southWest) {
+    return 5000;
+  }
+
+  const corners = [
+    {
+      latitude: paddedBounds.northEast.lat,
+      longitude: paddedBounds.northEast.lng,
+    },
+    {
+      latitude: paddedBounds.northEast.lat,
+      longitude: paddedBounds.southWest.lng,
+    },
+    {
+      latitude: paddedBounds.southWest.lat,
+      longitude: paddedBounds.northEast.lng,
+    },
+    {
+      latitude: paddedBounds.southWest.lat,
+      longitude: paddedBounds.southWest.lng,
+    },
+  ];
+
+  const distances = corners
+    .map((corner) => calculateDistanceMeters(center, corner))
+    .filter(Number.isFinite);
+
+  if (!distances.length) {
+    return 5000;
+  }
+
+  return Math.min(Math.max(Math.ceil(Math.max(...distances) * 1.1), 5000), 200000);
+}
 
 function padBounds(bounds, paddingRatio = 0.08) {
   if (!bounds?.northEast || !bounds?.southWest) {
@@ -8809,34 +8884,13 @@ async function loadClusterData() {
         mapFilterQuery.value,
       );
 
-      const data = response?.data ?? response;
+      const data = extractClustersFromResponse(response);
       console.log("[Map] cluster API response:", data);
       if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
         clusters.value = data;
         console.log(
           "[Map] clusters loaded with default bounds:",
           clusters.value.length,
-        );
-      }
-      return;
-    }
-
-    {
-      const response = await mapApi.getClusterData(
-        bounds.northEast,
-        bounds.southWest,
-        currentZoom,
-        mapFilterQuery.value,
-      );
-
-      const data = response?.data ?? response;
-      console.log("[Map] cluster API response:", data);
-      if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
-        clusters.value = data;
-        console.log(
-          "[Map] clusters loaded:",
-          clusters.value.length,
-          clusters.value,
         );
       }
       return;
@@ -8850,7 +8904,7 @@ async function loadClusterData() {
       mapFilterQuery.value,
     );
 
-    const data = response?.data ?? response;
+    const data = extractClustersFromResponse(response);
     console.log("[Map] cluster API response:", data);
     if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
       clusters.value = data;
@@ -9246,6 +9300,17 @@ function extractStoriesFromResponse(response) {
     response?.data?.stories,
     response?.stories,
     Array.isArray(response?.data) ? response.data : null,
+    Array.isArray(response) ? response : null,
+  ];
+
+  return candidates.find(Array.isArray) ?? null;
+}
+
+function extractClustersFromResponse(response) {
+  const candidates = [
+    response?.data?.data,
+    response?.data,
+    Array.isArray(response?.clusters) ? response.clusters : null,
     Array.isArray(response) ? response : null,
   ];
 

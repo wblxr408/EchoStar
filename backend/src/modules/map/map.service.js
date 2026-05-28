@@ -281,9 +281,9 @@ export const MapService = {
     return getGeohashPrecision(zoom);
   },
 
-  async getClusterData(bounds, zoom) {
+  async getClusterData(bounds, zoom, options = {}) {
     const { northEast, southWest } = bounds;
-    const optionalWhere = buildStoryFilterWhere(bounds);
+    const optionalWhere = buildStoryFilterWhere(options);
     const stories = await Story.findAll({
       where: {
         visibility: CONSTANTS.PUBLIC_VISIBILITY,
