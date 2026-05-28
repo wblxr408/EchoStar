@@ -1688,6 +1688,8 @@
       :start-position="storyStartPosition"
       :direct-open="storyDirectOpen"
       :is-dark="effectiveMapTheme === 'dark'"
+      :next-stop="nextStop"
+      :next-stop-loading="nextStopLoading"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
       @like="toggleStoryLike"
@@ -1699,6 +1701,7 @@
       @view-user-profile="openUserDetail"
       @open-comment-bg="handleOpenCommentBg"
       @open-vip-center="vipCenterFromStory = true; showVipCenter = true"
+      @go-next-stop="goToNextStop"
     />
 
     <div class="msg-trigger-wrapper">
@@ -1988,6 +1991,8 @@ const feedHasMore = computed(
   () => feedPage.value < feedPagination.value.totalPages,
 );
 const randomWalking = ref(false);
+const nextStop = ref(null);
+const nextStopLoading = ref(false);
 const selectedStory = ref(null);
 const storyStartPosition = ref({
   x: window.innerWidth / 2,
@@ -6052,7 +6057,7 @@ async function refreshCurrentUserLocationLabel(preferredLabel = "") {
   const currentToken = ++activeUserLocationLabelToken;
 
   try {
-    const resolvedLocation = await reverseGeocodeLocationDetail(
+    const resolvedLocation = await reverseGeocodeLocationDetailSafe(
       coords.latitude,
       coords.longitude,
     );
@@ -6121,7 +6126,7 @@ async function resolveNearbyCenterLabel(preferredLabel = "") {
   const currentToken = ++activeNearbyCenterLabelToken;
 
   try {
-    const resolvedLocation = await reverseGeocodeLocationDetail(
+    const resolvedLocation = await reverseGeocodeLocationDetailSafe(
       center.latitude,
       center.longitude,
     );
@@ -6728,9 +6733,9 @@ function handlePaperPlanePublish() {
     showToast('æµ£å¶‡ç–†ç‘™ï½†ç€½æ¾¶è¾«è§¦é”›å²ƒî‡¬é–²å¶ˆç˜¯', 'warning');
     return;
   }
-  reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
+  reverseGeocodeLocationDetailSafe(coords.latitude, coords.longitude).then((location) => {
     if (!location) return;
-    const displayName = pickPublishLocationSearchText(location, "当前位置");
+    const displayName = pickPublishLocationSearchTextSafe(location, "当前位置");
     isPickingPublishLocation.value = false;
     showPublishSidebar.value = true;
     nextTick(() => {
@@ -6972,6 +6977,251 @@ function normalizeNearbyPoiFromGeocode(poi, locality = null) {
   };
 }
 
+function formatMapPickAddressSafe(latitude, longitude) {
+  return `经度 ${Number(longitude).toFixed(6)}，纬度 ${Number(latitude).toFixed(6)}`;
+}
+
+function formatPoiDistrictLabelSafe(poi) {
+  if (!poi || typeof poi !== "object") {
+    return "已解析位置";
+  }
+
+  return buildLocationDistrictLabel(poi) || "已解析位置";
+}
+
+function isCoordinateOnlyLocationLabelSafe(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim();
+  return (
+    normalized.startsWith("经度 ") ||
+    normalized.startsWith("缁忓害 ") ||
+    /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(normalized)
+  );
+}
+
+function isGenericLocationPlaceholderSafe(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  return [
+    "Map Pick",
+    "Map Center",
+    "Current Location",
+    "Nearby Place",
+    "已选地点",
+    "当前位置",
+    "当前地理位置",
+  ].includes(value.trim());
+}
+
+function getStoryLocationTextSafe(story, fallback = "未知位置") {
+  const label = pickLocationText([
+    story?.location?.address,
+    story?.location?.formattedAddress,
+    story?.location?.name,
+    story?.locationName,
+  ]);
+
+  return label || fallback;
+}
+
+function sanitizeLocationLabelSafe(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (
+    isGenericLocationPlaceholderSafe(normalized) ||
+    isCoordinateOnlyLocationLabelSafe(normalized)
+  ) {
+    return "";
+  }
+
+  return normalized;
+}
+
+function pickPublishLocationSearchTextSafe(location, fallback = "") {
+  const safeFallback = sanitizeLocationLabelSafe(fallback);
+  if (!location || typeof location !== "object") {
+    return safeFallback || "当前位置";
+  }
+
+  const suggestedLocation = buildSuggestedLocations(
+    location,
+    location.nearbyPois || [],
+  )[0];
+  const candidates = [
+    suggestedLocation?.name,
+    suggestedLocation?.address,
+    location.name,
+    location.address,
+    location.formattedAddress,
+    location.district,
+    location.city,
+    safeFallback,
+  ]
+    .map((value) => sanitizeLocationLabelSafe(value))
+    .filter(Boolean);
+
+  return pickLocationText(candidates, false) || safeFallback || "当前位置";
+}
+
+function hasResolvedLocationDetails(location) {
+  if (!location || typeof location !== "object") {
+    return false;
+  }
+
+  return Boolean(
+    sanitizeLocationLabelSafe(location.name) ||
+      sanitizeLocationLabelSafe(location.address) ||
+      sanitizeLocationLabelSafe(location.district) ||
+      firstNonEmptyString(location.city, location.province),
+  );
+}
+
+async function resolveLocationFromNearbyPlaceSearch(
+  latitude,
+  longitude,
+  locality = null,
+) {
+  try {
+    await ensureNearbyPlaceSearch();
+    const anchor = { latitude, longitude };
+    const { pois } = await searchPoisWithContext({
+      createPlaceSearch: (options = {}) =>
+        new window.AMap.PlaceSearch({
+          pageSize: 8,
+          pageIndex: 1,
+          extensions: "all",
+          ...options,
+        }),
+      keyword: "",
+      anchor,
+      sortAnchor: anchor,
+      locality,
+      radius: 1500,
+      normalizePoi: (poi) => normalizeNearbyPoiFromGeocode(poi, locality),
+    });
+
+    return Array.isArray(pois) ? pois[0] || null : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function reverseGeocodeLocationDetailSafe(latitude, longitude) {
+  const cacheKey = getCoordinateCacheKey(latitude, longitude);
+  if (reverseGeocodeCache.has(cacheKey)) {
+    return reverseGeocodeCache.get(cacheKey);
+  }
+
+  if (reverseGeocodePending.has(cacheKey)) {
+    return reverseGeocodePending.get(cacheKey);
+  }
+
+  const pendingTask = (async () => {
+    try {
+      const geocoder = await ensureGeocoder();
+      const result = await new Promise((resolve) => {
+        geocoder.getAddress([longitude, latitude], (status, geocodeResult) => {
+          resolve(status === "complete" ? geocodeResult : null);
+        });
+      });
+
+      const regeocode = result?.regeocode || {};
+      const district = [
+        regeocode.addressComponent?.city,
+        regeocode.addressComponent?.district,
+        regeocode.addressComponent?.township,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const city = firstNonEmptyString(
+        regeocode.addressComponent?.city,
+        regeocode.addressComponent?.province,
+      );
+      const province = firstNonEmptyString(
+        regeocode.addressComponent?.province,
+      );
+      const locality = {
+        city,
+        district,
+        adcode: firstNonEmptyString(regeocode.addressComponent?.adcode),
+        province,
+      };
+      const rawPois = Array.isArray(regeocode.pois) ? regeocode.pois : [];
+      const normalizedPois = rawPois
+        .map((poi) => normalizeNearbyPoiFromGeocode(poi, locality))
+        .filter(Boolean);
+      const firstPoi = normalizedPois[0] || null;
+      const formattedAddress = firstNonEmptyString(regeocode.formattedAddress);
+      let resolvedLocation = buildFallbackLocation(latitude, longitude, {
+        id: `map-pick-${longitude}-${latitude}`,
+        name: getNonPlaceholderLocationLabel(
+          firstPoi?.name,
+          formattedAddress,
+          district,
+          city,
+          province,
+          "已选地点",
+        ),
+        address: pickLocationText([
+          firstPoi?.address,
+          formattedAddress,
+          firstPoi?.name,
+          formatMapPickAddressSafe(latitude, longitude),
+        ]),
+        city: firstNonEmptyString(firstPoi?.city, city),
+        district: firstNonEmptyString(firstPoi?.district, district),
+        adcode: firstNonEmptyString(
+          firstPoi?.adcode,
+          regeocode.addressComponent?.adcode,
+        ),
+        province: firstNonEmptyString(firstPoi?.province, province),
+        type: firstNonEmptyString(firstPoi?.type, "map-click"),
+        nearbyPois: normalizedPois,
+      });
+
+      if (!hasResolvedLocationDetails(resolvedLocation)) {
+        const nearbyPoi = await resolveLocationFromNearbyPlaceSearch(
+          latitude,
+          longitude,
+          locality,
+        );
+        if (nearbyPoi) {
+          resolvedLocation = buildFallbackLocation(latitude, longitude, {
+            ...nearbyPoi,
+            nearbyPois: [nearbyPoi],
+            type: firstNonEmptyString(nearbyPoi.type, "map-click"),
+          });
+        }
+      }
+
+      if (hasResolvedLocationDetails(resolvedLocation)) {
+        reverseGeocodeCache.set(cacheKey, resolvedLocation);
+      }
+
+      return resolvedLocation;
+    } catch (error) {
+      return buildFallbackLocation(latitude, longitude);
+    } finally {
+      reverseGeocodePending.delete(cacheKey);
+    }
+  })();
+
+  reverseGeocodePending.set(cacheKey, pendingTask);
+  return pendingTask;
+}
+
 function buildSuggestedLocations(rawLocation, nearbyPois = []) {
   if (!rawLocation) {
     return [];
@@ -7040,7 +7290,7 @@ function resolveSuggestedLocationSelection(location) {
 
 function finalizePublishPickSelection(location) {
   const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
-  const displayName = pickPublishLocationSearchText(
+  const displayName = pickPublishLocationSearchTextSafe(
     nextLocation,
     publishPrefillQuery.value || "当前位置",
   );
@@ -7056,7 +7306,7 @@ function finalizePublishPickSelection(location) {
 
 function finalizeAdjustPlanePickSelection(location) {
   const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
-  const displayName = pickPublishLocationSearchText(
+  const displayName = pickPublishLocationSearchTextSafe(
     nextLocation,
     adjustPlaneSavedPrefill.value || publishPrefillQuery.value || "当前位置",
   );
@@ -7222,7 +7472,7 @@ function getDockPublishPickPromptStyle(prompt) {
 }
 
 function reverseGeocodePickedLocation(latitude, longitude) {
-  return reverseGeocodeLocationDetail(latitude, longitude);
+  return reverseGeocodeLocationDetailSafe(latitude, longitude);
 }
 
 async function handlePublishMapClick(point) {
@@ -9109,6 +9359,7 @@ function closeStoryModal() {
   storyOpenTimer = null;
   closeStoryReportPanel();
   selectedStory.value = null;
+  nextStop.value = null;
 }
 
 function handleMapMove(event) {
@@ -9273,7 +9524,7 @@ async function hydrateStoryLocations(stories = []) {
         return;
       }
 
-      const resolvedLocation = await reverseGeocodeLocationDetail(
+      const resolvedLocation = await reverseGeocodeLocationDetailSafe(
         coords.latitude,
         coords.longitude,
       );
@@ -9343,8 +9594,52 @@ function normalizeRandomWalkResponse(response) {
   return null;
 }
 
+function buildNextStopPreview(story, coords) {
+  if (!story) return null;
+  return {
+    story,
+    coords,
+    locationName: story.locationName || "未知地点",
+    emotionTag: story.emotionTag || "",
+    authorName: story.username || story.author?.username || "匿名用户",
+    authorAvatar: story.avatar || story.author?.avatar || null,
+    thumbnail:
+      Array.isArray(story.images) && story.images.length > 0
+        ? story.images[0]
+        : null,
+    contentPreview: story.content
+      ? story.content.length > 60
+        ? `${story.content.substring(0, 60)}...`
+        : story.content
+      : "",
+    recommendation: story.recommendation || null,
+  };
+}
+
+async function prefetchNextStop() {
+  nextStopLoading.value = true;
+  try {
+    const center =
+      extractCoordinates(mapStore.center) ||
+      extractCoordinates(mapStore.userLocation);
+    const lat = center?.latitude ?? 39.9;
+    const lng = center?.longitude ?? 116.4;
+    const response = await mapApi.randomWalk(lat, lng);
+    const normalized = normalizeRandomWalkResponse(response);
+    if (normalized) {
+      nextStop.value = buildNextStopPreview(normalized.story, normalized.coords);
+    }
+  } catch (error) {
+    console.error("预加载下一站失败:", error);
+    nextStop.value = null;
+  } finally {
+    nextStopLoading.value = false;
+  }
+}
+
 async function handleRandomWalk() {
   randomWalking.value = true;
+  nextStop.value = null;
   try {
     const center =
       extractCoordinates(mapStore.center) ||
@@ -9388,6 +9683,7 @@ async function handleRandomWalk() {
     setTimeout(() => {
       openStoryModal(story);
     }, 800);
+    void prefetchNextStop();
   } catch (error) {
     console.error("随机漫步失败:", error);
     showToast("随机漫步失败，请重试", "error");
@@ -9395,6 +9691,37 @@ async function handleRandomWalk() {
     randomWalking.value = false;
   }
   isDockExpanded.value = false;
+}
+
+async function goToNextStop() {
+  if (!nextStop.value) return;
+  const ns = nextStop.value;
+  nextStop.value = null;
+  randomWalking.value = true;
+
+  try {
+    const { coords, story } = ns;
+    const nextLatitude = coords.latitude;
+    const nextLongitude = coords.longitude;
+
+    if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
+      showToast("下一站位置信息无效", "error");
+      return;
+    }
+
+    selectedStory.value = null;
+    mapStore.updateCenter(nextLatitude, nextLongitude);
+    mapStore.updateZoom(15);
+    setTimeout(() => {
+      openStoryModal(story);
+    }, 800);
+    void prefetchNextStop();
+  } catch (error) {
+    console.error("跳转下一站失败:", error);
+    showToast("跳转下一站失败，请重试", "error");
+  } finally {
+    randomWalking.value = false;
+  }
 }
 
 function handlePreviewImage({ index, images }) {

@@ -120,9 +120,21 @@ const MapServiceUtil = {
 function buildStoryFilterWhere(options = {}) {
   const where = {};
   const normalizedEmotionTag = String(options.emotionTag || '').trim();
+  const emotionAliases = {
+    开心: ['开心', 'happy'],
+    happy: ['开心', 'happy'],
+    难过: ['难过', 'sad'],
+    sad: ['难过', 'sad'],
+    治愈: ['治愈', 'peaceful', 'neutral'],
+    peaceful: ['治愈', 'peaceful', 'neutral'],
+    neutral: ['治愈', 'peaceful', 'neutral'],
+    打卡: ['打卡', 'excited'],
+    excited: ['打卡', 'excited'],
+  };
 
   if (normalizedEmotionTag) {
-    where.emotionTag = normalizedEmotionTag;
+    const aliases = emotionAliases[normalizedEmotionTag] || [normalizedEmotionTag];
+    where.emotionTag = aliases.length === 1 ? aliases[0] : { [Op.in]: aliases };
   }
 
   if (options.createdAfter || options.createdBefore) {
