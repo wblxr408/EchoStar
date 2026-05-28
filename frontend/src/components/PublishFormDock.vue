@@ -115,10 +115,12 @@
             placeholder="给故事起个标题吧"
             maxlength="20"
             class="title-input"
+            :class="{ 'title-input--error': titleError }"
             @keydown.enter.prevent
           />
           <span class="char-count char-count--title">{{ form.title.length }}/20</span>
         </div>
+        <p v-if="titleError" class="title-error-tip">标题不能全为空白字符</p>
         <textarea
           v-model="form.content"
           placeholder="这一刻发生了什么？"
@@ -274,6 +276,7 @@ import { searchPoisWithContext } from '../utils/poiSearch';
 import { useVipStore } from '../stores/vip';
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
 import { encodeStoryContent } from '../utils/storyTitle';
+import { showToast } from '../composables/useToast.js';
 
 const props = defineProps({
   visible: {
@@ -421,8 +424,13 @@ let searchTimer = null;
 let activeSearchToken = 0;
 let suppressLocationQueryWatch = false;
 
+const titleError = computed(() => {
+  return form.value.title.length > 0 && form.value.title.trim().length === 0;
+});
+
 const isValid = computed(() => {
   if (form.value.content.trim().length === 0) return false;
+  if (titleError.value) return false;
   if (!form.value.selectedLocation) return false;
   if (!form.value.emotion) return false;
   if (form.value.isTimeCapsule && !form.value.unlockAt) return false;
@@ -951,6 +959,10 @@ function clearFontAndEffect() {
 }
 
 function handleSubmit() {
+  if (titleError.value) {
+    showToast('标题不能全为空白字符', 'warning');
+    return;
+  }
   if (!isValid.value) {
     return;
   }
@@ -1377,6 +1389,26 @@ function handleSubmit() {
   margin-top: 0;
   flex-shrink: 0;
   font-size: 11px;
+}
+
+.title-error-tip {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  color: #d43030;
+}
+
+.theme-dark .title-error-tip {
+  color: #ff6b6b;
+}
+
+.title-input--error {
+  border-color: #d43030 !important;
+  box-shadow: 0 0 0 4px rgba(212, 48, 48, 0.12) !important;
+}
+
+.theme-dark .title-input--error {
+  border-color: #ff6b6b !important;
+  box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.14) !important;
 }
 
 .text-editor textarea {
