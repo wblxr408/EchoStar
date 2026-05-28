@@ -2139,6 +2139,11 @@ async function submitReport() {
   color: #16a34a;
 }
 
+.peek-tag--pink {
+  background: rgba(236, 72, 153, 0.16);
+  color: #db2777;
+}
+
 .peek-tag--red {
   background: rgba(239, 68, 68, 0.16);
   color: #dc2626;

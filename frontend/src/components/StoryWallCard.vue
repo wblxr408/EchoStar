@@ -56,6 +56,14 @@
       <div class="swc-stats">
         <span>❤️ {{ story.likeCount ?? story.likes ?? 0 }}</span>
         <span>⭐️ {{ story.favoriteCount ?? 0 }}</span>
+        <template v-if="story.recommendation?.reasonTags?.length">
+          <span
+            v-for="tag in story.recommendation.reasonTags.slice(0, 2)"
+            :key="tag.code"
+            class="swc-tag"
+            :class="'swc-tag--' + (tag.tone || 'default')"
+          >{{ tag.label }}</span>
+        </template>
       </div>
     </div>
   </div>
@@ -347,9 +355,55 @@ const textContent = computed(() => {
 
 .swc-stats {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.6);
+}
+
+.swc-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 5px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.swc-tag--blue {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+}
+
+.swc-tag--amber {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+}
+
+.swc-tag--green {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+}
+
+.swc-tag--pink {
+  background: rgba(236, 72, 153, 0.18);
+  color: #f472b6;
+}
+
+.swc-tag--red {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+.swc-tag--gold {
+  background: rgba(234, 179, 8, 0.18);
+  color: #facc15;
+}
+
+.swc-tag--default {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .story-wall-card.swc-has-image .swc-content {

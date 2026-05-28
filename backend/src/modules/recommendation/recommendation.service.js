@@ -58,7 +58,7 @@ const REASON_TAG_META = {
   low_exposure: { label: '低曝光发现', tone: 'green' },
   trending_now: { label: '正在热门', tone: 'red' },
   admin_pick: { label: '人工精选', tone: 'gold' },
-  exploration_pick: { label: '探索推荐', tone: 'green' }
+  exploration_pick: { label: '探索推荐', tone: 'pink' }
 };
 
 const STORY_ATTRIBUTES = [
