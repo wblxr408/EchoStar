@@ -161,7 +161,8 @@
                   <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ item.data.locationName || '' }}</span>
                 </div>
               </div>
-              <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+              <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+              <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
               <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
               <div class="item-footer">
                 <span class="item-likes">👁 {{ item.data.viewCount ?? 0 }}</span>
@@ -265,7 +266,8 @@
                       <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                     </div>
                   </div>
-                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                  <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                  <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                   <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                   <div class="item-footer">
                     <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -347,7 +349,8 @@
                         <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                       </div>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                    <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1175,7 +1178,8 @@
                       <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                     </div>
                   </div>
-                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                  <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                  <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                   <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                   <div class="item-footer">
                     <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1447,7 +1451,8 @@
                       </div>
                     </template>
                     <template v-else>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                    <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     </template>
                     <div class="item-footer">
@@ -1488,7 +1493,8 @@
                       </div>
                       <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(item.data)"><span>❌</span></button>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                    <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1533,7 +1539,8 @@
                         @click.stop="handleToggleFavoriteFromList(item.data)"
                       ><span>{{ item.data.isFavorited !== false ? "❌" : "✨" }}</span></button>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                    <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1912,6 +1919,7 @@ import {
 import { getAnnouncementTypeIcon } from "../../utils/announcement";
 import { searchPoisWithContext } from "../../utils/poiSearch";
 import { REPORT_TYPES } from "../../utils/report";
+import { decodeStoryContent } from "../../utils/storyTitle.js";
 import { uploadAvatar as uploadToOSS, validateImage } from "../../utils/upload";
 import { useVirtualScroll } from "../../composables/useVirtualScroll.js";
 
@@ -14198,6 +14206,24 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.item-content-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0 0 4px 0;
+}
+
+.item-content-body {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 10px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .item-images {
   margin-bottom: 10px;
 }
@@ -15195,6 +15221,8 @@ onUnmounted(() => {
 .user-sub-sidebar:not(.dark) .panel-loading-more,
 .user-sub-sidebar:not(.dark) .panel-no-more,
 .user-sub-sidebar:not(.dark) .item-content,
+.user-sub-sidebar:not(.dark) .item-content-title,
+.user-sub-sidebar:not(.dark) .item-content-body,
 .user-sub-sidebar:not(.dark) .item-footer,
 .user-sub-sidebar:not(.dark) .item-author,
 .user-sub-sidebar:not(.dark) .item-time {
@@ -15271,7 +15299,9 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
-.item-content {
+.item-content,
+.item-content-title,
+.item-content-body {
   color: #2c2c2c;
 }
 
@@ -15322,7 +15352,9 @@ onUnmounted(() => {
 }
 
 .user-sidebar .user-content-list .item-author,
-.user-sidebar .user-content-list .item-content {
+.user-sidebar .user-content-list .item-content,
+.user-sidebar .user-content-list .item-content-title,
+.user-sidebar .user-content-list .item-content-body {
   color: var(--profile-story-card-text);
 }
 
@@ -15360,6 +15392,8 @@ onUnmounted(() => {
 .user-sub-sidebar.dark .panel-loading-more,
 .user-sub-sidebar.dark .panel-no-more,
 .user-sub-sidebar.dark .item-content,
+.user-sub-sidebar.dark .item-content-title,
+.user-sub-sidebar.dark .item-content-body,
 .user-sub-sidebar.dark .item-footer,
 .user-sub-sidebar.dark .item-author,
 .user-sub-sidebar.dark .item-time {
@@ -17855,7 +17889,9 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
-.map-search-results:not(.dark) .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .item-content,
+.map-search-results:not(.dark) .item-content-title,
+.map-search-results:not(.dark) .item-content-body { color: #2c2c2c; }
 .map-search-results:not(.dark) .map-search-card .item-author { color: #333; }
 .map-search-results:not(.dark) .map-search-card .item-time { color: #888; }
 .map-search-results:not(.dark) .map-search-card .item-footer { color: #666; }
@@ -17930,7 +17966,9 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
-.map-search-results:not(.dark) .search-user-profile .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .search-user-profile .item-content,
+.map-search-results:not(.dark) .search-user-profile .item-content-title,
+.map-search-results:not(.dark) .search-user-profile .item-content-body { color: #2c2c2c; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-author { color: #333; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-time { color: #888; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-footer { color: #666; }
@@ -18224,7 +18262,9 @@ onUnmounted(() => {
   background: var(--profile-story-card-bg);
 }
 .map-search-user-detail .user-content-list .item-author,
-.map-search-user-detail .user-content-list .item-content {
+.map-search-user-detail .user-content-list .item-content,
+.map-search-user-detail .user-content-list .item-content-title,
+.map-search-user-detail .user-content-list .item-content-body {
   color: var(--profile-story-card-text);
 }
 .map-search-user-detail .user-content-list .item-time,
@@ -18294,7 +18334,9 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
-.map-search-user-detail:not(.dark) .item-content { color: #3c2910; }
+.map-search-user-detail:not(.dark) .item-content,
+.map-search-user-detail:not(.dark) .item-content-title,
+.map-search-user-detail:not(.dark) .item-content-body { color: #3c2910; }
 .map-search-user-detail:not(.dark) .user-content-list .item-time { color: #3c2910; }
 .map-search-user-detail:not(.dark) .user-content-list .item-footer { color: #3c2910; }
 .map-search-user-detail:not(.dark) .bio-text { color: #3c2910; }
@@ -18449,7 +18491,9 @@ onUnmounted(() => {
 .profile-search-panel:not(.dark) .item-author {
   color: #3c2910;
 }
-.profile-search-panel:not(.dark) .item-content {
+.profile-search-panel:not(.dark) .item-content,
+.profile-search-panel:not(.dark) .item-content-title,
+.profile-search-panel:not(.dark) .item-content-body {
   color: #2c2c2c;
 }
 .profile-search-panel:not(.dark) .item-time {
@@ -18469,7 +18513,9 @@ onUnmounted(() => {
 .profile-search-panel.dark .item-author {
   color: #ffffff;
 }
-.profile-search-panel.dark .item-content {
+.profile-search-panel.dark .item-content,
+.profile-search-panel.dark .item-content-title,
+.profile-search-panel.dark .item-content-body {
   color: rgba(255, 255, 255, 0.85);
 }
 .profile-search-panel.dark .item-time {
