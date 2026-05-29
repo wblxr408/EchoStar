@@ -114,6 +114,7 @@ let tempPickedMarker = null;
 let paperPlaneMarker = null;
 let paperPlaneTooltipEl = null;
 let paperPlaneTooltipTimer = null;
+let isPaperPlaneHovered = false;
 let paperPlaneInitialized = false;
 let paperPlaneAnimationToken = 0;
 let currentPaperPlaneRotation = 0;
@@ -774,24 +775,26 @@ function initPaperPlane(coords) {
     });
 
     // 鼠标悬停/离开纸飞机时触发菜单
-    const getPlaneScreenPos = () => {
+    const getPlaneScreenPos = (pointerEvent = null) => {
       const pos = paperPlaneMarker.getPosition();
       const pixel = map.lngLatToContainer(pos);
       const containerRect = mapContainer.value.getBoundingClientRect();
       return {
         latitude: pos.getLat(),
         longitude: pos.getLng(),
-        screenX: containerRect.left + pixel.getX(),
-        screenY: containerRect.top + pixel.getY(),
+        screenX: pointerEvent?.clientX ?? (containerRect.left + pixel.getX()),
+        screenY: pointerEvent?.clientY ?? (containerRect.top + pixel.getY()),
       };
     };
     const planeDom = paperPlaneMarker.dom || paperPlaneMarker.De || paperPlaneMarker.contentDom || paperPlaneMarker.getContentDom?.();
     if (planeDom) {
-      planeDom.addEventListener('mouseenter', () => {
+      planeDom.addEventListener('mouseenter', (event) => {
+        isPaperPlaneHovered = true;
         clearPaperPlaneTooltip();
-        emit('paper-plane-hover', getPlaneScreenPos());
+        emit('paper-plane-hover', getPlaneScreenPos(event));
       }, { passive: true });
       planeDom.addEventListener('mouseleave', () => {
+        isPaperPlaneHovered = false;
         emit('paper-plane-leave');
       }, { passive: true });
     }
@@ -945,10 +948,12 @@ function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
         // 延迟显示 tooltip：飞机飞到光标下方时 mouseenter 会紧接着触发，
         // clearPaperPlaneTooltip 会取消此定时器，避免 tooltip 创建后立即被销毁造成闪烁
         clearPaperPlaneTooltip();
-        paperPlaneTooltipTimer = setTimeout(() => {
-          paperPlaneTooltipTimer = null;
-          showPaperPlaneTooltip();
-        }, 150);
+        if (!isPaperPlaneHovered) {
+          paperPlaneTooltipTimer = setTimeout(() => {
+            paperPlaneTooltipTimer = null;
+            showPaperPlaneTooltip();
+          }, 150);
+        }
       }
       emit('paper-plane-move', { latitude: target.getLat(), longitude: target.getLng() });
       if (onComplete) onComplete();
@@ -1040,7 +1045,7 @@ function onPlaneMoving(e) {
 }
 
 function showPaperPlaneTooltip() {
-  if (props.pointPickMode) {
+  if (props.pointPickMode || isPaperPlaneHovered) {
     clearPaperPlaneTooltip();
     return;
   }
@@ -1120,7 +1125,7 @@ function createTempPickedMarker(location) {
   content.className = "temp-picked-marker";
   content.innerHTML = `
     <div class="temp-picked-flag">
-      <span class="temp-picked-flag-icon">锟?/span>
+      <span class="temp-picked-flag-icon" aria-hidden="true"></span>
     </div>
     <div class="temp-picked-pole"></div>
   `;
@@ -2414,6 +2419,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopApprovalObserver();
+  isPaperPlaneHovered = false;
   clearPaperPlaneTooltip();
   if (paperPlaneMarker && map) {
     map.remove(paperPlaneMarker);

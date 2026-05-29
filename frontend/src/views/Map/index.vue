@@ -6587,50 +6587,25 @@ function scrollPlaneNearbyToTop() {
 // 纸飞机菜单 DOM（悬停触发）
 let planeMenuEl = null;
 let planeMenuHideTimer = null;
+let planeMenuOpenTimer = null;
 const PLANE_MENU_HIDE_DELAY = 300;
+const PLANE_MENU_OPENING_DELAY = 180;
 
-function hidePlaneMenu(immediate = false) {
-  if (planeMenuHideTimer) {
-    clearTimeout(planeMenuHideTimer);
-    planeMenuHideTimer = null;
-  }
+function positionPlaneMenu(clientX, clientY) {
   if (!planeMenuEl) return;
-  if (immediate) {
-    if (planeMenuEl.parentNode) planeMenuEl.parentNode.removeChild(planeMenuEl);
-    planeMenuEl = null;
-    return;
-  }
-  planeMenuEl.style.transition = 'opacity 0.1s ease, transform 0.1s ease';
-  planeMenuEl.style.opacity = '0';
-  planeMenuEl.style.transform = 'translateY(8px)';
-  setTimeout(() => {
-    if (planeMenuEl && planeMenuEl.parentNode) {
-      planeMenuEl.parentNode.removeChild(planeMenuEl);
-    }
-    planeMenuEl = null;
-  }, 100);
+  const menuW = planeMenuEl.offsetWidth;
+  const menuH = planeMenuEl.offsetHeight;
+  let left = clientX - menuW / 2;
+  let top = clientY - menuH - 12;
+  if (left < 8) left = 8;
+  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+  if (top < 8) top = clientY + 16;
+  planeMenuEl.style.left = left + 'px';
+  planeMenuEl.style.top = top + 'px';
 }
 
-function showPlaneMenu(clientX, clientY) {
-  if (planeMenuHideTimer) {
-    clearTimeout(planeMenuHideTimer);
-    planeMenuHideTimer = null;
-  }
-  // 如果菜单已存在且可见，仅更新位置
-  if (planeMenuEl && planeMenuEl.parentNode) {
-    const menuW = planeMenuEl.offsetWidth;
-    const menuH = planeMenuEl.offsetHeight;
-    let left = clientX - menuW / 2;
-    let top = clientY - menuH - 12;
-    if (left < 8) left = 8;
-    if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
-    if (top < 8) top = clientY + 16;
-    planeMenuEl.style.left = left + 'px';
-    planeMenuEl.style.top = top + 'px';
-    planeMenuEl.style.opacity = '1';
-    planeMenuEl.style.transform = 'translateY(0)';
-    return;
-  }
+function ensurePlaneMenu() {
+  if (planeMenuEl) return planeMenuEl;
 
   planeMenuEl = document.createElement('div');
   planeMenuEl.className = 'paper-plane-menu';
@@ -6645,7 +6620,6 @@ function showPlaneMenu(clientX, clientY) {
     </div>
   `;
 
-  // 点击选项
   planeMenuEl.addEventListener('click', (e) => {
     const item = e.target.closest('.plane-menu-item');
     if (!item) return;
@@ -6658,7 +6632,6 @@ function showPlaneMenu(clientX, clientY) {
     }
   });
 
-  // 鼠标在菜单上时保持显示，离开后延迟隐藏
   planeMenuEl.addEventListener('mouseenter', () => {
     if (planeMenuHideTimer) {
       clearTimeout(planeMenuHideTimer);
@@ -6669,31 +6642,55 @@ function showPlaneMenu(clientX, clientY) {
     scheduleHidePlaneMenu();
   }, { passive: true });
 
-  // 禁用自身及所有子元素的过渡，防止入场时子元素 background 等属性从默认值过渡到目标值造成闪烁
   planeMenuEl.classList.add('paper-plane-menu--no-transition');
-  planeMenuEl.style.opacity = '0';
-  planeMenuEl.style.transform = 'translateY(8px)';
   document.body.appendChild(planeMenuEl);
-  // 强制布局，确保初始样式完全生效
   void planeMenuEl.offsetHeight;
+  planeMenuEl.classList.remove('paper-plane-menu--no-transition');
 
-  // 定位菜单在纸飞机位置上方
-  const menuW = planeMenuEl.offsetWidth;
-  const menuH = planeMenuEl.offsetHeight;
-  let left = clientX - menuW / 2;
-  let top = clientY - menuH - 12;
-  if (left < 8) left = 8;
-  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
-  if (top < 8) top = clientY + 16;
-  planeMenuEl.style.left = left + 'px';
-  planeMenuEl.style.top = top + 'px';
+  return planeMenuEl;
+}
+
+function hidePlaneMenu(immediate = false) {
+  if (planeMenuHideTimer) {
+    clearTimeout(planeMenuHideTimer);
+    planeMenuHideTimer = null;
+  }
+  if (planeMenuOpenTimer) {
+    clearTimeout(planeMenuOpenTimer);
+    planeMenuOpenTimer = null;
+  }
+  if (!planeMenuEl) return;
+  if (immediate) {
+    if (planeMenuEl.parentNode) planeMenuEl.parentNode.removeChild(planeMenuEl);
+    planeMenuEl = null;
+    return;
+  }
+  planeMenuEl.classList.remove('paper-plane-menu--opening', 'paper-plane-menu--visible');
+}
+
+function showPlaneMenu(clientX, clientY) {
+  if (planeMenuHideTimer) {
+    clearTimeout(planeMenuHideTimer);
+    planeMenuHideTimer = null;
+  }
+  // 如果菜单已存在且可见，仅更新位置
+  ensurePlaneMenu();
+  positionPlaneMenu(clientX, clientY);
   planeMenuEl.classList.toggle('dark', effectiveMapTheme.value === 'dark');
 
-  // 触发弹出动画（移除 no-transition 类恢复子元素过渡，同时设置目标样式）
+  if (planeMenuEl.classList.contains('paper-plane-menu--visible')) {
+    return;
+  }
+
+  planeMenuEl.classList.add('paper-plane-menu--opening');
   requestAnimationFrame(() => {
-    planeMenuEl.classList.remove('paper-plane-menu--no-transition');
-    planeMenuEl.style.opacity = '1';
-    planeMenuEl.style.transform = 'translateY(0)';
+    if (!planeMenuEl) return;
+    planeMenuEl.classList.add('paper-plane-menu--visible');
+    planeMenuOpenTimer = window.setTimeout(() => {
+      if (!planeMenuEl) return;
+      planeMenuEl.classList.remove('paper-plane-menu--opening');
+      planeMenuOpenTimer = null;
+    }, PLANE_MENU_OPENING_DELAY);
   });
 }
 
@@ -10237,6 +10234,7 @@ onUnmounted(() => {
   document.removeEventListener("click", handleDocumentClick);
   document.removeEventListener("keydown", handleDocumentKeydown);
   window.removeEventListener("resize", scheduleWelcomeTextFit);
+  hidePlaneMenu(true);
   clearNearbySearchTimer();
   clearNearbyCenterLabelTimer();
   activeNearbySearchToken += 1;
@@ -18924,6 +18922,11 @@ onUnmounted(() => {
 .paper-plane-menu--no-transition * {
   transition: none !important;
 }
+.paper-plane-menu--opening .plane-menu-item,
+.paper-plane-menu--opening .plane-menu-item:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
 .paper-plane-menu {
   position: fixed;
   z-index: 1200;
@@ -18940,11 +18943,19 @@ onUnmounted(() => {
     0 18px 40px -24px rgba(6, 10, 20, 0.5),
     0 0 0 1px rgba(255, 248, 232, 0.32);
   opacity: 0;
+  visibility: hidden;
   transform: translateY(8px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  pointer-events: auto;
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
+  pointer-events: none;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+.paper-plane-menu--visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: auto;
 }
 .paper-plane-menu.dark {
   border-color: rgba(117, 147, 214, 0.28);
