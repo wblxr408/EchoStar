@@ -17663,19 +17663,19 @@ onUnmounted(() => {
   }
 
   .map-search-results {
-    top: 212px;
-    max-height: calc(100vh - 240px);
+    top: 76px;
+    max-height: calc(100vh - 100px);
   }
 }
 
 .map-search-results {
   position: fixed;
-  top: 178px;
+  top: 76px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 49;
   width: min(480px, calc(100vw - 40px));
-  max-height: calc(100vh - 110px);
+  max-height: calc(100vh - 100px);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
