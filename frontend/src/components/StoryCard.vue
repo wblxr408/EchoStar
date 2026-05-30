@@ -15,7 +15,8 @@
     </div>
 
     <div class="story-content">
-      <p :style="storyFontStyle">{{ story.content }}</p>
+      <h4 v-if="storyDecoded.title" class="story-item-title" :style="storyFontStyle">{{ storyDecoded.title }}</h4>
+      <p :style="storyFontStyle">{{ storyDecoded.body || story.content }}</p>
     </div>
 
     <div v-if="story.images && story.images.length > 0" class="story-images">
@@ -48,6 +49,7 @@ import { computed } from 'vue';
 import { formatRelativeTime } from '../utils/time';
 import { getEmotionEmoji, fromEmotionTag } from '../utils/emotion';
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+import { decodeStoryContent } from '../utils/storyTitle';
 import TimeCapsule from './TimeCapsule.vue';
 
 injectFontEffectAnimations();
@@ -123,6 +125,8 @@ const storyFontStyle = computed(() => {
   if (!ff && !fe) return {};
   return getFontStyle(ff, fe);
 });
+
+const storyDecoded = computed(() => decodeStoryContent(props.story.content || ''));
 
 function getInitial(name) {
   return String(name || '\u533f').trim().slice(0, 1).toUpperCase() || '\u533f';
@@ -252,6 +256,14 @@ function handleSelect() {
 
 .story-content {
   margin-bottom: 16px;
+}
+
+.story-item-title {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #2d3436;
 }
 
 .story-content p {

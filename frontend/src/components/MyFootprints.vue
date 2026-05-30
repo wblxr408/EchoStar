@@ -149,7 +149,8 @@
               </div>
             </template>
             <template v-else>
-              <p class="story-card-content" :style="currentStoryFontStyle">{{ currentStory.content || currentStory.preview || '' }}</p>
+              <h4 v-if="currentStoryDecoded.title" class="story-card-title" :style="currentStoryFontStyle">{{ currentStoryDecoded.title }}</h4>
+              <p class="story-card-content" :style="currentStoryFontStyle">{{ currentStoryDecoded.body || currentStory.content || currentStory.preview || '' }}</p>
               <div class="story-card-meta">
                 <span class="story-card-location">📍 {{ currentStory.location?.address || currentStory.locationName || '' }}</span>
                 <span class="story-card-time">{{ formatTime(currentStory.createdAt) }}</span>
@@ -174,6 +175,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { getEmotionEmoji, getEmotionColor, fromEmotionTag } from '../utils/emotion'
 import { storyApi } from '../api/story'
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect'
+import { decodeStoryContent } from '../utils/storyTitle'
 
 injectFontEffectAnimations()
 import { useMapStore } from '../stores/map'
@@ -254,6 +256,10 @@ const currentStory = computed(() => {
   }
   return null
 })
+
+const currentStoryDecoded = computed(() =>
+  decodeStoryContent(currentStory.value?.content || ''),
+)
 
 const hasMinimumStories = computed(() => stories.value.length >= 2)
 

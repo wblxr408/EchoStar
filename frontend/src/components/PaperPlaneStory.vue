@@ -1,20 +1,22 @@
 <template>
   <Teleport to="body">
     <div class="paper-plane-overlay" :class="{ dark: isDark }" @click="handleClose">
-      <div class="paper-sheet" @click.stop>
-        <div class="paper-texture"></div>
-        <span class="tarot-suit suit-top">✦</span>
-        <span class="tarot-suit suit-bottom">✦</span>
-        <span class="tarot-corner corner-top-right"></span>
-        <span class="tarot-corner corner-bottom-left"></span>
+      <div class="paper-sheet-wrap">
+        <div class="paper-sheet" @click.stop>
+          <div class="paper-texture"></div>
+          <span class="tarot-suit suit-top">✦</span>
+          <span class="tarot-suit suit-bottom">✦</span>
+          <span class="tarot-corner corner-top-right"></span>
+          <span class="tarot-corner corner-bottom-left"></span>
 
         <button
           type="button"
-          class="close-btn"
+          class="story-detail-close"
           aria-label="关闭故事详情"
           @click="handleClose"
         >
-          <span>×</span>
+          <span class="close-icon">×</span>
+          <span class="close-text">关闭</span>
         </button>
 
         <div v-if="story.isFeatured || story.isPinned" class="story-badges">
@@ -38,8 +40,9 @@
           </div>
 
           <div class="story-body">
+            <h3 v-if="decodedTitle" class="story-title" :style="storyFontStyle">{{ decodedTitle }}</h3>
             <div class="story-text-card">
-              <p class="story-text" :style="storyFontStyle">{{ story.content }}</p>
+              <p class="story-text" :style="storyFontStyle">{{ decodedBody || story.content }}</p>
             </div>
 
             <div v-if="story.images && story.images.length > 0" class="story-images">
@@ -169,9 +172,48 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <Teleport to="body" v-if="showReportModal">
+      <div class="peek-trigger" @click.stop="handleGoNextStop"></div>
+
+      <!-- 下一站 peek 卡片 -->
+        <Transition name="next-stop-peek">
+          <div
+            v-if="nextStop"
+            class="next-stop-peek"
+            :class="{ dark: isDark }"
+            @click.stop="handleGoNextStop"
+          >
+            <div class="next-stop-peek__inner">
+              <div v-if="nextStop.thumbnail" class="next-stop-peek__thumb">
+                <img :src="nextStop.thumbnail" alt="下一站" />
+                <span class="next-stop-peek__emotion">{{ getEmotionEmoji(nextStop.emotionTag) }}</span>
+              </div>
+              <div class="next-stop-peek__info">
+                <span class="next-stop-peek__label">✦ 下一站</span>
+                <div class="next-stop-peek__author-row">
+                  <img v-if="nextStop.authorAvatar" :src="nextStop.authorAvatar" class="next-stop-peek__avatar" />
+                  <span v-else class="next-stop-peek__avatar-fallback">{{ getInitial(nextStop.authorName) }}</span>
+                  <span class="next-stop-peek__author">{{ nextStop.authorName }}</span>
+                </div>
+                <span class="next-stop-peek__location">
+                  📍 {{ nextStop.locationName }}
+                  <span v-if="nextStop.recommendation?.distanceMeters" class="next-stop-peek__distance"> · 距你 {{ Math.round(nextStop.recommendation.distanceMeters) }} 米</span>
+                </span>
+                <p class="next-stop-peek__text">{{ extractTitle(nextStop.story?.content || '') || (extractBody(nextStop.story?.content || '')?.slice(0, 20) || nextStop.contentPreview) }}</p>
+              </div>
+            </div>
+            <div v-if="nextStop.recommendation" class="next-stop-peek__reason">
+              <div v-if="nextStop.recommendation.reasonTags && nextStop.recommendation.reasonTags.length > 0" class="next-stop-peek__tags">
+                <span v-for="tag in nextStop.recommendation.reasonTags.slice(0, 3)" :key="tag.code" class="peek-tag" :class="'peek-tag--' + (tag.tone || 'default')">{{ tag.label }}</span>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </div>
+  </Teleport>
+
+  <Teleport to="body" v-if="showReportModal">
       <div class="report-modal-overlay" :class="{ dark: isDark }" @click.self="closeReportModal">
         <div class="report-modal-content">
           <span class="tarot-suit suit-top report-suit">✦</span>
@@ -250,7 +292,6 @@
       @select-effect="commentFontEffect = $event"
       @close="showCommentFontPicker = false"
     />
-  </Teleport>
 </template>
 
 <script setup>
@@ -263,6 +304,7 @@ import { useVipStore } from '../stores/vip';
 import { reportApi } from '../api/report';
 import { showToast } from '../composables/useToast.js';
 import { getFontStyle, injectFontEffectAnimations } from '../composables/useFontEffect';
+import { decodeStoryContent, extractTitle, extractBody } from '../utils/storyTitle';
 import FontPicker from './FontPicker.vue';
 
 injectFontEffectAnimations();
@@ -294,10 +336,18 @@ const props = defineProps({
   isDark: {
     type: Boolean,
     default: false
+  },
+  nextStop: {
+    type: Object,
+    default: null
+  },
+  nextStopLoading: {
+    type: Boolean,
+    default: false
   }
 });
 
-const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile', 'open-comment-bg', 'request-vip', 'openVipCenter']);
+const emit = defineEmits(['close', 'preview-image', 'like', 'favorite', 'comment', 'submit-comment', 'submitComment', 'report', 'view-user-profile', 'open-comment-bg', 'request-vip', 'openVipCenter', 'go-next-stop']);
 
 const storyFontStyle = computed(() => {
   const ff = props.story?.fontFamily || '';
@@ -305,6 +355,10 @@ const storyFontStyle = computed(() => {
   if (!ff && !fe) return {};
   return getFontStyle(ff, fe);
 });
+
+const storyDecoded = computed(() => decodeStoryContent(props.story.content || ''));
+const decodedTitle = computed(() => storyDecoded.value.title);
+const decodedBody = computed(() => storyDecoded.value.body);
 
 const isLiked = ref(false);
 const likeCount = ref(0);
@@ -466,6 +520,12 @@ function handleClose() {
   emit('close');
 }
 
+function handleGoNextStop() {
+  showCommentFontPicker.value = false;
+  showCommentInput.value = false;
+  emit('go-next-stop');
+}
+
 function handleLike() {
   if (!userStore.isLoggedIn || userStore.isGuest) {
     showToast('请先登录后再点赞', 'warning');
@@ -607,6 +667,7 @@ async function submitReport() {
 
 .paper-sheet {
   position: relative;
+  z-index: 10;
   width: min(500px, calc(100vw - 40px));
   max-height: calc(100vh - 56px);
   border-radius: 34px;
@@ -707,13 +768,13 @@ async function submitReport() {
   border-bottom-left-radius: 16px;
 }
 
-.close-btn {
+.story-detail-close {
   position: absolute;
   top: 16px;
   right: 16px;
   z-index: 3;
-  width: 46px;
   height: 46px;
+  padding: 0 16px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(53, 34, 13, 0.84);
@@ -721,19 +782,29 @@ async function submitReport() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   cursor: pointer;
   transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
-.close-btn:hover {
+.story-detail-close:hover {
   transform: translateY(-2px);
   background: rgba(76, 49, 17, 0.96);
   border-color: rgba(255, 255, 255, 0.4);
 }
 
-.close-btn span {
-  font-size: 24px;
+.story-detail-close .close-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
   line-height: 1;
+}
+
+.story-detail-close .close-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 .story-badges {
@@ -906,6 +977,14 @@ async function submitReport() {
 
 .story-body {
   margin-bottom: 16px;
+}
+
+.story-title {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--story-detail-text);
 }
 
 .story-text-card {
@@ -1683,13 +1762,13 @@ async function submitReport() {
   opacity: 0.6;
 }
 
-.paper-plane-overlay.dark .close-btn {
+.paper-plane-overlay.dark .story-detail-close {
   background: rgba(20, 28, 50, 0.9);
   border-color: rgba(100, 130, 180, 0.2);
   color: #c8d8f0;
 }
 
-.paper-plane-overlay.dark .close-btn:hover {
+.paper-plane-overlay.dark .story-detail-close:hover {
   background: rgba(30, 40, 65, 0.96);
   border-color: rgba(120, 150, 200, 0.35);
 }
@@ -1848,5 +1927,277 @@ async function submitReport() {
 .report-modal-overlay.dark .comment-textarea,
 .report-modal-overlay.dark .report-textarea {
   background: var(--story-detail-panel-strong);
+}
+
+/* ===== 下一站 Peek 卡片 ===== */
+.paper-sheet-wrap {
+  position: relative;
+}
+
+/* 透明触发器：覆盖故事卡片右边框外的整个右侧区域 */
+.peek-trigger {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  bottom: 0;
+  width: 400px;
+  z-index: 15;
+}
+
+.next-stop-peek {
+  --next-stop-peek-base-x: 10px;
+  --next-stop-peek-base-y: 16px;
+  --next-stop-peek-base-rotate: 6deg;
+  --next-stop-peek-hover-x: 135px;
+  --next-stop-peek-hover-y: 30px;
+  --next-stop-peek-hover-rotate: 14deg;
+  position: absolute;
+  top: 18px;
+  right: -124px;
+  z-index: 2;
+  min-width: 180px;
+  max-width: 248px;
+  width: fit-content;
+  transform-origin: left top;
+  transform:
+    translate(var(--next-stop-peek-base-x), var(--next-stop-peek-base-y))
+    rotate(var(--next-stop-peek-base-rotate));
+  transition:
+    transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.35s ease;
+  border-radius: 20px;
+  border: 1px solid var(--story-detail-border);
+  background: var(--story-detail-surface);
+  box-shadow:
+    0 16px 42px -22px rgba(4, 8, 18, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  color: var(--story-detail-text);
+  overflow: hidden;
+  overflow-y: auto;
+  max-height: 340px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.next-stop-peek::-webkit-scrollbar {
+  display: none;
+}
+
+/* 指针选中时，卡片像扇形继续向右下展开 */
+.peek-trigger:hover ~ .next-stop-peek,
+.next-stop-peek:hover {
+  transform:
+    translate(var(--next-stop-peek-hover-x), var(--next-stop-peek-hover-y))
+    rotate(var(--next-stop-peek-hover-rotate));
+  box-shadow:
+    0 24px 52px -22px rgba(4, 8, 18, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+
+/* 深色模式 */
+.paper-sheet-wrap .next-stop-peek.dark {
+  box-shadow:
+    0 20px 50px -20px rgba(2, 4, 10, 0.8),
+    0 0 0 1px rgba(100, 130, 180, 0.08),
+    inset 0 1px 0 rgba(120, 150, 200, 0.08);
+}
+.paper-sheet-wrap .peek-trigger:hover ~ .next-stop-peek.dark {
+  box-shadow:
+    0 28px 60px -20px rgba(2, 4, 10, 0.88),
+    0 0 0 1px rgba(100, 130, 180, 0.12),
+    inset 0 1px 0 rgba(120, 150, 200, 0.12);
+}
+
+.next-stop-peek__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 10px;
+}
+
+.next-stop-peek__thumb {
+  position: relative;
+  width: 100%;
+  height: 90px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.next-stop-peek__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.next-stop-peek__emotion {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.next-stop-peek__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.next-stop-peek__label {
+  display: block;
+  align-self: flex-end;
+  width: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--story-detail-accent);
+  letter-spacing: 0.5px;
+  text-align: right;
+}
+
+.next-stop-peek__author-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-stop-peek__avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.next-stop-peek__avatar-fallback {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--story-detail-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.next-stop-peek__author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--story-detail-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-stop-peek__location {
+  font-size: 11px;
+  color: var(--story-detail-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-stop-peek__distance {
+  color: var(--story-detail-muted);
+}
+
+.next-stop-peek__text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--story-detail-text);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-stop-peek__reason {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  background: var(--story-detail-panel);
+  border-top: 1px solid var(--story-detail-frame);
+}
+
+.next-stop-peek__tags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.peek-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.3px;
+}
+
+.peek-tag--blue {
+  background: rgba(59, 130, 246, 0.16);
+  color: #2563eb;
+}
+
+.peek-tag--amber {
+  background: rgba(245, 158, 11, 0.16);
+  color: #d97706;
+}
+
+.peek-tag--green {
+  background: rgba(34, 197, 94, 0.16);
+  color: #16a34a;
+}
+
+.peek-tag--pink {
+  background: rgba(236, 72, 153, 0.16);
+  color: #db2777;
+}
+
+.peek-tag--red {
+  background: rgba(239, 68, 68, 0.16);
+  color: #dc2626;
+}
+
+.peek-tag--gold {
+  background: rgba(234, 179, 8, 0.16);
+  color: #ca8a04;
+}
+
+.peek-tag--default {
+  background: var(--story-detail-accent-soft);
+  color: var(--story-detail-accent);
+}
+
+/* Peek 卡片出入动画 */
+.next-stop-peek-enter-active {
+  transition: all 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.next-stop-peek-leave-active {
+  transition: all 0.2s ease-in;
+}
+.next-stop-peek-enter-from {
+  opacity: 0;
+  transform: translate(76px, 10px) rotate(20deg) scale(0.94);
+}
+.next-stop-peek-leave-to {
+  opacity: 0;
+  transform: translate(70px, 26px) rotate(22deg) scale(0.9);
 }
 </style>

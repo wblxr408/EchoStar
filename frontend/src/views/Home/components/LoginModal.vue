@@ -229,6 +229,23 @@
           </div>
         </template>
 
+        <div
+          class="terms-check"
+          :class="{ 'terms-check--shake': shakeTerms }"
+        >
+          <input
+            id="terms-checkbox"
+            type="checkbox"
+            v-model="agreedToTerms"
+            class="terms-checkbox"
+          />
+          <label for="terms-checkbox" class="terms-label">
+            已了解并同意
+            <a class="terms-link" @click.stop="$emit('open-terms')">《用户协议》</a>及
+            <a class="terms-link" @click.stop="$emit('open-privacy')">《隐私政策》</a>
+          </label>
+        </div>
+
         <div class="actions">
           <button type="submit" class="btn-primary" :disabled="loading">
             {{
@@ -321,7 +338,7 @@ import { useUserStore } from "../../../stores/user";
 import { authApi } from "../../../api/auth";
 import { showToast } from "../../../composables/useToast.js";
 
-const emit = defineEmits(["close"]);
+const emit = defineEmits(["close", "open-terms", "open-privacy"]);
 const router = useRouter();
 const userStore = useUserStore();
 
@@ -333,6 +350,22 @@ const focusTimer = ref(null);
 const isForgotPassword = ref(false);
 
 const isMascotClicked = ref(false);
+const agreedToTerms = ref(false);
+const shakeTerms = ref(false);
+let shakeTimer = null;
+
+function checkTermsAgreed() {
+  if (!agreedToTerms.value) {
+    showToast("请先勾选「已了解并同意用户协议及隐私政策」", "warning");
+    if (shakeTimer) clearTimeout(shakeTimer);
+    shakeTerms.value = true;
+    shakeTimer = setTimeout(() => {
+      shakeTerms.value = false;
+    }, 600);
+    return false;
+  }
+  return true;
+}
 
 const form = reactive({
   email: "",
@@ -508,6 +541,7 @@ function handleGitHubLogin() {
 }
 
 function handleGuestLogin() {
+  if (!checkTermsAgreed()) return;
   userStore.loginAsGuest();
   emit("close");
   router.push("/map");
@@ -518,6 +552,8 @@ async function handleSubmit() {
     await handleForgotPassword();
     return;
   }
+
+  if (!checkTermsAgreed()) return;
 
   if (!isLogin.value && form.password !== form.confirmPassword) {
     showToast("两次输入的密码不一致", "warning");
@@ -559,7 +595,6 @@ async function handleSubmit() {
 
       setTimeout(() => {
         emit("close");
-        router.push("/map");
       }, 500);
     }
   } catch (error) {
@@ -615,6 +650,10 @@ onUnmounted(() => {
   if (countdownTimer.value) {
     clearInterval(countdownTimer.value);
     countdownTimer.value = null;
+  }
+  if (shakeTimer) {
+    clearTimeout(shakeTimer);
+    shakeTimer = null;
   }
 });
 </script>
@@ -1011,6 +1050,59 @@ onUnmounted(() => {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+/* ===== 用户协议勾选 ===== */
+.terms-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 1rem;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.terms-checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #ffb347;
+  cursor: pointer;
+}
+
+.terms-label {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.5;
+  user-select: none;
+}
+
+.terms-link {
+  color: #ffb347;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.terms-link:hover {
+  color: #ffde59;
+}
+
+.terms-check--shake {
+  animation: shakeTerms 0.5s ease-in-out;
+}
+
+@keyframes shakeTerms {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(6px); }
+  45% { transform: translateX(-5px); }
+  60% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+  90% { transform: translateX(3px); }
 }
 
 .actions {

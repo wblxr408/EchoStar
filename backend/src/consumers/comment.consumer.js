@@ -35,33 +35,50 @@ class CommentConsumer {
   }
 
   /**
-   * 初始化 Consumer
+   * 初始化 Consumer（带自动重试）
    */
   async init() {
     if (this.initialized) {
       return;
     }
 
-    try {
-      const rocketmqModule = await import('rocketmq-client-nodejs');
-      const { SimpleConsumer } = rocketmqModule;
+    const maxRetries = 10;
+    const retryDelay = 10000; // 10秒
 
-      this.consumer = new SimpleConsumer({
-        consumerGroup: config.commentConsumerGroup,
-        endpoints: config.endpoints,
-        //subscriptions: new Map([[config.topic, '*']])
-        subscriptions: new Map([[process.env.ROCKETMQ_COMMENT_TOPIC, '*']])
-      });
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const rocketmqModule = await import('rocketmq-client-nodejs');
+        const { SimpleConsumer } = rocketmqModule;
 
-      await this.consumer.startup();
-      this.initialized = true;
-      console.log('✅ Comment Consumer 已启动');
+        const topic = config.topic;
 
-      // 开始轮询消息
-      this.startPolling();
-    } catch (error) {
-      console.error('❌ Comment Consumer 启动失败:', error.message);
-      logger.error('Comment Consumer 启动失败', error);
+        this.consumer = new SimpleConsumer({
+          consumerGroup: config.commentConsumerGroup,
+          endpoints: config.endpoints,
+          subscriptions: new Map([[topic, '*']])
+        });
+
+        await this.consumer.startup();
+        this.initialized = true;
+        console.log(`✅ Comment Consumer 已启动 [topic: ${topic}]`);
+
+        // 开始轮询消息
+        this.startPolling();
+        return;
+      } catch (error) {
+        const isTopicNotFound = error.message?.includes('No topic route info');
+        if (isTopicNotFound && attempt < maxRetries) {
+          console.warn(`⚠️  Topic 尚未就绪，${retryDelay / 1000}s 后重试 (${attempt}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+        console.error('❌ Comment Consumer 启动失败:', error.message);
+        logger.error('Comment Consumer 启动失败', error);
+        if (isTopicNotFound) {
+          console.error(`   请确认 Topic "${config.topic}" 已创建`);
+        }
+        return;
+      }
     }
   }
 
@@ -124,7 +141,6 @@ class CommentConsumer {
         await this.consumer.ack(message);
         return;
       }
-      processedMessages.add(dedupKey);
 
       logger.info(`📨 处理消息: ${module}:${operation}`, { shardKey, msgId });
 
@@ -140,6 +156,7 @@ class CommentConsumer {
             console.warn(`⚠️  未知操作类型: ${operation}`);
         }
 
+        processedMessages.add(dedupKey);
         logger.info(`✅ 消息处理成功: ${module}:${operation}`, { shardKey });
         await this.consumer.ack(message);
       } catch (error) {

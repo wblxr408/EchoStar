@@ -3,13 +3,13 @@ import { User } from '../auth/auth.model.js';
 import { sequelize } from '../../config/database.js';
 import { Op } from 'sequelize';
 import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.util.js';
-import { clusterPoints } from './cluster.util.js';
+import { clusterPoints, getGeohashPrecision } from './cluster.util.js';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
 
 // ===================== 常量配置 =====================
 const CONSTANTS = {
   DEFAULT_RADIUS: 50,
-  MAX_EXPLORE_LIMIT: 50,
+  MAX_EXPLORE_LIMIT: 500,
   MAX_WALL_LIMIT: 50,
   PUBLIC_VISIBILITY: 'public'
 };
@@ -105,7 +105,7 @@ const MapServiceUtil = {
         longitude: lng
       },
       locationName: story.locationName,  // ✅ 新增：地点名称
-      emotionTag: story.emotionTag,
+      emotionTag: normalizeMapEmotionTag(story.emotionTag),
       isTimeCapsule: !!story.isTimeCapsule,
       unlockAt: story.unlockAt || null,
       isUnlocked: !story.isTimeCapsule || (story.unlockAt && new Date(story.unlockAt) <= new Date()),
@@ -116,6 +116,65 @@ const MapServiceUtil = {
     };
   }
 };
+
+const MAP_EMOTION_ALIASES = {
+  happy: ["happy", "\u5f00\u5fc3"],
+  sad: ["sad", "\u96be\u8fc7"],
+  peaceful: ["peaceful", "\u6cbb\u6108"],
+  neutral: ["neutral", "\u5e73\u9759"],
+  excited: ["excited", "\u6253\u5361"],
+};
+
+const MAP_EMOTION_TAG_BY_KEY = {
+  happy: "\u5f00\u5fc3",
+  sad: "\u96be\u8fc7",
+  peaceful: "\u6cbb\u6108",
+  neutral: "\u5e73\u9759",
+  excited: "\u6253\u5361",
+};
+
+function normalizeMapEmotionKey(value) {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) {
+    return '';
+  }
+
+  return Object.entries(MAP_EMOTION_ALIASES).find(([, aliases]) =>
+    aliases.includes(normalizedValue)
+  )?.[0] || normalizedValue;
+}
+
+function normalizeMapEmotionTag(value) {
+  const normalizedKey = normalizeMapEmotionKey(value);
+  return MAP_EMOTION_TAG_BY_KEY[normalizedKey] || String(value || '').trim();
+}
+
+function buildStoryFilterWhere(options = {}) {
+  const where = {};
+  const normalizedEmotionTag = String(options.emotionTag || '').trim();
+
+  if (normalizedEmotionTag) {
+    const aliases =
+      MAP_EMOTION_ALIASES[normalizeMapEmotionKey(normalizedEmotionTag)] ||
+      [normalizedEmotionTag];
+    where.emotionTag = aliases.length === 1 ? aliases[0] : { [Op.in]: aliases };
+  }
+
+  if (options.createdAfter || options.createdBefore) {
+    where.createdAt = {};
+
+    if (options.createdAfter) {
+      where.createdAt[Op.gte] = new Date(options.createdAfter);
+    }
+
+    if (options.createdBefore) {
+      where.createdAt[Op.lte] = new Date(options.createdBefore);
+    }
+  }
+
+  return where;
+}
+
 export const MapService = {
   /**
    * 范围查询故事
@@ -132,11 +191,13 @@ export const MapService = {
     const usePagination = page != null || limit != null;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.min(Math.max(parseInt(limit) || CONSTANTS.MAX_EXPLORE_LIMIT, 1), CONSTANTS.MAX_EXPLORE_LIMIT);
+    const optionalWhere = buildStoryFilterWhere(options);
 
     const queryOpts = {
       where: {
         visibility: CONSTANTS.PUBLIC_VISIBILITY,
         location: { [Op.not]: null },
+        ...optionalWhere,
         [Op.and]: [
           MapServiceUtil.getDWithinCondition(),
           getVisibilityTimeCondition(),
@@ -250,24 +311,19 @@ export const MapService = {
     return stories.map(MapServiceUtil.formatStory).filter(Boolean);
   },
 
-   // ===================== 优化：根据 zoom 动态计算聚合网格大小 =====================
-  getDynamicGridSize(zoom) {
-    const z = zoom ?? 10;
-    if (z <= 5) return 15000;
-    if (z <= 7) return 8000;
-    if (z <= 9) return 3000;
-    if (z <= 11) return 1500;
-    if (z <= 13) return 800;
-    if (z <= 14) return 300;
-    return 150;
+   // ===================== 优化：根据 zoom 动态计算 GEOhash 精度 =====================
+  getGeohashPrecision(zoom) {
+    return getGeohashPrecision(zoom);
   },
 
-  async getClusterData(bounds, zoom) {
+  async getClusterData(bounds, zoom, options = {}) {
     const { northEast, southWest } = bounds;
+    const optionalWhere = buildStoryFilterWhere(options);
     const stories = await Story.findAll({
       where: {
         visibility: CONSTANTS.PUBLIC_VISIBILITY,
         location: { [Op.not]: null },
+        ...optionalWhere,
         [Op.and]: [
           MapServiceUtil.getBoundsCondition(),
           getVisibilityTimeCondition()
@@ -282,8 +338,7 @@ export const MapService = {
       attributes: ['id', 'location', 'emotionTag', 'isTimeCapsule', 'unlockAt', 'fontFamily', 'fontEffect']
     });
 
-    // 🔥 传入动态计算的网格大小（根据 zoom 级别）
-    const gridSize = this.getDynamicGridSize(zoom);
+    const precision = this.getGeohashPrecision(zoom);
     const points = stories.map(s => {
       const { lat, lng } = parsePoint(s.location);
       const isLocked = s.isTimeCapsule && (!s.unlockAt || new Date(s.unlockAt) > new Date());
@@ -291,7 +346,7 @@ export const MapService = {
         id: normalizeStoryId(s.id),
         latitude: lat,
         longitude: lng,
-        emotionTag: s.emotionTag,
+        emotionTag: normalizeMapEmotionTag(s.emotionTag),
         isTimeCapsule: !!s.isTimeCapsule,
         unlockAt: s.unlockAt || null,
         isUnlocked: !s.isTimeCapsule || (s.unlockAt && new Date(s.unlockAt) <= new Date()),
@@ -301,8 +356,8 @@ export const MapService = {
       };
     });
 
-    console.log(`[Cluster] zoom=${zoom}, gridSize=${gridSize}m, points=${points.length}`);
-    return clusterPoints(points, gridSize);
+    console.log(`[Cluster] zoom=${zoom}, geohashPrecision=${precision}, points=${points.length}`);
+    return clusterPoints(points, { zoom, precision });
   },
 
   formatStory: MapServiceUtil.formatStory

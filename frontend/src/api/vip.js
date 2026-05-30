@@ -64,5 +64,5 @@ export const vipApi = {
    */
   saveCommentBg(commentBg) {
     return api.put('/v1/vip/comment-bg', { commentBg });
-  },
+  }
 };

@@ -55,6 +55,8 @@ dump.rdb
 backend/scripts/seed-data.js
 
 # Project folders
+.claude/
+.cline/
 .codebuddy/
 pro/
 

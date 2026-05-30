@@ -2,6 +2,10 @@ import { AuthService } from './auth.service.js';
 import { redisClient } from '../../common/utils/redis.js';
 import { generateAvatarUploadToken } from '../../common/utils/oss.js';
 
+function isDatabaseError(error) {
+  return error?.name?.startsWith('Sequelize') || error?.message?.includes('column "');
+}
+
 /**
  * 发送验证码
  */
@@ -24,7 +28,7 @@ export const sendVerificationCode = async (req, res, next) => {
     const result = await AuthService.sendVerificationCode(email);
     
     // 记录本次发送时间（60秒过期）
-     await redis.set(redisKey, Date.now());
+    await redis.set(redisKey, Date.now());
     await redis.expire(redisKey, 60);
     
     res.json({ code: 0, data: result });
@@ -87,6 +91,9 @@ export const adminLogin = async (req, res, next) => {
     const result = await AuthService.adminLogin(email, password);
     res.json({ code: 0, data: result });
   } catch (error) {
+    if (isDatabaseError(error)) {
+      return next(error);
+    }
     return res.status(401).json({ code: 1, message: error.message });
   }
 };
@@ -100,6 +107,9 @@ export const login = async (req, res, next) => {
     const result = await AuthService.login(email, password);
     res.json({ code: 0, data: result });
   } catch (error) {
+    if (isDatabaseError(error)) {
+      return next(error);
+    }
     return res.status(401).json({ code: 1, message: error.message });
   }
 };
@@ -136,8 +146,8 @@ export const getUserById = async (req, res, next) => {
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { username, avatarUrl, bio, bioFontFamily, bioFontEffect } = req.body;
-    const result = await AuthService.updateProfile(userId, { username, avatarUrl, bio, bioFontFamily, bioFontEffect });
+    const { username, avatarUrl, bio } = req.body;
+    const result = await AuthService.updateProfile(userId, { username, avatarUrl, bio });
     res.json({ code: 0, data: result });
   } catch (error) {
     next(error);
@@ -204,27 +214,26 @@ export const getAllUsers = async (req, res, next) => {
 };
 
 /**
- * 获取头像上传凭证
+ * 根据用户名模糊搜索用户
  */
-export const getAvatarUploadToken = async (req, res, next) => {
+export const searchUsersByUsername = async (req, res, next) => {
   try {
-    const token = generateAvatarUploadToken();
-    res.json({ code: 0, data: token });
+    const { keyword } = req.query;
+    const { page = 1, limit = 20 } = req.query;
+    const result = await AuthService.searchUsersByUsername(keyword, { page: parseInt(page), limit: parseInt(limit) });
+    res.json({ code: 0, data: result });
   } catch (error) {
     next(error);
   }
 };
 
 /**
- * 根据用户名模糊搜索用户
+ * 获取头像上传凭证
  */
-export const searchUsersByUsername = async (req, res, next) => {
+export const getAvatarUploadToken = async (req, res, next) => {
   try {
-    const { keyword, page = 1, limit = 20 } = req.query;
-
-    // 直接调用service，所有验证在service层完成
-    const result = await AuthService.searchUsersByUsername(keyword, { page, limit });
-    res.json({ code: 0, data: result });
+    const token = generateAvatarUploadToken();
+    res.json({ code: 0, data: token });
   } catch (error) {
     next(error);
   }

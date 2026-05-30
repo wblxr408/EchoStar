@@ -31,7 +31,6 @@ export const useVipStore = defineStore('vip', () => {
   const polishedStories = ref(new Map());
   const STORY_POLISH_COST = 30;
   const FOOTPRINT_COST = 20;
-  const VIP_COST = 300;
   const VIP_PLANS = [
     { key: 'vip_weekly', name: '周卡', cost: 150, days: 7 },
     { key: 'vip_monthly', name: '月卡', cost: 400, days: 30 },
@@ -40,7 +39,6 @@ export const useVipStore = defineStore('vip', () => {
   ];
 
   const savedCommentBg = ref(loadFromStorage('vip_comment_bg', null));
-  const savedProfileBg = ref(loadFromStorage('vip_profile_bg', null));
   const savedEmotionStyles = ref(loadFromStorage('vip_emotion_styles', []));
 
   const isVipActive = computed(() => {
@@ -208,9 +206,9 @@ export const useVipStore = defineStore('vip', () => {
       lastCheckInAt.value = new Date().toISOString();
       checkInStreak.value = data.streak ?? checkInStreak.value;
       await fetchEconomy();
-      return { success: true, reward: data.reward || 0, message: res.message || '绛惧埌鎴愬姛' };
+      return { success: true, reward: data.reward || 0, message: res.message || '签到成功' };
     } catch (err) {
-      return { success: false, message: err?.response?.data?.message || err?.message || '绛惧埌澶辫触' };
+      return { success: false, message: err?.response?.data?.message || err?.message || '签到失败' };
     }
   }
 
@@ -228,9 +226,9 @@ export const useVipStore = defineStore('vip', () => {
     try {
       const res = await vipApi.purchaseItem(itemKey);
       await fetchEconomy();
-      return { success: true, message: res.message || '璐拱鎴愬姛', data: res.data || res };
+      return { success: true, message: res.message || '购买成功', data: res.data || res };
     } catch (err) {
-      return { success: false, message: err?.response?.data?.message || err?.message || '璐拱澶辫触' };
+      return { success: false, message: err?.response?.data?.message || err?.message || '购买失败' };
     }
   }
 
@@ -285,7 +283,6 @@ export const useVipStore = defineStore('vip', () => {
   }
 
   const BUBBLE_DECOR_COST = 100;
-  const THEME_SKIN_COST = 500;
 
   async function useBubbleDecor() {
     if (isVipActive.value) {
@@ -309,32 +306,16 @@ export const useVipStore = defineStore('vip', () => {
       return { success: false, type: 'purchase_failed', message: purchaseResult.message };
     }
 
-    return { success: true, isVip: false, cost: BUBBLE_DECOR_COST };
-  }
+    // ✅ 修复：购买成功后立即验证库存更新
+    // fetchEconomy会同步inventory状态
+    await fetchEconomy();
 
-  async function useThemeSkin() {
-    if (isVipActive.value) {
-      return { success: true, isVip: true, cost: 0 };
-    }
-
-    if (hasActiveItem('theme_skin')) {
-      return { success: true, isVip: false, cost: 0 };
-    }
-
-    if (emotionCoins.value < THEME_SKIN_COST) {
-      return {
-        success: false,
-        type: 'insufficient_coins',
-        message: `情绪币不足，解锁主题皮肤需要 ${THEME_SKIN_COST} 币`
-      };
-    }
-
-    const purchaseResult = await purchaseItem('theme_skin');
-    if (!purchaseResult.success) {
-      return { success: false, type: 'purchase_failed', message: purchaseResult.message };
-    }
-
-    return { success: true, isVip: false, cost: THEME_SKIN_COST };
+    return {
+      success: true,
+      isVip: false,
+      cost: BUBBLE_DECOR_COST,
+      hasItem: hasActiveItem('bubble_decor_7d')
+    };
   }
 
   function canPolish(storyId) {
@@ -445,30 +426,18 @@ export const useVipStore = defineStore('vip', () => {
   async function syncCommentBg(bgConfig) {
     try {
       await vipApi.saveCommentBg(bgConfig);
+      savedCommentBg.value = bgConfig;
+      saveToStorage('vip_comment_bg', bgConfig);
       return { success: true };
     } catch (err) {
       console.error('[VipStore] syncCommentBg failed:', err);
-      return { success: false, message: '同步到服务器失败' };
+      return { success: false, message: err?.response?.data?.message || '同步到服务器失败' };
     }
-  }
-
-  function setProfileBg(bg) {
-    savedProfileBg.value = bg;
-    saveToStorage('vip_profile_bg', bg);
   }
 
   function setEmotionStyles(styles) {
     savedEmotionStyles.value = styles;
     saveToStorage('vip_emotion_styles', styles);
-  }
-
-  function resetCustomization() {
-    savedCommentBg.value = null;
-    savedProfileBg.value = null;
-    savedEmotionStyles.value = [];
-    localStorage.removeItem('vip_comment_bg');
-    localStorage.removeItem('vip_profile_bg');
-    localStorage.removeItem('vip_emotion_styles');
   }
 
   return {
@@ -486,14 +455,10 @@ export const useVipStore = defineStore('vip', () => {
     polishCount,
     polishedStories,
     savedCommentBg,
-    savedProfileBg,
     savedEmotionStyles,
     isVipActive,
     remainingDays,
     checkedInToday,
-    activeInventory,
-    getInventoryItem,
-    getInventoryQuantity,
     hasActiveItem,
     resetAccountState,
     refreshAccountState,
@@ -508,7 +473,6 @@ export const useVipStore = defineStore('vip', () => {
     purchaseVip,
     useFootprint,
     useBubbleDecor,
-    useThemeSkin,
     canPolish,
     restorePolishedStories,
     polishStory,
@@ -518,14 +482,10 @@ export const useVipStore = defineStore('vip', () => {
     STORY_POLISH_COST,
     FOOTPRINT_COST,
     BUBBLE_DECOR_COST,
-    THEME_SKIN_COST,
-    VIP_COST,
     VIP_PLANS,
     setCommentBg,
     syncCommentBg,
-    setProfileBg,
     setEmotionStyles,
-    resetCustomization,
   };
 });
 

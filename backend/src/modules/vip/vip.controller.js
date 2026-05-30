@@ -176,3 +176,39 @@ export const saveCommentBg = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * 获取用户字体设置
+ */
+export const getUserFontSettings = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const result = await VipService.getUserFontSettings(userId);
+    res.json({ code: 0, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 保存/更新用户字体设置
+ */
+export const saveFontSettings = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { fontFamily, fontEffect } = req.body;
+
+    if (!fontFamily || typeof fontFamily !== 'string') {
+      return res.status(400).json({ code: 40022, message: '字体名称无效' });
+    }
+
+    const result = await VipService.saveFontSettings(userId, { fontFamily, fontEffect });
+    res.json({ code: 0, data: result, message: '字体设置已保存' });
+  } catch (error) {
+    if (error.message === '仅VIP用户可设置字体') {
+      return res.status(403).json({ code: 40302, message: error.message });
+    }
+    next(error);
+  }
+};
+

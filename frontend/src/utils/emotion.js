@@ -1,89 +1,121 @@
-const FRONTEND_EMOTIONS = {
-  happy: { value: 'happy', icon: '😊', label: '开心', color: '#ffd700' },
-  sad: { value: 'sad', icon: '😢', label: '难过', color: '#6b7280' },
-  neutral: { value: 'neutral', icon: '😐', label: '平静', color: '#9ca3af' },
-  excited: { value: 'excited', icon: '📍', label: '打卡', color: '#f97316' },
-  peaceful: { value: 'peaceful', icon: '😌', label: '治愈', color: '#10b981' }
+const EMOTION_DEFINITIONS = {
+  happy: {
+    key: "happy",
+    tag: "\u5f00\u5fc3",
+    icon: "\ud83d\ude0a",
+    label: "\u5f00\u5fc3",
+    color: "#ffd700",
+  },
+  sad: {
+    key: "sad",
+    tag: "\u96be\u8fc7",
+    icon: "\ud83d\ude22",
+    label: "\u96be\u8fc7",
+    color: "#6b7280",
+  },
+  peaceful: {
+    key: "peaceful",
+    tag: "\u6cbb\u6108",
+    icon: "\ud83d\ude0c",
+    label: "\u6cbb\u6108",
+    color: "#10b981",
+  },
+  excited: {
+    key: "excited",
+    tag: "\u6253\u5361",
+    icon: "\ud83d\udccd",
+    label: "\u6253\u5361",
+    color: "#f97316",
+  },
+  neutral: {
+    key: "neutral",
+    tag: "\u6cbb\u6108",
+    icon: "\ud83d\ude10",
+    label: "\u5e73\u9759",
+    color: "#9ca3af",
+  },
 };
 
-const TAG_TO_EMOTION = {
-  开心: 'happy',
-  难过: 'sad',
-  治愈: 'peaceful',
-  打卡: 'excited'
+const EMOTION_ALIASES = {
+  happy: "happy",
+  "\u5f00\u5fc3": "happy",
+  sad: "sad",
+  "\u96be\u8fc7": "sad",
+  peaceful: "peaceful",
+  "\u6cbb\u6108": "peaceful",
+  neutral: "neutral",
+  "\u5e73\u9759": "neutral",
+  excited: "excited",
+  "\u6253\u5361": "excited",
 };
 
-const EMOTION_TO_TAG = {
-  happy: '开心',
-  sad: '难过',
-  neutral: '治愈',
-  excited: '打卡',
-  peaceful: '治愈'
-};
+function cleanEmotionValue(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
 
-export const EMOTIONS = [
-  { value: '开心', icon: '😊', label: '开心', color: '#ffd700' },
-  { value: '难过', icon: '😢', label: '难过', color: '#6b7280' },
-  { value: '治愈', icon: '😌', label: '治愈', color: '#10b981' },
-  { value: '打卡', icon: '📍', label: '打卡', color: '#f97316' }
-];
+export function normalizeEmotionValue(value) {
+  const normalized = cleanEmotionValue(value);
+  return EMOTION_ALIASES[normalized] || normalized || "";
+}
 
-export const EMOTION_TAGS = [...EMOTIONS];
+export function normalizeEmotionTag(value) {
+  const normalizedValue = normalizeEmotionValue(value);
+  return EMOTION_DEFINITIONS[normalizedValue]?.tag || cleanEmotionValue(value);
+}
 
-const emotionMap = Object.fromEntries(
-  Object.values(FRONTEND_EMOTIONS).map((emotion) => [emotion.value, emotion])
-);
-
-const emotionTagMap = Object.fromEntries(
-  EMOTION_TAGS.map((emotion) => [emotion.value, emotion])
-);
-
-function resolveEmotionInfo(emotion) {
-  if (!emotion) {
+function resolveEmotionInfo(value) {
+  const normalizedValue = normalizeEmotionValue(value);
+  if (!normalizedValue) {
     return null;
   }
 
-  if (emotionMap[emotion]) {
-    return emotionMap[emotion];
+  return EMOTION_DEFINITIONS[normalizedValue] || null;
+}
+
+export const EMOTIONS = [
+  EMOTION_DEFINITIONS.happy,
+  EMOTION_DEFINITIONS.sad,
+  EMOTION_DEFINITIONS.peaceful,
+  EMOTION_DEFINITIONS.excited,
+].map(({ tag, icon, label, color }) => ({
+  value: tag,
+  icon,
+  label,
+  color,
+}));
+
+export const EMOTION_TAGS = [...EMOTIONS];
+
+export function getEmotionEmoji(value) {
+  return resolveEmotionInfo(value)?.icon || "\ud83d\udccd";
+}
+
+export function getEmotionLabel(value) {
+  return resolveEmotionInfo(value)?.label || "\u672a\u77e5";
+}
+
+export function getEmotionColor(value) {
+  return resolveEmotionInfo(value)?.color || "#9ca3af";
+}
+
+export function getEmotionInfo(value) {
+  const info = resolveEmotionInfo(value);
+  if (!info) {
+    return null;
   }
 
-  if (emotionTagMap[emotion]) {
-    return emotionTagMap[emotion];
-  }
-
-  const mappedEmotion = TAG_TO_EMOTION[emotion];
-  if (mappedEmotion && emotionMap[mappedEmotion]) {
-    return emotionMap[mappedEmotion];
-  }
-
-  const mappedTag = EMOTION_TO_TAG[emotion];
-  if (mappedTag && emotionTagMap[mappedTag]) {
-    return emotionTagMap[mappedTag];
-  }
-
-  return null;
+  return {
+    value: info.key,
+    icon: info.icon,
+    label: info.label,
+    color: info.color,
+  };
 }
 
-export function getEmotionEmoji(emotion) {
-  return resolveEmotionInfo(emotion)?.icon || '📍';
+export function toEmotionTag(value) {
+  return normalizeEmotionTag(value);
 }
 
-export function getEmotionLabel(emotion) {
-  return resolveEmotionInfo(emotion)?.label || '未知';
-}
-
-export function getEmotionColor(emotion) {
-  return resolveEmotionInfo(emotion)?.color || '#9ca3af';
-}
-
-export function getEmotionInfo(emotion) {
-  return resolveEmotionInfo(emotion);
-}
-
-export function toEmotionTag(emotion) {
-  return EMOTION_TO_TAG[emotion] || emotion;
-}
-
-export function fromEmotionTag(tag) {
-  return TAG_TO_EMOTION[tag] || tag;
+export function fromEmotionTag(value) {
+  return normalizeEmotionValue(value);
 }

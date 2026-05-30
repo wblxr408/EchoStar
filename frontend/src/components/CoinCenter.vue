@@ -20,10 +20,6 @@
             <div class="coin-center__header">
               <span class="coin-center__header-icon">🪙</span>
               <h2 class="coin-center__title">情绪币中心</h2>
-              <div class="coin-center__balance-pill">
-                <span class="coin-center__balance-icon">🪙</span>
-                <span class="coin-center__balance-value">{{ vipStore.emotionCoins }}</span>
-              </div>
             </div>
 
             <div class="coin-wallet-card" :class="{ dark: isDark }">
@@ -167,7 +163,8 @@ watch(() => props.visible, async (visible) => {
 
   historyLoading.value = true
   try {
-    await vipStore.fetchStatus()
+    // ✅ fetchEconomy 已包含所有数据（VIP状态、情绪币、签到信息等）
+    // 🔧 移除重复调用，只调用一次 fetchEconomy
     await vipStore.fetchEconomy()
   } finally {
     historyLoading.value = false
@@ -355,31 +352,6 @@ function formatDateTime(dateStr) {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.02em;
-}
-
-.coin-center__balance-pill {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.22), rgba(245, 166, 35, 0.28));
-  color: #7a5200;
-  font-weight: 800;
-}
-
-.coin-center.dark .coin-center__balance-pill {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(245, 166, 35, 0.14));
-  color: #ffd700;
-}
-
-.coin-center__balance-icon {
-  font-size: 18px;
-}
-
-.coin-center__balance-value {
-  font-size: 20px;
 }
 
 .coin-wallet-card {

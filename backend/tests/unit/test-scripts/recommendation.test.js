@@ -112,6 +112,16 @@ function assertStoryShape(story, messagePrefix = '故事结构') {
   assert(typeof story.location?.latitude === 'number', `${messagePrefix}包含 location.latitude`);
   assert(typeof story.location?.longitude === 'number', `${messagePrefix}包含 location.longitude`);
   assert(typeof story.emotionTag === 'string', `${messagePrefix}包含 emotionTag`);
+  assert(typeof story.likeCount === 'number', `${messagePrefix}包含 likeCount`);
+  assert(typeof story.favoriteCount === 'number', `${messagePrefix}包含 favoriteCount`);
+  assert(typeof story.commentCount === 'number', `${messagePrefix}包含 commentCount`);
+  assert(story.recommendation && typeof story.recommendation === 'object', `${messagePrefix}包含 recommendation`);
+  assert(typeof story.recommendation?.bucket === 'string', `${messagePrefix}包含 recommendation.bucket`);
+  assert(Array.isArray(story.recommendation?.reasonTags), `${messagePrefix}包含 recommendation.reasonTags`);
+  assert(typeof story.recommendation?.primaryReason === 'string', `${messagePrefix}包含 recommendation.primaryReason`);
+  assert(typeof story.recommendation?.sortModeApplied === 'string', `${messagePrefix}包含 recommendation.sortModeApplied`);
+  assert(typeof story.recommendation?.isCurated === 'boolean', `${messagePrefix}包含 recommendation.isCurated`);
+  assert(['local_fresh', 'preference_match', 'underexposed_quality', 'trending', 'admin_curated', 'fallback'].includes(story.recommendation?.bucket), `${messagePrefix} recommendation.bucket 在允许范围内`);
 }
 
 // ==================== 测试准备 ====================
@@ -249,6 +259,7 @@ async function testRandomWalk() {
   if (res1.status === 200 && res1.data?.data) {
     console.log(`[INFO] 随机漫步返回故事ID: ${res1.data?.data?.story?.id}`);
     assertStoryShape(res1.data?.data?.story, '随机漫步返回故事');
+    assert(typeof res1.data?.data?.story?.recommendation?.distanceMeters === 'number' || res1.data?.data?.story?.recommendation?.distanceMeters === null, '随机漫步返回 recommendation.distanceMeters');
   }
 
   // 1.2 带位置参数的随机漫步
@@ -365,6 +376,7 @@ async function testRecommendationFeed() {
     console.log(`[INFO] 推荐流返回 ${stories.length} 条故事，总数 ${pagination.total || 0}`);
     if (stories.length > 0) {
       assertStoryShape(stories[0], '推荐流故事');
+      assert(stories[0].recommendation.reasonTags.length >= 1, '推荐流故事包含至少 1 个 reasonTag');
     }
   }
 

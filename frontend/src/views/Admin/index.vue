@@ -119,7 +119,8 @@
                 <span v-if="story.isShadowbanned" class="badge shadowbanned">👻 已隐藏</span>
               </div>
               <div class="story-content">
-                <p class="story-text" :title="story.content">{{ story.content }}</p>
+                <h4 v-if="getItemContentTitle(story.content)" class="story-title">{{ getItemContentTitle(story.content) }}</h4>
+                <p class="story-text">{{ getItemContentBody(story.content) }}</p>
                 <div class="story-meta">
                   <div class="story-tags">
                     <span class="emotion-tag">{{ story.emotionTag || story.emotion }}</span>
@@ -400,7 +401,10 @@
     <div v-if="showStoryDetail" class="modal-overlay" @click.self="showStoryDetail = false">
       <div class="story-detail-modal">
         <!-- 关闭按钮 -->
-        <button class="detail-close" @click="showStoryDetail = false">&times;</button>
+        <button class="detail-close" @click="showStoryDetail = false">
+          <span class="close-icon">×</span>
+          <span class="close-text">关闭</span>
+        </button>
 
         <!-- 加载中 -->
         <div v-if="!storyDetail" class="detail-loading">
@@ -451,7 +455,10 @@
 
           <!-- 故事正文 -->
           <div class="detail-text">
-            <p v-if="storyDetail.content">{{ storyDetail.content }}</p>
+            <template v-if="storyDetail.content">
+              <h4 v-if="getItemContentTitle(storyDetail.content)" class="detail-story-title">{{ getItemContentTitle(storyDetail.content) }}</h4>
+              <p class="detail-story-body">{{ getItemContentBody(storyDetail.content) }}</p>
+            </template>
             <p v-else class="text-locked">🔒 时光胶囊尚未解锁，内容暂不可见</p>
           </div>
 
@@ -659,6 +666,7 @@ import { reportApi } from '@/api/report';
 import { storyApi } from '@/api/story';
 import { mapApi } from '@/api/map';
 import { formatShortTime } from '@/utils/time';
+import { decodeStoryContent } from '@/utils/storyTitle';
 import { showToast, showConfirm, showPrompt } from '../../composables/useToast.js';
 
 const router = useRouter();
@@ -839,6 +847,15 @@ function formatLocation(loc) {
   if (loc?.address) return loc.address;
   if (loc?.lng && loc?.lat) return `${Number(loc.lng).toFixed(4)}, ${Number(loc.lat).toFixed(4)}`;
   return '未知位置';
+}
+
+function getItemContentTitle(content) {
+  const decoded = decodeStoryContent(content);
+  return decoded.title || '';
+}
+
+function getItemContentBody(content) {
+  return decodeStoryContent(content).body;
 }
 
 async function handleRecommendFromDetail(storyId) {
@@ -2069,6 +2086,14 @@ function handleLogout() {
   flex: 1;
 }
 
+.story-title {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #222;
+  line-height: 1.4;
+}
+
 .story-text {
   margin: 0 0 8px 0;
   font-size: 14px;
@@ -2240,18 +2265,47 @@ function handleLogout() {
   position: absolute;
   top: 12px;
   right: 16px;
+  height: 42px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 248, 231, 0.34);
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
   font-size: 28px;
-  color: #999;
-  background: none;
-  border: none;
   cursor: pointer;
   z-index: 10;
   line-height: 1;
-  transition: color 0.2s;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .detail-close:hover {
-  color: #333;
+  transform: translateY(-1px);
+  background: rgba(53, 34, 13, 0.92);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.detail-close .close-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.detail-close .close-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 /* 加载中 */
@@ -2444,6 +2498,19 @@ function handleLogout() {
   border-radius: 10px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.detail-story-title {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #222;
+  line-height: 1.4;
+  text-indent: 1em;
+}
+
+.detail-story-body {
+  margin: 0;
 }
 
 .text-locked {

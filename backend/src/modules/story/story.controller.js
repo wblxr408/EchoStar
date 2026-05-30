@@ -36,8 +36,13 @@ export const getStoryById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user?.id; // 可选认证
+    const userLng = parseFloat(req.query.lng);
+    const userLat = parseFloat(req.query.lat);
 
-    const story = await StoryService.getStoryById(id, userId);
+    const story = await StoryService.getStoryById(id, userId, {
+      userLng: Number.isFinite(userLng) ? userLng : null,
+      userLat: Number.isFinite(userLat) ? userLat : null
+    });
     res.json({ code: 0, data: story });
   } catch (error) {
     next(error);

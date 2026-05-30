@@ -2,14 +2,29 @@ import api from "./index";
 import { mapApiProxy } from "./mockProxy";
 
 export const mapApi = {
-  exploreStories(lat, lng, radius = 1000, { page, limit, summary } = {}) {
+  exploreStories(
+    lat,
+    lng,
+    radius = 1000,
+    { page, limit, summary, emotionTag, createdAfter, createdBefore } = {},
+  ) {
     if (mapApiProxy) {
-      return mapApiProxy.exploreStories(lat, lng, radius);
+      return mapApiProxy.exploreStories(lat, lng, radius, {
+        page,
+        limit,
+        summary,
+        emotionTag,
+        createdAfter,
+        createdBefore,
+      });
     }
     const params = { lat, lng, radius };
     if (page != null) params.page = page;
     if (limit != null) params.limit = limit;
     if (summary) params.summary = '1';
+    if (emotionTag) params.emotionTag = emotionTag;
+    if (createdAfter) params.createdAfter = createdAfter;
+    if (createdBefore) params.createdBefore = createdBefore;
     return api.get("/v1/map/explore", { params });
   },
 
@@ -54,15 +69,27 @@ export const mapApi = {
     });
   },
 
-  getClusterData(northEast, southWest, zoom) {
+  getClusterData(
+    northEast,
+    southWest,
+    zoom,
+    { emotionTag, createdAfter, createdBefore } = {},
+  ) {
     if (mapApiProxy) {
-      return mapApiProxy.getClusterData(northEast, southWest, zoom);
+      return mapApiProxy.getClusterData(northEast, southWest, zoom, {
+        emotionTag,
+        createdAfter,
+        createdBefore,
+      });
     }
     return api.get("/v1/map/clusters", {
       params: {
         northEast: JSON.stringify(northEast),
         southWest: JSON.stringify(southWest),
         zoom,
+        ...(emotionTag ? { emotionTag } : {}),
+        ...(createdAfter ? { createdAfter } : {}),
+        ...(createdBefore ? { createdBefore } : {}),
       },
     });
   },

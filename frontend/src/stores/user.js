@@ -184,7 +184,6 @@ export const useUserStore = defineStore("user", () => {
     localStorage.removeItem('dockTheme');
     localStorage.setItem('dockTheme', 'tarot');
     localStorage.removeItem('vip_comment_bg');
-    localStorage.removeItem('vip_profile_bg');
     localStorage.removeItem('vip_emotion_styles');
   }
 

@@ -57,4 +57,14 @@ router.post('/economy/purchase-vip', vipController.purchaseVipWithCoins);
  */
 router.put('/comment-bg', vipController.saveCommentBg);
 
+/**
+ * GET /api/v1/vip/fonts - 获取用户字体设置
+ */
+router.get('/fonts', vipController.getUserFontSettings);
+
+/**
+ * PUT /api/v1/vip/fonts - 保存/更新用户字体设置
+ */
+router.put('/fonts', vipController.saveFontSettings);
+
 export default router;

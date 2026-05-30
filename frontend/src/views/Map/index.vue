@@ -37,6 +37,91 @@
     </div>
 
     <!-- 搜索结果面板 -->
+    <div
+      v-show="!isAdjustingPlanePosition && showMapFilterPanel"
+      class="map-filter-bar"
+      :class="{ dark: effectiveMapTheme === 'dark' }"
+      @click.stop
+    >
+      <div class="map-filter-bar__row">
+        <div class="map-filter-group">
+          <span class="map-filter-label">按心情</span>
+          <div class="map-filter-chip-list">
+            <button
+              class="map-filter-chip"
+              :class="{ active: activeEmotionFilter === 'all' }"
+              @click="setEmotionFilter('all')"
+            >
+              全部
+            </button>
+            <button
+              v-for="emotion in emotionFilterOptions"
+              :key="emotion.value"
+              class="map-filter-chip"
+              :class="{ active: activeEmotionFilter === emotion.value }"
+              @click="setEmotionFilter(emotion.value)"
+            >
+              {{ emotion.icon }} {{ emotion.label }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-filter-bar__row map-filter-bar__row--secondary">
+        <div class="map-filter-group">
+          <span class="map-filter-label">按时间</span>
+          <div class="map-filter-chip-list">
+            <button
+              v-for="preset in timeFilterOptions"
+              :key="preset.key"
+              class="map-filter-chip"
+              :class="{ active: activeTimePreset === preset.key }"
+              @click="applyTimePreset(preset.key)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="map-filter-date-range">
+          <input
+            v-model="mapFilterStartDate"
+            class="map-filter-date-input"
+            type="date"
+            @change="handleMapFilterDateChange"
+          />
+          <span class="map-filter-date-sep">至</span>
+          <input
+            v-model="mapFilterEndDate"
+            class="map-filter-date-input"
+            type="date"
+            @change="handleMapFilterDateChange"
+          />
+        </div>
+
+        <button
+          v-if="isUserMapFilterActive"
+          class="map-filter-reset"
+          @click="clearMapFilters"
+        >
+          清空筛选
+        </button>
+      </div>
+
+      <div
+        v-if="mapFilterStatusText || isSystemDisplayLimitEnabled"
+        class="map-filter-status"
+      >
+        <span v-if="mapFilterStatusText">{{ mapFilterStatusText }}</span>
+        <span
+          v-if="isSystemDisplayLimitEnabled"
+          class="map-filter-status__badge"
+        >
+          当前缩放最多显示 {{ defaultMapVisibleEntityLimit }} 个点位
+        </span>
+      </div>
+    </div>
+
     <transition name="search-panel-fade">
       <div
         v-if="showSearchPanel"
@@ -76,7 +161,8 @@
                   <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ item.data.locationName || '' }}</span>
                 </div>
               </div>
-              <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+              <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+              <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
               <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
               <div class="item-footer">
                 <span class="item-likes">👁 {{ item.data.viewCount ?? 0 }}</span>
@@ -180,7 +266,8 @@
                       <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                     </div>
                   </div>
-                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                  <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                  <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                   <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                   <div class="item-footer">
                     <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -262,7 +349,8 @@
                         <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}</span>
                       </div>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                    <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -299,6 +387,8 @@
         ref="amapRef"
         :stories="mapStore.stories"
         :clusters="clusters"
+        :system-limit-enabled="isSystemDisplayLimitEnabled"
+        :max-visible-entities="defaultMapVisibleEntityLimit"
         :user-location="mapStore.userLocation"
         :center="mapStore.center"
         :zoom="mapStore.zoom"
@@ -440,8 +530,9 @@
                 为你推荐
               </button>
             </div>
-            <button class="close-btn" @click.stop="closeStoryPanel">
-              <span>×</span>
+            <button class="story-detail-close" type="button" @click.stop="closeStoryPanel">
+              <span class="close-icon">×</span>
+              <span class="close-text">关闭</span>
             </button>
           </div>
 
@@ -533,8 +624,9 @@
             <div class="plane-nearby-header__left">
               <h3>附近故事</h3>
             </div>
-            <button class="close-btn" @click.stop="closePlaneNearby">
-              <span>×</span>
+            <button class="story-detail-close" type="button" @click.stop="closePlaneNearby">
+              <span class="close-icon">×</span>
+              <span class="close-text">关闭</span>
             </button>
           </div>
           <div ref="planeNearbyContentRef" class="plane-nearby-content" @scroll="handlePlaneNearbyScroll($event)">
@@ -581,6 +673,25 @@
         </div>
       </div>
     </transition>
+
+    <button
+      v-show="!isAdjustingPlanePosition"
+      class="map-filter-toggle"
+      :class="{
+        dark: effectiveMapTheme === 'dark',
+        active: showMapFilterPanel,
+        'dock-covered': isDockExpanded,
+      }"
+      type="button"
+      title="地图筛选"
+      aria-label="地图筛选"
+      @click.stop="toggleMapFilterPanel"
+    >
+      <span class="map-filter-toggle__icon">⌘</span>
+      <span class="map-filter-toggle__text">
+        {{ showMapFilterPanel ? "收起筛选" : "地图筛选" }}
+      </span>
+    </button>
 
     <div
       v-show="!isAdjustingPlanePosition"
@@ -889,6 +1000,7 @@
         <div
           v-if="publishPickPrompt"
           class="publish-pick-confirm"
+          :class="{ dark: effectiveMapTheme === 'dark' }"
           :style="getPublishPickPromptStyle(publishPickPrompt)"
           @click.stop
         >
@@ -969,6 +1081,7 @@
         <div
           v-if="isDockPublishPickPrompt"
           class="publish-pick-confirm"
+          :class="{ dark: effectiveMapTheme === 'dark' }"
           :style="getDockPublishPickPromptStyle(isDockPublishPickPrompt)"
           @click.stop
         >
@@ -1011,6 +1124,7 @@
     <div
       v-if="publishPickPrompt && isAdjustingPlanePosition"
       class="publish-pick-confirm"
+      :class="{ dark: effectiveMapTheme === 'dark' }"
       :style="getPublishPickPromptStyle(publishPickPrompt)"
       @click.stop
     >
@@ -1064,7 +1178,8 @@
                       <span class="item-time">{{ formatRelativeTime(item.data.createdAt) }}&ensp;&ensp;📍 {{ getStoryLocationText(item.data) }}</span>
                     </div>
                   </div>
-                  <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                  <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                  <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                   <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                   <div class="item-footer">
                     <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1336,7 +1451,8 @@
                       </div>
                     </template>
                     <template v-else>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                    <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     </template>
                     <div class="item-footer">
@@ -1377,7 +1493,8 @@
                       </div>
                       <button class="item-action-btn unlike-btn" title="取消点赞" @click.stop="handleUnlike(item.data)"><span>❌</span></button>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                    <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1422,7 +1539,8 @@
                         @click.stop="handleToggleFavoriteFromList(item.data)"
                       ><span>{{ item.data.isFavorited !== false ? "❌" : "✨" }}</span></button>
                     </div>
-                    <p class="item-content" :style="getItemContentStyle(item.data)">{{ item.data.content }}</p>
+                    <div v-if="decodeStoryContent(item.data.content).title" class="item-content-title" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).title }}</div>
+                    <p class="item-content-body" :style="getItemContentStyle(item.data)">{{ decodeStoryContent(item.data.content).body || item.data.content }}</p>
                     <div v-if="item.data.images?.length" class="item-images"><img :src="item.data.images[0]" alt="配图" /></div>
                     <div class="item-footer">
                       <span class="item-likes">❤️ {{ item.data.likeCount ?? item.data.likes ?? 0 }}</span>
@@ -1586,6 +1704,8 @@
       :start-position="storyStartPosition"
       :direct-open="storyDirectOpen"
       :is-dark="effectiveMapTheme === 'dark'"
+      :next-stop="nextStop"
+      :next-stop-loading="nextStopLoading"
       @close="closeStoryModal"
       @preview-image="handlePreviewImage"
       @like="toggleStoryLike"
@@ -1597,6 +1717,7 @@
       @view-user-profile="openUserDetail"
       @open-comment-bg="handleOpenCommentBg"
       @open-vip-center="vipCenterFromStory = true; showVipCenter = true"
+      @go-next-stop="goToNextStop"
     />
 
     <div class="msg-trigger-wrapper">
@@ -1789,10 +1910,16 @@ import PublishFormDock from "../../components/PublishFormDock.vue";
 import LoginModal from "../Home/components/LoginModal.vue";
 import { useVipStore } from "../../stores/vip";
 import { formatRelativeTime } from "../../utils/time";
-import { getEmotionEmoji } from "../../utils/emotion";
+import {
+  EMOTIONS,
+  getEmotionEmoji,
+  normalizeEmotionTag,
+  normalizeEmotionValue,
+} from "../../utils/emotion";
 import { getAnnouncementTypeIcon } from "../../utils/announcement";
 import { searchPoisWithContext } from "../../utils/poiSearch";
 import { REPORT_TYPES } from "../../utils/report";
+import { decodeStoryContent } from "../../utils/storyTitle.js";
 import { uploadAvatar as uploadToOSS, validateImage } from "../../utils/upload";
 import { useVirtualScroll } from "../../composables/useVirtualScroll.js";
 
@@ -1837,6 +1964,20 @@ const notificationsLoading = ref(false);
 const notificationUnreadCount = ref(0);
 const announcementsLoading = ref(false);
 const loading = ref(false);
+const defaultMapExploreLimit = 200;
+const filteredMapExploreLimit = 500;
+const emotionFilterOptions = EMOTIONS;
+const timeFilterOptions = [
+  { key: "all", label: "全部时间" },
+  { key: "24h", label: "24小时" },
+  { key: "7d", label: "7天内" },
+  { key: "30d", label: "30天内" },
+];
+const activeEmotionFilter = ref("all");
+const activeTimePreset = ref("all");
+const mapFilterStartDate = ref("");
+const mapFilterEndDate = ref("");
+const showMapFilterPanel = ref(false);
 const nearbySearchQuery = ref("");
 const nearbySearchResults = ref([]);
 const nearbySearching = ref(false);
@@ -1872,6 +2013,8 @@ const feedHasMore = computed(
   () => feedPage.value < feedPagination.value.totalPages,
 );
 const randomWalking = ref(false);
+const nextStop = ref(null);
+const nextStopLoading = ref(false);
 const selectedStory = ref(null);
 const storyStartPosition = ref({
   x: window.innerWidth / 2,
@@ -1910,6 +2053,113 @@ const effectiveMapTheme = computed(() => {
   }
 
   return selectedThemeChoice.value;
+});
+const isUserMapFilterActive = computed(
+  () =>
+    activeEmotionFilter.value !== "all" ||
+    Boolean(mapFilterStartDate.value) ||
+    Boolean(mapFilterEndDate.value),
+);
+const isSystemDisplayLimitEnabled = computed(
+  () => !isUserMapFilterActive.value,
+);
+function getZoomAdaptiveVisibleEntityLimit(zoom) {
+  const normalizedZoom = Number(zoom);
+
+  if (!Number.isFinite(normalizedZoom)) {
+    return 96;
+  }
+
+  if (normalizedZoom <= 5) {
+    return 24;
+  }
+
+  if (normalizedZoom <= 7) {
+    return 36;
+  }
+
+  if (normalizedZoom <= 9) {
+    return 54;
+  }
+
+  if (normalizedZoom <= 11) {
+    return 72;
+  }
+
+  if (normalizedZoom <= 13) {
+    return 96;
+  }
+
+  if (normalizedZoom <= 15) {
+    return 132;
+  }
+
+  if (normalizedZoom <= 17) {
+    return 180;
+  }
+
+  return 240;
+}
+const defaultMapVisibleEntityLimit = computed(() =>
+  getZoomAdaptiveVisibleEntityLimit(mapStore.zoom),
+);
+const mapExploreFetchLimit = computed(() =>
+  isUserMapFilterActive.value
+    ? filteredMapExploreLimit
+    : defaultMapExploreLimit,
+);
+const mapFilterQuery = computed(() => {
+  const result = {};
+
+  if (activeEmotionFilter.value !== "all") {
+    result.emotionTag = activeEmotionFilter.value;
+  }
+
+  if (activeTimePreset.value === "24h") {
+    result.createdAfter = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    result.createdBefore = new Date().toISOString();
+    return result;
+  }
+
+  if (activeTimePreset.value === "7d") {
+    result.createdAfter = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    result.createdBefore = new Date().toISOString();
+    return result;
+  }
+
+  if (activeTimePreset.value === "30d") {
+    result.createdAfter = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    result.createdBefore = new Date().toISOString();
+    return result;
+  }
+
+  if (mapFilterStartDate.value) {
+    result.createdAfter = new Date(`${mapFilterStartDate.value}T00:00:00`).toISOString();
+  }
+
+  if (mapFilterEndDate.value) {
+    result.createdBefore = new Date(`${mapFilterEndDate.value}T23:59:59.999`).toISOString();
+  }
+
+  return result;
+});
+const mapFilterStatusText = computed(() => {
+  if (!isUserMapFilterActive.value) {
+    return "";
+  }
+
+  const segments = [];
+  if (activeEmotionFilter.value !== "all") {
+    segments.push(`心情：${activeEmotionFilter.value}`);
+  }
+
+  if (mapFilterStartDate.value || mapFilterEndDate.value) {
+    const startText = mapFilterStartDate.value || "最早";
+    const endText = mapFilterEndDate.value || "现在";
+    segments.push(`时间：${startText} 至 ${endText}`);
+  }
+
+  return `筛选中：${segments.join("｜")}。系统显示上限已关闭。`;
 });
 const nearbyCenterSummary = computed(() => {
   if (!nearbyCenterLabel.value) {
@@ -5346,7 +5596,10 @@ const dockPublishSuggestedLocations = ref([]);
 
 async function handleDockPublishSubmit(storyData) {
   try {
-    const selectedLocation = extractCoordinates(storyData.location);
+    const resolvedStoryLocation =
+      await ensureLocationResolvedForSubmit(storyData.location)
+      || storyData.location;
+    const selectedLocation = extractCoordinates(resolvedStoryLocation);
     if (!selectedLocation) {
       showToast("请先选择一个地点后再发布故事", "warning");
       return;
@@ -5366,9 +5619,9 @@ async function handleDockPublishSubmit(storyData) {
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
       address:
-        storyData.location?.address || storyData.location?.name || "已选地点",
+        resolvedStoryLocation?.address || resolvedStoryLocation?.name || "已选地点",
       name:
-        storyData.location?.name || storyData.location?.address || "已选地点",
+        resolvedStoryLocation?.name || resolvedStoryLocation?.address || "已选地点",
     };
 
     const finalEmotionTag = storyData.emotion;
@@ -5829,7 +6082,7 @@ async function refreshCurrentUserLocationLabel(preferredLabel = "") {
   const currentToken = ++activeUserLocationLabelToken;
 
   try {
-    const resolvedLocation = await reverseGeocodeLocationDetail(
+    const resolvedLocation = await reverseGeocodeLocationDetailSafe(
       coords.latitude,
       coords.longitude,
     );
@@ -5898,7 +6151,7 @@ async function resolveNearbyCenterLabel(preferredLabel = "") {
   const currentToken = ++activeNearbyCenterLabelToken;
 
   try {
-    const resolvedLocation = await reverseGeocodeLocationDetail(
+    const resolvedLocation = await reverseGeocodeLocationDetailSafe(
       center.latitude,
       center.longitude,
     );
@@ -6342,50 +6595,25 @@ function scrollPlaneNearbyToTop() {
 // 纸飞机菜单 DOM（悬停触发）
 let planeMenuEl = null;
 let planeMenuHideTimer = null;
+let planeMenuOpenTimer = null;
 const PLANE_MENU_HIDE_DELAY = 300;
+const PLANE_MENU_OPENING_DELAY = 180;
 
-function hidePlaneMenu(immediate = false) {
-  if (planeMenuHideTimer) {
-    clearTimeout(planeMenuHideTimer);
-    planeMenuHideTimer = null;
-  }
+function positionPlaneMenu(clientX, clientY) {
   if (!planeMenuEl) return;
-  if (immediate) {
-    if (planeMenuEl.parentNode) planeMenuEl.parentNode.removeChild(planeMenuEl);
-    planeMenuEl = null;
-    return;
-  }
-  planeMenuEl.style.transition = 'opacity 0.1s ease, transform 0.1s ease';
-  planeMenuEl.style.opacity = '0';
-  planeMenuEl.style.transform = 'translateY(8px)';
-  setTimeout(() => {
-    if (planeMenuEl && planeMenuEl.parentNode) {
-      planeMenuEl.parentNode.removeChild(planeMenuEl);
-    }
-    planeMenuEl = null;
-  }, 100);
+  const menuW = planeMenuEl.offsetWidth;
+  const menuH = planeMenuEl.offsetHeight;
+  let left = clientX - menuW / 2;
+  let top = clientY - menuH - 12;
+  if (left < 8) left = 8;
+  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+  if (top < 8) top = clientY + 16;
+  planeMenuEl.style.left = left + 'px';
+  planeMenuEl.style.top = top + 'px';
 }
 
-function showPlaneMenu(clientX, clientY) {
-  if (planeMenuHideTimer) {
-    clearTimeout(planeMenuHideTimer);
-    planeMenuHideTimer = null;
-  }
-  // 如果菜单已存在且可见，仅更新位置
-  if (planeMenuEl && planeMenuEl.parentNode) {
-    const menuW = planeMenuEl.offsetWidth;
-    const menuH = planeMenuEl.offsetHeight;
-    let left = clientX - menuW / 2;
-    let top = clientY - menuH - 12;
-    if (left < 8) left = 8;
-    if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
-    if (top < 8) top = clientY + 16;
-    planeMenuEl.style.left = left + 'px';
-    planeMenuEl.style.top = top + 'px';
-    planeMenuEl.style.opacity = '1';
-    planeMenuEl.style.transform = 'translateY(0)';
-    return;
-  }
+function ensurePlaneMenu() {
+  if (planeMenuEl) return planeMenuEl;
 
   planeMenuEl = document.createElement('div');
   planeMenuEl.className = 'paper-plane-menu';
@@ -6400,7 +6628,6 @@ function showPlaneMenu(clientX, clientY) {
     </div>
   `;
 
-  // 点击选项
   planeMenuEl.addEventListener('click', (e) => {
     const item = e.target.closest('.plane-menu-item');
     if (!item) return;
@@ -6413,7 +6640,6 @@ function showPlaneMenu(clientX, clientY) {
     }
   });
 
-  // 鼠标在菜单上时保持显示，离开后延迟隐藏
   planeMenuEl.addEventListener('mouseenter', () => {
     if (planeMenuHideTimer) {
       clearTimeout(planeMenuHideTimer);
@@ -6424,23 +6650,55 @@ function showPlaneMenu(clientX, clientY) {
     scheduleHidePlaneMenu();
   }, { passive: true });
 
-  // 定位菜单在纸飞机位置上方
+  planeMenuEl.classList.add('paper-plane-menu--no-transition');
   document.body.appendChild(planeMenuEl);
-  const menuW = planeMenuEl.offsetWidth;
-  const menuH = planeMenuEl.offsetHeight;
-  let left = clientX - menuW / 2;
-  let top = clientY - menuH - 12;
-  if (left < 8) left = 8;
-  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
-  if (top < 8) top = clientY + 16;
-  planeMenuEl.style.left = left + 'px';
-  planeMenuEl.style.top = top + 'px';
+  void planeMenuEl.offsetHeight;
+  planeMenuEl.classList.remove('paper-plane-menu--no-transition');
+
+  return planeMenuEl;
+}
+
+function hidePlaneMenu(immediate = false) {
+  if (planeMenuHideTimer) {
+    clearTimeout(planeMenuHideTimer);
+    planeMenuHideTimer = null;
+  }
+  if (planeMenuOpenTimer) {
+    clearTimeout(planeMenuOpenTimer);
+    planeMenuOpenTimer = null;
+  }
+  if (!planeMenuEl) return;
+  if (immediate) {
+    if (planeMenuEl.parentNode) planeMenuEl.parentNode.removeChild(planeMenuEl);
+    planeMenuEl = null;
+    return;
+  }
+  planeMenuEl.classList.remove('paper-plane-menu--opening', 'paper-plane-menu--visible');
+}
+
+function showPlaneMenu(clientX, clientY) {
+  if (planeMenuHideTimer) {
+    clearTimeout(planeMenuHideTimer);
+    planeMenuHideTimer = null;
+  }
+  // 如果菜单已存在且可见，仅更新位置
+  ensurePlaneMenu();
+  positionPlaneMenu(clientX, clientY);
   planeMenuEl.classList.toggle('dark', effectiveMapTheme.value === 'dark');
 
-  // 触发弹出动画
+  if (planeMenuEl.classList.contains('paper-plane-menu--visible')) {
+    return;
+  }
+
+  planeMenuEl.classList.add('paper-plane-menu--opening');
   requestAnimationFrame(() => {
-    planeMenuEl.style.opacity = '1';
-    planeMenuEl.style.transform = 'translateY(0)';
+    if (!planeMenuEl) return;
+    planeMenuEl.classList.add('paper-plane-menu--visible');
+    planeMenuOpenTimer = window.setTimeout(() => {
+      if (!planeMenuEl) return;
+      planeMenuEl.classList.remove('paper-plane-menu--opening');
+      planeMenuOpenTimer = null;
+    }, PLANE_MENU_OPENING_DELAY);
   });
 }
 
@@ -6505,9 +6763,9 @@ function handlePaperPlanePublish() {
     showToast('æµ£å¶‡ç–†ç‘™ï½†ç€½æ¾¶è¾«è§¦é”›å²ƒî‡¬é–²å¶ˆç˜¯', 'warning');
     return;
   }
-  reverseGeocodeLocationDetail(coords.latitude, coords.longitude).then((location) => {
+  reverseGeocodeLocationDetailSafe(coords.latitude, coords.longitude).then((location) => {
     if (!location) return;
-    const displayName = pickPublishLocationSearchText(location, "当前位置");
+    const displayName = pickPublishLocationSearchTextSafe(location, "当前位置");
     isPickingPublishLocation.value = false;
     showPublishSidebar.value = true;
     nextTick(() => {
@@ -6749,6 +7007,357 @@ function normalizeNearbyPoiFromGeocode(poi, locality = null) {
   };
 }
 
+function formatMapPickAddressSafe(latitude, longitude) {
+  return `经度 ${Number(longitude).toFixed(6)}，纬度 ${Number(latitude).toFixed(6)}`;
+}
+
+function formatPoiDistrictLabelSafe(poi) {
+  if (!poi || typeof poi !== "object") {
+    return "已解析位置";
+  }
+
+  return buildLocationDistrictLabel(poi) || "已解析位置";
+}
+
+function isCoordinateOnlyLocationLabelSafe(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim();
+  return (
+    normalized.startsWith("经度 ") ||
+    normalized.startsWith("缁忓害 ") ||
+    /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(normalized)
+  );
+}
+
+function isGenericLocationPlaceholderSafe(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  return [
+    "Map Pick",
+    "Map Center",
+    "Current Location",
+    "Nearby Place",
+    "已选地点",
+    "当前位置",
+    "当前地理位置",
+  ].includes(value.trim());
+}
+
+function getStoryLocationTextSafe(story, fallback = "未知位置") {
+  const label = pickLocationText([
+    story?.location?.address,
+    story?.location?.formattedAddress,
+    story?.location?.name,
+    story?.locationName,
+  ]);
+
+  return label || fallback;
+}
+
+function sanitizeLocationLabelSafe(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (
+    isGenericLocationPlaceholderSafe(normalized) ||
+    isCoordinateOnlyLocationLabelSafe(normalized)
+  ) {
+    return "";
+  }
+
+  return normalized;
+}
+
+function pickPublishLocationSearchTextSafe(location, fallback = "") {
+  const safeFallback = sanitizeLocationLabelSafe(fallback);
+  if (!location || typeof location !== "object") {
+    return safeFallback || "当前位置";
+  }
+
+  const suggestedLocation = buildSuggestedLocations(
+    location,
+    location.nearbyPois || [],
+  )[0];
+  const candidates = [
+    suggestedLocation?.name,
+    suggestedLocation?.address,
+    location.name,
+    location.address,
+    location.formattedAddress,
+    location.district,
+    location.city,
+    safeFallback,
+  ]
+    .map((value) => sanitizeLocationLabelSafe(value))
+    .filter(Boolean);
+
+  return pickLocationText(candidates, false) || safeFallback || "当前位置";
+}
+
+function hasResolvedLocationDetails(location) {
+  if (!location || typeof location !== "object") {
+    return false;
+  }
+
+  return Boolean(
+    sanitizeLocationLabelSafe(location.name) ||
+      sanitizeLocationLabelSafe(location.address) ||
+      sanitizeLocationLabelSafe(location.district) ||
+      firstNonEmptyString(location.city, location.province),
+  );
+}
+
+function buildStorySubmitLocation(location) {
+  const coords = extractCoordinates(location);
+  if (!coords) {
+    return null;
+  }
+
+  const name = pickLocationText(
+    [
+      sanitizeLocationLabelSafe(location?.name),
+      sanitizeLocationLabelSafe(location?.address),
+      sanitizeLocationLabelSafe(location?.formattedAddress),
+      sanitizeLocationLabelSafe(location?.district),
+      sanitizeLocationLabelSafe(location?.city),
+      sanitizeLocationLabelSafe(location?.province),
+    ],
+    false,
+  );
+  const address = pickLocationText([
+    sanitizeLocationLabelSafe(location?.address),
+    sanitizeLocationLabelSafe(location?.formattedAddress),
+    sanitizeLocationLabelSafe(location?.name),
+    sanitizeLocationLabelSafe(location?.district),
+    sanitizeLocationLabelSafe(location?.city),
+    sanitizeLocationLabelSafe(location?.province),
+    formatMapPickAddressSafe(coords.latitude, coords.longitude),
+  ]);
+
+  return {
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    name: name || address,
+    address,
+  };
+}
+
+async function ensureLocationResolvedForSubmit(location) {
+  const coords = extractCoordinates(location);
+  if (!coords) {
+    return null;
+  }
+
+  const fallbackLocation = buildFallbackLocation(
+    coords.latitude,
+    coords.longitude,
+    location || {},
+  );
+  const submitLocation = buildStorySubmitLocation(fallbackLocation);
+  if (submitLocation?.name && !isCoordinateOnlyLocationLabelSafe(submitLocation.name)) {
+    return {
+      ...fallbackLocation,
+      ...submitLocation,
+    };
+  }
+
+  const resolvedLocation = await reverseGeocodeLocationDetailSafe(
+    coords.latitude,
+    coords.longitude,
+  ).catch(() => null);
+  if (!resolvedLocation) {
+    return {
+      ...fallbackLocation,
+      ...submitLocation,
+    };
+  }
+
+  const mergedLocation = buildFallbackLocation(coords.latitude, coords.longitude, {
+    ...location,
+    ...resolvedLocation,
+    name: pickLocationText(
+      [
+        sanitizeLocationLabelSafe(resolvedLocation?.name),
+        sanitizeLocationLabelSafe(resolvedLocation?.address),
+        sanitizeLocationLabelSafe(resolvedLocation?.formattedAddress),
+        sanitizeLocationLabelSafe(location?.name),
+        sanitizeLocationLabelSafe(location?.address),
+        sanitizeLocationLabelSafe(resolvedLocation?.district),
+        sanitizeLocationLabelSafe(resolvedLocation?.city),
+      ],
+      false,
+    ),
+    address: pickLocationText([
+      sanitizeLocationLabelSafe(resolvedLocation?.address),
+      sanitizeLocationLabelSafe(resolvedLocation?.formattedAddress),
+      sanitizeLocationLabelSafe(resolvedLocation?.name),
+      sanitizeLocationLabelSafe(location?.address),
+      sanitizeLocationLabelSafe(location?.formattedAddress),
+      sanitizeLocationLabelSafe(location?.name),
+      formatMapPickAddressSafe(coords.latitude, coords.longitude),
+    ]),
+    city: firstNonEmptyString(resolvedLocation?.city, location?.city),
+    district: firstNonEmptyString(resolvedLocation?.district, location?.district),
+    adcode: firstNonEmptyString(resolvedLocation?.adcode, location?.adcode),
+    province: firstNonEmptyString(resolvedLocation?.province, location?.province),
+    type: firstNonEmptyString(location?.type, resolvedLocation?.type, "map-click"),
+    nearbyPois: [
+      ...(Array.isArray(resolvedLocation?.nearbyPois) ? resolvedLocation.nearbyPois : []),
+      ...(Array.isArray(location?.nearbyPois) ? location.nearbyPois : []),
+    ],
+  });
+
+  return {
+    ...mergedLocation,
+    ...buildStorySubmitLocation(mergedLocation),
+  };
+}
+
+async function resolveLocationFromNearbyPlaceSearch(
+  latitude,
+  longitude,
+  locality = null,
+) {
+  try {
+    await ensureNearbyPlaceSearch();
+    const anchor = { latitude, longitude };
+    const { pois } = await searchPoisWithContext({
+      createPlaceSearch: (options = {}) =>
+        new window.AMap.PlaceSearch({
+          pageSize: 8,
+          pageIndex: 1,
+          extensions: "all",
+          ...options,
+        }),
+      keyword: "",
+      anchor,
+      sortAnchor: anchor,
+      locality,
+      radius: 1500,
+      normalizePoi: (poi) => normalizeNearbyPoiFromGeocode(poi, locality),
+    });
+
+    return Array.isArray(pois) ? pois[0] || null : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function reverseGeocodeLocationDetailSafe(latitude, longitude) {
+  const cacheKey = getCoordinateCacheKey(latitude, longitude);
+  if (reverseGeocodeCache.has(cacheKey)) {
+    return reverseGeocodeCache.get(cacheKey);
+  }
+
+  if (reverseGeocodePending.has(cacheKey)) {
+    return reverseGeocodePending.get(cacheKey);
+  }
+
+  const pendingTask = (async () => {
+    try {
+      const geocoder = await ensureGeocoder();
+      const result = await new Promise((resolve) => {
+        geocoder.getAddress([longitude, latitude], (status, geocodeResult) => {
+          resolve(status === "complete" ? geocodeResult : null);
+        });
+      });
+
+      const regeocode = result?.regeocode || {};
+      const district = [
+        regeocode.addressComponent?.city,
+        regeocode.addressComponent?.district,
+        regeocode.addressComponent?.township,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const city = firstNonEmptyString(
+        regeocode.addressComponent?.city,
+        regeocode.addressComponent?.province,
+      );
+      const province = firstNonEmptyString(
+        regeocode.addressComponent?.province,
+      );
+      const locality = {
+        city,
+        district,
+        adcode: firstNonEmptyString(regeocode.addressComponent?.adcode),
+        province,
+      };
+      const rawPois = Array.isArray(regeocode.pois) ? regeocode.pois : [];
+      const normalizedPois = rawPois
+        .map((poi) => normalizeNearbyPoiFromGeocode(poi, locality))
+        .filter(Boolean);
+      const firstPoi = normalizedPois[0] || null;
+      const formattedAddress = firstNonEmptyString(regeocode.formattedAddress);
+      let resolvedLocation = buildFallbackLocation(latitude, longitude, {
+        id: `map-pick-${longitude}-${latitude}`,
+        name: getNonPlaceholderLocationLabel(
+          firstPoi?.name,
+          formattedAddress,
+          district,
+          city,
+          province,
+          "已选地点",
+        ),
+        address: pickLocationText([
+          firstPoi?.address,
+          formattedAddress,
+          firstPoi?.name,
+          formatMapPickAddressSafe(latitude, longitude),
+        ]),
+        city: firstNonEmptyString(firstPoi?.city, city),
+        district: firstNonEmptyString(firstPoi?.district, district),
+        adcode: firstNonEmptyString(
+          firstPoi?.adcode,
+          regeocode.addressComponent?.adcode,
+        ),
+        province: firstNonEmptyString(firstPoi?.province, province),
+        type: firstNonEmptyString(firstPoi?.type, "map-click"),
+        nearbyPois: normalizedPois,
+      });
+
+      if (!hasResolvedLocationDetails(resolvedLocation)) {
+        const nearbyPoi = await resolveLocationFromNearbyPlaceSearch(
+          latitude,
+          longitude,
+          locality,
+        );
+        if (nearbyPoi) {
+          resolvedLocation = buildFallbackLocation(latitude, longitude, {
+            ...nearbyPoi,
+            nearbyPois: [nearbyPoi],
+            type: firstNonEmptyString(nearbyPoi.type, "map-click"),
+          });
+        }
+      }
+
+      if (hasResolvedLocationDetails(resolvedLocation)) {
+        reverseGeocodeCache.set(cacheKey, resolvedLocation);
+      }
+
+      return resolvedLocation;
+    } catch (error) {
+      return buildFallbackLocation(latitude, longitude);
+    } finally {
+      reverseGeocodePending.delete(cacheKey);
+    }
+  })();
+
+  reverseGeocodePending.set(cacheKey, pendingTask);
+  return pendingTask;
+}
+
 function buildSuggestedLocations(rawLocation, nearbyPois = []) {
   if (!rawLocation) {
     return [];
@@ -6817,7 +7426,7 @@ function resolveSuggestedLocationSelection(location) {
 
 function finalizePublishPickSelection(location) {
   const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
-  const displayName = pickPublishLocationSearchText(
+  const displayName = pickPublishLocationSearchTextSafe(
     nextLocation,
     publishPrefillQuery.value || "当前位置",
   );
@@ -6833,7 +7442,7 @@ function finalizePublishPickSelection(location) {
 
 function finalizeAdjustPlanePickSelection(location) {
   const { suggestedLocations, nextLocation } = resolveSuggestedLocationSelection(location);
-  const displayName = pickPublishLocationSearchText(
+  const displayName = pickPublishLocationSearchTextSafe(
     nextLocation,
     adjustPlaneSavedPrefill.value || publishPrefillQuery.value || "当前位置",
   );
@@ -6927,7 +7536,7 @@ function getPublishPickPromptStyle(prompt) {
   };
 }
 
-function confirmPublishNearbySearch() {
+async function confirmPublishNearbySearch() {
   const prompt = publishPickPrompt.value;
   if (!prompt?.location) {
     publishPickPrompt.value = null;
@@ -6941,7 +7550,9 @@ function confirmPublishNearbySearch() {
       return;
     }
 
-    finalizeAdjustPlanePickSelection(prompt.location);
+    const resolvedLocation =
+      await ensureLocationResolvedForSubmit(prompt.location) || prompt.location;
+    finalizeAdjustPlanePickSelection(resolvedLocation);
     return;
   }
 
@@ -6951,7 +7562,9 @@ function confirmPublishNearbySearch() {
     return;
   }
 
-  finalizePublishPickSelection(prompt.location);
+  const resolvedLocation =
+    await ensureLocationResolvedForSubmit(prompt.location) || prompt.location;
+  finalizePublishPickSelection(resolvedLocation);
 }
 
 function rejectPublishNearbySearch() {
@@ -6969,7 +7582,7 @@ function rejectPublishNearbySearch() {
   isPickingPublishLocation.value = true;
 }
 
-function confirmDockPublishNearbySearch() {
+async function confirmDockPublishNearbySearch() {
   const prompt = isDockPublishPickPrompt.value;
   if (!prompt?.location) {
     isDockPublishPickPrompt.value = null;
@@ -6982,7 +7595,9 @@ function confirmDockPublishNearbySearch() {
     return;
   }
 
-  finalizeDockPublishPickSelection(prompt.location);
+  const resolvedLocation =
+    await ensureLocationResolvedForSubmit(prompt.location) || prompt.location;
+  finalizeDockPublishPickSelection(resolvedLocation);
 }
 
 function rejectDockPublishNearbySearch() {
@@ -6999,7 +7614,7 @@ function getDockPublishPickPromptStyle(prompt) {
 }
 
 function reverseGeocodePickedLocation(latitude, longitude) {
-  return reverseGeocodeLocationDetail(latitude, longitude);
+  return reverseGeocodeLocationDetailSafe(latitude, longitude);
 }
 
 async function handlePublishMapClick(point) {
@@ -7022,7 +7637,7 @@ async function handlePublishMapClick(point) {
         coords.latitude,
         coords.longitude,
       );
-      if (pickedLocation) {
+      if (pickedLocation && publishPickPrompt.value) {
         setPublishPickSelection(pickedLocation, adjustPlaneClickScreenPos.value);
       }
       adjustPlaneClickScreenPos.value = null;
@@ -7048,7 +7663,7 @@ async function handlePublishMapClick(point) {
         coords.latitude,
         coords.longitude,
       );
-      if (pickedLocation) {
+      if (pickedLocation && isDockPublishPickPrompt.value) {
         setDockPublishPickSelection(pickedLocation, dockPublishClickScreenPos.value);
       }
       dockPublishClickScreenPos.value = null;
@@ -7084,7 +7699,7 @@ async function handlePublishMapClick(point) {
       coords.latitude,
       coords.longitude,
     );
-    if (pickedLocation) {
+    if (pickedLocation && publishPickPrompt.value) {
       setPublishPickSelection(pickedLocation, publishPickPrompt.value);
     }
     return;
@@ -8181,7 +8796,10 @@ function handleLocate() {
 
 async function handlePublishSubmit(storyData) {
   try {
-    const selectedLocation = extractCoordinates(storyData.location);
+    const resolvedStoryLocation =
+      await ensureLocationResolvedForSubmit(storyData.location)
+      || storyData.location;
+    const selectedLocation = extractCoordinates(resolvedStoryLocation);
     if (!selectedLocation) {
       showToast("请先选择一个地点后再发布故事", "warning");
       return;
@@ -8201,9 +8819,9 @@ async function handlePublishSubmit(storyData) {
       latitude: selectedLocation.latitude,
       longitude: selectedLocation.longitude,
       address:
-        storyData.location?.address || storyData.location?.name || "已选地点",
+        resolvedStoryLocation?.address || resolvedStoryLocation?.name || "已选地点",
       name:
-        storyData.location?.name || storyData.location?.address || "已选地点",
+        resolvedStoryLocation?.name || resolvedStoryLocation?.address || "已选地点",
     };
 
     const finalEmotionTag = storyData.emotion;
@@ -8287,6 +8905,7 @@ function toggleDock() {
     return;
   }
 
+  showMapFilterPanel.value = false;
   isDockExpanded.value = !isDockExpanded.value;
 }
 
@@ -8334,6 +8953,8 @@ function handlePageClick(event) {
   const postsPanel = document.querySelector(".posts-panel");
   const favoritesPanel = document.querySelector(".favorites-panel");
   const dockContainer = document.querySelector(".dock-container");
+  const mapFilterPanel = document.querySelector(".map-filter-bar");
+  const mapFilterToggle = document.querySelector(".map-filter-toggle");
   const userDetail = document.querySelector(".search-user-modal-shell");
 
   if (
@@ -8359,11 +8980,14 @@ function handlePageClick(event) {
     storySidebar?.contains(target) ||
     storyTarotShell?.contains(target) ||
     publishModal?.contains(target) ||
-    dockContainer?.contains(target)
+    dockContainer?.contains(target) ||
+    mapFilterPanel?.contains(target) ||
+    mapFilterToggle?.contains(target)
   ) {
     return;
   }
 
+  showMapFilterPanel.value = false;
   closeStoryPanel();
   closePublishPanel();
   searchFocused.value = false;
@@ -8371,6 +8995,94 @@ function handlePageClick(event) {
 }
 
 const stories = computed(() => mapStore.stories);
+
+function formatDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function scheduleMapDataReload(delay = 220) {
+  clearTimeout(loadTimer);
+  showClusterPopover.value = false;
+  clusterPopoverStories.value = [];
+  loadTimer = setTimeout(() => {
+    loadStories();
+    loadClusterData();
+  }, delay);
+}
+
+function toggleMapFilterPanel() {
+  showMapFilterPanel.value = !showMapFilterPanel.value;
+  if (showMapFilterPanel.value) {
+    isDockExpanded.value = false;
+  }
+}
+
+function setEmotionFilter(value) {
+  if (activeEmotionFilter.value === value) {
+    return;
+  }
+
+  activeEmotionFilter.value = value;
+  scheduleMapDataReload();
+}
+
+function applyTimePreset(presetKey) {
+  if (activeTimePreset.value === presetKey) {
+    return;
+  }
+
+  activeTimePreset.value = presetKey;
+
+  if (presetKey === "all") {
+    mapFilterStartDate.value = "";
+    mapFilterEndDate.value = "";
+    scheduleMapDataReload();
+    return;
+  }
+
+  const now = new Date();
+  const endDate = formatDateInputValue(now);
+  const startDate = new Date(now);
+
+  if (presetKey === "24h") {
+    startDate.setDate(startDate.getDate() - 1);
+  } else if (presetKey === "7d") {
+    startDate.setDate(startDate.getDate() - 7);
+  } else if (presetKey === "30d") {
+    startDate.setDate(startDate.getDate() - 30);
+  }
+
+  mapFilterStartDate.value = formatDateInputValue(startDate);
+  mapFilterEndDate.value = endDate;
+  scheduleMapDataReload();
+}
+
+function handleMapFilterDateChange() {
+  if (
+    mapFilterStartDate.value &&
+    mapFilterEndDate.value &&
+    mapFilterStartDate.value > mapFilterEndDate.value
+  ) {
+    const start = mapFilterStartDate.value;
+    mapFilterStartDate.value = mapFilterEndDate.value;
+    mapFilterEndDate.value = start;
+  }
+
+  activeTimePreset.value =
+    mapFilterStartDate.value || mapFilterEndDate.value ? "custom" : "all";
+  scheduleMapDataReload();
+}
+
+function clearMapFilters() {
+  activeEmotionFilter.value = "all";
+  activeTimePreset.value = "all";
+  mapFilterStartDate.value = "";
+  mapFilterEndDate.value = "";
+  scheduleMapDataReload();
+}
 
 async function loadStories() {
   loading.value = true;
@@ -8385,12 +9097,17 @@ async function loadStories() {
       return;
     }
 
-    const response = await mapApi.exploreStories(
-      center.latitude,
-      center.longitude,
-      5000,
-    );
-    console.log("[Map] exploreStories response:", response);
+    const currentBounds = getMapBounds();
+    const shouldUseViewportRadius = isUserMapFilterActive.value;
+    const fetchRadius = shouldUseViewportRadius
+      ? getStoryFetchRadiusMeters(center, currentBounds)
+      : 5000;
+
+    const response = await mapApi.exploreStories(center.latitude, center.longitude, fetchRadius, {
+      limit: mapExploreFetchLimit.value,
+      ...mapFilterQuery.value,
+    });
+    console.log("[Map] exploreStories response:", response, "radius:", fetchRadius);
 
     const stories = extractStoriesFromResponse(response);
     if (!stories) {
@@ -8418,6 +9135,73 @@ async function loadStories() {
 }
 
 const CLUSTER_ZOOM_THRESHOLD = 16;
+
+function toRadians(value) {
+  return (Number(value) * Math.PI) / 180;
+}
+
+function calculateDistanceMeters(from, to) {
+  const fromLat = Number(from?.latitude ?? from?.lat);
+  const fromLng = Number(from?.longitude ?? from?.lng);
+  const toLat = Number(to?.latitude ?? to?.lat);
+  const toLng = Number(to?.longitude ?? to?.lng);
+
+  if (![fromLat, fromLng, toLat, toLng].every(Number.isFinite)) {
+    return null;
+  }
+
+  const earthRadiusMeters = 6371000;
+  const latDelta = toRadians(toLat - fromLat);
+  const lngDelta = toRadians(toLng - fromLng);
+  const fromLatRad = toRadians(fromLat);
+  const toLatRad = toRadians(toLat);
+
+  const haversine =
+    Math.sin(latDelta / 2) * Math.sin(latDelta / 2) +
+    Math.cos(fromLatRad) *
+      Math.cos(toLatRad) *
+      Math.sin(lngDelta / 2) *
+      Math.sin(lngDelta / 2);
+  const arc = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+
+  return earthRadiusMeters * arc;
+}
+
+function getStoryFetchRadiusMeters(center, bounds) {
+  const paddedBounds = padBounds(bounds, 0.12) || bounds;
+  if (!center || !paddedBounds?.northEast || !paddedBounds?.southWest) {
+    return 5000;
+  }
+
+  const corners = [
+    {
+      latitude: paddedBounds.northEast.lat,
+      longitude: paddedBounds.northEast.lng,
+    },
+    {
+      latitude: paddedBounds.northEast.lat,
+      longitude: paddedBounds.southWest.lng,
+    },
+    {
+      latitude: paddedBounds.southWest.lat,
+      longitude: paddedBounds.northEast.lng,
+    },
+    {
+      latitude: paddedBounds.southWest.lat,
+      longitude: paddedBounds.southWest.lng,
+    },
+  ];
+
+  const distances = corners
+    .map((corner) => calculateDistanceMeters(center, corner))
+    .filter(Number.isFinite);
+
+  if (!distances.length) {
+    return 5000;
+  }
+
+  return Math.min(Math.max(Math.ceil(Math.max(...distances) * 1.1), 5000), 50000);
+}
 
 function padBounds(bounds, paddingRatio = 0.08) {
   if (!bounds?.northEast || !bounds?.southWest) {
@@ -8490,9 +9274,10 @@ async function loadClusterData() {
         defaultBounds.northEast,
         defaultBounds.southWest,
         currentZoom,
+        mapFilterQuery.value,
       );
 
-      const data = response?.data ?? response;
+      const data = extractClustersFromResponse(response);
       console.log("[Map] cluster API response:", data);
       if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
         clusters.value = data;
@@ -8504,34 +9289,15 @@ async function loadClusterData() {
       return;
     }
 
-    {
-      const response = await mapApi.getClusterData(
-        bounds.northEast,
-        bounds.southWest,
-        currentZoom,
-      );
-
-      const data = response?.data ?? response;
-      console.log("[Map] cluster API response:", data);
-      if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
-        clusters.value = data;
-        console.log(
-          "[Map] clusters loaded:",
-          clusters.value.length,
-          clusters.value,
-        );
-      }
-      return;
-    }
-
     const paddedBounds = padBounds(bounds) || bounds;
     const response = await mapApi.getClusterData(
       paddedBounds.northEast,
       paddedBounds.southWest,
       currentZoom,
+      mapFilterQuery.value,
     );
 
-    const data = response?.data ?? response;
+    const data = extractClustersFromResponse(response);
     console.log("[Map] cluster API response:", data);
     if (requestToken === activeClusterRequestToken && Array.isArray(data)) {
       clusters.value = data;
@@ -8738,6 +9504,7 @@ function closeStoryModal() {
   storyOpenTimer = null;
   closeStoryReportPanel();
   selectedStory.value = null;
+  nextStop.value = null;
 }
 
 function handleMapMove(event) {
@@ -8758,11 +9525,7 @@ function handleMapMove(event) {
     }
   }
 
-  clearTimeout(loadTimer);
-  loadTimer = setTimeout(() => {
-    loadStories();
-    loadClusterData();
-  }, 500);
+  scheduleMapDataReload(500);
 }
 
 let loadTimer = null;
@@ -8824,6 +9587,8 @@ function normalizeStoryForMap(story, fallbackLocation = null) {
     ...story,
     id: normalizedStoryId,
     images: Array.isArray(story.images) ? story.images : [],
+    emotionTag: normalizeEmotionTag(story.emotionTag || story.emotion),
+    emotion: normalizeEmotionValue(story.emotionTag || story.emotion),
     likes: normalizedLikeCount,
     likeCount: normalizedLikeCount,
     username: author.username,
@@ -8878,6 +9643,12 @@ function normalizeUserPanelStory(item, fallbackAuthor = null) {
   return {
     ...nextBaseStory,
     id: normalizedStoryId,
+    emotionTag: normalizeEmotionTag(
+      nextBaseStory.emotionTag || nextBaseStory.emotion,
+    ),
+    emotion: normalizeEmotionValue(
+      nextBaseStory.emotionTag || nextBaseStory.emotion,
+    ),
     createdAt: nextBaseStory.createdAt || item.createdAt,
     images: Array.isArray(nextBaseStory.images) ? nextBaseStory.images : [],
     likes: nextNormalizedLikeCount,
@@ -8906,7 +9677,7 @@ async function hydrateStoryLocations(stories = []) {
         return;
       }
 
-      const resolvedLocation = await reverseGeocodeLocationDetail(
+      const resolvedLocation = await reverseGeocodeLocationDetailSafe(
         coords.latitude,
         coords.longitude,
       );
@@ -8931,6 +9702,17 @@ function extractStoriesFromResponse(response) {
     response?.data?.stories,
     response?.stories,
     Array.isArray(response?.data) ? response.data : null,
+    Array.isArray(response) ? response : null,
+  ];
+
+  return candidates.find(Array.isArray) ?? null;
+}
+
+function extractClustersFromResponse(response) {
+  const candidates = [
+    response?.data?.data,
+    response?.data,
+    Array.isArray(response?.clusters) ? response.clusters : null,
     Array.isArray(response) ? response : null,
   ];
 
@@ -8965,8 +9747,52 @@ function normalizeRandomWalkResponse(response) {
   return null;
 }
 
+function buildNextStopPreview(story, coords) {
+  if (!story) return null;
+  return {
+    story,
+    coords,
+    locationName: story.locationName || "未知地点",
+    emotionTag: story.emotionTag || "",
+    authorName: story.username || story.author?.username || "匿名用户",
+    authorAvatar: story.avatar || story.author?.avatar || null,
+    thumbnail:
+      Array.isArray(story.images) && story.images.length > 0
+        ? story.images[0]
+        : null,
+    contentPreview: story.content
+      ? story.content.length > 60
+        ? `${story.content.substring(0, 60)}...`
+        : story.content
+      : "",
+    recommendation: story.recommendation || null,
+  };
+}
+
+async function prefetchNextStop() {
+  nextStopLoading.value = true;
+  try {
+    const center =
+      extractCoordinates(mapStore.center) ||
+      extractCoordinates(mapStore.userLocation);
+    const lat = center?.latitude ?? 39.9;
+    const lng = center?.longitude ?? 116.4;
+    const response = await mapApi.randomWalk(lat, lng);
+    const normalized = normalizeRandomWalkResponse(response);
+    if (normalized) {
+      nextStop.value = buildNextStopPreview(normalized.story, normalized.coords);
+    }
+  } catch (error) {
+    console.error("预加载下一站失败:", error);
+    nextStop.value = null;
+  } finally {
+    nextStopLoading.value = false;
+  }
+}
+
 async function handleRandomWalk() {
   randomWalking.value = true;
+  nextStop.value = null;
   try {
     const center =
       extractCoordinates(mapStore.center) ||
@@ -9010,6 +9836,7 @@ async function handleRandomWalk() {
     setTimeout(() => {
       openStoryModal(story);
     }, 800);
+    void prefetchNextStop();
   } catch (error) {
     console.error("随机漫步失败:", error);
     showToast("随机漫步失败，请重试", "error");
@@ -9017,6 +9844,37 @@ async function handleRandomWalk() {
     randomWalking.value = false;
   }
   isDockExpanded.value = false;
+}
+
+async function goToNextStop() {
+  if (!nextStop.value) return;
+  const ns = nextStop.value;
+  nextStop.value = null;
+  randomWalking.value = true;
+
+  try {
+    const { coords, story } = ns;
+    const nextLatitude = coords.latitude;
+    const nextLongitude = coords.longitude;
+
+    if (!Number.isFinite(nextLatitude) || !Number.isFinite(nextLongitude)) {
+      showToast("下一站位置信息无效", "error");
+      return;
+    }
+
+    selectedStory.value = null;
+    mapStore.updateCenter(nextLatitude, nextLongitude);
+    mapStore.updateZoom(15);
+    setTimeout(() => {
+      openStoryModal(story);
+    }, 800);
+    void prefetchNextStop();
+  } catch (error) {
+    console.error("跳转下一站失败:", error);
+    showToast("跳转下一站失败，请重试", "error");
+  } finally {
+    randomWalking.value = false;
+  }
 }
 
 function handlePreviewImage({ index, images }) {
@@ -9384,6 +10242,7 @@ onUnmounted(() => {
   document.removeEventListener("click", handleDocumentClick);
   document.removeEventListener("keydown", handleDocumentKeydown);
   window.removeEventListener("resize", scheduleWelcomeTextFit);
+  hidePlaneMenu(true);
   clearNearbySearchTimer();
   clearNearbyCenterLabelTimer();
   activeNearbySearchToken += 1;
@@ -9621,6 +10480,17 @@ onUnmounted(() => {
 }
 
 .map-page {
+  --map-floating-right: 96px;
+  --map-floating-base-bottom: 32px;
+  --map-floating-button-height: 76px;
+  --map-floating-gap: 18px;
+  --map-filter-panel-gap: 14px;
+  --map-filter-toggle-bottom: calc(
+    var(--map-floating-base-bottom) + var(--map-floating-button-height) + var(--map-floating-gap)
+  );
+  --map-filter-panel-bottom: calc(
+    var(--map-filter-toggle-bottom) + var(--map-floating-button-height) + var(--map-filter-panel-gap)
+  );
   width: 100%;
   height: 100%;
   position: relative;
@@ -9792,42 +10662,66 @@ onUnmounted(() => {
   color: #ffffff;
 }
 
-.story-sidebar .close-btn {
+.story-detail-close {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow:
+    0 18px 26px -20px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.story-detail-close .close-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.story-detail-close .close-text {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.story-sidebar .story-detail-close {
   position: absolute;
   top: 18px;
   right: 18px;
   z-index: 2;
-  min-width: 82px;
-  height: 42px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
-  background: rgba(13, 19, 34, 0.82);
-  color: #fff;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow:
-    0 18px 26px -20px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-.story-sidebar .close-btn span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  height: 100%;
-  width: 100%;
-  transform: translate(-0.25px, -1.25px);
+.story-sidebar:not(.dark) .story-detail-close,
+.plane-nearby-sidebar:not(.dark) .story-detail-close {
+  background: rgba(33, 22, 9, 0.76);
+  color: #fffaf1;
+  border-color: rgba(255, 248, 231, 0.34);
 }
 
-.story-sidebar .close-btn:hover {
+.story-sidebar.dark .story-detail-close,
+.plane-nearby-sidebar.dark .story-detail-close {
+  background: rgba(10, 17, 33, 0.82);
+  border-color: rgba(198, 219, 255, 0.22);
+  color: #eef4ff;
+}
+
+.story-sidebar .story-detail-close:hover,
+.plane-nearby-sidebar .story-detail-close:hover {
   background: rgba(26, 35, 58, 0.96);
   border-color: rgba(255, 255, 255, 0.36);
+  transform: translateY(-1px);
 }
 
 .sidebar-content {
@@ -10454,8 +11348,8 @@ onUnmounted(() => {
   --dock-submenu-option-border: rgba(255, 255, 255, 0.08);
   --dock-submenu-option-hover: rgba(255, 255, 255, 0.14);
   position: fixed;
-  bottom: 32px;
-  right: 96px;
+  bottom: var(--map-floating-base-bottom);
+  right: var(--map-floating-right);
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-end;
@@ -10603,11 +11497,11 @@ onUnmounted(() => {
 }
 
 .dock-container.show-user-sidebar {
-  right: 96px;
+  right: var(--map-floating-right);
 }
 
 .dock-container.show-dock-publish-sidebar {
-  right: 96px;
+  right: var(--map-floating-right);
 }
 
 .dock-container.locked {
@@ -12040,6 +12934,34 @@ onUnmounted(() => {
   background: rgba(255, 249, 240, 0.96);
 }
 
+.publish-pick-confirm.dark {
+  border-color: rgba(117, 147, 214, 0.28);
+  background: linear-gradient(
+    160deg,
+    rgba(22, 29, 44, 0.96) 0%,
+    rgba(33, 43, 65, 0.96) 100%
+  );
+  box-shadow:
+    0 22px 44px -28px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(161, 189, 245, 0.08);
+}
+
+.publish-pick-confirm.dark p {
+  color: #e8eef9;
+}
+
+.publish-pick-confirm.dark .confirm-btn {
+  color: #eef4ff;
+  background: linear-gradient(135deg, #365992 0%, #5e8fe0 100%);
+  box-shadow: 0 12px 22px -16px rgba(64, 104, 182, 0.72);
+}
+
+.publish-pick-confirm.dark .cancel-btn {
+  color: #dce5f7;
+  border-color: rgba(130, 157, 209, 0.24);
+  background: rgba(245, 248, 255, 0.08);
+}
+
 @media (max-width: 768px) {
   .publish-modal-shell {
     padding: 16px;
@@ -13284,6 +14206,24 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.item-content-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0 0 4px 0;
+}
+
+.item-content-body {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 10px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .item-images {
   margin-bottom: 10px;
 }
@@ -14281,6 +15221,8 @@ onUnmounted(() => {
 .user-sub-sidebar:not(.dark) .panel-loading-more,
 .user-sub-sidebar:not(.dark) .panel-no-more,
 .user-sub-sidebar:not(.dark) .item-content,
+.user-sub-sidebar:not(.dark) .item-content-title,
+.user-sub-sidebar:not(.dark) .item-content-body,
 .user-sub-sidebar:not(.dark) .item-footer,
 .user-sub-sidebar:not(.dark) .item-author,
 .user-sub-sidebar:not(.dark) .item-time {
@@ -14357,7 +15299,9 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
-.item-content {
+.item-content,
+.item-content-title,
+.item-content-body {
   color: #2c2c2c;
 }
 
@@ -14408,7 +15352,9 @@ onUnmounted(() => {
 }
 
 .user-sidebar .user-content-list .item-author,
-.user-sidebar .user-content-list .item-content {
+.user-sidebar .user-content-list .item-content,
+.user-sidebar .user-content-list .item-content-title,
+.user-sidebar .user-content-list .item-content-body {
   color: var(--profile-story-card-text);
 }
 
@@ -14446,6 +15392,8 @@ onUnmounted(() => {
 .user-sub-sidebar.dark .panel-loading-more,
 .user-sub-sidebar.dark .panel-no-more,
 .user-sub-sidebar.dark .item-content,
+.user-sub-sidebar.dark .item-content-title,
+.user-sub-sidebar.dark .item-content-body,
 .user-sub-sidebar.dark .item-footer,
 .user-sub-sidebar.dark .item-author,
 .user-sub-sidebar.dark .item-time {
@@ -16506,14 +17454,260 @@ onUnmounted(() => {
 .map-search-bar.dark .map-search-clear:hover { background: rgba(255, 255, 255, 0.15); }
 
 /* ===== 搜索结果面板 ===== */
+.map-filter-bar {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: var(--map-floating-right);
+  bottom: var(--map-filter-panel-bottom);
+  transform: none;
+  z-index: 200;
+  width: min(440px, calc(100vw - 48px));
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 24px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(196, 142, 48, 0.26);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.92) 0%,
+    rgba(240, 223, 191, 0.93) 52%,
+    rgba(229, 206, 166, 0.92) 100%
+  );
+  box-shadow:
+    0 14px 36px rgba(7, 11, 22, 0.14),
+    0 0 0 1px rgba(255, 248, 232, 0.38);
+}
+
+.map-filter-bar.dark {
+  border-color: rgba(143, 180, 255, 0.18);
+  background: linear-gradient(
+    160deg,
+    rgba(18, 24, 39, 0.92) 0%,
+    rgba(25, 37, 61, 0.94) 52%,
+    rgba(20, 31, 53, 0.94) 100%
+  );
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(190, 214, 255, 0.08);
+}
+
+.map-filter-bar__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.map-filter-bar__row + .map-filter-bar__row {
+  margin-top: 10px;
+}
+
+.map-filter-bar__row--secondary {
+  align-items: flex-start;
+}
+
+.map-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.map-filter-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b4c1d;
+}
+
+.map-filter-bar.dark .map-filter-label {
+  color: #b7c8e8;
+}
+
+.map-filter-chip-list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-filter-chip {
+  border: 1px solid rgba(145, 107, 38, 0.22);
+  background: rgba(255, 250, 242, 0.78);
+  color: #5a3a14;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.map-filter-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(145, 107, 38, 0.38);
+  box-shadow: 0 8px 18px rgba(84, 55, 18, 0.14);
+}
+
+.map-filter-chip.active {
+  background: linear-gradient(135deg, #ffe4aa 0%, #f7c86a 100%);
+  border-color: rgba(145, 107, 38, 0.44);
+  box-shadow: 0 10px 20px rgba(145, 107, 38, 0.18);
+}
+
+.map-filter-bar.dark .map-filter-chip {
+  border-color: rgba(143, 180, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5eefb;
+}
+
+.map-filter-bar.dark .map-filter-chip:hover {
+  border-color: rgba(143, 180, 255, 0.28);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.map-filter-bar.dark .map-filter-chip.active {
+  background: linear-gradient(135deg, rgba(143, 180, 255, 0.34), rgba(94, 138, 230, 0.44));
+  border-color: rgba(143, 180, 255, 0.42);
+}
+
+.map-filter-date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-filter-date-input {
+  min-width: 138px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(145, 107, 38, 0.22);
+  background: rgba(255, 252, 245, 0.84);
+  color: #3c2910;
+  font-size: 13px;
+  outline: none;
+}
+
+.map-filter-date-input:focus {
+  border-color: rgba(145, 107, 38, 0.42);
+  box-shadow: 0 0 0 4px rgba(145, 107, 38, 0.1);
+}
+
+.map-filter-bar.dark .map-filter-date-input {
+  border-color: rgba(143, 180, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef4ff;
+}
+
+.map-filter-bar.dark .map-filter-date-input:focus {
+  border-color: rgba(143, 180, 255, 0.38);
+  box-shadow: 0 0 0 4px rgba(143, 180, 255, 0.12);
+}
+
+.map-filter-date-sep {
+  font-size: 12px;
+  color: rgba(90, 58, 20, 0.7);
+}
+
+.map-filter-bar.dark .map-filter-date-sep {
+  color: rgba(208, 224, 255, 0.72);
+}
+
+.map-filter-reset {
+  height: 38px;
+  border: none;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: rgba(60, 26, 0, 0.82);
+  color: #fff7ed;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.map-filter-reset:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+.map-filter-bar.dark .map-filter-reset {
+  background: rgba(143, 180, 255, 0.18);
+  color: #eff5ff;
+}
+
+.map-filter-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: rgba(73, 48, 16, 0.82);
+  flex-wrap: wrap;
+}
+
+.map-filter-bar.dark .map-filter-status {
+  color: rgba(225, 236, 255, 0.82);
+}
+
+.map-filter-status__badge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(196, 142, 48, 0.16);
+  color: #6b4c1d;
+  font-weight: 600;
+}
+
+.map-filter-bar.dark .map-filter-status__badge {
+  background: rgba(143, 180, 255, 0.16);
+  color: #dfeaff;
+}
+
+@media (max-width: 760px) {
+  .map-page {
+    --map-filter-panel-gap: 12px;
+  }
+
+  .map-filter-bar {
+    right: var(--map-floating-right);
+    bottom: var(--map-filter-panel-bottom);
+    width: min(320px, calc(100vw - 110px));
+    max-height: calc(100vh - 264px);
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .map-filter-date-input {
+    min-width: 0;
+    width: calc(50vw - 42px);
+  }
+
+  .map-search-results {
+    top: 76px;
+    max-height: calc(100vh - 100px);
+  }
+}
+
 .map-search-results {
   position: fixed;
-  top: 72px;
+  top: 76px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 49;
   width: min(480px, calc(100vw - 40px));
-  max-height: calc(100vh - 110px);
+  max-height: calc(100vh - 100px);
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -16695,7 +17889,9 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
-.map-search-results:not(.dark) .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .item-content,
+.map-search-results:not(.dark) .item-content-title,
+.map-search-results:not(.dark) .item-content-body { color: #2c2c2c; }
 .map-search-results:not(.dark) .map-search-card .item-author { color: #333; }
 .map-search-results:not(.dark) .map-search-card .item-time { color: #888; }
 .map-search-results:not(.dark) .map-search-card .item-footer { color: #666; }
@@ -16770,7 +17966,9 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
-.map-search-results:not(.dark) .search-user-profile .item-content { color: #2c2c2c; }
+.map-search-results:not(.dark) .search-user-profile .item-content,
+.map-search-results:not(.dark) .search-user-profile .item-content-title,
+.map-search-results:not(.dark) .search-user-profile .item-content-body { color: #2c2c2c; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-author { color: #333; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-time { color: #888; }
 .map-search-results:not(.dark) .search-user-profile .user-content-list .panel-item .item-footer { color: #666; }
@@ -17064,7 +18262,9 @@ onUnmounted(() => {
   background: var(--profile-story-card-bg);
 }
 .map-search-user-detail .user-content-list .item-author,
-.map-search-user-detail .user-content-list .item-content {
+.map-search-user-detail .user-content-list .item-content,
+.map-search-user-detail .user-content-list .item-content-title,
+.map-search-user-detail .user-content-list .item-content-body {
   color: var(--profile-story-card-text);
 }
 .map-search-user-detail .user-content-list .item-time,
@@ -17134,7 +18334,9 @@ onUnmounted(() => {
   color: rgba(130, 165, 220, 0.5);
 }
 
-.map-search-user-detail:not(.dark) .item-content { color: #3c2910; }
+.map-search-user-detail:not(.dark) .item-content,
+.map-search-user-detail:not(.dark) .item-content-title,
+.map-search-user-detail:not(.dark) .item-content-body { color: #3c2910; }
 .map-search-user-detail:not(.dark) .user-content-list .item-time { color: #3c2910; }
 .map-search-user-detail:not(.dark) .user-content-list .item-footer { color: #3c2910; }
 .map-search-user-detail:not(.dark) .bio-text { color: #3c2910; }
@@ -17289,7 +18491,9 @@ onUnmounted(() => {
 .profile-search-panel:not(.dark) .item-author {
   color: #3c2910;
 }
-.profile-search-panel:not(.dark) .item-content {
+.profile-search-panel:not(.dark) .item-content,
+.profile-search-panel:not(.dark) .item-content-title,
+.profile-search-panel:not(.dark) .item-content-body {
   color: #2c2c2c;
 }
 .profile-search-panel:not(.dark) .item-time {
@@ -17309,7 +18513,9 @@ onUnmounted(() => {
 .profile-search-panel.dark .item-author {
   color: #ffffff;
 }
-.profile-search-panel.dark .item-content {
+.profile-search-panel.dark .item-content,
+.profile-search-panel.dark .item-content-title,
+.profile-search-panel.dark .item-content-body {
   color: rgba(255, 255, 255, 0.85);
 }
 .profile-search-panel.dark .item-time {
@@ -17692,29 +18898,8 @@ onUnmounted(() => {
 .plane-nearby-sidebar.dark .plane-nearby-header h3 { color: #edf3ff; }
 .plane-nearby-sidebar:not(.dark) .plane-nearby-header h3 { color: #3c2910; }
 
-.plane-nearby-sidebar .close-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ccc;
-  font-size: 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-.plane-nearby-sidebar:not(.dark) .close-btn {
-  background: rgba(196, 142, 48, 0.15);
-  color: #5c3a13;
-}
-.plane-nearby-sidebar .close-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
-}
-.plane-nearby-sidebar:not(.dark) .close-btn:hover {
-  background: rgba(196, 142, 48, 0.28);
+.plane-nearby-sidebar .story-detail-close {
+  flex-shrink: 0;
 }
 
 .plane-nearby-content {
@@ -17779,69 +18964,225 @@ onUnmounted(() => {
 </style>
 
 <style>
+.paper-plane-menu--no-transition,
+.paper-plane-menu--no-transition * {
+  transition: none !important;
+}
+.paper-plane-menu--opening .plane-menu-item,
+.paper-plane-menu--opening .plane-menu-item:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
 .paper-plane-menu {
   position: fixed;
   z-index: 1200;
-  background: #ffffff;
-  border-radius: 14px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
-  padding: 6px;
+  width: 220px;
+  padding: 14px 14px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(199, 151, 60, 0.3);
+  background: linear-gradient(
+    160deg,
+    rgba(250, 239, 217, 0.98) 0%,
+    rgba(240, 223, 191, 0.98) 100%
+  );
+  box-shadow:
+    0 18px 40px -24px rgba(6, 10, 20, 0.5),
+    0 0 0 1px rgba(255, 248, 232, 0.32);
   opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
+  pointer-events: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.paper-plane-menu--visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: auto;
-  min-width: 120px;
 }
 .paper-plane-menu.dark {
-  background: #000000;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  border-color: rgba(117, 147, 214, 0.28);
+  background: linear-gradient(
+    160deg,
+    rgba(22, 29, 44, 0.96) 0%,
+    rgba(33, 43, 65, 0.96) 100%
+  );
+  box-shadow:
+    0 22px 44px -28px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(161, 189, 245, 0.08);
 }
 .paper-plane-menu::after {
   content: '';
   position: absolute;
-  bottom: -6px;
+  bottom: -5px;
   left: 50%;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   background: inherit;
+  border-right: 1px solid rgba(199, 151, 60, 0.3);
+  border-bottom: 1px solid rgba(199, 151, 60, 0.3);
   border-radius: 2px;
   transform: translateX(-50%) rotate(45deg);
+}
+.paper-plane-menu.dark::after {
+  border-right-color: rgba(117, 147, 214, 0.28);
+  border-bottom-color: rgba(117, 147, 214, 0.28);
 }
 .plane-menu-item {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 10px 14px;
-  border-radius: 10px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
-  color: #000;
-  transition: background 0.15s;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
   user-select: none;
 }
 .paper-plane-menu.dark .plane-menu-item {
-  color: #fff;
+  color: #eef4ff;
 }
 .plane-menu-item[data-action="nearby"] {
-  background: #FF6B6B;
-  border-radius: 10px;
-  color: #fff;
+  color: #fff8ef;
+  background: linear-gradient(135deg, #8c5c22 0%, #c68e30 100%);
+  box-shadow: 0 10px 20px -14px rgba(140, 92, 34, 0.76);
 }
 .plane-menu-item[data-action="publish"] {
-  background: #FF9E9E;
-  border-radius: 10px;
-  color: #fff;
+  margin-top: 10px;
+  color: #6b4d2d;
+  border-color: rgba(165, 122, 44, 0.28);
+  background: rgba(255, 249, 240, 0.96);
 }
 .paper-plane-menu.dark .plane-menu-item[data-action="nearby"],
 .paper-plane-menu.dark .plane-menu-item[data-action="publish"] {
-  color: #fff;
+  color: #eef4ff;
+}
+.paper-plane-menu.dark .plane-menu-item[data-action="nearby"] {
+  background: linear-gradient(135deg, #365992 0%, #5e8fe0 100%);
+  box-shadow: 0 12px 22px -16px rgba(64, 104, 182, 0.72);
+}
+.paper-plane-menu.dark .plane-menu-item[data-action="publish"] {
+  border-color: rgba(130, 157, 209, 0.24);
+  background: rgba(245, 248, 255, 0.08);
 }
 .plane-menu-item:hover {
-  filter: brightness(1.1);
+  transform: translateY(-1px);
 }
 .plane-menu-item svg {
   flex-shrink: 0;
-  opacity: 0.85;
+  opacity: 0.88;
+}
+
+/* 地图筛选入口改为右下角展开 */
+.map-filter-toggle {
+  position: fixed;
+  right: var(--map-floating-right);
+  bottom: var(--map-filter-toggle-bottom);
+  z-index: 201;
+  min-width: 154px;
+  height: 76px;
+  padding: 0 20px 0 16px;
+  border: 1px solid rgba(255, 248, 231, 0.34);
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(255, 255, 255, 0.22) 0%,
+      transparent 44%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(183, 108, 58, 0.94) 0%,
+      rgba(204, 137, 77, 0.97) 48%,
+      rgba(118, 78, 45, 0.94) 100%
+    );
+  box-shadow: 0 18px 40px rgba(72, 41, 15, 0.28);
+  color: #fffaf1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+.map-filter-toggle:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 44px rgba(72, 41, 15, 0.34);
+}
+
+.map-filter-toggle.active {
+  border-color: rgba(255, 242, 208, 0.72);
+  box-shadow: 0 24px 52px rgba(72, 41, 15, 0.38);
+}
+
+.map-filter-toggle.dark {
+  border-color: rgba(194, 214, 255, 0.18);
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(255, 255, 255, 0.16) 0%,
+      transparent 44%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(28, 34, 63, 0.96) 0%,
+      rgba(40, 56, 96, 0.96) 48%,
+      rgba(16, 22, 44, 0.98) 100%
+    );
+  box-shadow: 0 18px 40px rgba(5, 8, 20, 0.42);
+}
+
+.map-filter-toggle.dark:hover {
+  box-shadow: 0 22px 44px rgba(5, 8, 20, 0.48);
+}
+
+.map-filter-toggle.dark.active {
+  border-color: rgba(226, 238, 255, 0.56);
+  box-shadow: 0 24px 52px rgba(5, 8, 20, 0.54);
+}
+
+.map-filter-toggle.dock-covered {
+  z-index: 190;
+  pointer-events: none;
+}
+
+.map-filter-toggle__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.map-filter-toggle__text {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .map-filter-toggle {
+    min-width: 148px;
+  }
 }
 </style>

@@ -20,7 +20,12 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from "vue";
 import AMapLoader from "@amap/amap-jsapi-loader";
-import { fromEmotionTag, getEmotionEmoji } from "../utils/emotion";
+import {
+  getEmotionEmoji,
+  getEmotionColor,
+  normalizeEmotionValue,
+} from "../utils/emotion";
+import { extractTitle } from "../utils/storyTitle";
 
 const props = defineProps({
   stories: {
@@ -30,6 +35,14 @@ const props = defineProps({
   clusters: {
     type: Array,
     default: () => [],
+  },
+  systemLimitEnabled: {
+    type: Boolean,
+    default: true,
+  },
+  maxVisibleEntities: {
+    type: Number,
+    default: 90,
   },
   userLocation: {
     type: Object,
@@ -101,8 +114,10 @@ let tempPickedMarker = null;
 let paperPlaneMarker = null;
 let paperPlaneTooltipEl = null;
 let paperPlaneTooltipTimer = null;
+let isPaperPlaneHovered = false;
 let paperPlaneInitialized = false;
 let paperPlaneAnimationToken = 0;
+let currentPaperPlaneRotation = 0;
 let moveAnimationReady = true; // 改为默认 true，因为插件将通过 URL 同步加载
 const isDarkMode = ref(props.theme === "dark");
 const isSidebarHidden = ref(false);
@@ -669,7 +684,7 @@ function updateUserLocationMarker(location = props.userLocation) {
 }
 
 // ========== 纸飞机地标 ==========
-function createPaperPlaneMarker(coords) {
+function createPaperPlaneMarkerLegacy(coords) {
   if (!coords || !window.AMap) return null;
 
   const planeSvg = `
@@ -707,10 +722,42 @@ function createPaperPlaneMarker(coords) {
   });
 }
 
+function createPaperPlaneMarker(coords) {
+  if (!coords || !window.AMap) return null;
+
+  const planeSvg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="54" height="63" viewBox="0 0 36 42" fill="none">
+      <path d="M18 2 L4 36 L18 26 Z" fill="#e9cf72" stroke="#111111" stroke-width="1.05" stroke-linejoin="round"/>
+      <path d="M18 2 L32 36 L18 26 Z" fill="#fff5cf" stroke="#111111" stroke-width="1.05" stroke-linejoin="round"/>
+      <path d="M15 26 L18 2 L21 26 Z" fill="#f5df95" opacity="0.92"/>
+      <path d="M4 36 L18 26 L18 30 L10 38 Z" fill="#dcb74d" stroke="#111111" stroke-width="0.75" stroke-linejoin="round"/>
+      <path d="M32 36 L18 26 L18 30 L26 38 Z" fill="#f6e6aa" stroke="#111111" stroke-width="0.75" stroke-linejoin="round"/>
+      <line x1="18" y1="2" x2="18" y2="26" stroke="#111111" stroke-width="0.72" stroke-opacity="0.52"/>
+      <line x1="18" y1="8" x2="10" y2="33" stroke="#111111" stroke-width="0.46" stroke-opacity="0.26"/>
+      <line x1="18" y1="8" x2="26" y2="33" stroke="#111111" stroke-width="0.46" stroke-opacity="0.2"/>
+    </svg>
+  `.trim();
+
+  const content = document.createElement("div");
+  content.className = `paper-plane-marker${isDarkMode.value ? " dark" : ""}`;
+  content.innerHTML = `
+    ${planeSvg}
+  `;
+
+  return new window.AMap.Marker({
+    position: [coords.longitude, coords.latitude],
+    content,
+    offset: new window.AMap.Pixel(-27, -30),
+    zIndex: 1300,
+    cursor: "pointer",
+  });
+}
+
 function initPaperPlane(coords) {
   if (paperPlaneInitialized || !map || !window.AMap) return;
   // 稍微偏南一点，避免和用户定位标完全重叠
   const offsetCoords = { latitude: coords.latitude - 0.0008, longitude: coords.longitude };
+  currentPaperPlaneRotation = 0;
     paperPlaneMarker = createPaperPlaneMarker(offsetCoords);
   if (paperPlaneMarker) {
     map.add(paperPlaneMarker);
@@ -728,24 +775,26 @@ function initPaperPlane(coords) {
     });
 
     // 鼠标悬停/离开纸飞机时触发菜单
-    const getPlaneScreenPos = () => {
+    const getPlaneScreenPos = (pointerEvent = null) => {
       const pos = paperPlaneMarker.getPosition();
       const pixel = map.lngLatToContainer(pos);
       const containerRect = mapContainer.value.getBoundingClientRect();
       return {
         latitude: pos.getLat(),
         longitude: pos.getLng(),
-        screenX: containerRect.left + pixel.getX(),
-        screenY: containerRect.top + pixel.getY(),
+        screenX: pointerEvent?.clientX ?? (containerRect.left + pixel.getX()),
+        screenY: pointerEvent?.clientY ?? (containerRect.top + pixel.getY()),
       };
     };
     const planeDom = paperPlaneMarker.dom || paperPlaneMarker.De || paperPlaneMarker.contentDom || paperPlaneMarker.getContentDom?.();
     if (planeDom) {
-      planeDom.addEventListener('mouseenter', () => {
+      planeDom.addEventListener('mouseenter', (event) => {
+        isPaperPlaneHovered = true;
         clearPaperPlaneTooltip();
-        emit('paper-plane-hover', getPlaneScreenPos());
+        emit('paper-plane-hover', getPlaneScreenPos(event));
       }, { passive: true });
       planeDom.addEventListener('mouseleave', () => {
+        isPaperPlaneHovered = false;
         emit('paper-plane-leave');
       }, { passive: true });
     }
@@ -853,7 +902,7 @@ function flyPaperPlaneFromEdge(targetLat, targetLng, showTip = true) {
 function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
   const start = paperPlaneMarker.getPosition();
   const moveDuration = 800;
-  const rotateDuration = 300;
+  const rotateDuration = 160;
   const animationToken = ++paperPlaneAnimationToken;
 
   // 计算移动方位角（0=正北/上方，顺时针为正）
@@ -896,7 +945,15 @@ function manualAnimatePaperPlane(target, showTip = true, onComplete = null) {
 
       // 到达目标，保持当前朝向不回转
       if (showTip) {
-        showPaperPlaneTooltip();
+        // 延迟显示 tooltip：飞机飞到光标下方时 mouseenter 会紧接着触发，
+        // clearPaperPlaneTooltip 会取消此定时器，避免 tooltip 创建后立即被销毁造成闪烁
+        clearPaperPlaneTooltip();
+        if (!isPaperPlaneHovered) {
+          paperPlaneTooltipTimer = setTimeout(() => {
+            paperPlaneTooltipTimer = null;
+            showPaperPlaneTooltip();
+          }, 150);
+        }
       }
       emit('paper-plane-move', { latitude: target.getLat(), longitude: target.getLng() });
       if (onComplete) onComplete();
@@ -913,21 +970,26 @@ function getPaperPlaneDom() {
   if (!container) return null;
   // AMap 的外层容器有定位用的 transform，不能旋转
   // 需要找到内部的实际内容元素 (.amap-marker-content 或 img)
-  const inner = container.querySelector('.amap-marker-content') || container.querySelector('img');
+  const inner =
+    container.querySelector('.paper-plane-marker') ||
+    container.querySelector('.amap-marker-content') ||
+    container.querySelector('img');
   return inner || container;
 }
 
 function setMarkerRotation(deg, animDuration = 200, onComplete = null) {
   const dom = getPaperPlaneDom();
-  console.log('[PaperPlane] setMarkerRotation:', deg, 'dom:', !!dom);
+  const normalizedTarget = normalizeRotationDeg(deg);
+  const resolvedDeg = getShortestRotationTarget(currentPaperPlaneRotation, normalizedTarget);
+  currentPaperPlaneRotation = resolvedDeg;
 
   if (!dom) {
     // fallback: 通过 className 在 map container 中查找
     const container = map?.getContainer?.();
     if (container) {
-      const markerEl = container.querySelector('.amap-marker-content img, .amap-icon img');
+      const markerEl = container.querySelector('.paper-plane-marker, .amap-marker-content img, .amap-icon img');
       if (markerEl) {
-        applyRotation(markerEl, deg, animDuration, onComplete);
+        applyRotation(markerEl, resolvedDeg, animDuration, onComplete);
         return;
       }
     }
@@ -936,7 +998,16 @@ function setMarkerRotation(deg, animDuration = 200, onComplete = null) {
     return;
   }
 
-  applyRotation(dom, deg, animDuration, onComplete);
+  applyRotation(dom, resolvedDeg, animDuration, onComplete);
+}
+
+function normalizeRotationDeg(deg) {
+  return ((deg % 360) + 360) % 360;
+}
+
+function getShortestRotationTarget(fromDeg, toDeg) {
+  const delta = ((toDeg - fromDeg + 540) % 360) - 180;
+  return fromDeg + delta;
 }
 
 function applyRotation(el, deg, animDuration, onComplete) {
@@ -945,7 +1016,8 @@ function applyRotation(el, deg, animDuration, onComplete) {
   } else {
     el.style.transition = 'none';
   }
-  el.style.transformOrigin = '50% 47.6%'; // 视觉中心 (18/36, 20/42)
+  const isCustomPlane = el.classList?.contains('paper-plane-marker');
+  el.style.transformOrigin = isCustomPlane ? '50% 50%' : '50% 47.6%';
 
   requestAnimationFrame(() => {
     el.style.transform = `rotate(${deg}deg)`;
@@ -973,6 +1045,10 @@ function onPlaneMoving(e) {
 }
 
 function showPaperPlaneTooltip() {
+  if (props.pointPickMode || isPaperPlaneHovered) {
+    clearPaperPlaneTooltip();
+    return;
+  }
   if (paperPlaneTooltipTimer) {
     clearTimeout(paperPlaneTooltipTimer);
     paperPlaneTooltipTimer = null;
@@ -1049,7 +1125,7 @@ function createTempPickedMarker(location) {
   content.className = "temp-picked-marker";
   content.innerHTML = `
     <div class="temp-picked-flag">
-      <span class="temp-picked-flag-icon">锟?/span>
+      <span class="temp-picked-flag-icon" aria-hidden="true"></span>
     </div>
     <div class="temp-picked-pole"></div>
   `;
@@ -1106,8 +1182,8 @@ function createMarker(story) {
   const content = document.createElement("div");
 
   const colors = isDarkMode.value ? emotionColorsDark : emotionColors;
-  const emotion = fromEmotionTag(story.emotionTag) || story.emotion;
-  const color = colors[emotion] || "#667eea";
+  const emotion = normalizeEmotionValue(story.emotionTag || story.emotion);
+  const color = colors[emotion] || getEmotionColor(story.emotionTag || story.emotion) || "#667eea";
   const isLocked = story.isTimeCapsule && !(story.isUnlocked === true);
   const isDark = isDarkMode.value;
 
@@ -1148,7 +1224,7 @@ function createMarker(story) {
       -STORY_MARKER_SIZE / 2,
       -STORY_MARKER_SIZE / 2,
     ),
-    title: (story.content || story.preview || "").substring(0, 50) + "...",
+    title: (extractTitle(story.content || "") || story.preview || "").substring(0, 50) + "...",
     zIndex: story.isTimeCapsule ? 10 : 100,
   });
 
@@ -1195,6 +1271,105 @@ const STORY_MARKER_SIZE = 50;
 const FORCED_STORY_CLUSTER_OVERLAP_RATIO = 0.25;
 const CLUSTER_RENDER_ZOOM_THRESHOLD = 16;
 const CLUSTER_CLUSTER_OVERLAP_THRESHOLD = 0.3;
+const SYSTEM_LIMIT_BUCKET_SIZE = 96;
+const SYSTEM_LIMIT_CLUSTER_BUCKET_SIZE = 112;
+const SYSTEM_LIMIT_MARKERS_PER_BUCKET = 2;
+const SYSTEM_LIMIT_CLUSTERS_PER_BUCKET = 1;
+
+function getVisibleEntityLimit() {
+  const normalized = Number(props.maxVisibleEntities);
+  if (!Number.isFinite(normalized) || normalized < 1) {
+    return 90;
+  }
+
+  return Math.round(normalized);
+}
+
+function getStoryRecencyScore(story) {
+  const createdTime = new Date(story?.createdAt || 0).getTime();
+  return Number.isFinite(createdTime) ? createdTime : 0;
+}
+
+function limitStoriesByDensity(stories = []) {
+  if (!props.systemLimitEnabled) {
+    return stories;
+  }
+
+  const maxVisible = getVisibleEntityLimit();
+  if (stories.length <= maxVisible || !map) {
+    return stories;
+  }
+
+  const ranked = stories
+    .map(createStoryPixelState)
+    .filter(Boolean)
+    .sort((a, b) => getStoryRecencyScore(b.story) - getStoryRecencyScore(a.story));
+
+  const bucketCounts = new Map();
+  const selected = [];
+  const overflow = [];
+
+  ranked.forEach((item) => {
+    const bucketKey = `${Math.floor(item.px / SYSTEM_LIMIT_BUCKET_SIZE)}:${Math.floor(item.py / SYSTEM_LIMIT_BUCKET_SIZE)}`;
+    const count = bucketCounts.get(bucketKey) || 0;
+
+    if (count < SYSTEM_LIMIT_MARKERS_PER_BUCKET && selected.length < maxVisible) {
+      bucketCounts.set(bucketKey, count + 1);
+      selected.push(item.story);
+      return;
+    }
+
+    overflow.push(item.story);
+  });
+
+  if (selected.length < maxVisible) {
+    selected.push(...overflow.slice(0, maxVisible - selected.length));
+  }
+
+  return selected;
+}
+
+function limitClustersByDensity(clusters = []) {
+  if (!props.systemLimitEnabled) {
+    return clusters;
+  }
+
+  const maxVisible = Math.max(18, Math.floor(getVisibleEntityLimit() * 0.8));
+  if (clusters.length <= maxVisible || !map) {
+    return clusters;
+  }
+
+  const ranked = clusters
+    .map((cluster) => {
+      const pixelState = createPixelClusterState(cluster);
+      return pixelState ? { cluster, pixelState } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.pixelState.count - a.pixelState.count);
+
+  const bucketCounts = new Map();
+  const selected = [];
+  const overflow = [];
+
+  ranked.forEach(({ cluster, pixelState }) => {
+    const bucketKey = `${Math.floor(pixelState.px / SYSTEM_LIMIT_CLUSTER_BUCKET_SIZE)}:${Math.floor(pixelState.py / SYSTEM_LIMIT_CLUSTER_BUCKET_SIZE)}`;
+    const count = bucketCounts.get(bucketKey) || 0;
+
+    if (count < SYSTEM_LIMIT_CLUSTERS_PER_BUCKET && selected.length < maxVisible) {
+      bucketCounts.set(bucketKey, count + 1);
+      selected.push(cluster);
+      return;
+    }
+
+    overflow.push(cluster);
+  });
+
+  if (selected.length < maxVisible) {
+    selected.push(...overflow.slice(0, maxVisible - selected.length));
+  }
+
+  return selected;
+}
 
 function createStoryPixelState(story) {
   if (!map) {
@@ -1787,7 +1962,7 @@ function updateClusterMarkers() {
       clusterEntries,
       props.stories,
     );
-    const mergedClusters = lowZoomRenderData.clusters;
+    const mergedClusters = limitClustersByDensity(lowZoomRenderData.clusters);
 
     mergedClusters.forEach((cluster) => {
       const marker = createClusterMarker(cluster);
@@ -1852,7 +2027,7 @@ function updateClusterMarkers() {
     absorbedStoryIds.add(id);
   });
 
-  merged.forEach((cluster) => {
+  limitClustersByDensity(merged).forEach((cluster) => {
     const marker = createClusterMarker(cluster);
     if (marker) {
       newClusterMarkers.push(marker);
@@ -1968,8 +2143,10 @@ function updateMarkers() {
     const renderableStories =
       Number.isFinite(currentZoom) &&
       currentZoom < CLUSTER_RENDER_ZOOM_THRESHOLD
-        ? buildLowZoomRenderableData(clusterEntries, storyEntries).points
-        : dedupeStories(storyEntries);
+        ? limitStoriesByDensity(
+            buildLowZoomRenderableData(clusterEntries, storyEntries).points,
+          )
+        : limitStoriesByDensity(dedupeStories(storyEntries));
 
     // 高缩放（zoom >= CLUSTER_RENDER_ZOOM_THRESHOLD）时，
     // 对极近故事点做像素重叠检测，重叠组重新聚合成星
@@ -2044,7 +2221,7 @@ function updateMarkers() {
         }
 
         // 渲染孤立 dot
-        isolatedStories.forEach((story) => {
+        limitStoriesByDensity(isolatedStories).forEach((story) => {
           const marker = createMarker(story);
           if (marker) {
             newMarkers.push(marker);
@@ -2242,10 +2419,12 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopApprovalObserver();
+  isPaperPlaneHovered = false;
   clearPaperPlaneTooltip();
   if (paperPlaneMarker && map) {
     map.remove(paperPlaneMarker);
     paperPlaneMarker = null;
+    currentPaperPlaneRotation = 0;
   }
   clearUserLocationMarker();
   clearTempPickedMarker();
@@ -2302,6 +2481,14 @@ watch(
     updateMarkers();
   },
   { deep: true, flush: "post" },
+);
+
+watch(
+  [() => props.systemLimitEnabled, () => props.maxVisibleEntities],
+  () => {
+    updateClusterMarkers();
+    updateMarkers();
+  },
 );
 
 watch(
@@ -2401,6 +2588,9 @@ watch(
 watch(
   () => props.pointPickMode,
   () => {
+    if (props.pointPickMode) {
+      clearPaperPlaneTooltip();
+    }
     updateMapCursor();
   },
 );
@@ -2519,6 +2709,21 @@ watch(
   transition-property: transform, filter, box-shadow;
   transition-duration: 0.2s;
   transition-timing-function: ease;
+}
+
+:deep(.paper-plane-marker) {
+  position: relative;
+  width: 54px;
+  height: 63px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: filter 0.22s ease;
+}
+
+:deep(.paper-plane-marker:hover) {
+  filter: saturate(1.02);
 }
 
 /* 日间 hover：深色阴影扩散 */
@@ -2968,4 +3173,5 @@ watch(
   padding: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
+
 </style>

@@ -10,6 +10,27 @@ import { getRandomDefaultAvatar } from '../../common/utils/oss.js';
 import { clearUserCache } from './auth.middleware.js';
 import { VipService } from '../vip/vip.service.js';
 
+const AUTH_LOOKUP_ATTRIBUTES = [
+  'id',
+  'email',
+  'username',
+  'passwordHash',
+  'avatarUrl',
+  'role',
+  'vip',
+  'emotionCoins',
+  'oauthProvider',
+  'status'
+];
+
+const USER_CREATE_FIELDS = [
+  'username',
+  'email',
+  'passwordHash',
+  'oauthProvider',
+  'avatarUrl'
+];
+
 
 /**
  * Auth Service - 认证业务逻辑
@@ -104,21 +125,29 @@ const AuthServiceImpl = {
 
     await redis.del(key);
 
-    const existingUserByEmail = await User.findOne({ where: { email: fixedEmail, status: ['normal', 'recommended'] } });
+    const existingUserByEmail = await User.findOne({
+      where: { email: fixedEmail, status: ['normal', 'recommended'] },
+      attributes: ['id']
+    });
     if (existingUserByEmail) {
       throw new Error('邮箱已被注册');
     }
-    const existingUserByUsername = await User.findOne({ where: { username } });
+    const existingUserByUsername = await User.findOne({
+      where: { username },
+      attributes: ['id']
+    });
     if (existingUserByUsername) throw new Error('用户名已被使用');
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const defaultAvatar = getRandomDefaultAvatar();
-    const user = await User.create({ 
-      username, 
-      email: fixedEmail, 
-      passwordHash: hashedPassword, 
+    const user = await User.create({
+      username,
+      email: fixedEmail,
+      passwordHash: hashedPassword,
       oauthProvider: 'email',
-      avatarUrl: defaultAvatar 
+      avatarUrl: defaultAvatar
+    }, {
+      fields: USER_CREATE_FIELDS
     });
 
     // 注册赠送1周VIP
@@ -153,13 +182,19 @@ const AuthServiceImpl = {
     }
 
     // 1. 检查邮箱是否已存在
-    const existingUserByEmail = await User.findOne({ where: { email: fixedEmail, status: ['normal', 'recommended'] } });
+    const existingUserByEmail = await User.findOne({
+      where: { email: fixedEmail, status: ['normal', 'recommended'] },
+      attributes: ['id']
+    });
     if (existingUserByEmail) {
       throw new Error('邮箱已被注册');
     }
 
     // 2. 检查用户名是否已存在
-    const existingUserByUsername = await User.findOne({ where: { username } });
+    const existingUserByUsername = await User.findOne({
+      where: { username },
+      attributes: ['id']
+    });
     if (existingUserByUsername) {
       throw new Error('用户名已被使用');
     }
@@ -177,6 +212,8 @@ const AuthServiceImpl = {
       passwordHash: hashedPassword,
       oauthProvider: 'email',
       avatarUrl: defaultAvatar
+    }, {
+      fields: USER_CREATE_FIELDS
     });
 
     // 注册赠送1周VIP
@@ -206,7 +243,10 @@ const AuthServiceImpl = {
    */
   async adminLogin(email, password) {
     //查找管理员
-    const admin=await User.findOne({where:{email,role:'admin'}})
+    const admin = await User.findOne({
+      where: { email, role: 'admin' },
+      attributes: AUTH_LOOKUP_ATTRIBUTES
+    })
     if(!admin){
       throw new Error('邮箱或密码错误')
     }
@@ -241,7 +281,10 @@ const AuthServiceImpl = {
     }
 
     // 查找用户
-    const user = await User.findOne({ where: { email, status: ['normal', 'recommended'] } });
+    const user = await User.findOne({
+      where: { email, status: ['normal', 'recommended'] },
+      attributes: AUTH_LOOKUP_ATTRIBUTES
+    });
     if (!user) {
       throw new Error('邮箱或密码错误');
     }
@@ -362,7 +405,10 @@ const AuthServiceImpl = {
     await redis.set(lockKey, '1');
     await redis.expire(lockKey, 30);
 
-    const user = await User.findOne({ where: { email: fixedEmail } });
+    const user = await User.findOne({
+      where: { email: fixedEmail },
+      attributes: ['id', 'oauthProvider', 'passwordHash']
+    });
     if (!user) throw new Error('该邮箱未注册');
     if (user.oauthProvider !== 'email') throw new Error('该账号使用第三方登录，不支持通过邮箱重置密码');
 
