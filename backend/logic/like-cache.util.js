@@ -148,14 +148,12 @@ class LikeCacheUtil {
     if (isLiked) {
       throw new Error('Story already liked');
     }
-    // ✅ 核心修复：先检查用户是否在 BASE 里
     const inBase = await redis.sismember(baseKey, userId);
 
     // Pipeline 原子操作
     const pipeline = redis.pipeline();
     // 1. 从取消 Set 移除
     pipeline.srem(delKey, userId);
-    // ✅ 只有不在 BASE 里，才加到 ADD 里
     if (!inBase) {
       pipeline.sadd(addKey, userId);
     }

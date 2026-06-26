@@ -48,16 +48,7 @@ function normalizeStoryId(storyId) {
     : String(storyId).trim();
 }
 
-/**
- * Story Service - 故事业务逻辑
- */
 class StoryServiceClass {
-  /**
-   * 获取真实浏览量（数据库基数 + Redis增量）
-   * @param {number} storyId - 故事ID
-   * @param {number} dbViewCount - 数据库中的浏览量基数
-   * @returns {number} 真实浏览量
-   */
   async getRealViewCount(storyId, dbViewCount = 0) {
     try {
       const redis = redisClient.getClient();
@@ -70,21 +61,15 @@ class StoryServiceClass {
     }
   }
 
-  /**
-   * 发布故事
-   * 发送 MQ 消息异步写入数据库
-   */
   async createStory(userId, data) {
     const { content, images, location, locationName, emotionTag, isTimeCapsule, unlockAt, visibility = 'public', visibilityStartTime, visibilityEndTime, fontFamily, fontEffect } = data;
 
-    // 验证 visibility 只能是 public 或 shadowban
     if (!['public', 'shadowban'].includes(visibility)) {
       throw new Error('可见性只能为 public 或 shadowban');
     }
 
     const safeImages = images || [];
 
-    // 处理可见时间段的默认值逻辑
     let finalStartTime = visibilityStartTime;
     let finalEndTime = visibilityEndTime;
 
@@ -98,10 +83,7 @@ class StoryServiceClass {
       finalEndTime = null;
     }
 
-    // =====================
-    // 基于用户ID + 时间窗口获取分布式锁
-    // =====================
-    const windowSize = 3; // 3秒窗口
+    const windowSize = 3;
     const timestampWindow = Math.floor(Date.now() / 1000 / windowSize);
     const lockKey = `story:create:lock:${userId}:${timestampWindow}`;
 
@@ -118,13 +100,10 @@ class StoryServiceClass {
       throw new Error('发布过于频繁，请3秒后再试');
     }
 
-    // 生成雪花ID
     const storyId = snowflake.nextId();
 
-    // 设置更新中标记（TTL 5秒）
     await setUpdatingMarker(`story:raw:${storyId}`, 5);
 
-    // 发送 MQ 消息，让消费者异步写入数据库
     const messageData = {
       storyId,
       userId,
@@ -151,7 +130,6 @@ class StoryServiceClass {
         storyId
       );
     } catch (mqError) {
-      // 发送失败，手动释放锁（保底）
       console.error(`❌ 发送 CREATE 消息失败 [storyId: ${storyId}]:`, mqError);
       await redis.del(lockKey);
       await redis.del(`story:raw:${storyId}`);
@@ -170,12 +148,6 @@ class StoryServiceClass {
     };
   }
 
-  /**
-   * 纯查询函数：获取故事原始数据（受缓存适配器管理）
-   * 职责：数据库查询 + 静态规则检查 + 数据转换
-   * 注意：不包含动态业务逻辑（时光胶囊、浏览量等）
-   * 注意：缓存通过 wrapWithCache 在类外部手动应用
-   */
   async fetchStoryRaw(storyId) {
     const story = await Story.findByPk(storyId, {
       include: [{
@@ -189,47 +161,23 @@ class StoryServiceClass {
       return null;
     }
 
-    // 静态可见性检查（可缓存）
     if (story.visibility === 'shadowban' || story.visibility === 'deleted') {
       return null;
     }
 
-//    // PostGIS 坐标转换（可缓存）
-//    let location = null;
-//    if (story.location) {
-//      const locationStr = typeof story.location === 'string'
-//        ? story.location
-//        : story.location.toString();
-//      const match = locationStr.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-//      if (match) {
-//        location = {
-//          lng: parseFloat(match[1]),
-//          lat: parseFloat(match[2])
-//        };
-//      }
-//    }
-// ✅ 这是你要粘贴进去的新代码
-    // PostGIS 坐标转换（可缓存）
     let location = parseStoryLocationValue(story.location);
 
-    // 返回原始数据结构
     return {
       story,
       author: story.author,
       location,
-      locationName: story.locationName  // ✅ 新增：地点名称
+      locationName: story.locationName
     };
   }
 
-  /**
-   * 查看故事详情（需判断可见性）
-   * 职责：调用缓存适配器 + 动态业务逻辑处理 + 数据格式化
-   */
   async getStoryById(storyId, userId, options = {}) {
-    // 调用带缓存的纯查询函数
     const rawData = await this.fetchStoryRaw(storyId);
 
-    // 检查是否正在更新
     if (rawData && rawData._updating) {
       return {
         id: normalizeStoryId(storyId),
@@ -244,31 +192,23 @@ class StoryServiceClass {
 
     const { story, author, location } = rawData;
 
-    // 动态业务逻辑：时光胶囊解锁检查（不缓存）
     let content = story.content;
     if (story.isTimeCapsule && story.unlockAt && new Date() < story.unlockAt) {
       if (story.userId !== userId) {
-        content = null;  // 未解锁时光胶囊，内容为空
+        content = null;
       }
     }
 
-    // ======================
-    // 浏览量自增（fire-and-forget，不阻塞响应）
-    // ======================
     const redis = redisClient.getClient();
     const viewCountKey = `story:views:${storyId}`;
-    const viewDeltaPromise = redis.incr(viewCountKey).catch(() => 1);  // 失败时默认 +1
+    const viewDeltaPromise = redis.incr(viewCountKey).catch(() => 1);
 
-    // ======================
-    // 获取点赞数和评论数（与浏览量并行）
-    // ======================
     const { commentCacheUtil } = await import('../../common/utils/comment-cache.util.js');
     const { Comment } = await import('../comment/comment.model.js');
     const [likeCount, commentCount, favoriteCount, viewDelta] = await Promise.all([
       likeCacheUtil.getLikeCount(storyId),
       commentCacheUtil.getCommentCount(storyId).then(async (r) => {
         if (r >= 0) return r;
-        // 缓存未命中，从DB查询并回写缓存
         const count = await Comment.count({ where: { storyId, status: 'active' } });
         await commentCacheUtil.setCommentCount(storyId, count);
         return count;
@@ -278,27 +218,23 @@ class StoryServiceClass {
     ]);
     const totalViewCount = (story.viewCount || 0) + viewDelta - 1;
 
-    // ======================
-    // 推荐理由标签计算
-    // ======================
     const recommendationTags = await this._computeRecommendationTags({
       story, userId, location, likeCount, commentCount,
       userLng: options.userLng, userLat: options.userLat
     });
 
-    // 格式化返回数据
     return {
       id: normalizeStoryId(story.id),
       content,
       images: story.images,
       location,
-      locationName: story.locationName,  // ✅ 新增：地点名称
+      locationName: story.locationName,
       emotionTag: story.emotionTag,
       isTimeCapsule: story.isTimeCapsule,
       isRecommended: story.isRecommended,
       viewCount: totalViewCount,
-      likeCount,  // ✅ 新增
-      commentCount,  // ✅ 新增
+      likeCount,
+      commentCount,
       favoriteCount,
       fontFamily: story.fontFamily || null,
       fontEffect: story.fontEffect || null,
@@ -316,24 +252,17 @@ class StoryServiceClass {
     };
   }
 
-  /**
-   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
-   * 仅供 getStoryById 调用，不对外暴露
-   */
   async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
-    // 查看自己的故事不展示推荐标签
     if (userId && userId === story.userId) {
       return [];
     }
 
     const tags = [];
 
-    // 1. 编辑精选
     if (story.isRecommended) {
       tags.push({ tag: '编辑精选', type: 'editor_pick' });
     }
 
-    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
     if (userId && story.emotionTag) {
       const recentStories = await Story.findAll({
         where: { userId, visibility: 'public' },
@@ -358,11 +287,10 @@ class StoryServiceClass {
       }
     }
 
-    // 3. 附近热议：用户在附近 + 故事近期互动热度高
     if (location && userLng != null && userLat != null) {
       const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
-      const isNearby = distanceMeters <= 150000; // 150km 内
-      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isNearby = distanceMeters <= 150000;
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000;
       const isHot = (likeCount + commentCount) >= 5;
 
       if (isNearby && isRecent && isHot) {
@@ -373,17 +301,10 @@ class StoryServiceClass {
     return tags.slice(0, 3);
   }
 
-  /**
-   * 删除故事
-   * 发送 MQ 消息异步写入数据库 + 清除缓存
-   */
   async deleteStory(storyId, userId) {
-    // 使用缓存查询（更快）
     const story = await this.fetchStoryRaw(storyId);
 
-    // 处理正在更新状态
     if (story && story._updating) {
-      // 正在更新中，尝试查询数据库获取权限信息
       const dbStory = await Story.findByPk(storyId);
       if (!dbStory) {
         throw new Error('故事正在处理中，请稍后再试');
@@ -394,13 +315,11 @@ class StoryServiceClass {
     } else if (!story) {
       throw new Error('故事不存在或已被删除');
     } else {
-      // 正常状态，检查权限
       if (story.author.id !== userId) {
         throw new Error('无权删除此故事');
       }
     }
 
-    // 发送 MQ 消息，让消费者异步处理
     rocketmqClient.sendOrderly(
       MessageModule.STORY,
       StoryOperation.DELETE,
@@ -410,13 +329,9 @@ class StoryServiceClass {
       console.error(`❌ 发送 DELETE 消息失败 [storyId: ${storyId}]:`, err);
     });
 
-    // 立即返回
     return { success: true, message: '删除成功' };
   }
 
-  /**
-   * 我的故事列表
-   */
   async getMyStories(userId, { page = 1, limit = 10 }) {
     const offset = (page - 1) * limit;
 
@@ -441,13 +356,11 @@ class StoryServiceClass {
       offset: parseInt(offset)
     });
 
-    // 验证页码是否超出范围
     const totalPages = Math.ceil(count / limit);
     if (page > totalPages && count > 0) {
       throw new Error(`请求的页码超出范围，共 ${totalPages} 页`);
     }
 
-    // 批量获取真实浏览量（单次 pipeline，替代 N 次独立 GET）
     const storyIds = rows.map(story => story.id);
     const redis = redisClient.getClient();
     const viewPipeline = redis.pipeline();
@@ -462,7 +375,6 @@ class StoryServiceClass {
       return (story.viewCount || 0) + delta;
     });
 
-    // 计算时光胶囊是否已解锁
     function computeIsUnlocked(story) {
       if (!story.isTimeCapsule) return true;
       if (story.unlockAt && new Date(story.unlockAt) <= new Date()) return true;
@@ -504,24 +416,17 @@ class StoryServiceClass {
     };
   }
 
-  /**
-   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
-   * 仅供 getStoryById 调用，不对外暴露
-   */
   async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
-    // 查看自己的故事不展示推荐标签
     if (userId && userId === story.userId) {
       return [];
     }
 
     const tags = [];
 
-    // 1. 编辑精选
     if (story.isRecommended) {
       tags.push({ tag: '编辑精选', type: 'editor_pick' });
     }
 
-    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
     if (userId && story.emotionTag) {
       const recentStories = await Story.findAll({
         where: { userId, visibility: 'public' },
@@ -546,11 +451,10 @@ class StoryServiceClass {
       }
     }
 
-    // 3. 附近热议：用户在附近 + 故事近期互动热度高
     if (location && userLng != null && userLat != null) {
       const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
-      const isNearby = distanceMeters <= 150000; // 150km 内
-      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isNearby = distanceMeters <= 150000;
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000;
       const isHot = (likeCount + commentCount) >= 5;
 
       if (isNearby && isRecent && isHot) {
@@ -561,17 +465,10 @@ class StoryServiceClass {
     return tags.slice(0, 3);
   }
 
-  /**
-   * 获取 OSS 上传凭证
-   */
   async getUploadToken() {
     return generateStoryUploadToken();
   }
 
-  /**
-   * 解锁时光胶囊（定时任务调用）
-   * 注意：缓存清除通过 wrapWithClearCache 在类外部手动应用
-   */
   async unlockTimeCapsule(storyId) {
     const story = await Story.findByPk(storyId);
 
@@ -593,15 +490,10 @@ class StoryServiceClass {
       storyId: normalizeStoryId(story.id)
     };
   }
-  //修改故事内容（只允许修改 content 和 emotionTag）
-  // 发送 MQ 消息异步写入数据库 + 清除缓存
   async modifyStory(storyId, userId, content, emotionTag) {
-    // 使用缓存查询（更快）
     const story = await this.fetchStoryRaw(storyId);
 
-    // 处理正在更新状态
     if (story && story._updating) {
-      // 正在更新中，尝试查询数据库获取权限信息
       const dbStory = await Story.findByPk(storyId);
       if (!dbStory) {
         throw new Error('故事正在处理中，请稍后再试');
@@ -612,16 +504,13 @@ class StoryServiceClass {
     } else if (!story) {
       throw new Error('故事不存在');
     } else {
-      // 正常状态，检查权限
       if (story.author.id !== userId) {
         throw new Error('无权修改此故事');
       }
     }
 
-    // 设置更新中标记（TTL 5秒）
     await setUpdatingMarker(`story:raw:${storyId}`, 5);
 
-    // 发送 MQ 消息，让消费者异步处理
     rocketmqClient.sendOrderly(
       MessageModule.STORY,
       StoryOperation.MODIFY,
@@ -631,7 +520,6 @@ class StoryServiceClass {
       console.error(`❌ 发送 MODIFY 消息失败 [storyId: ${storyId}]:`, err);
     });
 
-    // 立即返回
     return {
       id: normalizeStoryId(storyId),
       content,
@@ -639,15 +527,10 @@ class StoryServiceClass {
     };
   }
 
-  //修改故事可见性
-  // 发送 MQ 消息异步写入数据库 + 清除缓存
   async updateVisibility(storyId, userId, visibility) {
-    // 使用缓存查询（更快）
     const story = await this.fetchStoryRaw(storyId);
 
-    // 处理正在更新状态
     if (story && story._updating) {
-      // 正在更新中，尝试查询数据库获取权限信息
       const dbStory = await Story.findByPk(storyId);
       if (!dbStory) {
         throw new Error('故事正在处理中，请稍后再试');
@@ -658,21 +541,17 @@ class StoryServiceClass {
     } else if (!story) {
       throw new Error('故事不存在');
     } else {
-      // 正常状态，检查权限
       if (story.author.id !== userId) {
         throw new Error('无权修改此故事');
       }
     }
 
-    // 验证 visibility 只能是 public 或 shadowban
     if (!['public', 'shadowban'].includes(visibility)) {
       throw new Error('可见性只能为 public 或 shadowban');
     }
 
-    // 设置更新中标记（TTL 5秒）
     await setUpdatingMarker(`story:raw:${storyId}`, 5);
 
-    // 发送 MQ 消息，让消费者异步处理
     rocketmqClient.sendOrderly(
       MessageModule.STORY,
       StoryOperation.UPDATE_VISIBILITY,
@@ -682,20 +561,13 @@ class StoryServiceClass {
       console.error(`❌ 发送 UPDATE_VISIBILITY 消息失败 [storyId: ${storyId}]:`, err);
     });
 
-    // 立即返回
     return {
       id: normalizeStoryId(storyId),
       visibility
     };
   }
 
-  //搜索故事（模糊匹配 content）
   async searchStories(keyword, { page = 1, limit = 10 } = {}) {
-    // =====================
-    // 业务逻辑验证
-    // =====================
-
-    // 1. 验证关键词
     if (!keyword || typeof keyword !== 'string') {
       throw new Error('请提供搜索关键词');
     }
@@ -706,7 +578,6 @@ class StoryServiceClass {
       throw new Error('搜索关键词不能为空');
     }
 
-    // 关键词长度限制
     if (trimmedKeyword.length < 1) {
       throw new Error('搜索关键词不能为空');
     }
@@ -715,7 +586,6 @@ class StoryServiceClass {
       throw new Error('搜索关键词不能超过100个字符');
     }
 
-    // 2. 验证分页参数
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
@@ -727,17 +597,13 @@ class StoryServiceClass {
       throw new Error('每页数量必须在1-100之间');
     }
 
-    // =====================
-    // 业务逻辑处理
-    // =====================
-
     const offset = (pageNum - 1) * limitNum;
 
     const { rows, count } = await Story.findAndCountAll({
       where: {
         visibility: 'public',
         content: {
-          [Op.iLike]: `%${trimmedKeyword}%`  // pg_trgm索引会自动优化此查询
+          [Op.iLike]: `%${trimmedKeyword}%`
         },
         [Op.and]: [getVisibilityTimeCondition()]
       },
@@ -751,13 +617,11 @@ class StoryServiceClass {
       offset: parseInt(offset)
     });
 
-    // 验证页码是否超出范围
     const totalPages = Math.ceil(count / limitNum);
     if (pageNum > totalPages && count > 0) {
       throw new Error(`请求的页码超出范围，共 ${totalPages} 页`);
     }
 
-    // 批量获取真实浏览量（单次 pipeline，替代 N 次独立 GET）
     const storyIds = rows.map(story => story.id);
     const redis2 = redisClient.getClient();
     const viewPipeline = redis2.pipeline();
@@ -768,7 +632,6 @@ class StoryServiceClass {
       return (story.viewCount || 0) + delta;
     });
 
-    // PostGIS 坐标转换
     const storiesWithLocation = rows.map((story, index) => {
       const location = parseStoryLocationValue(story.location);
 
@@ -807,24 +670,17 @@ class StoryServiceClass {
     };
   }
 
-  /**
-   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
-   * 仅供 getStoryById 调用，不对外暴露
-   */
   async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
-    // 查看自己的故事不展示推荐标签
     if (userId && userId === story.userId) {
       return [];
     }
 
     const tags = [];
 
-    // 1. 编辑精选
     if (story.isRecommended) {
       tags.push({ tag: '编辑精选', type: 'editor_pick' });
     }
 
-    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
     if (userId && story.emotionTag) {
       const recentStories = await Story.findAll({
         where: { userId, visibility: 'public' },
@@ -849,11 +705,10 @@ class StoryServiceClass {
       }
     }
 
-    // 3. 附近热议：用户在附近 + 故事近期互动热度高
     if (location && userLng != null && userLat != null) {
       const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
-      const isNearby = distanceMeters <= 150000; // 150km 内
-      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isNearby = distanceMeters <= 150000;
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000;
       const isHot = (likeCount + commentCount) >= 5;
 
       if (isNearby && isRecent && isHot) {
@@ -864,9 +719,6 @@ class StoryServiceClass {
     return tags.slice(0, 3);
   }
 
-  /**
-   * 获取精选推荐故事（公开接口）
-   */
   async getFeaturedStories({ page = 1, limit = 20, summary } = {}) {
     const offset = (page - 1) * limit;
     
@@ -885,7 +737,6 @@ class StoryServiceClass {
       offset: parseInt(offset)
     });
 
-    // 批量获取点赞数
     const storyIds = rows.map(story => story.id);
     const likeCounts = await Promise.all(
       storyIds.map(id => likeCacheUtil.getLikeCount(id).catch(() => 0))
@@ -927,24 +778,17 @@ class StoryServiceClass {
     };
   }
 
-  /**
-   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
-   * 仅供 getStoryById 调用，不对外暴露
-   */
   async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
-    // 查看自己的故事不展示推荐标签
     if (userId && userId === story.userId) {
       return [];
     }
 
     const tags = [];
 
-    // 1. 编辑精选
     if (story.isRecommended) {
       tags.push({ tag: '编辑精选', type: 'editor_pick' });
     }
 
-    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
     if (userId && story.emotionTag) {
       const recentStories = await Story.findAll({
         where: { userId, visibility: 'public' },
@@ -969,11 +813,10 @@ class StoryServiceClass {
       }
     }
 
-    // 3. 附近热议：用户在附近 + 故事近期互动热度高
     if (location && userLng != null && userLat != null) {
       const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
-      const isNearby = distanceMeters <= 150000; // 150km 内
-      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isNearby = distanceMeters <= 150000;
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000;
       const isHot = (likeCount + commentCount) >= 5;
 
       if (isNearby && isRecent && isHot) {
@@ -984,25 +827,19 @@ class StoryServiceClass {
     return tags.slice(0, 3);
   }
 
-  /**
-   * 管理员获取所有帖子（public + shadowban）
-   */
   async getAllStoriesForAdmin({ page = 1, limit = 20, visibility = null, isRecommended = null }) {
     const offset = (page - 1) * limit;
 
-    // 构建 where 条件
     const whereCondition = {
       visibility: {
         [Op.in]: ['public', 'shadowban']
       }
     };
 
-    // 如果指定了 visibility，则过滤
     if (visibility && ['public', 'shadowban'].includes(visibility)) {
       whereCondition.visibility = visibility;
     }
 
-    // 如果指定了 isRecommended，则过滤推荐故事
     if (isRecommended === 'true' || isRecommended === true) {
       whereCondition.isRecommended = true;
     }
@@ -1020,13 +857,11 @@ class StoryServiceClass {
       }]
     });
 
-    // 验证页码是否超出范围
     const totalPages = Math.ceil(count / limit);
     if (page > totalPages && count > 0) {
       throw new Error(`请求的页码超出范围，共 ${totalPages} 页`);
     }
 
-    // 批量获取真实浏览量（单次 pipeline，替代 N 次独立 GET）
     const storyIds = rows.map(story => story.id);
     const redis3 = redisClient.getClient();
     const viewPipeline = redis3.pipeline();
@@ -1093,24 +928,17 @@ class StoryServiceClass {
     };
   }
 
-  /**
-   * 计算推荐理由标签（编辑精选 / 此刻共鸣 / 附近热议）
-   * 仅供 getStoryById 调用，不对外暴露
-   */
   async _computeRecommendationTags({ story, userId, location, likeCount, commentCount, userLng, userLat }) {
-    // 查看自己的故事不展示推荐标签
     if (userId && userId === story.userId) {
       return [];
     }
 
     const tags = [];
 
-    // 1. 编辑精选
     if (story.isRecommended) {
       tags.push({ tag: '编辑精选', type: 'editor_pick' });
     }
 
-    // 2. 此刻共鸣：分析用户最近发布故事的情绪偏好
     if (userId && story.emotionTag) {
       const recentStories = await Story.findAll({
         where: { userId, visibility: 'public' },
@@ -1135,11 +963,10 @@ class StoryServiceClass {
       }
     }
 
-    // 3. 附近热议：用户在附近 + 故事近期互动热度高
     if (location && userLng != null && userLat != null) {
       const distanceMeters = calculateDistance(location.lat, location.lng, userLat, userLng);
-      const isNearby = distanceMeters <= 150000; // 150km 内
-      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000; // 7天内
+      const isNearby = distanceMeters <= 150000;
+      const isRecent = (Date.now() - new Date(story.createdAt).getTime()) < 7 * 24 * 3600 * 1000;
       const isHot = (likeCount + commentCount) >= 5;
 
       if (isNearby && isRecent && isHot) {
@@ -1150,16 +977,11 @@ class StoryServiceClass {
     return tags.slice(0, 3);
   }
 
-  /**
-   * 擦亮故事
-   * 设置 polishedAt 为当前时间，24小时有效
-   */
   async polishStory(storyId, userId) {
     const story = await Story.findByPk(storyId);
     if (!story) throw new Error('故事不存在');
     if (story.userId !== userId) throw new Error('只能擦亮自己的故事');
 
-    // 检查是否在擦亮有效期内（24小时）
     if (story.polishedAt) {
       const polishedTime = new Date(story.polishedAt);
       const expiresAt = new Date(polishedTime.getTime() + 24 * 60 * 60 * 1000);
@@ -1168,15 +990,12 @@ class StoryServiceClass {
       }
     }
 
-    // 更新 polishedAt
     await story.update({ polishedAt: new Date() });
 
-    // 清除缓存
     try {
       const cacheKey = `story:raw:${storyId}`;
       await redisClient.del(cacheKey);
     } catch (e) {
-      // 缓存清除失败不影响
     }
 
     return {
@@ -1186,11 +1005,9 @@ class StoryServiceClass {
   }
 }
 
-// 创建实例并手动应用缓存包装器
 export const storyServiceInstance = (() => {
   const instance = new StoryServiceClass();
 
-  // 应用缓存包装器：fetchStoryRaw
   instance.fetchStoryRaw = wrapWithCache(
     instance,
     'fetchStoryRaw',
@@ -1201,10 +1018,7 @@ export const storyServiceInstance = (() => {
     0
   );
 
-  // 注：缓存清除已迁移到 RocketMQ 消费者异步处理，不再使用 wrapWithClearCache
-
   return instance;
 })();
 
-// ✅ 正确导出：提供命名导出 StoryService（解决报错）
 export { storyServiceInstance as StoryService };

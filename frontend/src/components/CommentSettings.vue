@@ -204,23 +204,16 @@ async function handlePurchaseBubbleDecor() {
   purchasing.value = false
 }
 
-// ===== Background Settings =====
-
 const useGradient = ref(false)
 const primaryColor = ref('#fff8e7')
 const secondaryColor = ref('#fcb69f')
 const gradientDirection = ref(135)
-const presetTarget = ref('primary') // 'primary' | 'secondary'
+const presetTarget = ref('primary')
 
-// Preset colors for quick selection
 const presetColors = [
-  // Warm tones
   '#fff8e7', '#ffecd2', '#fce4ec', '#fef2f2',
-  // Cool tones
   '#f0f9ff', '#e0f2fe', '#f0fdf4', '#ecfdf5',
-  // Purple/Pink
   '#faf5ff', '#fdf4ff', '#fce7f3', '#ffe4e6',
-  // Dark tones
   '#1a1a2e', '#16213e', '#0f3460', '#1b1b2f',
 ]
 
@@ -249,7 +242,6 @@ function applyPreset(color) {
   }
 }
 
-// Initialize from stored settings
 watch(() => props.visible, (val) => {
   if (val && vipStore.savedCommentBg) {
     initFromSaved(vipStore.savedCommentBg)
@@ -264,7 +256,6 @@ function initFromSaved(saved) {
   gradientDirection.value = saved.gradientDirection || 135
 }
 
-// Preview style computation
 const previewStyle = computed(() => {
   if (useGradient.value) {
     return {
@@ -290,7 +281,6 @@ function resetSettings() {
 async function saveSettings() {
   saving.value = true
   try {
-    // 🔧 修复：非VIP用户无法保存评论背景
     if (!vipStore.isVipActive) {
       showToast('开通 VIP 后即可自定义评论背景', 'warning')
       return
@@ -304,7 +294,6 @@ async function saveSettings() {
       gradientDirection: gradientDirection.value,
     }
 
-    // ✅ 优化：先同步到后端，成功后再保存到localStorage
     await vipStore.syncCommentBg(bgConfig)
     vipStore.setCommentBg(bgConfig)
 
@@ -355,7 +344,6 @@ async function saveSettings() {
   color: #edf3ff;
 }
 
-/* --- Header --- */
 .cs-header {
   display: flex;
   align-items: center;
@@ -386,7 +374,6 @@ async function saveSettings() {
 }
 .cs-close:hover { background: rgba(184, 135, 46, 0.2); }
 
-/* --- VIP Gate --- */
 .cs-vip-gate {
   text-align: center;
   padding: 36px 16px;
@@ -417,14 +404,12 @@ async function saveSettings() {
   opacity: 0.85;
 }
 
-/* --- Body Scroll Area --- */
 .cs-body {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* --- Sections --- */
 .cs-section {
   padding: 18px;
   border-radius: 18px;
@@ -462,7 +447,6 @@ async function saveSettings() {
   font-size: 12px; opacity: 0.5; margin: 0 0 14px;
 }
 
-/* --- Toggle Switch --- */
 .cs-toggle-wrap {
   display: flex; align-items: center; gap: 10px;
   cursor: pointer; user-select: none;
@@ -502,7 +486,6 @@ async function saveSettings() {
   opacity: 0.7;
 }
 
-/* --- Color Picker Rows --- */
 .cs-color-row {
   display: flex;
   align-items: center;
@@ -563,7 +546,6 @@ async function saveSettings() {
   opacity: 0.7;
 }
 
-/* --- Preset Colors Grid --- */
 .cs-presets {
   margin-top: 14px;
 }
@@ -576,7 +558,6 @@ async function saveSettings() {
   margin-bottom: 8px;
 }
 
-/* Preset target tabs (gradient mode) */
 .cs-preset-tabs {
   display: flex;
   gap: 4px;
@@ -632,7 +613,6 @@ async function saveSettings() {
   transform: scale(1.08);
 }
 
-/* --- Gradient Direction --- */
 .cs-gradient-dir {
   margin-top: 14px;
 }
@@ -673,7 +653,6 @@ async function saveSettings() {
   transition: transform 0.2s ease;
 }
 
-/* --- Preview Area --- */
 .cs-preview-area {
   border-radius: 16px; padding: 16px; min-height: 72px;
   overflow: hidden;
@@ -703,7 +682,6 @@ async function saveSettings() {
 
 .cs-preview-text { font-size: 13px; opacity: 0.75; line-height: 1.6; word-break: break-word; }
 
-/* --- Actions --- */
 .cs-actions {
   display: flex; gap: 10px; justify-content: flex-end;
   margin-top: 4px;
@@ -730,13 +708,11 @@ async function saveSettings() {
 .cs-action-btn:hover:not(:disabled) { transform: translateY(-1px); }
 .cs-action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* --- Transition --- */
 .cs-fade-enter-active { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .cs-fade-leave-active { transition: all 0.22s ease; }
 .cs-fade-enter-from { opacity: 0; transform: translateX(20px) scale(0.96); }
 .cs-fade-leave-to { opacity: 0; transform: translateX(12px) scale(0.98); }
 
-/* Responsive */
 @media (max-width: 480px) {
   .comment-settings-shell {
     padding: 8px;

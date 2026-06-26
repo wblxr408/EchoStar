@@ -671,11 +671,9 @@ export const VipService = {
         vipFree: isVipFree
       };
     }).then(async (result) => {
-      // ✅ 修复：在transaction成功后清除缓存
       await clearUserCache(userId);
       return result;
     }).catch(async (err) => {
-      // ✅ 修复：确保错误时也清除缓存
       await clearUserCache(userId);
       throw err;
     });
@@ -763,7 +761,6 @@ export const VipService = {
       throw new Error('用户不存在');
     }
 
-    // ✅ 修复：同时检查VIP状态和有效期
     const vipStatus = await this.checkUserVipStatus(userId);
     if (!vipStatus.isVip) {
       throw new Error('仅VIP用户可设置评论背景');
@@ -805,7 +802,6 @@ export const VipService = {
       throw new Error('用户不存在');
     }
 
-    // ✅ 修复：同时检查VIP状态和有效期
     const vipStatus = await this.checkUserVipStatus(userId);
     if (!vipStatus.isVip) {
       throw new Error('仅VIP用户可设置字体');

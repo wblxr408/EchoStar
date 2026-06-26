@@ -1,12 +1,6 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 
-/**
- * User 模型
- *
- * 完全按照 docs/03-数据模型.md 文档要求实现
- */
-
 export const User = sequelize.define('User', {
   id: {
     type: DataTypes.INTEGER,
@@ -130,13 +124,7 @@ export const User = sequelize.define('User', {
 }, {
   tableName: 'users',
   timestamps: true,
-  // ✅ 只保留这一行：自动完成 createdAt → created_at 映射
   underscored: true,
-  // ==============================
-  // ❌ 删掉这两行冲突配置！（唯一修改）
-  // createdAt: 'created_at',
-  // updatedAt: 'updated_at',
-  // ==============================
   indexes: [
     {
       name: 'idx_users_email',

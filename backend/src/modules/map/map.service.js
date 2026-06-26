@@ -6,7 +6,6 @@ import { getVisibilityTimeCondition } from '../../common/utils/visibility-time.u
 import { clusterPoints, getGeohashPrecision } from './cluster.util.js';
 import { safeParseJSONB } from '../../common/utils/jsonb.util.js';
 
-// ===================== 常量配置 =====================
 const CONSTANTS = {
   DEFAULT_RADIUS: 50,
   MAX_EXPLORE_LIMIT: 500,
@@ -14,16 +13,13 @@ const CONSTANTS = {
   PUBLIC_VISIBILITY: 'public'
 };
 
-// ===================== 核心工具：手动解析 POINT 字符串（绕过所有SQL坑） =====================
 const parsePoint = (locationVal) => {
   if (!locationVal) return { lat: 0, lng: 0 };
   
-  // 兼容 GeoJSON 对象格式
   if (locationVal.type === 'Point' && Array.isArray(locationVal.coordinates)) {
     return { lng: locationVal.coordinates[0], lat: locationVal.coordinates[1] };
   }
 
-  // 兼容 WKT 字符串格式 "POINT (0 0)"
   const locStr = String(locationVal);
   const match = locStr.match(/POINT\s*\(\s*([\d.-]+)\s+([\d.-]+)\s*\)/i);
   if (match) {
@@ -43,15 +39,13 @@ const normalizeStoryId = (storyId) => {
     : String(storyId).trim();
 };
 
-// ===================== 公共工具方法 =====================
 const MapServiceUtil = {
-  // ✅ 核心修改：不做SQL计算，直接查原始 location 字段
   STORY_ATTRIBUTES: [
     'id',
     'content',
     'images',
-    'location', // 直接查原始字段
-    'locationName',  // ✅ 新增：地点名称
+    'location',
+    'locationName',
     'emotionTag',
     'isTimeCapsule',
     'unlockAt',
@@ -77,12 +71,9 @@ const MapServiceUtil = {
     `);
   },
 
-  // ✅ 核心修改：用 JS 手动解析经纬度
-  // options.summary 为 true 时只返回 images[0]，减少传输量
   formatStory(story, options = {}) {
     if (!story) return null;
 
-    // 手动解析 location
     const { lat, lng } = parsePoint(story.location);
     const rawImages = safeParseJSONB(story.images, []);
 
@@ -104,7 +95,7 @@ const MapServiceUtil = {
         latitude: lat,
         longitude: lng
       },
-      locationName: story.locationName,  // ✅ 新增：地点名称
+      locationName: story.locationName,
       emotionTag: normalizeMapEmotionTag(story.emotionTag),
       isTimeCapsule: !!story.isTimeCapsule,
       unlockAt: story.unlockAt || null,
@@ -243,13 +234,9 @@ export const MapService = {
     if (usePagination) {
       return { stories: formatted, pagination };
     }
-    // 向后兼容：无分页时直接返回数组
     return formatted;
   },
 
-  /**
-   * 随机漫步 ✅ 带调试，必解决
-   */
   async randomWalk() {
     console.log('🎲 【随机漫步】开始查询...');
 
@@ -267,10 +254,9 @@ export const MapService = {
         [sequelize.random()]
       ],
       attributes: MapServiceUtil.STORY_ATTRIBUTES,
-      logging: console.log // 打印SQL
+      logging: console.log
     });
 
-    // ✅ 核心调试：看原始 location 到底是什么
     console.log('🎲 【随机漫步】原始 story.location:', story?.location);
     console.log('🎲 【随机漫步】完整 dataValues:', story?.dataValues);
 
@@ -293,7 +279,6 @@ export const MapService = {
         [Op.and]: [
           MapServiceUtil.getDWithinCondition(),
           getVisibilityTimeCondition(),
-          // 排除未解锁的时光胶囊
           sequelize.literal(`NOT (is_time_capsule = true AND unlock_at IS NOT NULL AND unlock_at > NOW())`)
         ]
       },
@@ -311,7 +296,6 @@ export const MapService = {
     return stories.map(MapServiceUtil.formatStory).filter(Boolean);
   },
 
-   // ===================== 优化：根据 zoom 动态计算 GEOhash 精度 =====================
   getGeohashPrecision(zoom) {
     return getGeohashPrecision(zoom);
   },
