@@ -123,10 +123,8 @@ class NotificationServiceClass {
       if (oldestIds.length > 0) {
         const pipeline = redis.pipeline();
 
-        // ✅ 修复1：直接删除【精准ID】，不按排名删，彻底杜绝竞态问题
         pipeline.zrem(`notice:list:${toUserId}`, ...oldestIds);
 
-        // 批量删除通知详情和未读标记（这部分没问题，保留）
         oldestIds.forEach(oldId => {
         pipeline.del(`notice:data:${oldId}`);
         pipeline.srem(`notice:unread:${toUserId}`, oldId);
@@ -246,16 +244,11 @@ class NotificationServiceClass {
       throw new Error('通知不存在或无权访问');
     }
     
-    // ✅ 核心修改：创建管道，原子执行所有操作
     const pipeline = redis.pipeline();
-    // 1. 从未读列表移除
     pipeline.srem(`notice:unread:${userId}`, noticeId);
-    // 2. 更新已读状态
     pipeline.hset(`notice:data:${noticeId}`, 'isRead', '1');
-    // 3. 设置7天过期时间
     pipeline.expire(`notice:data:${noticeId}`, READ_TTL);
 
-  // 原子执行：要么全部成功，要么全部失败
     await pipeline.exec();
 
     return { success: true, message: '标记已读成功' };
@@ -274,11 +267,8 @@ class NotificationServiceClass {
 
     const pipeline = redis.pipeline();
 
-    // ✅ 修复：批量 SREM 精准删除【本次查询到的未读ID】，不删整个Key
-    // 不会误伤新产生的通知，完美解决你的顾虑
     pipeline.srem(`notice:unread:${userId}`, ...unreadIds);
 
-  // 批量更新已读状态 + 过期时间（保留不变）
     unreadIds.forEach(noticeId => {
       pipeline.hset(`notice:data:${noticeId}`, 'isRead', '1');
       pipeline.expire(`notice:data:${noticeId}`, READ_TTL);

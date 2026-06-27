@@ -122,7 +122,6 @@ export const useVipStore = defineStore('vip', () => {
     try {
       await fetchEconomy();
     } catch (_err) {
-      // fetchStatus has already provided a fallback state.
     }
   }
 
@@ -306,8 +305,6 @@ export const useVipStore = defineStore('vip', () => {
       return { success: false, type: 'purchase_failed', message: purchaseResult.message };
     }
 
-    // ✅ 修复：购买成功后立即验证库存更新
-    // fetchEconomy会同步inventory状态
     await fetchEconomy();
 
     return {
@@ -332,10 +329,6 @@ export const useVipStore = defineStore('vip', () => {
     });
   }
 
-  /**
-   * 从后端故事列表数据恢复擦亮状态
-   * @param {Array} stories - 后端返回的故事列表，每项含 polishedAt
-   */
   function restorePolishedStories(stories) {
     if (!stories || !Array.isArray(stories)) return;
     for (const story of stories) {
@@ -357,7 +350,6 @@ export const useVipStore = defineStore('vip', () => {
       return { success: false, type: 'already_polished', message: '故事正在推荐回流中' };
     }
 
-    // 非VIP用户先扣费
     if (!isVipActive.value) {
       if (emotionCoins.value < STORY_POLISH_COST) {
         return {
@@ -386,7 +378,6 @@ export const useVipStore = defineStore('vip', () => {
       }
     }
 
-    // 调用后端擦亮API
     try {
       const res = await vipApi.polishStory(storyId);
       const { polishedAt, polishExpiresAt } = res.data || {};
@@ -502,6 +493,5 @@ function saveToStorage(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // ignore
   }
 }
