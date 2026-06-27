@@ -66,15 +66,15 @@ class CommentConsumer {
         this.startPolling();
         return;
       } catch (error) {
-        const isTopicNotFound = error.message?.includes('No topic route info');
-        if (isTopicNotFound && attempt < maxRetries) {
+        const isConnectionError = error.message?.includes('No topic route info') || error.message?.includes('ECONNREFUSED') || error.message?.includes('UNAVAILABLE') || error.message?.includes('No connection established');
+        if (isConnectionError && attempt < maxRetries) {
           console.warn(`⚠️  Topic 尚未就绪，${retryDelay / 1000}s 后重试 (${attempt}/${maxRetries})...`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
           continue;
         }
         console.error('❌ Comment Consumer 启动失败:', error.message);
         logger.error('Comment Consumer 启动失败', error);
-        if (isTopicNotFound) {
+        if (isConnectionError) {
           console.error(`   请确认 Topic "${config.topic}" 已创建`);
         }
         return;
